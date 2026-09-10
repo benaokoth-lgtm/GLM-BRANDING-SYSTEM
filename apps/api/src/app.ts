@@ -4,6 +4,7 @@ import { authRouter } from './routes/auth';
 import { masterDataRouter } from './routes/masterdata';
 import { ordersRouter } from './routes/orders';
 import { pnlRouter } from './routes/pnl';
+import { financeRouter } from './routes/finance';
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5174').split(',').map((o) => o.trim());
 
@@ -18,3 +19,4 @@ app.use('/api/auth', authRouter);
 app.use('/api/master-data', masterDataRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/pnl', pnlRouter);
+app.use('/api/finance', financeRouter);

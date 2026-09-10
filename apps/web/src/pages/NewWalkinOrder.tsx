@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { computeOrderTotals, exceedsDiscountCeiling, fmtKsh } from '@glm/shared';
-import type { DraftLineItem } from '../api/models';
+import type { CompanySettings, DraftLineItem, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
 import LineItemsEditor, { makeDefaultLine } from '../components/LineItemsEditor';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
+import { printWalkinReceipt } from '../utils/printTicket';
 
 export default function NewWalkinOrder() {
   const { services, materials, staff, maxDiscountPct, loading } = useCatalog();
@@ -43,20 +44,28 @@ export default function NewWalkinOrder() {
     if (!customerName.trim() || !staffId) return;
     setSubmitting(true);
     setError(null);
+    // Open the popup synchronously (before any await) so browser popup
+    // blockers don't treat it as unsolicited once we're past the API calls.
+    const printWindow = window.open('', '_blank');
     try {
-      await api.post('/orders/walkin', {
-        customerName,
-        phone,
-        staffId,
-        paymentTiming,
-        paymentAmount: paymentTiming === 'onAcceptance' ? Number(paymentAmount) || 0 : undefined,
-        paymentMethod: paymentTiming === 'onAcceptance' ? paymentMethod : undefined,
-        lineItems: normalized,
-        orderDiscountPct: Number(orderDiscountPct) || 0,
-        orderDiscountAmt: Number(orderDiscountAmt) || 0,
-      });
+      const [order, company] = await Promise.all([
+        api.post<OrderDetail>('/orders/walkin', {
+          customerName,
+          phone,
+          staffId,
+          paymentTiming,
+          paymentAmount: paymentTiming === 'onAcceptance' ? Number(paymentAmount) || 0 : undefined,
+          paymentMethod: paymentTiming === 'onAcceptance' ? paymentMethod : undefined,
+          lineItems: normalized,
+          orderDiscountPct: Number(orderDiscountPct) || 0,
+          orderDiscountAmt: Number(orderDiscountAmt) || 0,
+        }),
+        api.get<CompanySettings>('/master-data/settings'),
+      ]);
+      printWalkinReceipt(printWindow, order, company);
       navigate('/orders/mine');
     } catch (err) {
+      printWindow?.close();
       setError(err instanceof Error ? err.message : 'Failed to capture order');
     } finally {
       setSubmitting(false);

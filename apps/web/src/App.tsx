@@ -9,6 +9,7 @@ import Orders from './pages/Orders';
 import PendingPayments from './pages/PendingPayments';
 import MasterData from './pages/MasterData';
 import PnL from './pages/PnL';
+import Finance from './pages/Finance';
 
 function DefaultRedirect() {
   const { user } = useAuth();
@@ -77,6 +78,14 @@ export default function App() {
           element={
             <RequireRole roles={['Supervisor', 'Admin']}>
               <PnL />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/finance"
+          element={
+            <RequireRole roles={['Supervisor', 'Admin']}>
+              <Finance />
             </RequireRole>
           }
         />

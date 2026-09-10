@@ -70,6 +70,23 @@ model Expense {
   amount   Float
 }
 
+// Finance > Payroll — a pay-run log (not a fixed salary record), so casual
+// day-rate labour and salaried staff share one entry shape. NSSF/SHIF are
+// derived views over this same data; statutory deductions (PAYE/NSSF/SHIF/
+// Housing Levy) are computed on read via packages/shared/src/tax.ts, never
+// stored, same "compute from source, don't cache" rule as order totals.
+model PayrollEntry {
+  id            Int    @id @default(autoincrement())
+  date          String // 'YYYY-MM-DD'
+  name          String
+  employeeType  String // 'Employee' | 'Casual'
+  department    String @default("")
+  daysWorked    Float
+  rate          Float
+  grossPay      Float // daysWorked * rate, stored so a later rate-table change doesn't rewrite history
+  paymentMethod String
+}
+
 model Order {
   id                Int      @id @default(autoincrement())
   orderNo           String   @unique

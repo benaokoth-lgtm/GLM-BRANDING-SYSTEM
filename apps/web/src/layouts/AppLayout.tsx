@@ -11,12 +11,14 @@ const TABS_BY_ROLE: Record<string, [string, string][]> = {
     ['/orders/all', 'All Orders'],
     ['/payments/pending', 'Pending Payments'],
     ['/pnl', 'P&L'],
+    ['/finance', 'Finance'],
   ],
   Admin: [
     ['/orders/all', 'All Orders'],
     ['/payments/pending', 'Pending Payments'],
     ['/master-data', 'Master Data'],
     ['/pnl', 'P&L'],
+    ['/finance', 'Finance'],
   ],
 };
 

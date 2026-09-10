@@ -10,8 +10,12 @@ Built from a design handoff (`design_handoff_pos_system/`), recreated in this co
 using the conventions of the Olerai Hotel System / Word Power Church System projects.
 Extended with a **P&L account** tab (`design_handoff_pnl_account/`) — Supervisor/Admin
 only — that aggregates orders/payments into a filterable profit-and-loss statement
-alongside a manually-maintained operating-expense ledger; printing/company-branding
-support was added directly (no separate handoff).
+alongside a manually-maintained operating-expense ledger. A **Finance** tab (next to
+P&L, Supervisor/Admin only) adds VAT / NSSF / SHIF / Payroll sub-tabs — a pay-run log
+with Kenyan statutory deductions computed via `packages/shared/src/tax.ts` (ported from
+Olerai Hotel System for consistent, vetted formulas), and a VAT statement derived from
+real sales. Printing/company-branding and Finance were added directly (no design
+handoff for either).
 
 ## Stack
 
@@ -62,5 +66,11 @@ own roster.
   cost, so this is a placeholder until real job-costing data exists.
 - Printed documents: A4 for corporate invoices/quotations and thermal (80mm) for
   walk-in receipts, plus company name/address/logo captured in Master Data → Company
-  Info and reused across every printed document.
+  Info and reused across every printed document. Walk-in orders auto-open the receipt
+  print dialog right after capture.
+- Finance → Payroll has no link to the Staff & Users roster — pay-run entries are
+  free-text (name/type/gross pay per period), matching Olerai's Labour & Wages model,
+  since GLM has casual day-rate labour alongside any salaried staff. The VAT tab shows
+  Output VAT on sales only (assumes VAT-inclusive pricing at 16%) — Input VAT on
+  purchases isn't tracked yet, so this isn't net VAT payable to KRA.
 - No production deployment config yet (cPanel/Vercel) — add when ready to ship.

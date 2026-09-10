@@ -116,6 +116,47 @@ export interface PnlData {
   expenseCategories: readonly string[];
 }
 
+export interface PayrollRow {
+  id: number;
+  date: string;
+  name: string;
+  employeeType: 'Employee' | 'Casual';
+  department: string;
+  daysWorked: number;
+  rate: number;
+  paymentMethod: PaymentMethod;
+  grossPay: number;
+  paye: number;
+  nssf: number;
+  shif: number;
+  housingLevy: number;
+  totalDeductions: number;
+  netPay: number;
+}
+
+export interface PayrollData {
+  fromDate: string;
+  toDate: string;
+  rows: PayrollRow[];
+  grossPayroll: number;
+  totalStatutory: number;
+  netPayroll: number;
+  totalPaye: number;
+  totalNssf: number;
+  totalShif: number;
+  totalHousingLevy: number;
+}
+
+export interface VatData {
+  fromDate: string;
+  toDate: string;
+  walkinSales: number;
+  corporateSales: number;
+  totalSales: number;
+  netSales: number;
+  outputVat: number;
+}
+
 export interface DraftLineItem {
   itemType: ItemType;
   serviceId: number;

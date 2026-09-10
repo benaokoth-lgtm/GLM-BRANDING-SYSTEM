@@ -1,4 +1,4 @@
-import type { OrderStage, PaymentMethod, Role } from './types';
+import type { OrderStage, Role } from './types';
 
 export const STAGES: OrderStage[] = [
   'Order Received',
@@ -8,7 +8,7 @@ export const STAGES: OrderStage[] = [
   'Completed',
 ];
 
-export const PAYMENT_METHODS: PaymentMethod[] = ['Cash', 'M-Pesa', 'Bank Transfer', 'Card'];
+export const PAYMENT_METHODS = ['Cash', 'M-Pesa', 'Bank Transfer', 'Card'] as const;
 
 export const ROLES: Role[] = ['Staff', 'Supervisor', 'Admin'];
 
@@ -37,3 +37,6 @@ export const EXPENSE_CATEGORIES = [
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+export const EMPLOYEE_TYPES = ['Employee', 'Casual'] as const;
+export type EmployeeType = (typeof EMPLOYEE_TYPES)[number];

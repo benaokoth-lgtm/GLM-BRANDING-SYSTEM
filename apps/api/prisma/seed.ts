@@ -11,17 +11,23 @@ async function main() {
   await prisma.payment.deleteMany();
   await prisma.orderLineItem.deleteMany();
   await prisma.order.deleteMany();
+  await prisma.expenseAmendment.deleteMany();
+  await prisma.expense.deleteMany();
+  await prisma.payrollEntry.deleteMany();
+  await prisma.pettyCashTopUp.deleteMany();
+  await prisma.stockRequisition.deleteMany();
   await prisma.corporateClient.deleteMany();
   await prisma.material.deleteMany();
   await prisma.service.deleteMany();
   await prisma.user.deleteMany();
   await prisma.setting.deleteMany();
-  await prisma.expense.deleteMany();
 
-  const [amina, brian, grace, admin] = await Promise.all([
+  const [amina, brian, grace, financeManager, generalManager, admin] = await Promise.all([
     prisma.user.create({ data: { name: 'Amina Otieno', role: 'Staff', pinHash: await pin('1111') } }),
     prisma.user.create({ data: { name: 'Brian Kimani', role: 'Staff', pinHash: await pin('2222') } }),
     prisma.user.create({ data: { name: 'Grace Wanjiru', role: 'Supervisor', pinHash: await pin('3333') } }),
+    prisma.user.create({ data: { name: 'David Kamau', role: 'Finance Manager', pinHash: await pin('4444') } }),
+    prisma.user.create({ data: { name: 'Lucy Njeri', role: 'General Manager', pinHash: await pin('5555') } }),
     prisma.user.create({ data: { name: 'Ken Mwangi', role: 'Admin', pinHash: await pin('9999') } }),
   ]);
 
@@ -136,7 +142,10 @@ async function main() {
   });
 
   console.log('Seeded GLM Branding POS demo data.');
-  console.log('PIN logins — Amina Otieno (Staff): 1111 | Brian Kimani (Staff): 2222 | Grace Wanjiru (Supervisor): 3333 | Ken Mwangi (Admin): 9999');
+  console.log(
+    'PIN logins — Amina Otieno (Staff): 1111 | Brian Kimani (Staff): 2222 | Grace Wanjiru (Supervisor): 3333 | ' +
+      'David Kamau (Finance Manager): 4444 | Lucy Njeri (General Manager): 5555 | Ken Mwangi (Admin): 9999',
+  );
 }
 
 main()

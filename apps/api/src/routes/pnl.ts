@@ -2,11 +2,11 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { computeOrderTotals, EXPENSE_CATEGORIES } from '@glm/shared';
+import { computeOrderTotals, EXPENSE_CATEGORIES, FINANCE_ROLES } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
 export const pnlRouter = Router();
-pnlRouter.use(requireAuth, requireRole('Supervisor', 'Admin'));
+pnlRouter.use(requireAuth, requireRole(...FINANCE_ROLES));
 
 interface OrderForPnl {
   kind: string;
@@ -121,11 +121,6 @@ pnlRouter.get('/', async (req, res) => {
     trend.push({ label: `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
   }
 
-  const expenseRows = allExpenses
-    .filter((e) => inRange(e.date, from, to))
-    .slice(0, 40)
-    .map((e) => ({ id: e.id, date: e.date, category: e.category, note: e.note, amount: e.amount }));
-
   res.json({
     fromDate: from,
     toDate: to,
@@ -145,29 +140,12 @@ pnlRouter.get('/', async (req, res) => {
     priorFrom: prior.from,
     priorTo: prior.to,
     trend,
-    expenseRows,
     expenseCategories: EXPENSE_CATEGORIES,
   });
 });
 
-const expenseSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  category: z.enum(EXPENSE_CATEGORIES),
-  note: z.string().max(200).optional(),
-  amount: z.number().positive(),
-});
-
-pnlRouter.post('/expenses', async (req, res) => {
-  const parsed = expenseSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const expense = await prisma.expense.create({ data: { ...parsed.data, note: parsed.data.note ?? '' } });
-  res.status(201).json(expense);
-});
-
-pnlRouter.delete('/expenses/:id', async (req, res) => {
-  await prisma.expense.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
-  res.status(204).end();
-});
+// Expense capture (add/remove) lives under Finance > Expenses now
+// (apps/api/src/routes/finance.ts) — this router only reads/aggregates.
 
 const cogsSchema = z.object({ cogsPct: z.number().min(0).max(100) });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { STAGES, fmtKsh } from '@glm/shared';
+import { STAGES, fmtDate, fmtKsh } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
 import { api } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
@@ -120,7 +120,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             </div>
             <div>
               <div className="card-kicker">Created</div>
-              <div>{detail.createdDate}</div>
+              <div>{fmtDate(detail.createdDate)}</div>
             </div>
           </div>
 
@@ -207,7 +207,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             <tbody>
               {detail.payments.map((p) => (
                 <tr key={p.id}>
-                  <td className="text-muted">{p.date}</td>
+                  <td className="text-muted">{fmtDate(p.date)}</td>
                   <td>{fmtKsh(p.amount)}</td>
                   <td>{p.method}</td>
                 </tr>
@@ -218,7 +218,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-3)' }}>
             <div style={{ fontFamily: 'var(--font-heading)', fontSize: 18 }}>Balance due: {fmtKsh(detail.totals.balanceDue)}</div>
-            {detail.overdue && <span className="tag tag-accent">Overdue — due {detail.dueDate}</span>}
+            {detail.overdue && <span className="tag tag-accent">Overdue — due {fmtDate(detail.dueDate)}</span>}
           </div>
 
           {error && (

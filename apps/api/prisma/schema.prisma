@@ -13,14 +13,15 @@ generator client {
 model User {
   id               Int       @id @default(autoincrement())
   name             String
-  role             String // 'Staff' | 'Supervisor' | 'Admin'
+  role             String // 'Staff' | 'Supervisor' | 'Finance Manager' | 'General Manager' | 'Admin'
   pinHash          String
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
   createdAt        DateTime  @default(now())
 
-  orders   Order[]
-  payments Payment[]
+  orders        Order[]
+  payments      Payment[]
+  payrollEntries PayrollEntry[]
 }
 
 model Service {
@@ -32,10 +33,13 @@ model Service {
 }
 
 model Material {
-  id        Int    @id @default(autoincrement())
-  name      String
-  price     Float
-  lineItems OrderLineItem[]
+  id           Int    @id @default(autoincrement())
+  name         String
+  price        Float
+  stockQty     Float  @default(0)
+  reorderLevel Float  @default(0)
+  lineItems    OrderLineItem[]
+  requisitions StockRequisition[]
 }
 
 model CorporateClient {
@@ -63,11 +67,33 @@ model Setting {
 }
 
 model Expense {
-  id       Int    @id @default(autoincrement())
-  date     String // 'YYYY-MM-DD'
-  category String
-  note     String @default("")
-  amount   Float
+  id              Int      @id @default(autoincrement())
+  date            String // 'YYYY-MM-DD'
+  category        String
+  note            String   @default("")
+  amount          Float
+  capturedByName  String   @default("")
+  amendments      ExpenseAmendment[]
+}
+
+// A correction request against an existing Expense — never edits the row
+// directly. Applied to the Expense only once approved, so a wrong entry
+// stays intact (and in the P&L numbers as originally logged) until a
+// finance manager/general manager/admin signs off on the fix.
+model ExpenseAmendment {
+  id               Int       @id @default(autoincrement())
+  expenseId        Int
+  expense          Expense   @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  proposedDate     String
+  proposedCategory String
+  proposedNote     String    @default("")
+  proposedAmount   Float
+  reason           String
+  status           String    @default("Pending") // Pending | Approved | Rejected
+  requestedByName  String
+  requestedAt      DateTime  @default(now())
+  decidedByName    String?
+  decidedAt        DateTime?
 }
 
 // Finance > Payroll — a pay-run log (not a fixed salary record), so casual
@@ -75,16 +101,50 @@ model Expense {
 // derived views over this same data; statutory deductions (PAYE/NSSF/SHIF/
 // Housing Levy) are computed on read via packages/shared/src/tax.ts, never
 // stored, same "compute from source, don't cache" rule as order totals.
+// The staff name is looked up live via staffId (Master Data), not free text.
 model PayrollEntry {
-  id            Int    @id @default(autoincrement())
-  date          String // 'YYYY-MM-DD'
-  name          String
-  employeeType  String // 'Employee' | 'Casual'
-  department    String @default("")
-  daysWorked    Float
-  rate          Float
-  grossPay      Float // daysWorked * rate, stored so a later rate-table change doesn't rewrite history
-  paymentMethod String
+  id             Int    @id @default(autoincrement())
+  date           String // 'YYYY-MM-DD'
+  staffId        Int
+  staff          User   @relation(fields: [staffId], references: [id])
+  employeeType   String // 'Employee' | 'Casual'
+  department     String @default("")
+  daysWorked     Float
+  rate           Float
+  grossPay       Float // daysWorked * rate, stored so a later rate-table change doesn't rewrite history
+  paymentMethod  String
+  capturedByName String @default("")
+}
+
+// Finance > Petty Cash — the "in" side of the float (bank withdrawals or cash
+// sales allocated to petty cash). Only reachable via the Finance router,
+// which is Finance-Manager/General-Manager/Admin gated, so every top-up is
+// inherently manager-authorized; authorizedByName snapshots who did it for
+// the ledger display. The "out" side is the existing Expense ledger —
+// running balance = all-time top-ups minus all-time expenses (on read).
+model PettyCashTopUp {
+  id               Int    @id @default(autoincrement())
+  date             String // 'YYYY-MM-DD'
+  source           String // 'Bank Withdrawal' | 'Cash Sales Allocation'
+  amount           Float
+  note             String @default("")
+  authorizedByName String
+}
+
+// Stock > Requisition/Approval — a requested stock top-up only increases
+// Material.stockQty once approved, so "available for sale" reflects
+// approved stock, not merely requested stock.
+model StockRequisition {
+  id              Int       @id @default(autoincrement())
+  materialId      Int
+  material        Material  @relation(fields: [materialId], references: [id])
+  qty             Float
+  note            String    @default("")
+  status          String    @default("Pending") // Pending | Approved | Rejected
+  requestedByName String
+  requestedAt     DateTime  @default(now())
+  decidedByName   String?
+  decidedAt       DateTime?
 }
 
 model Order {

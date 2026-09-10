@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { EMPLOYEE_TYPES, PAYMENT_METHODS, fmtKsh, todayStr } from '@glm/shared';
-import type { EmployeeType, PaymentMethod } from '@glm/shared';
+import { Fragment, useEffect, useState } from 'react';
+import { EMPLOYEE_TYPES, EXPENSE_CATEGORIES, PAYMENT_METHODS, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
+import type { EmployeeType, ExpenseCategory, PaymentMethod, PettyCashSource } from '@glm/shared';
 import { api } from '../api/client';
-import type { PayrollData, VatData } from '../api/models';
+import type { ExpenseAmendment, ExpensesData, PayrollData, PettyCashData, VatData } from '../api/models';
+import { useCatalog } from '../hooks/useCatalog';
 
-type FinanceTab = 'vat' | 'nssf' | 'shif' | 'payroll';
+type FinanceTab = 'vat' | 'nssf' | 'shif' | 'payroll' | 'expenses' | 'pettycash';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [FinanceTab, string][] = [
@@ -12,6 +13,8 @@ const TABS: [FinanceTab, string][] = [
   ['nssf', 'NSSF'],
   ['shif', 'SHIF'],
   ['payroll', 'Payroll'],
+  ['expenses', 'Expenses'],
+  ['pettycash', 'Petty Cash'],
 ];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
@@ -29,21 +32,80 @@ function presetRange(preset: Preset, today: string): { from: string; to: string 
   return { from: d.toISOString().slice(0, 10), to: today };
 }
 
+interface ExpenseDraft {
+  date: string;
+  category: ExpenseCategory;
+  note: string;
+  amount: string;
+}
+
+function ExpenseCaptureForm({
+  draft,
+  setDraft,
+  onSubmit,
+  busy,
+}: {
+  draft: ExpenseDraft;
+  setDraft: (fn: (d: ExpenseDraft) => ExpenseDraft) => void;
+  onSubmit: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+      <div className="field">
+        <label>Date</label>
+        <input className="input" type="date" value={draft.date} onChange={(e) => setDraft((d) => ({ ...d, date: e.target.value }))} />
+      </div>
+      <div className="field">
+        <label>Category</label>
+        <select className="input" value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value as ExpenseCategory }))}>
+          {EXPENSE_CATEGORIES.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="field">
+        <label>Note</label>
+        <input className="input" value={draft.note} onChange={(e) => setDraft((d) => ({ ...d, note: e.target.value }))} placeholder="Optional" />
+      </div>
+      <div className="field">
+        <label>Amount (Ksh)</label>
+        <input className="input" value={draft.amount} onChange={(e) => setDraft((d) => ({ ...d, amount: e.target.value }))} />
+      </div>
+      <button type="button" className="btn btn-primary blueprint" onClick={onSubmit} disabled={busy}>
+        <i className="corner tl"></i>
+        <i className="corner tr"></i>
+        <i className="corner bl"></i>
+        <i className="corner br"></i>
+        Add
+      </button>
+    </div>
+  );
+}
+
 export default function Finance() {
   const today = todayStr();
   const initial = presetRange('month', today);
+  const { staff } = useCatalog();
   const [tab, setTab] = useState<FinanceTab>('vat');
   const [fromDate, setFromDate] = useState(initial.from);
   const [toDate, setToDate] = useState(initial.to);
   const [vat, setVat] = useState<VatData | null>(null);
   const [payroll, setPayroll] = useState<PayrollData | null>(null);
+  const [expenses, setExpenses] = useState<ExpensesData | null>(null);
+  const [pettyCash, setPettyCash] = useState<PettyCashData | null>(null);
+  const [amendments, setAmendments] = useState<ExpenseAmendment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  const staffOnly = staff.filter((s) => s.role === 'Staff');
+
   const [newEntry, setNewEntry] = useState({
     date: today,
-    name: '',
+    staffId: null as number | null,
     employeeType: 'Employee' as EmployeeType,
     department: '',
     daysWorked: '',
@@ -51,20 +113,57 @@ export default function Finance() {
     paymentMethod: 'Cash' as PaymentMethod,
   });
 
+  const [newExpense, setNewExpense] = useState<ExpenseDraft>({
+    date: today,
+    category: EXPENSE_CATEGORIES[0] as ExpenseCategory,
+    note: '',
+    amount: '',
+  });
+
+  const [newPettyExpense, setNewPettyExpense] = useState<ExpenseDraft>({
+    date: today,
+    category: EXPENSE_CATEGORIES[0] as ExpenseCategory,
+    note: '',
+    amount: '',
+  });
+
+  const [newTopUp, setNewTopUp] = useState({
+    date: today,
+    source: PETTY_CASH_SOURCES[0] as PettyCashSource,
+    note: '',
+    amount: '',
+  });
+
+  const [amendingId, setAmendingId] = useState<number | null>(null);
+  const [amendDraft, setAmendDraft] = useState({ date: '', category: EXPENSE_CATEGORIES[0] as ExpenseCategory, note: '', amount: '', reason: '' });
+
   function load() {
     setLoading(true);
     Promise.all([
       api.get<VatData>(`/finance/vat?from=${fromDate}&to=${toDate}`),
       api.get<PayrollData>(`/finance/payroll?from=${fromDate}&to=${toDate}`),
+      api.get<ExpensesData>(`/finance/expenses?from=${fromDate}&to=${toDate}`),
+      api.get<PettyCashData>(`/finance/petty-cash?from=${fromDate}&to=${toDate}`),
+      api.get<ExpenseAmendment[]>('/finance/expenses/amendments'),
     ])
-      .then(([v, p]) => {
+      .then(([v, p, ex, pc, am]) => {
         setVat(v);
         setPayroll(p);
+        setExpenses(ex);
+        setPettyCash(pc);
+        setAmendments(am);
       })
       .finally(() => setLoading(false));
   }
 
   useEffect(load, [fromDate, toDate]);
+
+  useEffect(() => {
+    if (newEntry.staffId === null && staffOnly.length > 0) {
+      setNewEntry((ne) => ({ ...ne, staffId: staffOnly[0].id }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [staffOnly.length]);
 
   function applyPreset(preset: Preset) {
     const r = presetRange(preset, today);
@@ -75,14 +174,14 @@ export default function Finance() {
   async function addEntry() {
     const daysWorked = Number(newEntry.daysWorked);
     const rate = Number(newEntry.rate);
-    if (!newEntry.name.trim()) return setError('Name is required');
+    if (!newEntry.staffId) return setError('Select a staff member');
     if (!daysWorked || daysWorked <= 0) return setError('Days worked must be greater than 0');
     if (!rate || rate <= 0) return setError('Rate must be greater than 0');
     setError(null);
     setBusy(true);
     try {
       await api.post('/finance/payroll', { ...newEntry, daysWorked, rate });
-      setNewEntry((ne) => ({ ...ne, name: '', department: '', daysWorked: '', rate: '' }));
+      setNewEntry((ne) => ({ ...ne, department: '', daysWorked: '', rate: '' }));
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add payroll entry');
@@ -101,10 +200,99 @@ export default function Finance() {
     }
   }
 
-  if (loading || !vat || !payroll) return <p className="note">Loading…</p>;
+  async function submitExpense(draft: ExpenseDraft, reset: () => void) {
+    const amount = Number(draft.amount);
+    if (!amount || amount <= 0) return setError('Amount must be greater than 0');
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post('/finance/expenses', { ...draft, amount });
+      reset();
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add expense');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeExpense(id: number) {
+    setBusy(true);
+    try {
+      await api.del(`/finance/expenses/${id}`);
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startAmend(e: ExpensesData['rows'][number]) {
+    setAmendingId(e.id);
+    setAmendDraft({ date: e.date, category: e.category as ExpenseCategory, note: e.note, amount: String(e.amount), reason: '' });
+    setError(null);
+  }
+
+  async function submitAmendment(expenseId: number) {
+    const amount = Number(amendDraft.amount);
+    if (!amount || amount <= 0) return setError('Amount must be greater than 0');
+    if (!amendDraft.reason.trim()) return setError('A reason for the amendment is required');
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post(`/finance/expenses/${expenseId}/amend`, { ...amendDraft, amount });
+      setAmendingId(null);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit amendment');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function decideAmendment(id: number, approve: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/finance/expenses/amendments/${id}/${approve ? 'approve' : 'reject'}`, {});
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to decide amendment');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addTopUp() {
+    const amount = Number(newTopUp.amount);
+    if (!amount || amount <= 0) return setError('Amount must be greater than 0');
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post('/finance/petty-cash/topups', { ...newTopUp, amount });
+      setNewTopUp((nt) => ({ ...nt, note: '', amount: '' }));
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add petty cash top-up');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeTopUp(id: number) {
+    setBusy(true);
+    try {
+      await api.del(`/finance/petty-cash/topups/${id}`);
+      load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading || !vat || !payroll || !expenses || !pettyCash) return <p className="note">Loading…</p>;
 
   const grossPreview = (Number(newEntry.daysWorked) || 0) * (Number(newEntry.rate) || 0);
   const employeeRows = payroll.rows.filter((r) => r.employeeType === 'Employee');
+  const pendingAmendments = amendments.filter((a) => a.status === 'Pending');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -159,6 +347,12 @@ export default function Finance() {
           </div>
         </div>
       </div>
+
+      {error && (
+        <p className="note" style={{ color: '#a33' }}>
+          {error}
+        </p>
+      )}
 
       {tab === 'vat' && (
         <>
@@ -254,18 +448,10 @@ export default function Finance() {
               <tr>
                 <th>Name</th>
                 <th>Department</th>
-                <th className="num" style={{ textAlign: 'right' }}>
-                  Gross pay
-                </th>
-                <th className="num" style={{ textAlign: 'right' }}>
-                  Employee (6%)
-                </th>
-                <th className="num" style={{ textAlign: 'right' }}>
-                  Employer (6%)
-                </th>
-                <th className="num" style={{ textAlign: 'right' }}>
-                  Total NSSF
-                </th>
+                <th style={{ textAlign: 'right' }}>Gross pay</th>
+                <th style={{ textAlign: 'right' }}>Employee (6%)</th>
+                <th style={{ textAlign: 'right' }}>Employer (6%)</th>
+                <th style={{ textAlign: 'right' }}>Total NSSF</th>
               </tr>
             </thead>
             <tbody>
@@ -310,12 +496,8 @@ export default function Finance() {
               <tr>
                 <th>Name</th>
                 <th>Department</th>
-                <th className="num" style={{ textAlign: 'right' }}>
-                  Gross pay
-                </th>
-                <th className="num" style={{ textAlign: 'right' }}>
-                  SHIF (2.75%)
-                </th>
+                <th style={{ textAlign: 'right' }}>Gross pay</th>
+                <th style={{ textAlign: 'right' }}>SHIF (2.75%)</th>
               </tr>
             </thead>
             <tbody>
@@ -379,20 +561,20 @@ export default function Finance() {
               Log pay
             </div>
 
-            {error && (
-              <p className="note" style={{ color: '#a33' }}>
-                {error}
-              </p>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 1fr 0.7fr 0.7fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 0.8fr 1fr 0.7fr 0.7fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
               <div className="field">
                 <label>Date</label>
                 <input className="input" type="date" value={newEntry.date} onChange={(e) => setNewEntry((ne) => ({ ...ne, date: e.target.value }))} />
               </div>
               <div className="field">
-                <label>Name</label>
-                <input className="input" value={newEntry.name} onChange={(e) => setNewEntry((ne) => ({ ...ne, name: e.target.value }))} />
+                <label>Staff (from Master Data)</label>
+                <select className="input" value={newEntry.staffId ?? ''} onChange={(e) => setNewEntry((ne) => ({ ...ne, staffId: Number(e.target.value) }))}>
+                  {staff.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="field">
                 <label>Type</label>
@@ -437,7 +619,7 @@ export default function Finance() {
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
               Gross pay preview: {fmtKsh(grossPreview)}. For a monthly salary, use Days = 1 and Rate = the gross salary.
               PAYE, NSSF, SHIF and Housing Levy are computed automatically for Employees — Casuals are not subject to
-              statutory deductions.
+              statutory deductions. Staff names come from Master Data → Staff &amp; Users.
             </p>
           </div>
 
@@ -463,13 +645,14 @@ export default function Finance() {
                     <th style={{ textAlign: 'right' }}>SHIF</th>
                     <th style={{ textAlign: 'right' }}>Housing Levy</th>
                     <th style={{ textAlign: 'right' }}>Net pay</th>
+                    <th>Captured by</th>
                     <th className="no-print"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {payroll.rows.map((r) => (
                     <tr key={r.id}>
-                      <td className="text-muted">{r.date}</td>
+                      <td className="text-muted">{fmtDate(r.date)}</td>
                       <td>{r.name}</td>
                       <td>
                         <span className={r.employeeType === 'Employee' ? 'tag tag-accent' : 'tag tag-neutral'}>{r.employeeType}</span>
@@ -481,6 +664,7 @@ export default function Finance() {
                       <td style={{ textAlign: 'right' }}>{fmtKsh(r.shif)}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(r.housingLevy)}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(r.netPay)}</td>
+                      <td className="text-muted">{r.capturedByName || '—'}</td>
                       <td className="no-print">
                         <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeEntry(r.id)} disabled={busy}>
                           ✕
@@ -500,12 +684,317 @@ export default function Finance() {
                     <td style={{ textAlign: 'right' }}>{fmtKsh(payroll.totalShif)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtKsh(payroll.totalHousingLevy)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtKsh(payroll.netPayroll)}</td>
+                    <td></td>
                     <td className="no-print"></td>
                   </tr>
                 </tfoot>
               </table>
             </div>
             {payroll.rows.length === 0 && <p className="note">No payroll entries in range.</p>}
+          </div>
+        </>
+      )}
+
+      {tab === 'expenses' && (
+        <>
+          <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+              Operating expenses
+            </div>
+
+            <ExpenseCaptureForm draft={newExpense} setDraft={setNewExpense} busy={busy} onSubmit={() => submitExpense(newExpense, () => setNewExpense((d) => ({ ...d, note: '', amount: '' })))} />
+
+            <table className="table" style={{ marginTop: 'var(--space-4)' }}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Category</th>
+                  <th>Note</th>
+                  <th style={{ textAlign: 'right' }}>Amount</th>
+                  <th>Captured by</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {expenses.rows.map((e) => (
+                  <Fragment key={e.id}>
+                    <tr>
+                      <td className="text-muted">{fmtDate(e.date)}</td>
+                      <td>{e.category}</td>
+                      <td className="text-muted">{e.note}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(e.amount)}</td>
+                      <td className="text-muted">{e.capturedByName || '—'}</td>
+                      <td style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                        <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startAmend(e)} disabled={busy}>
+                          Amend
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeExpense(e.id)} disabled={busy}>
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                    {amendingId === e.id && (
+                      <tr>
+                        <td colSpan={6} style={{ background: 'var(--color-surface)' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1.6fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Date</label>
+                              <input className="input" type="date" value={amendDraft.date} onChange={(ev) => setAmendDraft((d) => ({ ...d, date: ev.target.value }))} />
+                            </div>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Category</label>
+                              <select className="input" value={amendDraft.category} onChange={(ev) => setAmendDraft((d) => ({ ...d, category: ev.target.value as ExpenseCategory }))}>
+                                {EXPENSE_CATEGORIES.map((cat) => (
+                                  <option key={cat} value={cat}>
+                                    {cat}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Note</label>
+                              <input className="input" value={amendDraft.note} onChange={(ev) => setAmendDraft((d) => ({ ...d, note: ev.target.value }))} />
+                            </div>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Amount</label>
+                              <input className="input" value={amendDraft.amount} onChange={(ev) => setAmendDraft((d) => ({ ...d, amount: ev.target.value }))} />
+                            </div>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Reason for amendment</label>
+                              <input className="input" value={amendDraft.reason} onChange={(ev) => setAmendDraft((d) => ({ ...d, reason: ev.target.value }))} placeholder="Required" />
+                            </div>
+                            <button type="button" className="btn btn-primary" onClick={() => submitAmendment(e.id)} disabled={busy}>
+                              Submit
+                            </button>
+                            <button type="button" className="btn btn-secondary" onClick={() => setAmendingId(null)} disabled={busy}>
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontFamily: 'var(--font-heading)' }}>
+                  <td colSpan={3} style={{ textAlign: 'right', paddingRight: 12 }}>
+                    Total
+                  </td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(expenses.totalExpenses)}</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+            {expenses.rows.length === 0 && <p className="note">No expenses in range.</p>}
+            <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+              Feeds directly into the P&amp;L account's operating-expense lines and the Petty Cash ledger's "out" side.
+              Wrong entries: use Amend with a reason rather than editing directly — a fix only takes effect once another
+              finance manager/general manager/admin approves it below.
+            </p>
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+              Amendment requests {pendingAmendments.length > 0 && <span className="tag tag-accent">{pendingAmendments.length} pending</span>}
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Requested</th>
+                  <th>Current</th>
+                  <th>Proposed</th>
+                  <th>Reason</th>
+                  <th>Requested by</th>
+                  <th>Status</th>
+                  <th className="no-print"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {amendments.map((a) => (
+                  <tr key={a.id}>
+                    <td className="text-muted">{fmtDate(a.requestedAt.slice(0, 10))}</td>
+                    <td>
+                      {a.currentCategory} — {fmtKsh(a.currentAmount)} ({fmtDate(a.currentDate)})
+                    </td>
+                    <td>
+                      {a.proposedCategory} — {fmtKsh(a.proposedAmount)} ({fmtDate(a.proposedDate)})
+                    </td>
+                    <td className="text-muted">{a.reason}</td>
+                    <td className="text-muted">{a.requestedByName}</td>
+                    <td>
+                      <span className={a.status === 'Approved' ? 'tag tag-accent' : a.status === 'Rejected' ? 'tag tag-neutral' : 'tag tag-outline'}>{a.status}</span>
+                    </td>
+                    <td className="no-print">
+                      {a.status === 'Pending' && (
+                        <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                          <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={() => decideAmendment(a.id, true)} disabled={busy}>
+                            Approve
+                          </button>
+                          <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => decideAmendment(a.id, false)} disabled={busy}>
+                            Reject
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {amendments.length === 0 && <p className="note">No amendment requests.</p>}
+            <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+              You can't approve or reject your own amendment request — a different finance manager/general
+              manager/admin must review it.
+            </p>
+          </div>
+        </>
+      )}
+
+      {tab === 'pettycash' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Current balance</div>
+              <div className="card-title">{fmtKsh(pettyCash.balance)}</div>
+            </div>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Top-ups this period</div>
+              <div className="card-title">{fmtKsh(pettyCash.periodTopUpsTotal)}</div>
+            </div>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Spent this period</div>
+              <div className="card-title">{fmtKsh(pettyCash.periodExpensesTotal)}</div>
+            </div>
+          </div>
+
+          <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+              Feed petty cash
+            </div>
+            <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
+              Only Finance Manager, General Manager and Admin can reach this screen, so every top-up recorded here is
+              inherently manager-authorized. Cash sales received this period: {fmtKsh(pettyCash.cashSalesInPeriod)} —
+              consider how much of that to allocate below.
+            </p>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.4fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+              <div className="field">
+                <label>Date</label>
+                <input className="input" type="date" value={newTopUp.date} onChange={(e) => setNewTopUp((nt) => ({ ...nt, date: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label>Source</label>
+                <select className="input" value={newTopUp.source} onChange={(e) => setNewTopUp((nt) => ({ ...nt, source: e.target.value as PettyCashSource }))}>
+                  {PETTY_CASH_SOURCES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Note</label>
+                <input className="input" value={newTopUp.note} onChange={(e) => setNewTopUp((nt) => ({ ...nt, note: e.target.value }))} placeholder="Optional" />
+              </div>
+              <div className="field">
+                <label>Amount (Ksh)</label>
+                <input className="input" value={newTopUp.amount} onChange={(e) => setNewTopUp((nt) => ({ ...nt, amount: e.target.value }))} />
+              </div>
+              <button type="button" className="btn btn-primary blueprint" onClick={addTopUp} disabled={busy}>
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                Add
+              </button>
+            </div>
+          </div>
+
+          <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+              Log a petty cash expense
+            </div>
+            <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
+              Same ledger as Finance → Expenses — logged here for convenience while you're already reviewing the float.
+            </p>
+            <ExpenseCaptureForm
+              draft={newPettyExpense}
+              setDraft={setNewPettyExpense}
+              busy={busy}
+              onSubmit={() => submitExpense(newPettyExpense, () => setNewPettyExpense((d) => ({ ...d, note: '', amount: '' })))}
+            />
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+              Petty cash ledger
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th style={{ textAlign: 'right' }}>In</th>
+                  <th style={{ textAlign: 'right' }}>Out</th>
+                  <th className="no-print"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {pettyCash.ledger.map((row) => (
+                  <tr key={row.id}>
+                    <td className="text-muted">{fmtDate(row.date)}</td>
+                    <td>{row.description}</td>
+                    <td style={{ textAlign: 'right' }}>{row.amountIn > 0 ? fmtKsh(row.amountIn) : '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{row.amountOut > 0 ? fmtKsh(row.amountOut) : '—'}</td>
+                    <td className="no-print">
+                      {row.type === 'topup' && row.topUpId !== null && (
+                        <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeTopUp(row.topUpId!)} disabled={busy}>
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {pettyCash.ledger.length === 0 && <p className="note">No petty cash activity in range.</p>}
+            <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+              Current balance assumes every recorded operating expense is paid from petty cash. If some (e.g. salaries
+              paid by bank transfer) aren't, exclude them from the Expenses tab or track them separately.
+            </p>
           </div>
         </>
       )}

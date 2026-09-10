@@ -2,20 +2,21 @@
 
 An order capture, quotation/invoicing, and payment-tracking system for GLM Branding
 (embroidery, DTF printing, UV printing, large-format printing, digital printing).
-Handles walk-in retail customers and corporate accounts through three roles: **Staff**
-(captures orders/quotes), **Supervisor** (traces orders and payments by staff), and
-**Admin** (all of Supervisor plus master-data management).
+
+Five roles: **Staff** (captures orders/quotes), **Supervisor** (traces orders/payments,
+raises stock requisitions), **Finance Manager** and **General Manager** (P&L, Finance,
+and Stock approval — everything financial), and **Admin** (all of the above plus
+master-data management).
 
 Built from a design handoff (`design_handoff_pos_system/`), recreated in this codebase
 using the conventions of the Olerai Hotel System / Word Power Church System projects.
-Extended with a **P&L account** tab (`design_handoff_pnl_account/`) — Supervisor/Admin
-only — that aggregates orders/payments into a filterable profit-and-loss statement
-alongside a manually-maintained operating-expense ledger. A **Finance** tab (next to
-P&L, Supervisor/Admin only) adds VAT / NSSF / SHIF / Payroll sub-tabs — a pay-run log
-with Kenyan statutory deductions computed via `packages/shared/src/tax.ts` (ported from
-Olerai Hotel System for consistent, vetted formulas), and a VAT statement derived from
-real sales. Printing/company-branding and Finance were added directly (no design
-handoff for either).
+Extended with a **P&L account** tab (`design_handoff_pnl_account/`) that aggregates
+orders/payments into a filterable profit-and-loss statement, a **Finance** tab (VAT /
+NSSF / SHIF / Payroll / Expenses / Petty Cash — Kenyan statutory deductions computed via
+`packages/shared/src/tax.ts`, ported from Olerai Hotel System for consistent, vetted
+formulas), and a **Stock** tab (requisition/approval workflow with reorder alerts).
+Printing/company-branding, Finance, and Stock were added directly (no design handoff
+for any of them).
 
 ## Stack
 
@@ -48,6 +49,8 @@ npm run dev:web   # http://localhost:5174
 | Amina Otieno | Staff | 1111 |
 | Brian Kimani | Staff | 2222 |
 | Grace Wanjiru | Supervisor | 3333 |
+| David Kamau | Finance Manager | 4444 |
+| Lucy Njeri | General Manager | 5555 |
 | Ken Mwangi | Admin | 9999 |
 
 Change these before using with real data — either via Master Data → Staff & Users
@@ -68,9 +71,40 @@ own roster.
   walk-in receipts, plus company name/address/logo captured in Master Data → Company
   Info and reused across every printed document. Walk-in orders auto-open the receipt
   print dialog right after capture.
-- Finance → Payroll has no link to the Staff & Users roster — pay-run entries are
-  free-text (name/type/gross pay per period), matching Olerai's Labour & Wages model,
-  since GLM has casual day-rate labour alongside any salaried staff. The VAT tab shows
+- Finance → Payroll's staff picker pulls from Master Data → Staff & Users (a real
+  `staffId`, not free text) — pick the employee, GLM's Casual day-rate labour is still
+  supported via the Employee/Casual type on each pay-run entry. The VAT tab shows
   Output VAT on sales only (assumes VAT-inclusive pricing at 16%) — Input VAT on
   purchases isn't tracked yet, so this isn't net VAT payable to KRA.
+- P&L, Finance (VAT/NSSF/SHIF/Payroll/Expenses/Petty Cash), and Stock approval are
+  gated to **Finance Manager, General Manager, and Admin** only — Supervisor lost this
+  access and keeps All Orders/Payments/Stock (requisition only, not approval).
+  `packages/shared/src/constants.ts` exports `FINANCE_ROLES` and `MANAGEMENT_ROLES` as
+  the single source of truth for this gating on both the API and the frontend.
+- Every Expense, PayrollEntry, and PettyCashTopUp row records `capturedByName` (or
+  `authorizedByName` for top-ups) — a plain-text snapshot of who created it, not a
+  foreign key, so the trail survives even if that user is later removed.
+- Wrong expense entries are corrected via **Amend**, not direct edit: propose new
+  values with a required reason, and a *different* Finance Manager/General
+  Manager/Admin must approve before the Expense row (and P&L numbers built from it)
+  actually change — self-approval is blocked server-side. Deleting an expense outright
+  is still instant/ungated, unchanged from before.
+- Finance → Petty Cash has its own "Log a petty cash expense" form for convenience, but
+  it posts to the same Expense table as Finance → Expenses — one ledger, viewable both
+  places. Current balance = all-time top-ups minus all-time operating expenses, so it
+  assumes every recorded expense is petty-cash-funded (not true for e.g. bank-paid
+  salaries) — exclude those from the Expenses ledger if that assumption doesn't hold.
+- Stock (next to Finance): Material now has `stockQty`/`reorderLevel`. A requisition
+  only increases `stockQty` once approved ("available for sale") — Supervisor and the
+  Finance roles can all raise a requisition, but only the Finance roles can approve or
+  reject one, and a requester can't approve their own request. Reorder alerts are
+  computed live (stockQty ≤ reorderLevel), shown on the Stock tab and as a tag in
+  Master Data → Material Price List, where reorderLevel is inline-editable.
+- Payments (top nav) has Pending Payments / Paid sub-tabs with a shared date-range
+  filter (presets + custom From/To), filtered by each order's created date. All Orders
+  now shows an order date column too.
+- **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
+  `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
+  Storage, filtering, and `<input type="date">` values are unchanged (still ISO
+  `YYYY-MM-DD`, as the HTML date input requires).
 - No production deployment config yet (cPanel/Vercel) — add when ready to ship.

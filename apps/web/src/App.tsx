@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { FINANCE_ROLES, MANAGEMENT_ROLES } from '@glm/shared';
 import { useAuth } from './state/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import RequireRole from './components/RequireRole';
@@ -6,10 +7,11 @@ import Login from './pages/Login';
 import NewWalkinOrder from './pages/NewWalkinOrder';
 import NewQuotation from './pages/NewQuotation';
 import Orders from './pages/Orders';
-import PendingPayments from './pages/PendingPayments';
+import Payments from './pages/Payments';
 import MasterData from './pages/MasterData';
 import PnL from './pages/PnL';
 import Finance from './pages/Finance';
+import Stock from './pages/Stock';
 
 function DefaultRedirect() {
   const { user } = useAuth();
@@ -52,16 +54,16 @@ export default function App() {
         <Route
           path="/orders/all"
           element={
-            <RequireRole roles={['Supervisor', 'Admin']}>
+            <RequireRole roles={MANAGEMENT_ROLES}>
               <Orders scope="all" />
             </RequireRole>
           }
         />
         <Route
-          path="/payments/pending"
+          path="/payments"
           element={
-            <RequireRole roles={['Supervisor', 'Admin']}>
-              <PendingPayments />
+            <RequireRole roles={MANAGEMENT_ROLES}>
+              <Payments />
             </RequireRole>
           }
         />
@@ -76,7 +78,7 @@ export default function App() {
         <Route
           path="/pnl"
           element={
-            <RequireRole roles={['Supervisor', 'Admin']}>
+            <RequireRole roles={FINANCE_ROLES}>
               <PnL />
             </RequireRole>
           }
@@ -84,8 +86,16 @@ export default function App() {
         <Route
           path="/finance"
           element={
-            <RequireRole roles={['Supervisor', 'Admin']}>
+            <RequireRole roles={FINANCE_ROLES}>
               <Finance />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/stock"
+          element={
+            <RequireRole roles={MANAGEMENT_ROLES}>
+              <Stock />
             </RequireRole>
           }
         />

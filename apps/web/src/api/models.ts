@@ -1,9 +1,9 @@
-import type { ItemType, OrderStage, OrderStatus, PaymentMethod, PaymentTiming, ServiceUnit, OrderTotals } from '@glm/shared';
+import type { ItemType, OrderStage, OrderStatus, PaymentMethod, PaymentTiming, Role, ServiceUnit, OrderTotals } from '@glm/shared';
 
 export interface StaffUser {
   id: number;
   name: string;
-  role: 'Staff' | 'Supervisor' | 'Admin';
+  role: Role;
 }
 
 export interface CatalogService {
@@ -17,6 +17,8 @@ export interface CatalogMaterial {
   id: number;
   name: string;
   price: number;
+  stockQty: number;
+  reorderLevel: number;
 }
 
 export interface CorporateClient {
@@ -85,6 +87,26 @@ export interface ExpenseRow {
   category: string;
   note: string;
   amount: number;
+  capturedByName: string;
+}
+
+export interface ExpenseAmendment {
+  id: number;
+  expenseId: number;
+  currentDate: string;
+  currentCategory: string;
+  currentNote: string;
+  currentAmount: number;
+  proposedDate: string;
+  proposedCategory: string;
+  proposedNote: string;
+  proposedAmount: number;
+  reason: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  requestedByName: string;
+  requestedAt: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
 }
 
 export interface PnlTrendPoint {
@@ -112,13 +134,13 @@ export interface PnlData {
   priorFrom: string;
   priorTo: string;
   trend: PnlTrendPoint[];
-  expenseRows: ExpenseRow[];
   expenseCategories: readonly string[];
 }
 
 export interface PayrollRow {
   id: number;
   date: string;
+  staffId: number;
   name: string;
   employeeType: 'Employee' | 'Casual';
   department: string;
@@ -132,6 +154,7 @@ export interface PayrollRow {
   housingLevy: number;
   totalDeductions: number;
   netPay: number;
+  capturedByName: string;
 }
 
 export interface PayrollData {
@@ -155,6 +178,48 @@ export interface VatData {
   totalSales: number;
   netSales: number;
   outputVat: number;
+}
+
+export interface ExpensesData {
+  fromDate: string;
+  toDate: string;
+  rows: ExpenseRow[];
+  totalExpenses: number;
+  expenseCategories: readonly string[];
+}
+
+export interface PettyCashLedgerRow {
+  id: string;
+  date: string;
+  type: 'topup' | 'expense';
+  description: string;
+  amountIn: number;
+  amountOut: number;
+  topUpId: number | null;
+}
+
+export interface PettyCashData {
+  fromDate: string;
+  toDate: string;
+  balance: number;
+  periodTopUpsTotal: number;
+  periodExpensesTotal: number;
+  cashSalesInPeriod: number;
+  ledger: PettyCashLedgerRow[];
+  pettyCashSources: readonly string[];
+}
+
+export interface StockRequisitionRow {
+  id: number;
+  materialId: number;
+  materialName: string;
+  qty: number;
+  note: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  requestedByName: string;
+  requestedAt: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
 }
 
 export interface DraftLineItem {

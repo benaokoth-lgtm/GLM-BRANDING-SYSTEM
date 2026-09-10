@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { FINANCE_ROLES, ROLES } from '@glm/shared';
 
 export const masterDataRouter = Router();
 masterDataRouter.use(requireAuth);
@@ -15,7 +16,7 @@ masterDataRouter.get('/staff', async (_req, res) => {
 
 const staffSchema = z.object({
   name: z.string().min(1),
-  role: z.enum(['Staff', 'Supervisor', 'Admin']),
+  role: z.enum(ROLES),
   pin: z.string().regex(/^\d{4}$/),
 });
 
@@ -56,6 +57,24 @@ masterDataRouter.post('/materials', requireRole('Admin'), async (req, res) => {
   const parsed = materialSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   res.status(201).json(await prisma.material.create({ data: parsed.data }));
+});
+
+// Reorder level (and price) are editable in place by Admin or the Finance
+// roles that also manage Stock — unlike the roster/price-list "add" actions
+// above, which stay Admin-only.
+const materialUpdateSchema = z
+  .object({
+    price: z.number().positive().optional(),
+    reorderLevel: z.number().min(0).optional(),
+  })
+  .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
+
+masterDataRouter.put('/materials/:id', requireRole(...FINANCE_ROLES), async (req, res) => {
+  const parsed = materialUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const material = await prisma.material.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!material) return res.status(404).json({ error: 'Material not found' });
+  res.json(material);
 });
 
 // ── Corporate Clients ───────────────────────────────────────────────────

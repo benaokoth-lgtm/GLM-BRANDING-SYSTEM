@@ -4,6 +4,19 @@ export function fmtKsh(n: number): string {
   return 'Ksh ' + Math.round(n || 0).toLocaleString('en-KE');
 }
 
+/**
+ * Display-only date formatting: 'YYYY-MM-DD' -> 'DD/MM/YYYY'. Storage,
+ * comparisons (isOverdue, date-range filters) and <input type="date">
+ * values all stay ISO — only the rendered text changes.
+ */
+export function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) return iso;
+  const [, y, mo, d] = m;
+  return `${d}/${mo}/${y}`;
+}
+
 export function buildLineTotal(li: LineItemInput): number {
   const qty = Number(li.qty) || 0;
   const price = Number(li.unitPrice) || 0;

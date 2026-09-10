@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { EXPENSE_CATEGORIES, fmtKsh, todayStr } from '@glm/shared';
+import { Link } from 'react-router-dom';
+import { EXPENSE_CATEGORIES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import type { PnlData } from '../api/models';
 
@@ -28,9 +29,7 @@ export default function PnL() {
   const [data, setData] = useState<PnlData | null>(null);
   const [loading, setLoading] = useState(true);
   const [cogsDraft, setCogsDraft] = useState<string | null>(null);
-  const [newExpense, setNewExpense] = useState({ date: today, category: EXPENSE_CATEGORIES[0] as string, note: '', amount: '' });
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
 
   function load() {
     setLoading(true);
@@ -57,32 +56,6 @@ export default function PnL() {
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update cost of sales %');
-    }
-  }
-
-  async function addExpense() {
-    const amount = Number(newExpense.amount);
-    if (!amount || amount <= 0) return setError('Amount must be greater than 0');
-    setError(null);
-    setBusy(true);
-    try {
-      await api.post('/pnl/expenses', { ...newExpense, amount });
-      setNewExpense((ne) => ({ ...ne, note: '', amount: '' }));
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add expense');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeExpense(id: number) {
-    setBusy(true);
-    try {
-      await api.del(`/pnl/expenses/${id}`);
-      load();
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -132,6 +105,12 @@ export default function PnL() {
           </div>
         </div>
       </div>
+
+      {error && (
+        <p className="note" style={{ color: '#a33' }}>
+          {error}
+        </p>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
         <div className="card blueprint elev-sm">
@@ -295,83 +274,10 @@ export default function PnL() {
         </div>
       </div>
 
-      <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
-        <i className="corner tl"></i>
-        <i className="corner tr"></i>
-        <i className="corner bl"></i>
-        <i className="corner br"></i>
-        <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
-          Operating expenses — add entry
-        </div>
-
-        {error && (
-          <p className="note" style={{ color: '#a33' }}>
-            {error}
-          </p>
-        )}
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.4fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
-          <div className="field">
-            <label>Date</label>
-            <input className="input" type="date" value={newExpense.date} onChange={(e) => setNewExpense((ne) => ({ ...ne, date: e.target.value }))} />
-          </div>
-          <div className="field">
-            <label>Category</label>
-            <select className="input" value={newExpense.category} onChange={(e) => setNewExpense((ne) => ({ ...ne, category: e.target.value }))}>
-              {EXPENSE_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Note</label>
-            <input className="input" value={newExpense.note} onChange={(e) => setNewExpense((ne) => ({ ...ne, note: e.target.value }))} placeholder="Optional" />
-          </div>
-          <div className="field">
-            <label>Amount (Ksh)</label>
-            <input className="input" value={newExpense.amount} onChange={(e) => setNewExpense((ne) => ({ ...ne, amount: e.target.value }))} />
-          </div>
-          <button type="button" className="btn btn-primary blueprint" onClick={addExpense} disabled={busy}>
-            <i className="corner tl"></i>
-            <i className="corner tr"></i>
-            <i className="corner bl"></i>
-            <i className="corner br"></i>
-            Add
-          </button>
-        </div>
-
-        <table className="table" style={{ marginTop: 'var(--space-4)' }}>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Category</th>
-              <th>Note</th>
-              <th>Amount</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.expenseRows.map((e) => (
-              <tr key={e.id}>
-                <td className="text-muted">{e.date}</td>
-                <td>{e.category}</td>
-                <td className="text-muted">{e.note}</td>
-                <td>{fmtKsh(e.amount)}</td>
-                <td>
-                  <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeExpense(e.id)} disabled={busy}>
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="note">
-          Showing the 40 most recent entries in range. Prior comparison period: {data.priorFrom} → {data.priorTo}.
-        </p>
-      </div>
+      <p className="note no-print">
+        Prior comparison period: {fmtDate(data.priorFrom)} → {fmtDate(data.priorTo)}. Add or remove operating expense entries under{' '}
+        <Link to="/finance">Finance → Expenses</Link>.
+      </p>
     </div>
   );
 }

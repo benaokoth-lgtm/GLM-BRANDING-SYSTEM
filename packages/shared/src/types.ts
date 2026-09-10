@@ -1,4 +1,4 @@
-export type Role = 'Staff' | 'Supervisor' | 'Admin';
+export type Role = 'Staff' | 'Supervisor' | 'Finance Manager' | 'General Manager' | 'Admin';
 
 export type OrderKind = 'walkin' | 'corporate';
 export type OrderStatus = 'Quote' | 'Invoice' | 'Order';

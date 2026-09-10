@@ -1,4 +1,4 @@
-import { fmtKsh } from '@glm/shared';
+import { fmtDate, fmtKsh } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 
 const THERMAL_WIDTH_MM = 80;
@@ -67,7 +67,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   ${contactLine ? `<div class="title">${contactLine}</div>` : ''}
   <div class="title">${paidTag}</div>
   <div class="row"><span>Order</span><span>${order.orderNo}</span></div>
-  <div class="row"><span>Date</span><span>${order.createdDate}</span></div>
+  <div class="row"><span>Date</span><span>${fmtDate(order.createdDate)}</span></div>
   <div class="row"><span>Customer</span><span>${esc(order.customerName || '—')}</span></div>
   ${order.phone ? `<div class="row"><span>Phone</span><span>${esc(order.phone)}</span></div>` : ''}
   <div class="row"><span>Served by</span><span>${esc(order.staff.name)}</span></div>
@@ -81,7 +81,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   </div>
   <hr />
   ${order.payments
-    .map((p) => `<div class="row"><span>${p.date} ${esc(p.method)}</span><span>${fmtKsh(p.amount)}</span></div>`)
+    .map((p) => `<div class="row"><span>${fmtDate(p.date)} ${esc(p.method)}</span><span>${fmtKsh(p.amount)}</span></div>`)
     .join('')}
   ${order.totals.balanceDue > 0 ? `<div class="row balance"><span>BALANCE DUE</span><span>${fmtKsh(order.totals.balanceDue)}</span></div>` : ''}
   <div class="footer">Thank you for choosing ${companyName}!</div>

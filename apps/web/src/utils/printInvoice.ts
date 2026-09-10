@@ -1,4 +1,4 @@
-import { fmtKsh } from '@glm/shared';
+import { fmtDate, fmtKsh } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 
 // Creative-agency palette — bold black ink with a pink/orange/teal/purple
@@ -177,7 +177,7 @@ export function printCorporateDocument(w: Window | null, order: OrderDetail, com
         <h1>${docTitle}</h1>
         <div class="doc-meta">
           ${isInvoice ? 'Invoice' : 'Quote'} No: #${esc(order.orderNo)}<br/>
-          Date: ${order.createdDate}${isInvoice ? `<br/>Due Date: ${order.dueDate || '—'}` : ''}
+          Date: ${fmtDate(order.createdDate)}${isInvoice ? `<br/>Due Date: ${fmtDate(order.dueDate)}` : ''}
         </div>
       </div>
     </div>
@@ -230,7 +230,7 @@ export function printCorporateDocument(w: Window | null, order: OrderDetail, com
                ${
                  order.payments.length
                    ? `<div class="payments-mini">${order.payments
-                       .map((p) => `<div><span>${p.date} &middot; ${esc(p.method)}</span><span>${fmtKsh(p.amount)}</span></div>`)
+                       .map((p) => `<div><span>${fmtDate(p.date)} &middot; ${esc(p.method)}</span><span>${fmtKsh(p.amount)}</span></div>`)
                        .join('')}</div>`
                    : ''
                }

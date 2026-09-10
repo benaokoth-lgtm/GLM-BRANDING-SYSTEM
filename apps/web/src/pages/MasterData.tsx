@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { fmtKsh } from '@glm/shared';
+import { ROLES, fmtKsh } from '@glm/shared';
+import type { Role } from '@glm/shared';
 import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
 
@@ -22,7 +23,7 @@ export default function MasterData() {
   const [tab, setTab] = useState<MasterTab>('staff');
 
   const [newStaffName, setNewStaffName] = useState('');
-  const [newStaffRole, setNewStaffRole] = useState<'Staff' | 'Supervisor' | 'Admin'>('Staff');
+  const [newStaffRole, setNewStaffRole] = useState<Role>('Staff');
   const [newStaffPin, setNewStaffPin] = useState('');
 
   const [newServiceName, setNewServiceName] = useState('');
@@ -31,6 +32,7 @@ export default function MasterData() {
 
   const [newMaterialName, setNewMaterialName] = useState('');
   const [newMaterialPrice, setNewMaterialPrice] = useState('');
+  const [reorderDrafts, setReorderDrafts] = useState<Record<number, string>>({});
 
   const [newClientName, setNewClientName] = useState('');
   const [newClientCreditDays, setNewClientCreditDays] = useState('');
@@ -95,6 +97,22 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add material');
+    }
+  }
+
+  async function saveReorderLevel(materialId: number, value: string) {
+    const level = Number(value);
+    if (Number.isNaN(level) || level < 0) return;
+    try {
+      await api.put(`/master-data/materials/${materialId}`, { reorderLevel: level });
+      setReorderDrafts((d) => {
+        const next = { ...d };
+        delete next[materialId];
+        return next;
+      });
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update reorder level');
     }
   }
 
@@ -205,10 +223,12 @@ export default function MasterData() {
             </div>
             <div className="field">
               <label>Role</label>
-              <select className="input" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value as typeof newStaffRole)}>
-                <option value="Staff">Staff</option>
-                <option value="Supervisor">Supervisor</option>
-                <option value="Admin">Admin</option>
+              <select className="input" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value as Role)}>
+                {ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="field">
@@ -281,17 +301,38 @@ export default function MasterData() {
               <tr>
                 <th>Material</th>
                 <th>Price</th>
+                <th>Stock on hand</th>
+                <th>Reorder level</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {catalog.materials.map((mt) => (
-                <tr key={mt.id}>
-                  <td>{mt.name}</td>
-                  <td>{fmtKsh(mt.price)}</td>
-                </tr>
-              ))}
+              {catalog.materials.map((mt) => {
+                const lowStock = mt.stockQty <= mt.reorderLevel;
+                return (
+                  <tr key={mt.id}>
+                    <td>{mt.name}</td>
+                    <td>{fmtKsh(mt.price)}</td>
+                    <td>{mt.stockQty}</td>
+                    <td>
+                      <input
+                        className="input"
+                        style={{ width: 90 }}
+                        value={reorderDrafts[mt.id] ?? String(mt.reorderLevel)}
+                        onChange={(e) => setReorderDrafts((d) => ({ ...d, [mt.id]: e.target.value }))}
+                        onBlur={(e) => saveReorderLevel(mt.id, e.target.value)}
+                      />
+                    </td>
+                    <td>{lowStock && <span className="tag tag-accent">Reorder</span>}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+            Stock on hand increases via approved requisitions under Stock → Stock Approval. Reorder level is editable
+            here — materials at or below it are flagged for reorder.
+          </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 640 }}>
             <div className="field">
               <label>New material</label>

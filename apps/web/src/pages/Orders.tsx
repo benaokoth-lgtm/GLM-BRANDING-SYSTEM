@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fmtKsh } from '@glm/shared';
+import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
 import type { OrderSummary, StaffUser } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
@@ -83,6 +83,7 @@ export default function Orders({ scope }: Props) {
         <thead>
           <tr>
             <th>Order</th>
+            <th>Date</th>
             <th>Type</th>
             <th>Client</th>
             <th>Staff</th>
@@ -100,6 +101,7 @@ export default function Orders({ scope }: Props) {
             return (
               <tr key={row.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(row.id)}>
                 <td>{row.orderNo}</td>
+                <td className="text-muted">{fmtDate(row.createdDate)}</td>
                 <td>{row.kind === 'corporate' ? 'Corporate' : 'Walk-in'}</td>
                 <td>{row.kind === 'corporate' ? row.corporateClient?.name ?? '—' : row.customerName ?? '—'}</td>
                 <td>{row.staff.name}</td>

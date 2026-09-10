@@ -7,18 +7,35 @@ const TABS_BY_ROLE: Record<string, [string, string][]> = {
     ['/orders/new/quote', 'New Quotation'],
     ['/orders/mine', 'My Orders'],
   ],
+  // P&L/Finance moved off Supervisor to the dedicated finance roles below;
+  // Supervisor keeps order/payment oversight and can still raise (but not
+  // approve) stock requisitions.
   Supervisor: [
     ['/orders/all', 'All Orders'],
-    ['/payments/pending', 'Pending Payments'],
+    ['/payments', 'Payments'],
+    ['/stock', 'Stock'],
+  ],
+  'Finance Manager': [
+    ['/orders/all', 'All Orders'],
+    ['/payments', 'Payments'],
     ['/pnl', 'P&L'],
     ['/finance', 'Finance'],
+    ['/stock', 'Stock'],
+  ],
+  'General Manager': [
+    ['/orders/all', 'All Orders'],
+    ['/payments', 'Payments'],
+    ['/pnl', 'P&L'],
+    ['/finance', 'Finance'],
+    ['/stock', 'Stock'],
   ],
   Admin: [
     ['/orders/all', 'All Orders'],
-    ['/payments/pending', 'Pending Payments'],
+    ['/payments', 'Payments'],
     ['/master-data', 'Master Data'],
     ['/pnl', 'P&L'],
     ['/finance', 'Finance'],
+    ['/stock', 'Stock'],
   ],
 };
 

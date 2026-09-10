@@ -10,7 +10,15 @@ export const STAGES: OrderStage[] = [
 
 export const PAYMENT_METHODS = ['Cash', 'M-Pesa', 'Bank Transfer', 'Card'] as const;
 
-export const ROLES: Role[] = ['Staff', 'Supervisor', 'Admin'];
+export const ROLES = ['Staff', 'Supervisor', 'Finance Manager', 'General Manager', 'Admin'] as const satisfies readonly Role[];
+
+// Who can access/capture P&L, Finance (VAT/NSSF/SHIF/Payroll/Expenses/Petty Cash) records.
+export const FINANCE_ROLES: Role[] = ['Finance Manager', 'General Manager', 'Admin'];
+
+// Everyone above Staff — order/payment oversight (All Orders, Payments) and
+// Stock visibility. Stock requisitions can be raised by any of these, but
+// approval is still finance-gated (FINANCE_ROLES only).
+export const MANAGEMENT_ROLES: Role[] = ['Supervisor', 'Finance Manager', 'General Manager', 'Admin'];
 
 export const ITEM_TYPE_LABELS: Record<string, string> = {
   'material-service': 'Material + Service',
@@ -40,3 +48,6 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 export const EMPLOYEE_TYPES = ['Employee', 'Casual'] as const;
 export type EmployeeType = (typeof EMPLOYEE_TYPES)[number];
+
+export const PETTY_CASH_SOURCES = ['Bank Withdrawal', 'Cash Sales Allocation'] as const;
+export type PettyCashSource = (typeof PETTY_CASH_SOURCES)[number];

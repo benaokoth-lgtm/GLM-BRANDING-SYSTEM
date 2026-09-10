@@ -19,6 +19,7 @@ function defaultLine(services: CatalogService[], materials: CatalogMaterial[]): 
     unitPrice: (sv?.price ?? 0) + (mt?.price ?? 0),
     discountPct: 0,
     discountAmt: 0,
+    filmLengthM: '',
   };
 }
 
@@ -80,6 +81,11 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
     0,
   );
 
+  const missingFilmLength = lineItems.some((li) => {
+    const sv = services.find((s) => s.id === li.serviceId);
+    return sv?.tracksFilm && !(Number(li.filmLengthM) > 0);
+  });
+
   return (
     <div>
       <div
@@ -95,12 +101,17 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         Line items
       </div>
 
-      {lineItems.map((row, idx) => (
+      {lineItems.map((row, idx) => {
+        const rowService = services.find((sv) => sv.id === row.serviceId);
+        const tracksFilm = !!rowService?.tracksFilm;
+        const baseCols = row.itemType === 'material-service' ? '1.3fr 1fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr' : '1.3fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr';
+        const cols = (tracksFilm ? baseCols + ' 0.8fr' : baseCols) + ' auto';
+        return (
         <div
           key={idx}
           style={{
             display: 'grid',
-            gridTemplateColumns: row.itemType === 'material-service' ? '1.3fr 1fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr auto' : '1.3fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr auto',
+            gridTemplateColumns: cols,
             gap: 'var(--space-2)',
             alignItems: 'end',
             padding: 'var(--space-2) 0',
@@ -153,11 +164,23 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
             <label>Disc Ksh</label>
             <input className="input" value={row.discountAmt} onChange={(e) => updateLine(idx, { discountAmt: e.target.value })} />
           </div>
+          {tracksFilm && (
+            <div className="field" style={{ margin: 0 }}>
+              <label>Film used (m)</label>
+              <input
+                className="input"
+                value={row.filmLengthM}
+                onChange={(e) => updateLine(idx, { filmLengthM: e.target.value })}
+                placeholder={row.itemType === 'per-metre' ? String(row.qty) : 'e.g. 2.5'}
+              />
+            </div>
+          )}
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeLine(idx)}>
             ✕
           </button>
         </div>
-      ))}
+        );
+      })}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-3)' }}>
         <button type="button" className="btn btn-secondary blueprint" onClick={addLine}>
@@ -169,6 +192,12 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         </button>
         <div style={{ textAlign: 'right', fontFamily: 'var(--font-heading)' }}>Subtotal: {fmtKsh(subtotal)}</div>
       </div>
+      {missingFilmLength && (
+        <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+          <span className="tag tag-accent">Film usage not entered</span> — fill in "Film used (m)" on the DTF line(s)
+          above so it logs against the active film roll.
+        </p>
+      )}
     </div>
   );
 }

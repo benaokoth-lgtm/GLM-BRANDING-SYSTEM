@@ -22,6 +22,7 @@ export interface LineItemInput {
   unitPrice: number;
   discountPct: number;
   discountAmt: number;
+  filmLengthM?: number | null;
 }
 
 export interface OrderTotalsInput {

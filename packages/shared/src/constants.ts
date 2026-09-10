@@ -51,3 +51,9 @@ export type EmployeeType = (typeof EMPLOYEE_TYPES)[number];
 
 export const PETTY_CASH_SOURCES = ['Bank Withdrawal', 'Cash Sales Allocation'] as const;
 export type PettyCashSource = (typeof PETTY_CASH_SOURCES)[number];
+
+// Placeholder DTF film-roll spec shown as the default when installing a roll —
+// GLM's actual roll length/cost varies by supplier order, so these are just a
+// starting point staff should overwrite with the real figures off the invoice.
+export const FILM_ROLL_DEFAULT_LENGTH_M = 100;
+export const FILM_ROLL_DEFAULT_COST = 3500;

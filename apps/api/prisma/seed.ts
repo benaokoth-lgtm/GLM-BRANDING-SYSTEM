@@ -8,10 +8,13 @@ async function pin(p: string) {
 }
 
 async function main() {
+  await prisma.filmUsage.deleteMany();
+  await prisma.filmRoll.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.orderLineItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.expenseAmendment.deleteMany();
+  await prisma.deletionRequest.deleteMany();
   await prisma.expense.deleteMany();
   await prisma.payrollEntry.deleteMany();
   await prisma.pettyCashTopUp.deleteMany();
@@ -33,11 +36,11 @@ async function main() {
 
   const [embroidery, dtf, uv, largeFormat, digital, dtfSheet] = await Promise.all([
     prisma.service.create({ data: { name: 'Embroidery', unit: 'piece', price: 350 } }),
-    prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 250 } }),
+    prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 250, tracksFilm: true } }),
     prisma.service.create({ data: { name: 'UV Printing', unit: 'piece', price: 400 } }),
     prisma.service.create({ data: { name: 'Large Format Printing', unit: 'sqm', price: 600 } }),
     prisma.service.create({ data: { name: 'Digital Printing', unit: 'piece', price: 200 } }),
-    prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 800 } }),
+    prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 800, tracksFilm: true } }),
   ]);
 
   const [polo, tshirt, cap, hoodie] = await Promise.all([

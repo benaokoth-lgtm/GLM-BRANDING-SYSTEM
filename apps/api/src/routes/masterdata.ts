@@ -46,6 +46,19 @@ masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
   res.status(201).json(await prisma.service.create({ data: parsed.data }));
 });
 
+// Flags whether a service consumes DTF transfer film — toggled by Admin,
+// same access level as adding a service, since it's a catalog definition
+// property rather than a day-to-day operational value.
+const serviceUpdateSchema = z.object({ tracksFilm: z.boolean() });
+
+masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => {
+  const parsed = serviceUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const service = await prisma.service.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!service) return res.status(404).json({ error: 'Service not found' });
+  res.json(service);
+});
+
 // ── Material Price List ─────────────────────────────────────────────────
 masterDataRouter.get('/materials', async (_req, res) => {
   res.json(await prisma.material.findMany({ orderBy: { name: 'asc' } }));

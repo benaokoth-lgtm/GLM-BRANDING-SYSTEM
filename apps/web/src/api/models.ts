@@ -11,6 +11,7 @@ export interface CatalogService {
   name: string;
   unit: ServiceUnit;
   price: number;
+  tracksFilm: boolean;
 }
 
 export interface CatalogMaterial {
@@ -63,6 +64,7 @@ export interface OrderLineItemView {
   unitPrice: number;
   discountPct: number;
   discountAmt: number;
+  filmLengthM: number | null;
   lineTotal: number;
 }
 
@@ -101,6 +103,21 @@ export interface ExpenseAmendment {
   proposedCategory: string;
   proposedNote: string;
   proposedAmount: number;
+  reason: string;
+  status: 'Pending' | 'Approved' | 'Rejected';
+  requestedByName: string;
+  requestedAt: string;
+  decidedByName: string | null;
+  decidedAt: string | null;
+}
+
+export type DeletableRecordType = 'Expense' | 'PayrollEntry' | 'PettyCashTopUp';
+
+export interface DeletionRequest {
+  id: number;
+  recordType: DeletableRecordType;
+  recordId: number;
+  summary: string;
   reason: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   requestedByName: string;
@@ -230,4 +247,35 @@ export interface DraftLineItem {
   unitPrice: number | string;
   discountPct: number | string;
   discountAmt: number | string;
+  filmLengthM: number | string;
+}
+
+export interface FilmRollRow {
+  id: number;
+  lengthM: number;
+  costTotal: number;
+  costPerMeter: number;
+  installedDate: string;
+  installedByName: string;
+  status: 'Active' | 'Finished';
+  finishedDate: string | null;
+  usedM: number;
+  remainingM: number;
+  wasteM: number;
+  avgRatePerMeter: number | null;
+  marginPerMeter: number | null;
+  undercharged: boolean;
+}
+
+export interface FilmUsageRow {
+  id: number;
+  date: string;
+  lengthM: number;
+  source: 'Order' | 'Manual';
+  orderId: number | null;
+  orderNo: string | null;
+  ratePerMeter: number | null;
+  revenue: number | null;
+  note: string;
+  capturedByName: string;
 }

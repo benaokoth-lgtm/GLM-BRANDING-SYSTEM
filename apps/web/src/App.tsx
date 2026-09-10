@@ -12,6 +12,7 @@ import MasterData from './pages/MasterData';
 import PnL from './pages/PnL';
 import Finance from './pages/Finance';
 import Stock from './pages/Stock';
+import Film from './pages/Film';
 
 function DefaultRedirect() {
   const { user } = useAuth();
@@ -96,6 +97,14 @@ export default function App() {
           element={
             <RequireRole roles={MANAGEMENT_ROLES}>
               <Stock />
+            </RequireRole>
+          }
+        />
+        <Route
+          path="/film"
+          element={
+            <RequireRole roles={MANAGEMENT_ROLES}>
+              <Film />
             </RequireRole>
           }
         />

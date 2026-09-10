@@ -14,9 +14,12 @@ Extended with a **P&L account** tab (`design_handoff_pnl_account/`) that aggrega
 orders/payments into a filterable profit-and-loss statement, a **Finance** tab (VAT /
 NSSF / SHIF / Payroll / Expenses / Petty Cash — Kenyan statutory deductions computed via
 `packages/shared/src/tax.ts`, ported from Olerai Hotel System for consistent, vetted
-formulas), and a **Stock** tab (requisition/approval workflow with reorder alerts).
-Printing/company-branding, Finance, and Stock were added directly (no design handoff
-for any of them).
+formulas), a **Stock** tab (requisition/approval workflow with reorder alerts), and a
+**Film** tab (DTF transfer-film roll inventory — usage log, roll install/replace, and a
+waste report; goes beyond the `design_handoff_pnl_account/` handoff's read-only Film
+Usage report screen into full roll-level inventory tracking, per direct request).
+Printing/company-branding, Finance, Stock, and Film were added directly (no design
+handoff for the operational parts of any of them).
 
 ## Stack
 
@@ -87,8 +90,14 @@ own roster.
 - Wrong expense entries are corrected via **Amend**, not direct edit: propose new
   values with a required reason, and a *different* Finance Manager/General
   Manager/Admin must approve before the Expense row (and P&L numbers built from it)
-  actually change — self-approval is blocked server-side. Deleting an expense outright
-  is still instant/ungated, unchanged from before.
+  actually change — self-approval is blocked server-side.
+- **Deleting an Expense, Payroll entry, or Petty Cash top-up always requires approval**
+  — there's no direct delete anywhere for these three. Clicking ✕ opens a required-reason
+  prompt that raises a deletion request; the record stays fully intact (and in the P&L/
+  payroll/petty-cash numbers) until a *different* Finance Manager/General Manager/Admin
+  approves it below the table — the requester can't approve or reject their own request,
+  same rule as amendments. Rejecting leaves the record untouched. This intentionally
+  doesn't cover Orders/Payments, which had no delete capability before this change either.
 - Finance → Petty Cash has its own "Log a petty cash expense" form for convenience, but
   it posts to the same Expense table as Finance → Expenses — one ledger, viewable both
   places. Current balance = all-time top-ups minus all-time operating expenses, so it
@@ -103,6 +112,31 @@ own roster.
 - Payments (top nav) has Pending Payments / Paid sub-tabs with a shared date-range
   filter (presets + custom From/To), filtered by each order's created date. All Orders
   now shows an order date column too.
+- **Film** (next to Stock, same MANAGEMENT_ROLES access — Supervisor + Finance roles +
+  Admin) tracks DTF transfer-film roll inventory:
+  - A Service can be flagged **"Tracks film"** in Master Data → Service Price List
+    (Admin-only toggle; seeded true for DTF Printing and DTF Sheet (per metre)). Order
+    line items using a film-tracked service show a "Film used (m)" field — captured
+    independently of qty/pricing since actual film consumed can differ from what's
+    billed (waste, spacing, piece-rate jobs). A tag warns if it's left blank.
+  - Film usage is only logged (and the active roll decremented) once production
+    actually starts — on walk-in capture, or on quote→invoice conversion — never at
+    quote-drafting time, since a quote may never be accepted.
+  - Film → Film Usage also has a manual "Log film fed into the machine" form for usage
+    outside a captured order (test prints, off-system jobs, corrections) — same roll
+    decrement as order-triggered usage, one shared running balance either way.
+  - Film → Film Rolls installs a new roll (length, cost, date) and shows the active
+    roll's remaining balance, cost/metre, and average rate charged so far. Installing a
+    new roll while the current one still shows a positive remaining balance means the
+    physical roll ran out before the system's tally did — that shortfall is
+    auto-logged as waste on the retiring roll, no manual step needed.
+  - Each retired roll snapshots its average rate charged (revenue ÷ metres used,
+    weighted) against its cost/metre (cost ÷ roll length) to flag whether it was
+    **undercharged** — the Roll history & waste report lists every replacement cycle
+    with its waste quantity, avg rate charged, and margin/metre.
+  - Roll length/cost defaults (100m / Ksh 3,500) are placeholders on the install form,
+    not stored assumptions — enter GLM's real roll spec off the purchase invoice each
+    time.
 - **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO

@@ -32,6 +32,7 @@ export default function NewQuotation() {
     unitPrice: Number(li.unitPrice) || 0,
     discountPct: Number(li.discountPct) || 0,
     discountAmt: Number(li.discountAmt) || 0,
+    filmLengthM: Number(li.filmLengthM) > 0 ? Number(li.filmLengthM) : undefined,
   }));
   const totals = computeOrderTotals({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 });
   const discountWarning = exceedsDiscountCeiling({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 }, maxDiscountPct);

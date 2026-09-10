@@ -14,6 +14,7 @@ const TABS_BY_ROLE: Record<string, [string, string][]> = {
     ['/orders/all', 'All Orders'],
     ['/payments', 'Payments'],
     ['/stock', 'Stock'],
+    ['/film', 'Film'],
   ],
   'Finance Manager': [
     ['/orders/all', 'All Orders'],
@@ -21,6 +22,7 @@ const TABS_BY_ROLE: Record<string, [string, string][]> = {
     ['/pnl', 'P&L'],
     ['/finance', 'Finance'],
     ['/stock', 'Stock'],
+    ['/film', 'Film'],
   ],
   'General Manager': [
     ['/orders/all', 'All Orders'],
@@ -28,6 +30,7 @@ const TABS_BY_ROLE: Record<string, [string, string][]> = {
     ['/pnl', 'P&L'],
     ['/finance', 'Finance'],
     ['/stock', 'Stock'],
+    ['/film', 'Film'],
   ],
   Admin: [
     ['/orders/all', 'All Orders'],
@@ -36,6 +39,7 @@ const TABS_BY_ROLE: Record<string, [string, string][]> = {
     ['/pnl', 'P&L'],
     ['/finance', 'Finance'],
     ['/stock', 'Stock'],
+    ['/film', 'Film'],
   ],
 };
 

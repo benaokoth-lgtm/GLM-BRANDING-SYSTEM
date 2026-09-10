@@ -96,10 +96,7 @@ financeRouter.post('/payroll', async (req, res) => {
   res.status(201).json({ ...entry, name: staff.name });
 });
 
-financeRouter.delete('/payroll/:id', async (req, res) => {
-  await prisma.payrollEntry.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
-  res.status(204).end();
-});
+// No direct DELETE for payroll — see the generic DeletionRequest flow below.
 
 // ── VAT — output VAT on real sales for the period ───────────────────────────
 interface OrderForVat {
@@ -180,10 +177,7 @@ financeRouter.post('/expenses', async (req, res) => {
   res.status(201).json(expense);
 });
 
-financeRouter.delete('/expenses/:id', async (req, res) => {
-  await prisma.expense.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
-  res.status(204).end();
-});
+// No direct DELETE for expenses — see the generic DeletionRequest flow below.
 
 // ── Expense amendments — correct a wrong entry without editing history; the
 // Expense row itself (and P&L numbers built from it) only change once a
@@ -342,7 +336,80 @@ financeRouter.post('/petty-cash/topups', async (req, res) => {
   res.status(201).json(topUp);
 });
 
-financeRouter.delete('/petty-cash/topups/:id', async (req, res) => {
-  await prisma.pettyCashTopUp.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
-  res.status(204).end();
+// No direct DELETE for petty cash top-ups — see the generic DeletionRequest flow below.
+
+// ── Deletion requests — the only way to remove an Expense, PayrollEntry, or ──
+// PettyCashTopUp. Requires a reason and approval from a *different* finance
+// manager/general manager/admin before the row is actually deleted, same
+// segregation-of-duties rule as expense amendments above.
+const DELETABLE_TYPES = ['Expense', 'PayrollEntry', 'PettyCashTopUp'] as const;
+type DeletableType = (typeof DELETABLE_TYPES)[number];
+
+async function buildDeletionSummary(recordType: DeletableType, recordId: number): Promise<string | null> {
+  if (recordType === 'Expense') {
+    const e = await prisma.expense.findUnique({ where: { id: recordId } });
+    if (!e) return null;
+    return `Expense: ${e.category} — Ksh ${Math.round(e.amount).toLocaleString('en-KE')} (${e.date})`;
+  }
+  if (recordType === 'PayrollEntry') {
+    const p = await prisma.payrollEntry.findUnique({ where: { id: recordId }, include: { staff: true } });
+    if (!p) return null;
+    return `Payroll: ${p.staff.name} — Ksh ${Math.round(p.grossPay).toLocaleString('en-KE')} (${p.date})`;
+  }
+  const t = await prisma.pettyCashTopUp.findUnique({ where: { id: recordId } });
+  if (!t) return null;
+  return `Petty cash top-up: ${t.source} — Ksh ${Math.round(t.amount).toLocaleString('en-KE')} (${t.date})`;
+}
+
+financeRouter.get('/deletion-requests', async (req, res) => {
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const requests = await prisma.deletionRequest.findMany({
+    where: status ? { status } : undefined,
+    orderBy: { requestedAt: 'desc' },
+  });
+  res.json(requests);
 });
+
+const deletionRequestSchema = z.object({
+  recordType: z.enum(DELETABLE_TYPES),
+  recordId: z.number().int(),
+  reason: z.string().min(1, 'A reason for the deletion is required'),
+});
+
+financeRouter.post('/deletion-requests', async (req, res) => {
+  const parsed = deletionRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+
+  const summary = await buildDeletionSummary(parsed.data.recordType, parsed.data.recordId);
+  if (!summary) return res.status(404).json({ error: 'Record not found' });
+
+  const request = await prisma.deletionRequest.create({
+    data: { ...parsed.data, summary, requestedByName: req.user!.name },
+  });
+  res.status(201).json(request);
+});
+
+async function decideDeletionRequest(req: Request, res: Response, approve: boolean) {
+  const request = await prisma.deletionRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!request) return res.status(404).json({ error: 'Deletion request not found' });
+  if (request.status !== 'Pending') return res.status(400).json({ error: 'Deletion request has already been decided' });
+  if (request.requestedByName === req.user!.name) {
+    return res.status(400).json({ error: 'You cannot approve or reject your own deletion request' });
+  }
+
+  if (approve) {
+    const recordType = request.recordType as DeletableType;
+    if (recordType === 'Expense') await prisma.expense.delete({ where: { id: request.recordId } }).catch(() => null);
+    else if (recordType === 'PayrollEntry') await prisma.payrollEntry.delete({ where: { id: request.recordId } }).catch(() => null);
+    else await prisma.pettyCashTopUp.delete({ where: { id: request.recordId } }).catch(() => null);
+  }
+
+  const updated = await prisma.deletionRequest.update({
+    where: { id: request.id },
+    data: { status: approve ? 'Approved' : 'Rejected', decidedByName: req.user!.name, decidedAt: new Date() },
+  });
+  res.json(updated);
+}
+
+financeRouter.post('/deletion-requests/:id/approve', (req, res) => decideDeletionRequest(req, res, true));
+financeRouter.post('/deletion-requests/:id/reject', (req, res) => decideDeletionRequest(req, res, false));

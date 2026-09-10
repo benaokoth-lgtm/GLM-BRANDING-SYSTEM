@@ -25,11 +25,15 @@ model User {
 }
 
 model Service {
-  id        Int    @id @default(autoincrement())
-  name      String
-  unit      String // 'piece' | 'metre' | 'sqm'
-  price     Float
-  lineItems OrderLineItem[]
+  id         Int     @id @default(autoincrement())
+  name       String
+  unit       String // 'piece' | 'metre' | 'sqm'
+  price      Float
+  // DTF services consume transfer film — flagging a service here is what
+  // makes its line items show the film-length capture field and feed the
+  // Film roll inventory. Editable by Admin in Master Data.
+  tracksFilm Boolean @default(false)
+  lineItems  OrderLineItem[]
 }
 
 model Material {
@@ -131,6 +135,26 @@ model PettyCashTopUp {
   authorizedByName String
 }
 
+// Generic deletion-approval gate for Expense / PayrollEntry / PettyCashTopUp —
+// no direct delete button anywhere for these three anymore; deleting always
+// goes through a request (with a reason) that a *different* finance
+// manager/general manager/admin must approve before the row actually goes.
+// No FK to the target row (recordType/recordId instead) since one model
+// covers three different tables; `summary` snapshots what's being deleted so
+// the request stays legible even after the row is gone.
+model DeletionRequest {
+  id              Int       @id @default(autoincrement())
+  recordType      String // 'Expense' | 'PayrollEntry' | 'PettyCashTopUp'
+  recordId        Int
+  summary         String
+  reason          String
+  status          String    @default("Pending") // Pending | Approved | Rejected
+  requestedByName String
+  requestedAt     DateTime  @default(now())
+  decidedByName   String?
+  decidedAt       DateTime?
+}
+
 // Stock > Requisition/Approval — a requested stock top-up only increases
 // Material.stockQty once approved, so "available for sale" reflects
 // approved stock, not merely requested stock.
@@ -165,8 +189,9 @@ model Order {
   orderDiscountPct  Float    @default(0)
   orderDiscountAmt  Float    @default(0)
 
-  lineItems OrderLineItem[]
-  payments  Payment[]
+  lineItems  OrderLineItem[]
+  payments   Payment[]
+  filmUsages FilmUsage[]
 }
 
 model OrderLineItem {
@@ -182,6 +207,50 @@ model OrderLineItem {
   unitPrice   Float
   discountPct Float    @default(0)
   discountAmt Float    @default(0)
+  // Metres of DTF transfer film this line consumed — only meaningful when
+  // service.tracksFilm is true; feeds a FilmUsage row on capture/conversion.
+  filmLengthM Float?
+}
+
+// DTF transfer-film roll inventory. One Active roll at a time; every metre
+// consumed (auto-logged from a film-tracked order line, or manually fed) is
+// a FilmUsage row that decrements it. Installing a new roll while the
+// current one still shows a positive remaining balance means the physical
+// roll ran out before the system's tally did — that shortfall is booked as
+// waste on the old roll (not silently carried over), and avgRatePerMeter is
+// snapshotted from its own usage history at that moment so the "did we
+// undercharge this roll" comparison stays fixed once the roll is retired.
+model FilmRoll {
+  id              Int         @id @default(autoincrement())
+  lengthM         Float
+  costTotal       Float
+  installedDate   String // 'YYYY-MM-DD'
+  installedByName String
+  status          String      @default("Active") // Active | Finished
+  finishedDate    String?
+  wasteM          Float       @default(0)
+  avgRatePerMeter Float? // snapshotted on finish — weighted avg revenue/metre this roll realized
+  usages          FilmUsage[]
+}
+
+// One row per length of film consumed off the active roll — either
+// auto-logged when a film-tracked order/quotation-conversion line goes to
+// production, or manually logged when film is fed into the machine outside
+// a captured order. ratePerMeter is the effective revenue/metre realized
+// for that usage (lineTotal / filmLengthM for order-linked rows); null for
+// usage with no associated sale (manual test feeds, waste corrections).
+model FilmUsage {
+  id             Int       @id @default(autoincrement())
+  filmRollId     Int?
+  filmRoll       FilmRoll? @relation(fields: [filmRollId], references: [id])
+  date           String // 'YYYY-MM-DD'
+  lengthM        Float
+  source         String // 'Order' | 'Manual'
+  orderId        Int?
+  order          Order?    @relation(fields: [orderId], references: [id])
+  ratePerMeter   Float?
+  note           String    @default("")
+  capturedByName String
 }
 
 model Payment {

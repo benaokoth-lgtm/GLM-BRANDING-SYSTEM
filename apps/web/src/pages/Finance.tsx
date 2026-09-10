@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { EMPLOYEE_TYPES, EXPENSE_CATEGORIES, PAYMENT_METHODS, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import type { EmployeeType, ExpenseCategory, PaymentMethod, PettyCashSource } from '@glm/shared';
 import { api } from '../api/client';
-import type { ExpenseAmendment, ExpensesData, PayrollData, PettyCashData, VatData } from '../api/models';
+import type { DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesData, PayrollData, PettyCashData, VatData } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
 
 type FinanceTab = 'vat' | 'nssf' | 'shif' | 'payroll' | 'expenses' | 'pettycash';
@@ -85,6 +85,108 @@ function ExpenseCaptureForm({
   );
 }
 
+function DeleteReasonRow({
+  colSpan,
+  reason,
+  setReason,
+  onSubmit,
+  onCancel,
+  busy,
+}: {
+  colSpan: number;
+  reason: string;
+  setReason: (v: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}) {
+  return (
+    <tr>
+      <td colSpan={colSpan} style={{ background: 'var(--color-surface)' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
+          <div className="field" style={{ margin: 0, flex: 1 }}>
+            <label>Reason for deletion</label>
+            <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Required" />
+          </div>
+          <button type="button" className="btn btn-primary" onClick={onSubmit} disabled={busy}>
+            Submit
+          </button>
+          <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function DeletionRequestsCard({
+  title,
+  requests,
+  onDecide,
+  busy,
+}: {
+  title: string;
+  requests: DeletionRequest[];
+  onDecide: (id: number, approve: boolean) => void;
+  busy: boolean;
+}) {
+  const pendingCount = requests.filter((r) => r.status === 'Pending').length;
+  return (
+    <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+      <i className="corner tl"></i>
+      <i className="corner tr"></i>
+      <i className="corner bl"></i>
+      <i className="corner br"></i>
+      <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+        {title} {pendingCount > 0 && <span className="tag tag-accent">{pendingCount} pending</span>}
+      </div>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Requested</th>
+            <th>Record</th>
+            <th>Reason</th>
+            <th>Requested by</th>
+            <th>Status</th>
+            <th className="no-print"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {requests.map((r) => (
+            <tr key={r.id}>
+              <td className="text-muted">{fmtDate(r.requestedAt.slice(0, 10))}</td>
+              <td>{r.summary}</td>
+              <td className="text-muted">{r.reason}</td>
+              <td className="text-muted">{r.requestedByName}</td>
+              <td>
+                <span className={r.status === 'Approved' ? 'tag tag-accent' : r.status === 'Rejected' ? 'tag tag-neutral' : 'tag tag-outline'}>{r.status}</span>
+              </td>
+              <td className="no-print">
+                {r.status === 'Pending' && (
+                  <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                    <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={() => onDecide(r.id, true)} disabled={busy}>
+                      Approve
+                    </button>
+                    <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => onDecide(r.id, false)} disabled={busy}>
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {requests.length === 0 && <p className="note">No deletion requests.</p>}
+      <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+        You can't approve or reject your own deletion request — a different finance manager/general manager/admin must
+        review it.
+      </p>
+    </div>
+  );
+}
+
 export default function Finance() {
   const today = todayStr();
   const initial = presetRange('month', today);
@@ -137,6 +239,10 @@ export default function Finance() {
   const [amendingId, setAmendingId] = useState<number | null>(null);
   const [amendDraft, setAmendDraft] = useState({ date: '', category: EXPENSE_CATEGORIES[0] as ExpenseCategory, note: '', amount: '', reason: '' });
 
+  const [deletionRequests, setDeletionRequests] = useState<DeletionRequest[]>([]);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: DeletableRecordType; id: number } | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
+
   function load() {
     setLoading(true);
     Promise.all([
@@ -145,13 +251,15 @@ export default function Finance() {
       api.get<ExpensesData>(`/finance/expenses?from=${fromDate}&to=${toDate}`),
       api.get<PettyCashData>(`/finance/petty-cash?from=${fromDate}&to=${toDate}`),
       api.get<ExpenseAmendment[]>('/finance/expenses/amendments'),
+      api.get<DeletionRequest[]>('/finance/deletion-requests'),
     ])
-      .then(([v, p, ex, pc, am]) => {
+      .then(([v, p, ex, pc, am, del]) => {
         setVat(v);
         setPayroll(p);
         setExpenses(ex);
         setPettyCash(pc);
         setAmendments(am);
+        setDeletionRequests(del);
       })
       .finally(() => setLoading(false));
   }
@@ -190,16 +298,6 @@ export default function Finance() {
     }
   }
 
-  async function removeEntry(id: number) {
-    setBusy(true);
-    try {
-      await api.del(`/finance/payroll/${id}`);
-      load();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function submitExpense(draft: ExpenseDraft, reset: () => void) {
     const amount = Number(draft.amount);
     if (!amount || amount <= 0) return setError('Amount must be greater than 0');
@@ -211,16 +309,6 @@ export default function Finance() {
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add expense');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeExpense(id: number) {
-    setBusy(true);
-    try {
-      await api.del(`/finance/expenses/${id}`);
-      load();
     } finally {
       setBusy(false);
     }
@@ -278,14 +366,43 @@ export default function Finance() {
     }
   }
 
-  async function removeTopUp(id: number) {
+  function startDelete(type: DeletableRecordType, id: number) {
+    setDeleteTarget({ type, id });
+    setDeleteReason('');
+    setError(null);
+  }
+
+  async function submitDeleteRequest() {
+    if (!deleteTarget) return;
+    if (!deleteReason.trim()) return setError('A reason for the deletion is required');
+    setError(null);
     setBusy(true);
     try {
-      await api.del(`/finance/petty-cash/topups/${id}`);
+      await api.post('/finance/deletion-requests', { recordType: deleteTarget.type, recordId: deleteTarget.id, reason: deleteReason });
+      setDeleteTarget(null);
       load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit deletion request');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function decideDeletion(id: number, approve: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/finance/deletion-requests/${id}/${approve ? 'approve' : 'reject'}`, {});
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to decide deletion request');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function pendingDeletionFor(type: DeletableRecordType, id: number) {
+    return deletionRequests.find((r) => r.recordType === type && r.recordId === id && r.status === 'Pending');
   }
 
   if (loading || !vat || !payroll || !expenses || !pettyCash) return <p className="note">Loading…</p>;
@@ -293,6 +410,9 @@ export default function Finance() {
   const grossPreview = (Number(newEntry.daysWorked) || 0) * (Number(newEntry.rate) || 0);
   const employeeRows = payroll.rows.filter((r) => r.employeeType === 'Employee');
   const pendingAmendments = amendments.filter((a) => a.status === 'Pending');
+  const payrollDeletionRequests = deletionRequests.filter((r) => r.recordType === 'PayrollEntry');
+  const expenseDeletionRequests = deletionRequests.filter((r) => r.recordType === 'Expense');
+  const pettyCashDeletionRequests = deletionRequests.filter((r) => r.recordType === 'PettyCashTopUp');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -651,26 +771,37 @@ export default function Finance() {
                 </thead>
                 <tbody>
                   {payroll.rows.map((r) => (
-                    <tr key={r.id}>
-                      <td className="text-muted">{fmtDate(r.date)}</td>
-                      <td>{r.name}</td>
-                      <td>
-                        <span className={r.employeeType === 'Employee' ? 'tag tag-accent' : 'tag tag-neutral'}>{r.employeeType}</span>
-                      </td>
-                      <td className="text-muted">{r.department || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{fmtKsh(r.grossPay)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmtKsh(r.paye)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmtKsh(r.nssf)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmtKsh(r.shif)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmtKsh(r.housingLevy)}</td>
-                      <td style={{ textAlign: 'right' }}>{fmtKsh(r.netPay)}</td>
-                      <td className="text-muted">{r.capturedByName || '—'}</td>
-                      <td className="no-print">
-                        <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeEntry(r.id)} disabled={busy}>
-                          ✕
-                        </button>
-                      </td>
-                    </tr>
+                    <Fragment key={r.id}>
+                      <tr>
+                        <td className="text-muted">{fmtDate(r.date)}</td>
+                        <td>{r.name}</td>
+                        <td>
+                          <span className={r.employeeType === 'Employee' ? 'tag tag-accent' : 'tag tag-neutral'}>{r.employeeType}</span>
+                        </td>
+                        <td className="text-muted">{r.department || '—'}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtKsh(r.grossPay)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtKsh(r.paye)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtKsh(r.nssf)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtKsh(r.shif)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtKsh(r.housingLevy)}</td>
+                        <td style={{ textAlign: 'right' }}>{fmtKsh(r.netPay)}</td>
+                        <td className="text-muted">{r.capturedByName || '—'}</td>
+                        <td className="no-print">
+                          {pendingDeletionFor('PayrollEntry', r.id) ? (
+                            <span className="tag tag-outline" style={{ fontSize: 10 }}>
+                              Deletion pending
+                            </span>
+                          ) : (
+                            <button type="button" className="btn btn-ghost btn-icon" aria-label="Delete" onClick={() => startDelete('PayrollEntry', r.id)} disabled={busy}>
+                              ✕
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                      {deleteTarget?.type === 'PayrollEntry' && deleteTarget.id === r.id && (
+                        <DeleteReasonRow colSpan={12} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
                 <tfoot>
@@ -692,6 +823,8 @@ export default function Finance() {
             </div>
             {payroll.rows.length === 0 && <p className="note">No payroll entries in range.</p>}
           </div>
+
+          <DeletionRequestsCard title="Payroll deletion requests" requests={payrollDeletionRequests} onDecide={decideDeletion} busy={busy} />
         </>
       )}
 
@@ -732,11 +865,20 @@ export default function Finance() {
                         <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startAmend(e)} disabled={busy}>
                           Amend
                         </button>
-                        <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeExpense(e.id)} disabled={busy}>
-                          ✕
-                        </button>
+                        {pendingDeletionFor('Expense', e.id) ? (
+                          <span className="tag tag-outline" style={{ fontSize: 10 }}>
+                            Deletion pending
+                          </span>
+                        ) : (
+                          <button type="button" className="btn btn-ghost btn-icon" aria-label="Delete" onClick={() => startDelete('Expense', e.id)} disabled={busy}>
+                            ✕
+                          </button>
+                        )}
                       </td>
                     </tr>
+                    {deleteTarget?.type === 'Expense' && deleteTarget.id === e.id && (
+                      <DeleteReasonRow colSpan={6} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
+                    )}
                     {amendingId === e.id && (
                       <tr>
                         <td colSpan={6} style={{ background: 'var(--color-surface)' }}>
@@ -794,7 +936,7 @@ export default function Finance() {
             {expenses.rows.length === 0 && <p className="note">No expenses in range.</p>}
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
               Feeds directly into the P&amp;L account's operating-expense lines and the Petty Cash ledger's "out" side.
-              Wrong entries: use Amend with a reason rather than editing directly — a fix only takes effect once another
+              Wrong entries: use Amend with a reason, or ✕ to request deletion — either only takes effect once another
               finance manager/general manager/admin approves it below.
             </p>
           </div>
@@ -856,6 +998,8 @@ export default function Finance() {
               manager/admin must review it.
             </p>
           </div>
+
+          <DeletionRequestsCard title="Expense deletion requests" requests={expenseDeletionRequests} onDecide={decideDeletion} busy={busy} />
         </>
       )}
 
@@ -974,28 +1118,41 @@ export default function Finance() {
               </thead>
               <tbody>
                 {pettyCash.ledger.map((row) => (
-                  <tr key={row.id}>
-                    <td className="text-muted">{fmtDate(row.date)}</td>
-                    <td>{row.description}</td>
-                    <td style={{ textAlign: 'right' }}>{row.amountIn > 0 ? fmtKsh(row.amountIn) : '—'}</td>
-                    <td style={{ textAlign: 'right' }}>{row.amountOut > 0 ? fmtKsh(row.amountOut) : '—'}</td>
-                    <td className="no-print">
-                      {row.type === 'topup' && row.topUpId !== null && (
-                        <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeTopUp(row.topUpId!)} disabled={busy}>
-                          ✕
-                        </button>
-                      )}
-                    </td>
-                  </tr>
+                  <Fragment key={row.id}>
+                    <tr>
+                      <td className="text-muted">{fmtDate(row.date)}</td>
+                      <td>{row.description}</td>
+                      <td style={{ textAlign: 'right' }}>{row.amountIn > 0 ? fmtKsh(row.amountIn) : '—'}</td>
+                      <td style={{ textAlign: 'right' }}>{row.amountOut > 0 ? fmtKsh(row.amountOut) : '—'}</td>
+                      <td className="no-print">
+                        {row.type === 'topup' && row.topUpId !== null && (
+                          pendingDeletionFor('PettyCashTopUp', row.topUpId) ? (
+                            <span className="tag tag-outline" style={{ fontSize: 10 }}>Deletion pending</span>
+                          ) : (
+                            <button type="button" className="btn btn-ghost btn-icon" aria-label="Delete" onClick={() => startDelete('PettyCashTopUp', row.topUpId!)} disabled={busy}>
+                              ✕
+                            </button>
+                          )
+                        )}
+                      </td>
+                    </tr>
+                    {deleteTarget?.type === 'PettyCashTopUp' && row.topUpId !== null && deleteTarget.id === row.topUpId && (
+                      <DeleteReasonRow colSpan={5} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
             {pettyCash.ledger.length === 0 && <p className="note">No petty cash activity in range.</p>}
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
               Current balance assumes every recorded operating expense is paid from petty cash. If some (e.g. salaries
-              paid by bank transfer) aren't, exclude them from the Expenses tab or track them separately.
+              paid by bank transfer) aren't, exclude them from the Expenses tab or track them separately. Wrong
+              top-ups: ✕ to request deletion — takes effect once another finance manager/general manager/admin
+              approves it below.
             </p>
           </div>
+
+          <DeletionRequestsCard title="Petty cash deletion requests" requests={pettyCashDeletionRequests} onDecide={decideDeletion} busy={busy} />
         </>
       )}
     </div>

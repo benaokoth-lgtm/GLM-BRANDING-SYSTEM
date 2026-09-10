@@ -5,6 +5,7 @@ import { prisma } from '../db';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { addDays, buildLineTotal, computeOrderTotals, isOverdue, todayStr } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
+import { logFilmUsageForOrder } from './film';
 
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth);
@@ -18,7 +19,16 @@ const orderInclude = Prisma.validator<Prisma.OrderInclude>()({
 
 type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
-function toLineItemInput(li: { itemType: string; serviceId: number; materialId: number | null; qty: number; unitPrice: number; discountPct: number; discountAmt: number }): LineItemInput {
+function toLineItemInput(li: {
+  itemType: string;
+  serviceId: number;
+  materialId: number | null;
+  qty: number;
+  unitPrice: number;
+  discountPct: number;
+  discountAmt: number;
+  filmLengthM?: number | null;
+}): LineItemInput {
   return {
     itemType: li.itemType as LineItemInput['itemType'],
     serviceId: li.serviceId,
@@ -27,6 +37,7 @@ function toLineItemInput(li: { itemType: string; serviceId: number; materialId: 
     unitPrice: li.unitPrice,
     discountPct: li.discountPct,
     discountAmt: li.discountAmt,
+    filmLengthM: li.filmLengthM ?? null,
   };
 }
 
@@ -70,6 +81,7 @@ function serializeDetail(order: FullOrder) {
       unitPrice: li.unitPrice,
       discountPct: li.discountPct,
       discountAmt: li.discountAmt,
+      filmLengthM: li.filmLengthM,
       lineTotal: buildLineTotal(toLineItemInput(li)),
     })),
     payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method })),
@@ -113,6 +125,7 @@ const lineItemSchema = z.object({
   unitPrice: z.number().nonnegative(),
   discountPct: z.number().min(0).max(100).default(0),
   discountAmt: z.number().min(0).default(0),
+  filmLengthM: z.number().positive().nullable().optional(),
 });
 
 const walkinSchema = z.object({
@@ -159,6 +172,16 @@ ordersRouter.post('/walkin', requireRole('Staff'), async (req, res) => {
       },
       include: orderInclude,
     });
+
+    // Walk-ins go straight into production, so film-tracked lines deplete the
+    // active roll immediately (see logFilmUsageForOrder in routes/film.ts).
+    await logFilmUsageForOrder(tx, {
+      orderId: created.id,
+      date: created.createdDate,
+      capturedByName: req.user!.name,
+      lineItems: form.lineItems.map((li) => ({ serviceId: li.serviceId, filmLengthM: li.filmLengthM, lineTotal: buildLineTotal(li) })),
+    });
+
     return created;
   });
 
@@ -240,14 +263,27 @@ ordersRouter.patch('/:id/stage', async (req, res) => {
 });
 
 // ── Convert quotation to invoice ────────────────────────────────────────
+// This is when corporate production actually starts, so it's also when
+// film-tracked lines deplete the active roll — not at quote-drafting time,
+// since a quote may never be accepted.
 ordersRouter.post('/:id/convert', requireRole('Staff', 'Supervisor', 'Admin'), async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true, lineItems: true } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
   if (order.status !== 'Quote') return res.status(400).json({ error: 'Only quotes can be converted' });
 
   const days = order.corporateClient?.creditDays ?? 30;
   const dueDate = addDays(todayStr(), days);
-  const updated = await prisma.order.update({ where: { id: order.id }, data: { status: 'Invoice', dueDate }, include: orderInclude });
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.order.update({ where: { id: order.id }, data: { status: 'Invoice', dueDate }, include: orderInclude });
+    await logFilmUsageForOrder(tx, {
+      orderId: order.id,
+      date: todayStr(),
+      capturedByName: req.user!.name,
+      lineItems: order.lineItems.map((li) => ({ serviceId: li.serviceId, filmLengthM: li.filmLengthM, lineTotal: buildLineTotal(toLineItemInput(li)) })),
+    });
+    return result;
+  });
   res.json(serializeDetail(updated));
 });

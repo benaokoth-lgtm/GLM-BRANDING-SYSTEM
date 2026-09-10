@@ -140,6 +140,11 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                   <td>
                     {li.serviceName}
                     {li.materialName ? ` + ${li.materialName}` : ''}
+                    {li.filmLengthM != null && (
+                      <div className="text-muted" style={{ fontSize: 11 }}>
+                        Film used: {li.filmLengthM} m
+                      </div>
+                    )}
                   </td>
                   <td>{li.qty}</td>
                   <td>{fmtKsh(li.unitPrice)}</td>

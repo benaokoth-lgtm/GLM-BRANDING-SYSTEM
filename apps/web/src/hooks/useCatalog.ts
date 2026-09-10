@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
-import type { CatalogMaterial, CatalogService, CorporateClient, StaffUser } from '../api/models';
+import type { CatalogMaterial, CatalogService, CompanySettings, CorporateClient, StaffUser } from '../api/models';
+
+const DEFAULT_SETTINGS: CompanySettings = {
+  maxDiscountPct: 15,
+  companyName: 'GLM Branding',
+  companyAddress: '',
+  companyPhone: '',
+  companyEmail: '',
+  logoDataUrl: null,
+};
 
 export interface Catalog {
   services: CatalogService[];
   materials: CatalogMaterial[];
   corporateClients: CorporateClient[];
   staff: StaffUser[];
+  settings: CompanySettings;
   maxDiscountPct: number;
   loading: boolean;
   reload: () => void;
@@ -17,7 +27,7 @@ export function useCatalog(): Catalog {
   const [materials, setMaterials] = useState<CatalogMaterial[]>([]);
   const [corporateClients, setCorporateClients] = useState<CorporateClient[]>([]);
   const [staff, setStaff] = useState<StaffUser[]>([]);
-  const [maxDiscountPct, setMaxDiscountPct] = useState(15);
+  const [settings, setSettings] = useState<CompanySettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [tick, setTick] = useState(0);
 
@@ -28,17 +38,26 @@ export function useCatalog(): Catalog {
       api.get<CatalogMaterial[]>('/master-data/materials'),
       api.get<CorporateClient[]>('/master-data/corporate-clients'),
       api.get<StaffUser[]>('/master-data/staff'),
-      api.get<{ maxDiscountPct: number }>('/master-data/settings'),
+      api.get<CompanySettings>('/master-data/settings'),
     ])
-      .then(([sv, mt, cc, st, settings]) => {
+      .then(([sv, mt, cc, st, settingsRes]) => {
         setServices(sv);
         setMaterials(mt);
         setCorporateClients(cc);
         setStaff(st);
-        setMaxDiscountPct(settings.maxDiscountPct);
+        setSettings(settingsRes);
       })
       .finally(() => setLoading(false));
   }, [tick]);
 
-  return { services, materials, corporateClients, staff, maxDiscountPct, loading, reload: () => setTick((t) => t + 1) };
+  return {
+    services,
+    materials,
+    corporateClients,
+    staff,
+    settings,
+    maxDiscountPct: settings.maxDiscountPct,
+    loading,
+    reload: () => setTick((t) => t + 1),
+  };
 }

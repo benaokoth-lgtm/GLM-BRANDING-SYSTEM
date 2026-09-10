@@ -16,6 +16,7 @@ async function main() {
   await prisma.service.deleteMany();
   await prisma.user.deleteMany();
   await prisma.setting.deleteMany();
+  await prisma.expense.deleteMany();
 
   const [amina, brian, grace, admin] = await Promise.all([
     prisma.user.create({ data: { name: 'Amina Otieno', role: 'Staff', pinHash: await pin('1111') } }),
@@ -109,6 +110,29 @@ async function main() {
         { date: '2026-09-01', amount: 25000, method: 'Bank Transfer', staffId: brian.id },
       ] },
     },
+  });
+
+  // Modest two-month expense ledger so the P&L account isn't empty on first
+  // view (a full deterministic history generator, as the design prototype
+  // used for its demo, isn't warranted here — a real deployment fills this
+  // from actual petty cash entries).
+  const expenseBaselines: [string, number][] = [
+    ['Salaries & wages', 180000],
+    ['Printing Materials & Consumables', 60000],
+    ['Casual Labour', 35000],
+    ['Transport', 25000],
+    ['Utilities', 18000],
+    ['Equipment Maintenance', 15000],
+    ['Office Supplies', 12000],
+    ['Courier/Delivery', 10000],
+    ['Refreshments', 8000],
+    ['Miscellaneous', 7000],
+    ['Airtime/Data', 6000],
+    ['Cleaning', 6000],
+    ['Bank Charges', 4000],
+  ];
+  await prisma.expense.createMany({
+    data: ['2026-08-05', '2026-09-05'].flatMap((date) => expenseBaselines.map(([category, amount]) => ({ date, category, amount }))),
   });
 
   console.log('Seeded GLM Branding POS demo data.');

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
 import { fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
 
-type MasterTab = 'staff' | 'services' | 'materials' | 'clients' | 'discount';
+type MasterTab = 'staff' | 'services' | 'materials' | 'clients' | 'discount' | 'company';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -11,7 +12,10 @@ const TABS: [MasterTab, string][] = [
   ['materials', 'Material Price List'],
   ['clients', 'Corporate Clients'],
   ['discount', 'Discount Rules'],
+  ['company', 'Company Info'],
 ];
+
+const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 
 export default function MasterData() {
   const catalog = useCatalog();
@@ -35,6 +39,21 @@ export default function MasterData() {
   const [error, setError] = useState<string | null>(null);
 
   const discountValue = maxDiscountPct ?? String(catalog.maxDiscountPct);
+
+  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [companyAddress, setCompanyAddress] = useState<string | null>(null);
+  const [companyPhone, setCompanyPhone] = useState<string | null>(null);
+  const [companyEmail, setCompanyEmail] = useState<string | null>(null);
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null | undefined>(undefined);
+  const [savingCompany, setSavingCompany] = useState(false);
+  const [companySaved, setCompanySaved] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const companyNameValue = companyName ?? catalog.settings.companyName;
+  const companyAddressValue = companyAddress ?? catalog.settings.companyAddress;
+  const companyPhoneValue = companyPhone ?? catalog.settings.companyPhone;
+  const companyEmailValue = companyEmail ?? catalog.settings.companyEmail;
+  const logoValue = logoDataUrl !== undefined ? logoDataUrl : catalog.settings.logoDataUrl;
 
   async function addStaff() {
     if (!newStaffName.trim() || !/^\d{4}$/.test(newStaffPin)) return setError('Name and a 4-digit PIN are required');
@@ -100,6 +119,42 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update discount rule');
+    }
+  }
+
+  function handleLogoFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setError(null);
+    if (file.size > MAX_LOGO_BYTES) {
+      setError('Logo image must be under 1.5MB — resize it and try again');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setLogoDataUrl(String(reader.result));
+    reader.onerror = () => setError('Failed to read the selected image');
+    reader.readAsDataURL(file);
+  }
+
+  async function saveCompanyInfo() {
+    setError(null);
+    setSavingCompany(true);
+    setCompanySaved(false);
+    try {
+      await api.put('/master-data/settings', {
+        companyName: companyNameValue.trim() || 'GLM Branding',
+        companyAddress: companyAddressValue,
+        companyPhone: companyPhoneValue,
+        companyEmail: companyEmailValue,
+        logoDataUrl: logoValue,
+      });
+      catalog.reload();
+      setCompanySaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save company info');
+    } finally {
+      setSavingCompany(false);
     }
   }
 
@@ -302,6 +357,83 @@ export default function MasterData() {
             <input className="input" value={discountValue} onChange={(e) => setMaxDiscountPct(e.target.value)} onBlur={saveDiscountCeiling} />
           </div>
           <p className="note">Applies to both walk-in and corporate line/order discounts. Staff can still submit above this — it only raises the approval flag.</p>
+        </>
+      )}
+
+      {tab === 'company' && (
+        <>
+          <p className="note" style={{ marginBottom: 'var(--space-4)' }}>
+            Shown on printed invoices, quotations, and walk-in receipts.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)', maxWidth: 760 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <div className="field">
+                <label>Company name</label>
+                <input className="input" value={companyNameValue} onChange={(e) => setCompanyName(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Address</label>
+                <textarea className="input" rows={3} value={companyAddressValue} onChange={(e) => setCompanyAddress(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Phone</label>
+                <input className="input" value={companyPhoneValue} onChange={(e) => setCompanyPhone(e.target.value)} placeholder="07xx xxx xxx" />
+              </div>
+              <div className="field">
+                <label>Email</label>
+                <input className="input" value={companyEmailValue} onChange={(e) => setCompanyEmail(e.target.value)} placeholder="hello@glmbranding.co.ke" />
+              </div>
+            </div>
+
+            <div>
+              <div className="field">
+                <label>Logo</label>
+                <div
+                  className="card blueprint"
+                  style={{ alignItems: 'center', justifyContent: 'center', minHeight: 140, padding: 'var(--space-4)' }}
+                >
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  {logoValue ? (
+                    <img src={logoValue} alt="Company logo" style={{ maxHeight: 100, maxWidth: '100%', objectFit: 'contain' }} />
+                  ) : (
+                    <span className="note">No logo uploaded</span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                <button type="button" className="btn btn-secondary blueprint" onClick={() => logoInputRef.current?.click()}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  {logoValue ? 'Replace logo' : 'Upload logo'}
+                </button>
+                {logoValue && (
+                  <button type="button" className="btn btn-ghost" onClick={() => setLogoDataUrl(null)}>
+                    Remove
+                  </button>
+                )}
+                <input ref={logoInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleLogoFile} />
+              </div>
+              <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+                PNG or JPG, under 1.5MB.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginTop: 'var(--space-4)' }}>
+            <button type="button" className="btn btn-primary blueprint" onClick={saveCompanyInfo} disabled={savingCompany}>
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              Save company info
+            </button>
+            {companySaved && <span className="tag tag-accent">Saved</span>}
+          </div>
         </>
       )}
     </div>

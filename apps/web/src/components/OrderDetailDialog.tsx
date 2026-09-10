@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { STAGES, fmtKsh } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
 import { api } from '../api/client';
-import type { OrderDetail } from '../api/models';
+import type { CompanySettings, OrderDetail } from '../api/models';
+import { printWalkinReceipt } from '../utils/printTicket';
+import { printCorporateDocument } from '../utils/printInvoice';
 
 interface Props {
   orderId: number;
@@ -59,6 +61,20 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
       onChanged();
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function print() {
+    if (!detail) return;
+    // Open the popup synchronously (no await before this) so browser popup
+    // blockers don't treat it as an unsolicited window; fill it in once the
+    // company profile (name/address/logo) has loaded.
+    const w = window.open('', '_blank');
+    const company = await api.get<CompanySettings>('/master-data/settings');
+    if (detail.kind === 'walkin') {
+      printWalkinReceipt(w, detail, company);
+    } else {
+      printCorporateDocument(w, detail, company);
     }
   }
 
@@ -247,6 +263,13 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
           )}
         </div>
         <div className="dialog-actions">
+          <button type="button" className="btn btn-secondary blueprint" onClick={print}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            {detail.kind === 'walkin' ? '🖶 Print receipt' : detail.status === 'Quote' ? '🖶 Print quotation (A4)' : '🖶 Print invoice (A4)'}
+          </button>
           <button type="button" className="btn btn-secondary blueprint" onClick={onClose}>
             <i className="corner tl"></i>
             <i className="corner tr"></i>

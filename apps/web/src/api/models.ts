@@ -25,6 +25,15 @@ export interface CorporateClient {
   creditDays: number;
 }
 
+export interface CompanySettings {
+  maxDiscountPct: number;
+  companyName: string;
+  companyAddress: string;
+  companyPhone: string;
+  companyEmail: string;
+  logoDataUrl: string | null;
+}
+
 export interface OrderSummary {
   id: number;
   orderNo: string;
@@ -68,6 +77,43 @@ export interface OrderDetail extends OrderSummary {
   orderDiscountAmt: number;
   lineItems: OrderLineItemView[];
   payments: PaymentView[];
+}
+
+export interface ExpenseRow {
+  id: number;
+  date: string;
+  category: string;
+  note: string;
+  amount: number;
+}
+
+export interface PnlTrendPoint {
+  label: string;
+  revenue: number;
+  netProfit: number;
+}
+
+export interface PnlData {
+  fromDate: string;
+  toDate: string;
+  cogsPct: number;
+  revAccrualWalkin: number;
+  revAccrualCorp: number;
+  revAccrual: number;
+  revCash: number;
+  cogs: number;
+  grossProfit: number;
+  byCategory: Record<string, number>;
+  totalExpenses: number;
+  netProfit: number;
+  netMarginPct: number;
+  revChangePct: number | null;
+  profitChangePct: number | null;
+  priorFrom: string;
+  priorTo: string;
+  trend: PnlTrendPoint[];
+  expenseRows: ExpenseRow[];
+  expenseCategories: readonly string[];
 }
 
 export interface DraftLineItem {

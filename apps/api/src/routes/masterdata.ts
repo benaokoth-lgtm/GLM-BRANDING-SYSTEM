@@ -72,16 +72,46 @@ masterDataRouter.post('/corporate-clients', requireRole('Admin'), async (req, re
 });
 
 // ── Discount Rules ───────────────────────────────────────────────────────
+function serializeSettings(settings: {
+  maxDiscountPct: number;
+  companyName: string;
+  companyAddress: string;
+  companyPhone: string;
+  companyEmail: string;
+  logoDataUrl: string | null;
+}) {
+  return {
+    maxDiscountPct: settings.maxDiscountPct,
+    companyName: settings.companyName,
+    companyAddress: settings.companyAddress,
+    companyPhone: settings.companyPhone,
+    companyEmail: settings.companyEmail,
+    logoDataUrl: settings.logoDataUrl,
+  };
+}
+
 masterDataRouter.get('/settings', async (_req, res) => {
-  const settings = await prisma.setting.findUnique({ where: { id: 1 } });
-  res.json({ maxDiscountPct: settings?.maxDiscountPct ?? 15 });
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  res.json(serializeSettings(settings));
 });
 
+// Partial update — Master Data's Discount Rules and Company Info tabs each save
+// their own subset of fields without needing to resend the other's values.
+const settingsSchema = z
+  .object({
+    maxDiscountPct: z.number().min(0).optional(),
+    companyName: z.string().min(1).max(200).optional(),
+    companyAddress: z.string().max(500).optional(),
+    companyPhone: z.string().max(50).optional(),
+    companyEmail: z.string().max(200).optional(),
+    // A data: URL logo image, capped well under the 5mb JSON body limit; null clears it.
+    logoDataUrl: z.string().max(2_000_000).nullable().optional(),
+  })
+  .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
+
 masterDataRouter.put('/settings', requireRole('Admin'), async (req, res) => {
-  const { maxDiscountPct } = req.body as { maxDiscountPct?: number };
-  if (typeof maxDiscountPct !== 'number' || maxDiscountPct < 0) {
-    return res.status(400).json({ error: 'maxDiscountPct must be a non-negative number' });
-  }
-  const settings = await prisma.setting.update({ where: { id: 1 }, data: { maxDiscountPct } });
-  res.json({ maxDiscountPct: settings.maxDiscountPct });
+  const parsed = settingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1, ...parsed.data }, update: parsed.data });
+  res.json(serializeSettings(settings));
 });

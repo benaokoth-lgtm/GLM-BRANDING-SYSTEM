@@ -8,6 +8,10 @@ Handles walk-in retail customers and corporate accounts through three roles: **S
 
 Built from a design handoff (`design_handoff_pos_system/`), recreated in this codebase
 using the conventions of the Olerai Hotel System / Word Power Church System projects.
+Extended with a **P&L account** tab (`design_handoff_pnl_account/`) — Supervisor/Admin
+only — that aggregates orders/payments into a filterable profit-and-loss statement
+alongside a manually-maintained operating-expense ledger; printing/company-branding
+support was added directly (no separate handoff).
 
 ## Stack
 
@@ -53,4 +57,10 @@ own roster.
   nothing to fall out of sync.
 - Walk-in and quotation capture are Staff-only actions, matching the design handoff:
   Supervisor/Admin trace and manage but don't originate new orders.
+- The P&L account's cost-of-sales % is a single adjustable assumption (default 40% of
+  accrual revenue) — GLM's price list stores customer-facing prices, not internal unit
+  cost, so this is a placeholder until real job-costing data exists.
+- Printed documents: A4 for corporate invoices/quotations and thermal (80mm) for
+  walk-in receipts, plus company name/address/logo captured in Master Data → Company
+  Info and reused across every printed document.
 - No production deployment config yet (cPanel/Vercel) — add when ready to ship.

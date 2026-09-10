@@ -46,10 +46,28 @@ model CorporateClient {
 }
 
 model Setting {
-  id             Int   @id @default(1)
-  maxDiscountPct Float @default(15)
-  nextWalkinNo   Int   @default(1001)
-  nextCorpNo     Int   @default(2001)
+  id             Int     @id @default(1)
+  maxDiscountPct Float   @default(15)
+  nextWalkinNo   Int     @default(1001)
+  nextCorpNo     Int     @default(2001)
+
+  // Company profile — used on printed invoices, quotations, and receipts.
+  companyName    String  @default("GLM Branding")
+  companyAddress String  @default("")
+  companyPhone   String  @default("")
+  companyEmail   String  @default("")
+  logoDataUrl    String? // base64 data: URL, stored inline (small file, no object storage in this app)
+
+  // Cost-of-sales assumption for the P&L account — % of accrual revenue, shared/editable by Supervisor+Admin.
+  cogsPct Float @default(40)
+}
+
+model Expense {
+  id       Int    @id @default(autoincrement())
+  date     String // 'YYYY-MM-DD'
+  category String
+  note     String @default("")
+  amount   Float
 }
 
 model Order {

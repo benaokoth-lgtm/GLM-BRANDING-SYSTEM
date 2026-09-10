@@ -10,11 +10,13 @@ const TABS_BY_ROLE: Record<string, [string, string][]> = {
   Supervisor: [
     ['/orders/all', 'All Orders'],
     ['/payments/pending', 'Pending Payments'],
+    ['/pnl', 'P&L'],
   ],
   Admin: [
     ['/orders/all', 'All Orders'],
     ['/payments/pending', 'Pending Payments'],
     ['/master-data', 'Master Data'],
+    ['/pnl', 'P&L'],
   ],
 };
 
@@ -24,7 +26,7 @@ export default function AppLayout() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <nav className="nav" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
+      <nav className="nav no-print" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
         <span className="nav-brand">GLM Branding — Order &amp; POS</span>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
           {user && (
@@ -38,7 +40,7 @@ export default function AppLayout() {
         </div>
       </nav>
 
-      <div style={{ display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-4) var(--space-6) 0', flexWrap: 'wrap' }}>
+      <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-4) var(--space-6) 0', flexWrap: 'wrap' }}>
         {tabs.map(([path, label]) => (
           <NavLink
             key={path}

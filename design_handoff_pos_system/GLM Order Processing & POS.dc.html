@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/industry-51ba63d9-c72d-4daf-84fd-68fb759b966a/styles.css">
+  <script src="_ds/industry-51ba63d9-c72d-4daf-84fd-68fb759b966a/_ds_bundle.js"></script>
+  <style>
+    body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body);}
+    a{color:var(--color-accent-700);text-decoration:none;} a:hover{color:var(--color-accent-900);}
+    ::-webkit-scrollbar{width:8px;height:8px;} ::-webkit-scrollbar-thumb{background:var(--color-neutral-300);}
+  </style>
+</helmet>
+<div style="min-height:100vh;display:flex;flex-direction:column;">
+
+  <nav class="nav" style="justify-content:space-between;flex-wrap:wrap;gap:var(--space-3);">
+    <span class="nav-brand">GLM Branding — Order &amp; POS</span>
+    <div style="display:flex;gap:var(--space-2);align-items:center;flex-wrap:wrap;">
+      <sc-if value="{{isStaffRole}}">
+        <select class="input" style="width:auto;padding:6px 10px;" value="{{currentStaffId}}" onChange="{{onChangeCurrentStaff}}">
+          <sc-for list="{{staffOnlyList}}" as="s" hint-placeholder-count="2"><option value="{{s.id}}">{{s.name}}</option></sc-for>
+        </select>
+      </sc-if>
+      <div style="display:flex;gap:var(--space-1);">
+        <sc-for list="{{roleButtons}}" as="rb" hint-placeholder-count="3">
+          <button type="button" class="{{rb.btnClass}}" onClick="{{rb.onClick}}">{{rb.label}}</button>
+        </sc-for>
+      </div>
+    </div>
+  </nav>
+
+  <div style="display:flex;gap:var(--space-2);padding:var(--space-4) var(--space-6) 0;flex-wrap:wrap;">
+    <sc-for list="{{tabs}}" as="tab" hint-placeholder-count="3">
+      <button type="button" class="{{tab.btnClass}}" onClick="{{tab.onClick}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>{{tab.label}}</button>
+    </sc-for>
+  </div>
+
+  <main style="flex:1;padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-6);max-width:1280px;width:100%;margin:0 auto;box-sizing:border-box;">
+
+    <!-- NEW WALK-IN ORDER -->
+    <sc-if value="{{tabWalkinNew}}" hint-placeholder-val="{{true}}">
+      <div class="card blueprint" style="max-width:900px;">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="card-kicker">Walk-in customer</div>
+        <div class="card-title">New Order</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-top:var(--space-4);">
+          <div class="field"><label>Customer name</label><input class="input" value="{{walkinForm.customerName}}" onChange="{{onWalkinCustomerName}}" placeholder="e.g. Peter Mwangi"/></div>
+          <div class="field"><label>Phone</label><input class="input" value="{{walkinForm.phone}}" onChange="{{onWalkinPhone}}" placeholder="07xx xxx xxx"/></div>
+          <div class="field"><label>Allocate to staff</label>
+            <select class="input" value="{{walkinForm.staffId}}" onChange="{{onWalkinStaff}}">
+              <sc-for list="{{staffOnlyList}}" as="s" hint-placeholder-count="2"><option value="{{s.id}}">{{s.name}}</option></sc-for>
+            </select>
+          </div>
+          <div class="field"><label>Payment timing</label>
+            <div class="seg" role="radiogroup">
+              <label class="seg-opt"><input type="radio" name="wpay" checked="{{walkinPayNow}}" onChange="{{onWalkinPayNow}}"/>Pay now</label>
+              <label class="seg-opt"><input type="radio" name="wpay" checked="{{walkinPayLater}}" onChange="{{onWalkinPayLater}}"/>Pay on completion</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-head" style="font-family:var(--font-body);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.55;margin:var(--space-5) 0 var(--space-2);">Line items</div>
+        <sc-for list="{{walkinLineRows}}" as="row" hint-placeholder-count="1">
+          <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr auto;gap:var(--space-2);align-items:end;padding:var(--space-2) 0;border-bottom:1px solid var(--color-divider);">
+            <div class="field" style="margin:0;"><label>Type</label>
+              <select class="input" value="{{row.itemType}}" onChange="{{row.onTypeChange}}">
+                <option value="material-service">Material + Service</option>
+                <option value="service-only">Service only (client's item)</option>
+                <option value="per-metre">Per-metre service</option>
+              </select>
+            </div>
+            <div class="field" style="margin:0;"><label>Service</label>
+              <select class="input" value="{{row.serviceId}}" onChange="{{row.onServiceChange}}">
+                <sc-for list="{{services}}" as="svc" hint-placeholder-count="3"><option value="{{svc.id}}">{{svc.name}}</option></sc-for>
+              </select>
+            </div>
+            <sc-if value="{{row.showMaterial}}">
+              <div class="field" style="margin:0;"><label>Material</label>
+                <select class="input" value="{{row.materialId}}" onChange="{{row.onMaterialChange}}">
+                  <sc-for list="{{materials}}" as="mt" hint-placeholder-count="3"><option value="{{mt.id}}">{{mt.name}}</option></sc-for>
+                </select>
+              </div>
+            </sc-if>
+            <sc-if value="{{row.showMaterialFalse}}"><div></div></sc-if>
+            <div class="field" style="margin:0;"><label>{{row.qtyLabel}}</label><input class="input" value="{{row.qty}}" onChange="{{row.onQtyChange}}"/></div>
+            <div class="field" style="margin:0;"><label>Unit price</label><input class="input" value="{{row.unitPrice}}" onChange="{{row.onPriceChange}}"/></div>
+            <div class="field" style="margin:0;"><label>Disc %</label><input class="input" value="{{row.discountPct}}" onChange="{{row.onPctChange}}"/></div>
+            <div class="field" style="margin:0;"><label>Disc Ksh</label><input class="input" value="{{row.discountAmt}}" onChange="{{row.onAmtChange}}"/></div>
+            <button type="button" class="btn btn-ghost btn-icon" aria-label="Remove" onClick="{{row.onRemove}}">✕</button>
+          </div>
+        </sc-for>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--space-3);">
+          <button type="button" class="btn btn-secondary blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><span onClick="{{onAddWalkinLine}}" style="display:contents;">Add line item</span></button>
+          <div style="text-align:right;font-family:var(--font-heading);">
+            <div>Subtotal: {{walkinTotals.subtotalFmt}}</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-4);margin-top:var(--space-4);align-items:end;">
+          <div class="field"><label>Order discount %</label><input class="input" value="{{walkinForm.orderDiscountPct}}" onChange="{{onWalkinOrderPct}}"/></div>
+          <div class="field"><label>Order discount Ksh</label><input class="input" value="{{walkinForm.orderDiscountAmt}}" onChange="{{onWalkinOrderAmt}}"/></div>
+          <sc-if value="{{walkinDiscountWarning}}"><span class="tag tag-accent">Exceeds standard discount — needs supervisor approval</span></sc-if>
+        </div>
+
+        <sc-if value="{{walkinPayNow}}">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-top:var(--space-4);">
+            <div class="field"><label>Amount received now (Ksh)</label><input class="input" value="{{walkinForm.paymentAmount}}" onChange="{{onWalkinPaymentAmount}}" placeholder="Full or partial"/></div>
+            <div class="field"><label>Method</label>
+              <select class="input" value="{{walkinForm.paymentMethod}}" onChange="{{onWalkinPaymentMethod}}">
+                <option value="Cash">Cash</option><option value="M-Pesa">M-Pesa</option><option value="Bank Transfer">Bank Transfer</option><option value="Card">Card</option>
+              </select>
+            </div>
+          </div>
+        </sc-if>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--space-5);border-top:1px solid var(--color-divider);padding-top:var(--space-4);">
+          <div style="font-family:var(--font-heading);font-size:22px;">Grand total: {{walkinTotals.grandTotalFmt}}</div>
+          <button type="button" class="btn btn-primary blueprint" onClick="{{onSubmitWalkin}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Capture order</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- NEW QUOTATION -->
+    <sc-if value="{{tabQuoteNew}}" hint-placeholder-val="{{false}}">
+      <div class="card blueprint" style="max-width:900px;">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="card-kicker">Corporate client</div>
+        <div class="card-title">New Quotation</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-top:var(--space-4);">
+          <div class="field"><label>Corporate client</label>
+            <select class="input" value="{{quoteForm.corporateClientId}}" onChange="{{onQuoteClient}}">
+              <sc-for list="{{corporateClients}}" as="c" hint-placeholder-count="2"><option value="{{c.id}}">{{c.name}}</option></sc-for>
+            </select>
+          </div>
+          <div class="field"><label>Prepared by</label>
+            <select class="input" value="{{quoteForm.staffId}}" onChange="{{onQuoteStaff}}">
+              <sc-for list="{{staffOnlyList}}" as="s" hint-placeholder-count="2"><option value="{{s.id}}">{{s.name}}</option></sc-for>
+            </select>
+          </div>
+        </div>
+
+        <div class="demo-head" style="font-family:var(--font-body);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.55;margin:var(--space-5) 0 var(--space-2);">Line items</div>
+        <sc-for list="{{quoteLineRows}}" as="row" hint-placeholder-count="1">
+          <div style="display:grid;grid-template-columns:1.3fr 1fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr auto;gap:var(--space-2);align-items:end;padding:var(--space-2) 0;border-bottom:1px solid var(--color-divider);">
+            <div class="field" style="margin:0;"><label>Type</label>
+              <select class="input" value="{{row.itemType}}" onChange="{{row.onTypeChange}}">
+                <option value="material-service">Material + Service</option>
+                <option value="service-only">Service only (client's item)</option>
+                <option value="per-metre">Per-metre service</option>
+              </select>
+            </div>
+            <div class="field" style="margin:0;"><label>Service</label>
+              <select class="input" value="{{row.serviceId}}" onChange="{{row.onServiceChange}}">
+                <sc-for list="{{services}}" as="svc" hint-placeholder-count="3"><option value="{{svc.id}}">{{svc.name}}</option></sc-for>
+              </select>
+            </div>
+            <sc-if value="{{row.showMaterial}}">
+              <div class="field" style="margin:0;"><label>Material</label>
+                <select class="input" value="{{row.materialId}}" onChange="{{row.onMaterialChange}}">
+                  <sc-for list="{{materials}}" as="mt" hint-placeholder-count="3"><option value="{{mt.id}}">{{mt.name}}</option></sc-for>
+                </select>
+              </div>
+            </sc-if>
+            <sc-if value="{{row.showMaterialFalse}}"><div></div></sc-if>
+            <div class="field" style="margin:0;"><label>{{row.qtyLabel}}</label><input class="input" value="{{row.qty}}" onChange="{{row.onQtyChange}}"/></div>
+            <div class="field" style="margin:0;"><label>Unit price</label><input class="input" value="{{row.unitPrice}}" onChange="{{row.onPriceChange}}"/></div>
+            <div class="field" style="margin:0;"><label>Disc %</label><input class="input" value="{{row.discountPct}}" onChange="{{row.onPctChange}}"/></div>
+            <div class="field" style="margin:0;"><label>Disc Ksh</label><input class="input" value="{{row.discountAmt}}" onChange="{{row.onAmtChange}}"/></div>
+            <button type="button" class="btn btn-ghost btn-icon" aria-label="Remove" onClick="{{row.onRemove}}">✕</button>
+          </div>
+        </sc-for>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--space-3);">
+          <button type="button" class="btn btn-secondary blueprint"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i><span onClick="{{onAddQuoteLine}}" style="display:contents;">Add line item</span></button>
+          <div style="text-align:right;font-family:var(--font-heading);">Subtotal: {{quoteTotals.subtotalFmt}}</div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-4);margin-top:var(--space-4);align-items:end;">
+          <div class="field"><label>Order discount %</label><input class="input" value="{{quoteForm.orderDiscountPct}}" onChange="{{onQuoteOrderPct}}"/></div>
+          <div class="field"><label>Order discount Ksh</label><input class="input" value="{{quoteForm.orderDiscountAmt}}" onChange="{{onQuoteOrderAmt}}"/></div>
+          <sc-if value="{{quoteDiscountWarning}}"><span class="tag tag-accent">Exceeds standard discount — needs supervisor approval</span></sc-if>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--space-5);border-top:1px solid var(--color-divider);padding-top:var(--space-4);">
+          <div style="font-family:var(--font-heading);font-size:22px;">Quote total: {{quoteTotals.grandTotalFmt}}</div>
+          <button type="button" class="btn btn-primary blueprint" onClick="{{onSubmitQuote}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Save quotation</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- MY ORDERS / ALL ORDERS -->
+    <sc-if value="{{showOrdersTable}}" hint-placeholder-val="{{false}}">
+      <sc-if value="{{isAllOrders}}">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-3);">
+          <sc-for list="{{kpis}}" as="k" hint-placeholder-count="4">
+            <div class="card blueprint elev-sm"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+              <div class="card-kicker">{{k.label}}</div>
+              <div class="card-title">{{k.value}}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:var(--space-3);margin-top:var(--space-4);flex-wrap:wrap;">
+          <select class="input" style="width:auto;" value="{{staffFilter}}" onChange="{{onStaffFilter}}">
+            <option value="all">All staff</option>
+            <sc-for list="{{staffOnlyList}}" as="s" hint-placeholder-count="2"><option value="{{s.id}}">{{s.name}}</option></sc-for>
+          </select>
+          <select class="input" style="width:auto;" value="{{statusFilter}}" onChange="{{onStatusFilter}}">
+            <option value="all">All statuses</option>
+            <option value="Quote">Quote</option>
+            <option value="Invoice">Invoice</option>
+            <option value="Order">Order</option>
+          </select>
+        </div>
+      </sc-if>
+
+      <table class="table" style="margin-top:var(--space-4);">
+        <thead><tr><th>Order</th><th>Type</th><th>Client</th><th>Staff</th><th>Status</th><th>Stage</th><th>Total</th><th>Balance</th><th>Payment</th></tr></thead>
+        <tbody>
+          <sc-for list="{{visibleOrderRows}}" as="row" hint-placeholder-count="3">
+            <tr onClick="{{row.onClick}}" style="cursor:pointer;">
+              <td>{{row.id}}</td>
+              <td>{{row.typeLabel}}</td>
+              <td>{{row.clientLabel}}</td>
+              <td>{{row.staffLabel}}</td>
+              <td><span class="{{row.statusClass}}">{{row.statusLabel}}</span></td>
+              <td class="text-muted">{{row.stageLabel}}</td>
+              <td>{{row.totalFmt}}</td>
+              <td>{{row.balanceFmt}}</td>
+              <td><span class="{{row.overdueClass}}">{{row.overdueTag}}</span></td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      <sc-if value="{{noVisibleOrders}}"><p class="note">No orders here yet.</p></sc-if>
+    </sc-if>
+
+    <!-- PENDING PAYMENTS -->
+    <sc-if value="{{tabPendingPayments}}" hint-placeholder-val="{{false}}">
+      <div class="card-title" style="margin-bottom:var(--space-2);">Pending payments</div>
+      <table class="table">
+        <thead><tr><th>Order</th><th>Client</th><th>Staff</th><th>Total</th><th>Paid</th><th>Balance</th><th>Due</th><th>Progress</th><th>Status</th></tr></thead>
+        <tbody>
+          <sc-for list="{{pendingRows}}" as="row" hint-placeholder-count="3">
+            <tr onClick="{{row.onClick}}" style="cursor:pointer;">
+              <td>{{row.id}}</td>
+              <td>{{row.clientLabel}}</td>
+              <td>{{row.staffLabel}}</td>
+              <td>{{row.totalFmt}}</td>
+              <td>{{row.paidFmt}}</td>
+              <td>{{row.balanceFmt}}</td>
+              <td class="text-muted">{{row.dueDateLabel}}</td>
+              <td style="min-width:100px;"><div style="background:var(--color-neutral-200);height:8px;border-radius:2px;overflow:hidden;"><div style="{{row.progressStyle}}"></div></div></td>
+              <td><span class="{{row.overdueClass}}">{{row.overdueTag}}</span></td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      <sc-if value="{{noPendingRows}}"><p class="note">No outstanding balances.</p></sc-if>
+    </sc-if>
+
+    <!-- MASTER DATA -->
+    <sc-if value="{{tabMasterData}}" hint-placeholder-val="{{false}}">
+      <div style="display:flex;gap:var(--space-2);margin-bottom:var(--space-4);flex-wrap:wrap;">
+        <sc-for list="{{masterTabs}}" as="mt" hint-placeholder-count="5">
+          <button type="button" class="{{mt.btnClass}}" onClick="{{mt.onClick}}">{{mt.label}}</button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{msStaff}}">
+        <table class="table"><thead><tr><th>Name</th><th>Role</th></tr></thead>
+          <tbody><sc-for list="{{staffList}}" as="s" hint-placeholder-count="3"><tr><td>{{s.name}}</td><td><span class="tag tag-neutral">{{s.role}}</span></td></tr></sc-for></tbody>
+        </table>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--space-3);margin-top:var(--space-4);align-items:end;max-width:640px;">
+          <div class="field"><label>New staff name</label><input class="input" value="{{newStaffName}}" onChange="{{onNewStaffName}}"/></div>
+          <div class="field"><label>Role</label>
+            <select class="input" value="{{newStaffRole}}" onChange="{{onNewStaffRole}}"><option value="Staff">Staff</option><option value="Supervisor">Supervisor</option><option value="Admin">Admin</option></select>
+          </div>
+          <button type="button" class="btn btn-primary blueprint" onClick="{{onAddStaff}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Add</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{msServices}}">
+        <table class="table"><thead><tr><th>Service</th><th>Unit</th><th>Price</th></tr></thead>
+          <tbody><sc-for list="{{services}}" as="sv" hint-placeholder-count="5"><tr><td>{{sv.name}}</td><td class="text-muted">{{sv.unit}}</td><td>{{sv.priceFmt}}</td></tr></sc-for></tbody>
+        </table>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:var(--space-3);margin-top:var(--space-4);align-items:end;max-width:760px;">
+          <div class="field"><label>New service</label><input class="input" value="{{newServiceName}}" onChange="{{onNewServiceName}}"/></div>
+          <div class="field"><label>Unit</label>
+            <select class="input" value="{{newServiceUnit}}" onChange="{{onNewServiceUnit}}"><option value="piece">piece</option><option value="metre">metre</option><option value="sqm">sqm</option></select>
+          </div>
+          <div class="field"><label>Price (Ksh)</label><input class="input" value="{{newServicePrice}}" onChange="{{onNewServicePrice}}"/></div>
+          <button type="button" class="btn btn-primary blueprint" onClick="{{onAddService}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Add</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{msMaterials}}">
+        <table class="table"><thead><tr><th>Material</th><th>Price</th></tr></thead>
+          <tbody><sc-for list="{{materials}}" as="mt2" hint-placeholder-count="4"><tr><td>{{mt2.name}}</td><td>{{mt2.priceFmt}}</td></tr></sc-for></tbody>
+        </table>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--space-3);margin-top:var(--space-4);align-items:end;max-width:640px;">
+          <div class="field"><label>New material</label><input class="input" value="{{newMaterialName}}" onChange="{{onNewMaterialName}}"/></div>
+          <div class="field"><label>Price (Ksh)</label><input class="input" value="{{newMaterialPrice}}" onChange="{{onNewMaterialPrice}}"/></div>
+          <button type="button" class="btn btn-primary blueprint" onClick="{{onAddMaterial}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Add</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{msClients}}">
+        <table class="table"><thead><tr><th>Corporate client</th><th>Credit terms</th></tr></thead>
+          <tbody><sc-for list="{{corporateClients}}" as="c2" hint-placeholder-count="2"><tr><td>{{c2.name}}</td><td class="text-muted">{{c2.creditLabel}}</td></tr></sc-for></tbody>
+        </table>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--space-3);margin-top:var(--space-4);align-items:end;max-width:640px;">
+          <div class="field"><label>New corporate client</label><input class="input" value="{{newClientName2}}" onChange="{{onNewClientName}}"/></div>
+          <div class="field"><label>Credit terms (days)</label><input class="input" value="{{newClientCreditDays}}" onChange="{{onNewClientDays}}"/></div>
+          <button type="button" class="btn btn-primary blueprint" onClick="{{onAddClient}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Add</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{msDiscount}}">
+        <div class="field" style="max-width:320px;"><label>Standard discount ceiling (%) before supervisor approval is flagged</label>
+          <input class="input" value="{{maxDiscountPct}}" onChange="{{onMaxDiscount}}"/>
+        </div>
+        <p class="note">Applies to both walk-in and corporate line/order discounts. Staff can still submit above this — it only raises the approval flag.</p>
+      </sc-if>
+    </sc-if>
+  </main>
+
+  <!-- ORDER DETAIL DIALOG -->
+  <sc-if value="{{hasDetail}}" hint-placeholder-val="{{false}}">
+    <div class="dialog-backdrop">
+      <div class="dialog blueprint" style="max-width:760px;width:92vw;max-height:88vh;overflow:auto;">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <div class="dialog-title">Order {{detail.id}} <span class="{{detail.statusClass}}">{{detail.statusLabel}}</span></div>
+        <div class="dialog-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-3);margin-bottom:var(--space-4);">
+            <div><div class="card-kicker">Client</div><div>{{detail.clientLabel}}</div></div>
+            <div><div class="card-kicker">Staff</div><div>{{detail.staffLabel}}</div></div>
+            <div><div class="card-kicker">Created</div><div>{{detail.createdDate}}</div></div>
+          </div>
+
+          <table class="table">
+            <thead><tr><th>Item</th><th>Qty</th><th>Unit price</th><th>Discount</th><th>Line total</th></tr></thead>
+            <tbody><sc-for list="{{detail.itemRows}}" as="li" hint-placeholder-count="2">
+              <tr><td>{{li.label}}</td><td>{{li.qty}}</td><td>{{li.unitPriceFmt}}</td><td>{{li.discountLabel}}</td><td>{{li.totalFmt}}</td></tr>
+            </sc-for></tbody>
+          </table>
+
+          <div style="display:flex;justify-content:flex-end;gap:var(--space-6);margin:var(--space-3) 0;font-family:var(--font-heading);">
+            <div>Subtotal: {{detail.subtotalFmt}}</div>
+            <div>Order discount: {{detail.orderDiscountFmt}}</div>
+            <div>Grand total: {{detail.grandTotalFmt}}</div>
+          </div>
+
+          <div class="demo-head" style="font-family:var(--font-body);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.55;margin:var(--space-4) 0 var(--space-2);">Production stage</div>
+          <div style="display:flex;gap:var(--space-2);flex-wrap:wrap;">
+            <sc-for list="{{detail.stages}}" as="stg" hint-placeholder-count="5">
+              <button type="button" class="{{stg.btnClass}}" onClick="{{stg.onClick}}">{{stg.label}}</button>
+            </sc-for>
+          </div>
+
+          <div class="demo-head" style="font-family:var(--font-body);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;opacity:0.55;margin:var(--space-4) 0 var(--space-2);">Payments</div>
+          <table class="table">
+            <thead><tr><th>Date</th><th>Amount</th><th>Method</th></tr></thead>
+            <tbody><sc-for list="{{detail.paymentRows}}" as="p" hint-placeholder-count="1"><tr><td class="text-muted">{{p.date}}</td><td>{{p.amountFmt}}</td><td>{{p.method}}</td></tr></sc-for></tbody>
+          </table>
+          <sc-if value="{{detail.noPayments}}"><p class="note">No payments recorded yet.</p></sc-if>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:var(--space-3);">
+            <div style="font-family:var(--font-heading);font-size:18px;">Balance due: {{detail.balanceFmt}}</div>
+            <sc-if value="{{detail.isOverdue}}"><span class="tag tag-accent">Overdue — due {{detail.dueDateLabel}}</span></sc-if>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:var(--space-3);margin-top:var(--space-3);align-items:end;">
+            <div class="field"><label>Record payment (Ksh)</label><input class="input" value="{{paymentDraft.amount}}" onChange="{{onPaymentDraftAmount}}"/></div>
+            <div class="field"><label>Method</label>
+              <select class="input" value="{{paymentDraft.method}}" onChange="{{onPaymentDraftMethod}}">
+                <option value="Cash">Cash</option><option value="M-Pesa">M-Pesa</option><option value="Bank Transfer">Bank Transfer</option><option value="Card">Card</option>
+              </select>
+            </div>
+            <button type="button" class="btn btn-secondary blueprint" onClick="{{onAddPayment}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Record</button>
+          </div>
+
+          <sc-if value="{{detail.canConvert}}">
+            <div style="margin-top:var(--space-4);border-top:1px solid var(--color-divider);padding-top:var(--space-3);">
+              <button type="button" class="btn btn-primary btn-block blueprint" onClick="{{onConvertToInvoice}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Convert quotation to invoice</button>
+            </div>
+          </sc-if>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="btn btn-secondary blueprint" onClick="{{onCloseDetail}}"><i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>Close</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  TODAY = '2026-09-10';
+  STAGES = ['Order Received','In Production','Quality Check','Ready for Pickup/Delivery','Completed'];
+
+  state = {
+    role: 'Staff',
+    currentStaffId: 'S1',
+    activeTab: 'walkin-new',
+    masterTab: 'staff',
+    staffFilter: 'all',
+    statusFilter: 'all',
+    detailOrderId: null,
+    paymentDraft: { amount: '', method: 'Cash' },
+    maxDiscountPct: 15,
+    staffList: [
+      { id: 'S1', name: 'Amina Otieno', role: 'Staff' },
+      { id: 'S2', name: 'Brian Kimani', role: 'Staff' },
+      { id: 'S3', name: 'Grace Wanjiru', role: 'Supervisor' },
+    ],
+    services: [
+      { id: 'SV1', name: 'Embroidery', unit: 'piece', price: 350 },
+      { id: 'SV2', name: 'DTF Printing', unit: 'piece', price: 250 },
+      { id: 'SV3', name: 'UV Printing', unit: 'piece', price: 400 },
+      { id: 'SV4', name: 'Large Format Printing', unit: 'sqm', price: 600 },
+      { id: 'SV5', name: 'Digital Printing', unit: 'piece', price: 200 },
+      { id: 'SV6', name: 'DTF Sheet (per metre)', unit: 'metre', price: 800 },
+    ],
+    materials: [
+      { id: 'M1', name: 'Polo Shirt', price: 900 },
+      { id: 'M2', name: 'T-Shirt', price: 600 },
+      { id: 'M3', name: 'Cap', price: 450 },
+      { id: 'M4', name: 'Hoodie', price: 1500 },
+    ],
+    corporateClients: [
+      { id: 'C1', name: 'Zenith Sacco', creditDays: 30 },
+      { id: 'C2', name: 'Nairobi Bottlers Ltd', creditDays: 14 },
+    ],
+    nextWalkinNo: 1004,
+    nextCorpNo: 2004,
+    newStaffName: '', newStaffRole: 'Staff',
+    newServiceName: '', newServiceUnit: 'piece', newServicePrice: '',
+    newMaterialName: '', newMaterialPrice: '',
+    newClientName2: '', newClientCreditDays: '',
+    orders: [
+      { id: 'W-1001', kind: 'walkin', customerName: 'Peter Mwangi', phone: '0722000001', staffId: 'S1', createdDate: '2026-09-02', status: 'Order', stage: 'Completed', paymentTiming: 'onAcceptance',
+        lineItems: [{ itemType: 'material-service', serviceId: 'SV1', materialId: 'M1', qty: 20, unitPrice: 1250, discountPct: 5, discountAmt: 0 }],
+        orderDiscountPct: 0, orderDiscountAmt: 0,
+        payments: [{ date: '2026-09-02', amount: 20000, method: 'Cash' }, { date: '2026-09-05', amount: 3750, method: 'M-Pesa' }] },
+      { id: 'W-1002', kind: 'walkin', customerName: 'Susan Achieng', phone: '0722000002', staffId: 'S2', createdDate: '2026-09-06', status: 'Order', stage: 'In Production', paymentTiming: 'onCompletion',
+        lineItems: [{ itemType: 'service-only', serviceId: 'SV2', materialId: '', qty: 15, unitPrice: 250, discountPct: 0, discountAmt: 0 }],
+        orderDiscountPct: 0, orderDiscountAmt: 0, payments: [] },
+      { id: 'W-1003', kind: 'walkin', customerName: 'David Otieno', phone: '0722000003', staffId: 'S1', createdDate: '2026-09-08', status: 'Order', stage: 'Order Received', paymentTiming: 'onAcceptance',
+        lineItems: [{ itemType: 'per-metre', serviceId: 'SV6', materialId: '', qty: 5, unitPrice: 800, discountPct: 0, discountAmt: 0 }],
+        orderDiscountPct: 0, orderDiscountAmt: 0, payments: [{ date: '2026-09-08', amount: 2000, method: 'Cash' }] },
+      { id: 'C-2001', kind: 'corporate', corporateClientId: 'C1', staffId: 'S2', createdDate: '2026-08-28', status: 'Quote', stage: 'Order Received', dueDate: null,
+        lineItems: [{ itemType: 'material-service', serviceId: 'SV1', materialId: 'M1', qty: 100, unitPrice: 1250, discountPct: 10, discountAmt: 0 }],
+        orderDiscountPct: 5, orderDiscountAmt: 0, payments: [] },
+      { id: 'C-2002', kind: 'corporate', corporateClientId: 'C2', staffId: 'S1', createdDate: '2026-08-20', status: 'Invoice', stage: 'In Production', dueDate: '2026-09-03',
+        lineItems: [{ itemType: 'service-only', serviceId: 'SV4', materialId: '', qty: 40, unitPrice: 600, discountPct: 0, discountAmt: 5000 }],
+        orderDiscountPct: 0, orderDiscountAmt: 0, payments: [{ date: '2026-08-22', amount: 10000, method: 'Bank Transfer' }] },
+      { id: 'C-2003', kind: 'corporate', corporateClientId: 'C1', staffId: 'S2', createdDate: '2026-08-10', status: 'Invoice', stage: 'Completed', dueDate: '2026-09-09',
+        lineItems: [{ itemType: 'material-service', serviceId: 'SV3', materialId: 'M3', qty: 50, unitPrice: 1000, discountPct: 0, discountAmt: 0 }],
+        orderDiscountPct: 0, orderDiscountAmt: 0, payments: [{ date: '2026-08-12', amount: 25000, method: 'Bank Transfer' }, { date: '2026-09-01', amount: 25000, method: 'Bank Transfer' }] },
+    ],
+    walkinForm: null,
+    quoteForm: null,
+  };
+
+  constructor(props) {
+    super(props);
+    this.state.walkinForm = this.emptyWalkinForm();
+    this.state.quoteForm = this.emptyQuoteForm();
+  }
+
+  fmt(n) { return 'Ksh ' + Math.round(n || 0).toLocaleString('en-KE'); }
+
+  buildLineTotal(li) {
+    const qty = Number(li.qty) || 0, price = Number(li.unitPrice) || 0, pct = Number(li.discountPct) || 0, amt = Number(li.discountAmt) || 0;
+    return Math.max(0, qty * price * (1 - pct / 100) - amt);
+  }
+
+  computeOrderTotals(order) {
+    const subtotal = order.lineItems.reduce((a, li) => a + this.buildLineTotal(li), 0);
+    const opct = Number(order.orderDiscountPct) || 0, oamt = Number(order.orderDiscountAmt) || 0;
+    const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
+    const paidTotal = (order.payments || []).reduce((a, p) => a + (Number(p.amount) || 0), 0);
+    const balanceDue = Math.max(0, grandTotal - paidTotal);
+    const paidPct = grandTotal > 0 ? Math.min(100, (paidTotal / grandTotal) * 100) : (paidTotal > 0 ? 100 : 0);
+    return { subtotal, grandTotal, paidTotal, balanceDue, paidPct, orderDiscount: subtotal - grandTotal };
+  }
+
+  isOverdue(order, totals) {
+    return order.kind === 'corporate' && order.status === 'Invoice' && order.dueDate && order.dueDate < this.TODAY && totals.balanceDue > 0;
+  }
+
+  getStaffName(id) { const s = this.state.staffList.find(x => x.id === id); return s ? s.name : '—'; }
+  getServiceName(id) { const s = this.state.services.find(x => x.id === id); return s ? s.name : '—'; }
+  getMaterialName(id) { const m = this.state.materials.find(x => x.id === id); return m ? m.name : ''; }
+  getClientName(order) {
+    if (order.kind === 'corporate') { const c = this.state.corporateClients.find(x => x.id === order.corporateClientId); return c ? c.name : '—'; }
+    return order.customerName;
+  }
+
+  buildOrderRow(order) {
+    const totals = this.computeOrderTotals(order);
+    const overdue = this.isOverdue(order, totals);
+    const overdueTag = overdue ? 'Overdue' : (totals.balanceDue > 0 ? 'Pending' : 'Settled');
+    return {
+      id: order.id,
+      typeLabel: order.kind === 'corporate' ? 'Corporate' : 'Walk-in',
+      clientLabel: this.getClientName(order),
+      staffLabel: this.getStaffName(order.staffId),
+      statusLabel: order.status,
+      statusClass: order.status === 'Quote' ? 'tag tag-outline' : 'tag tag-accent',
+      stageLabel: order.status === 'Quote' ? '—' : order.stage,
+      totalFmt: this.fmt(totals.grandTotal),
+      paidFmt: this.fmt(totals.paidTotal),
+      balanceFmt: this.fmt(totals.balanceDue),
+      dueDateLabel: order.dueDate || '—',
+      overdueTag,
+      overdueClass: overdue ? 'tag tag-accent' : (totals.balanceDue > 0 ? 'tag tag-outline' : 'tag tag-neutral'),
+      progressStyle: { width: Math.round(totals.paidPct) + '%', height: '100%', background: 'var(--color-accent-600)' },
+      staffId: order.staffId,
+      balanceDue: totals.balanceDue,
+      onClick: () => this.openDetail(order.id),
+    };
+  }
+
+  buildLineRow(formKey, li, idx) {
+    const showMaterial = li.itemType === 'material-service';
+    const total = this.buildLineTotal(li);
+    return {
+      idx, itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId,
+      qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt,
+      showMaterial, showMaterialFalse: !showMaterial,
+      qtyLabel: li.itemType === 'per-metre' ? 'Metres' : 'Qty',
+      totalFmt: this.fmt(total),
+      onTypeChange: (e) => this.updateLine(formKey, idx, 'itemType', e.target.value),
+      onServiceChange: (e) => {
+        const sv = this.state.services.find(s => s.id === e.target.value);
+        this.updateLineMulti(formKey, idx, { serviceId: e.target.value, unitPrice: sv ? String(sv.price + (showMaterial ? (Number(li.unitPrice) - (this.state.services.find(s2 => s2.id === li.serviceId) || { price: 0 }).price) : 0)) : li.unitPrice });
+      },
+      onMaterialChange: (e) => {
+        const mt = this.state.materials.find(m => m.id === e.target.value);
+        const sv = this.state.services.find(s => s.id === li.serviceId);
+        this.updateLineMulti(formKey, idx, { materialId: e.target.value, unitPrice: String((sv ? sv.price : 0) + (mt ? mt.price : 0)) });
+      },
+      onQtyChange: (e) => this.updateLine(formKey, idx, 'qty', e.target.value),
+      onPriceChange: (e) => this.updateLine(formKey, idx, 'unitPrice', e.target.value),
+      onPctChange: (e) => this.updateLine(formKey, idx, 'discountPct', e.target.value),
+      onAmtChange: (e) => this.updateLine(formKey, idx, 'discountAmt', e.target.value),
+      onRemove: () => this.removeLine(formKey, idx),
+    };
+  }
+
+  updateLine(formKey, idx, field, value) { this.updateLineMulti(formKey, idx, { [field]: value }); }
+  updateLineMulti(formKey, idx, patch) {
+    this.setState(s => {
+      const form = { ...s[formKey] };
+      const items = form.lineItems.slice();
+      items[idx] = { ...items[idx], ...patch };
+      form.lineItems = items;
+      return { [formKey]: form };
+    });
+  }
+
+  defaultLine() {
+    const sv = this.state.services[0], mt = this.state.materials[0];
+    return { itemType: 'material-service', serviceId: sv.id, materialId: mt.id, qty: 1, unitPrice: sv.price + mt.price, discountPct: 0, discountAmt: 0 };
+  }
+
+  addLine(formKey) { this.setState(s => ({ [formKey]: { ...s[formKey], lineItems: [...s[formKey].lineItems, this.defaultLine()] } })); }
+  removeLine(formKey, idx) {
+    this.setState(s => {
+      const form = { ...s[formKey] };
+      form.lineItems = form.lineItems.filter((_, i) => i !== idx);
+      if (form.lineItems.length === 0) form.lineItems = [this.defaultLine()];
+      return { [formKey]: form };
+    });
+  }
+  updateFormField(formKey, field, value) { this.setState(s => ({ [formKey]: { ...s[formKey], [field]: value } })); }
+
+  computeFormTotals(form) {
+    const subtotal = form.lineItems.reduce((a, li) => a + this.buildLineTotal(li), 0);
+    const opct = Number(form.orderDiscountPct) || 0, oamt = Number(form.orderDiscountAmt) || 0;
+    const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
+    return { subtotalFmt: this.fmt(subtotal), grandTotalFmt: this.fmt(grandTotal) };
+  }
+
+  emptyWalkinForm() { return { customerName: '', phone: '', staffId: this.state.currentStaffId, lineItems: [this.defaultLine()], orderDiscountPct: 0, orderDiscountAmt: 0, paymentTiming: 'onAcceptance', paymentAmount: '', paymentMethod: 'Cash' }; }
+  emptyQuoteForm() { return { corporateClientId: this.state.corporateClients[0].id, staffId: this.state.currentStaffId, lineItems: [this.defaultLine()], orderDiscountPct: 0, orderDiscountAmt: 0 }; }
+
+  submitWalkinOrder() {
+    const form = this.state.walkinForm;
+    if (!form.customerName.trim()) return;
+    const payments = [];
+    if (form.paymentTiming === 'onAcceptance' && Number(form.paymentAmount) > 0) payments.push({ date: this.TODAY, amount: Number(form.paymentAmount), method: form.paymentMethod });
+    const newOrder = {
+      id: 'W-' + this.state.nextWalkinNo, kind: 'walkin', customerName: form.customerName, phone: form.phone, staffId: form.staffId,
+      createdDate: this.TODAY, status: 'Order', stage: 'Order Received', paymentTiming: form.paymentTiming,
+      lineItems: form.lineItems.map(li => ({ ...li })), orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt, payments,
+    };
+    this.setState(prev => ({ orders: [newOrder, ...prev.orders], nextWalkinNo: prev.nextWalkinNo + 1, walkinForm: this.emptyWalkinForm(), activeTab: 'my-orders' }));
+  }
+
+  submitQuote() {
+    const form = this.state.quoteForm;
+    const newOrder = {
+      id: 'C-' + this.state.nextCorpNo, kind: 'corporate', corporateClientId: form.corporateClientId, staffId: form.staffId,
+      createdDate: this.TODAY, status: 'Quote', stage: 'Order Received', dueDate: null,
+      lineItems: form.lineItems.map(li => ({ ...li })), orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt, payments: [],
+    };
+    this.setState(prev => ({ orders: [newOrder, ...prev.orders], nextCorpNo: prev.nextCorpNo + 1, quoteForm: this.emptyQuoteForm(), activeTab: 'my-orders' }));
+  }
+
+  addDays(dateStr, days) { const d = new Date(dateStr + 'T00:00:00'); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); }
+
+  convertToInvoice(orderId) {
+    this.setState(prev => ({
+      orders: prev.orders.map(o => {
+        if (o.id !== orderId) return o;
+        const client = prev.corporateClients.find(c => c.id === o.corporateClientId);
+        const days = client ? client.creditDays : 30;
+        return { ...o, status: 'Invoice', dueDate: this.addDays(this.TODAY, days) };
+      }),
+    }));
+  }
+
+  openDetail(id) { this.setState({ detailOrderId: id, paymentDraft: { amount: '', method: 'Cash' } }); }
+  closeDetail() { this.setState({ detailOrderId: null }); }
+  updatePaymentDraft(field, value) { this.setState(s => ({ paymentDraft: { ...s.paymentDraft, [field]: value } })); }
+
+  addPayment(orderId) {
+    const amt = Number(this.state.paymentDraft.amount);
+    if (!amt || amt <= 0) return;
+    this.setState(prev => ({
+      orders: prev.orders.map(o => o.id === orderId ? { ...o, payments: [...o.payments, { date: this.TODAY, amount: amt, method: prev.paymentDraft.method }] } : o),
+      paymentDraft: { amount: '', method: 'Cash' },
+    }));
+  }
+
+  setStage(orderId, stage) { this.setState(prev => ({ orders: prev.orders.map(o => o.id === orderId ? { ...o, stage } : o) })); }
+
+  setRole(role) { this.setState({ role, activeTab: role === 'Staff' ? 'walkin-new' : 'all-orders' }); }
+  setActiveTab(id) { this.setState({ activeTab: id }); }
+  setMasterTab(id) { this.setState({ masterTab: id }); }
+
+  addStaffMember() {
+    const name = this.state.newStaffName.trim(); if (!name) return;
+    const id = 'S' + (this.state.staffList.length + 1) + Math.floor(Math.random() * 89 + 10);
+    this.setState(s => ({ staffList: [...s.staffList, { id, name, role: s.newStaffRole }], newStaffName: '', newStaffRole: 'Staff' }));
+  }
+  addServiceItem() {
+    const name = this.state.newServiceName.trim(); const price = Number(this.state.newServicePrice);
+    if (!name || !price) return;
+    this.setState(s => ({ services: [...s.services, { id: 'SV' + (s.services.length + 1), name, unit: s.newServiceUnit, price }], newServiceName: '', newServicePrice: '', newServiceUnit: 'piece' }));
+  }
+  addMaterialItem() {
+    const name = this.state.newMaterialName.trim(); const price = Number(this.state.newMaterialPrice);
+    if (!name || !price) return;
+    this.setState(s => ({ materials: [...s.materials, { id: 'M' + (s.materials.length + 1), name, price }], newMaterialName: '', newMaterialPrice: '' }));
+  }
+  addCorporateClientEntry() {
+    const name = this.state.newClientName2.trim(); const days = Number(this.state.newClientCreditDays) || 30;
+    if (!name) return;
+    this.setState(s => ({ corporateClients: [...s.corporateClients, { id: 'C' + (s.corporateClients.length + 1), name, creditDays: days }], newClientName2: '', newClientCreditDays: '' }));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const staffOnlyList = s.staffList.filter(x => x.role === 'Staff');
+    const isStaffRole = s.role === 'Staff';
+
+    const makeToggle = (id, label, current, onClick) => ({ id, label, btnClass: 'btn ' + (current === id ? 'btn-primary' : 'btn-secondary') + ' blueprint', onClick });
+    const roleButtons = ['Staff', 'Supervisor', 'Admin'].map(r => makeToggle(r, r, s.role, () => this.setRole(r)));
+
+    let tabDefs = [];
+    if (s.role === 'Staff') tabDefs = [['walkin-new', 'New Walk-in Order'], ['quote-new', 'New Quotation'], ['my-orders', 'My Orders']];
+    else if (s.role === 'Supervisor') tabDefs = [['all-orders', 'All Orders'], ['pending-payments', 'Pending Payments']];
+    else tabDefs = [['all-orders', 'All Orders'], ['pending-payments', 'Pending Payments'], ['master-data', 'Master Data']];
+    const tabs = tabDefs.map(([id, label]) => makeToggle(id, label, s.activeTab, () => this.setActiveTab(id)));
+
+    const walkinLineRows = s.walkinForm.lineItems.map((li, idx) => this.buildLineRow('walkinForm', li, idx));
+    const quoteLineRows = s.quoteForm.lineItems.map((li, idx) => this.buildLineRow('quoteForm', li, idx));
+    const walkinTotals = this.computeFormTotals(s.walkinForm);
+    const quoteTotals = this.computeFormTotals(s.quoteForm);
+    const walkinDiscountWarning = (Number(s.walkinForm.orderDiscountPct) || 0) > s.maxDiscountPct || s.walkinForm.lineItems.some(li => (Number(li.discountPct) || 0) > s.maxDiscountPct);
+    const quoteDiscountWarning = (Number(s.quoteForm.orderDiscountPct) || 0) > s.maxDiscountPct || s.quoteForm.lineItems.some(li => (Number(li.discountPct) || 0) > s.maxDiscountPct);
+
+    const allRows = s.orders.map(o => this.buildOrderRow(o));
+    const myOrders = allRows.filter(r => r.staffId === s.currentStaffId);
+    let filteredAll = allRows;
+    if (s.staffFilter !== 'all') filteredAll = filteredAll.filter(r => r.staffId === s.staffFilter);
+    if (s.statusFilter !== 'all') filteredAll = filteredAll.filter(r => r.statusLabel === s.statusFilter);
+
+    const isAllOrders = s.activeTab === 'all-orders';
+    const visibleOrderRows = s.activeTab === 'my-orders' ? myOrders : filteredAll;
+
+    const kpis = [
+      { label: 'Total orders', value: String(s.orders.length) },
+      { label: 'In production', value: String(s.orders.filter(o => o.stage === 'In Production').length) },
+      { label: 'Pending balance', value: this.fmt(allRows.reduce((a, r) => a + r.balanceDue, 0)) },
+      { label: 'Overdue invoices', value: String(allRows.filter(r => r.overdueTag === 'Overdue').length) },
+    ];
+
+    const pendingRows = allRows.filter(r => r.balanceDue > 0);
+
+    const masterTabDefs = [['staff', 'Staff & Users'], ['services', 'Service Price List'], ['materials', 'Material Price List'], ['clients', 'Corporate Clients'], ['discount', 'Discount Rules']];
+    const masterTabs = masterTabDefs.map(([id, label]) => makeToggle(id, label, s.masterTab, () => this.setMasterTab(id)));
+
+    let detail = null;
+    if (s.detailOrderId) {
+      const order = s.orders.find(o => o.id === s.detailOrderId);
+      if (order) {
+        const totals = this.computeOrderTotals(order);
+        const overdue = this.isOverdue(order, totals);
+        detail = {
+          id: order.id,
+          statusLabel: order.status,
+          statusClass: order.status === 'Quote' ? 'tag tag-outline' : 'tag tag-accent',
+          clientLabel: this.getClientName(order),
+          staffLabel: this.getStaffName(order.staffId),
+          createdDate: order.createdDate,
+          itemRows: order.lineItems.map(li => ({
+            label: this.getServiceName(li.serviceId) + (li.materialId ? ' + ' + this.getMaterialName(li.materialId) : ''),
+            qty: li.qty,
+            unitPriceFmt: this.fmt(li.unitPrice),
+            discountLabel: (Number(li.discountPct) || 0) + '% / ' + this.fmt(li.discountAmt),
+            totalFmt: this.fmt(this.buildLineTotal(li)),
+          })),
+          subtotalFmt: this.fmt(totals.subtotal),
+          orderDiscountFmt: this.fmt(totals.orderDiscount),
+          grandTotalFmt: this.fmt(totals.grandTotal),
+          stages: this.STAGES.map(st => ({ label: st, btnClass: 'btn btn-sm ' + (order.stage === st ? 'btn-primary' : 'btn-secondary'), onClick: () => this.setStage(order.id, st) })),
+          paymentRows: order.payments.map(p => ({ date: p.date, amountFmt: this.fmt(p.amount), method: p.method })),
+          noPayments: order.payments.length === 0,
+          balanceFmt: this.fmt(totals.balanceDue),
+          isOverdue: overdue,
+          dueDateLabel: order.dueDate || '—',
+          canConvert: order.status === 'Quote',
+        };
+      }
+    }
+
+    return {
+      isStaffRole, currentStaffId: s.currentStaffId, staffOnlyList, roleButtons, tabs,
+      onChangeCurrentStaff: (e) => this.setState({ currentStaffId: e.target.value }),
+
+      tabWalkinNew: s.activeTab === 'walkin-new', tabQuoteNew: s.activeTab === 'quote-new',
+      showOrdersTable: s.activeTab === 'my-orders' || s.activeTab === 'all-orders',
+      isAllOrders, kpis,
+      tabPendingPayments: s.activeTab === 'pending-payments', tabMasterData: s.activeTab === 'master-data',
+
+      walkinForm: s.walkinForm, walkinLineRows, walkinTotals, walkinDiscountWarning,
+      walkinPayNow: s.walkinForm.paymentTiming === 'onAcceptance', walkinPayLater: s.walkinForm.paymentTiming === 'onCompletion',
+      onWalkinCustomerName: (e) => this.updateFormField('walkinForm', 'customerName', e.target.value),
+      onWalkinPhone: (e) => this.updateFormField('walkinForm', 'phone', e.target.value),
+      onWalkinStaff: (e) => this.updateFormField('walkinForm', 'staffId', e.target.value),
+      onWalkinPayNow: () => this.updateFormField('walkinForm', 'paymentTiming', 'onAcceptance'),
+      onWalkinPayLater: () => this.updateFormField('walkinForm', 'paymentTiming', 'onCompletion'),
+      onAddWalkinLine: () => this.addLine('walkinForm'),
+      onWalkinOrderPct: (e) => this.updateFormField('walkinForm', 'orderDiscountPct', e.target.value),
+      onWalkinOrderAmt: (e) => this.updateFormField('walkinForm', 'orderDiscountAmt', e.target.value),
+      onWalkinPaymentAmount: (e) => this.updateFormField('walkinForm', 'paymentAmount', e.target.value),
+      onWalkinPaymentMethod: (e) => this.updateFormField('walkinForm', 'paymentMethod', e.target.value),
+      onSubmitWalkin: () => this.submitWalkinOrder(),
+
+      quoteForm: s.quoteForm, quoteLineRows, quoteTotals, quoteDiscountWarning,
+      onQuoteClient: (e) => this.updateFormField('quoteForm', 'corporateClientId', e.target.value),
+      onQuoteStaff: (e) => this.updateFormField('quoteForm', 'staffId', e.target.value),
+      onAddQuoteLine: () => this.addLine('quoteForm'),
+      onQuoteOrderPct: (e) => this.updateFormField('quoteForm', 'orderDiscountPct', e.target.value),
+      onQuoteOrderAmt: (e) => this.updateFormField('quoteForm', 'orderDiscountAmt', e.target.value),
+      onSubmitQuote: () => this.submitQuote(),
+
+      services: s.services.map(sv => ({ ...sv, priceFmt: this.fmt(sv.price) })),
+      materials: s.materials.map(mt => ({ ...mt, priceFmt: this.fmt(mt.price) })),
+      corporateClients: s.corporateClients.map(c => ({ ...c, creditLabel: c.creditDays + ' days' })),
+
+      visibleOrderRows, noVisibleOrders: visibleOrderRows.length === 0,
+      staffFilter: s.staffFilter, statusFilter: s.statusFilter,
+      onStaffFilter: (e) => this.setState({ staffFilter: e.target.value }),
+      onStatusFilter: (e) => this.setState({ statusFilter: e.target.value }),
+
+      pendingRows, noPendingRows: pendingRows.length === 0,
+
+      masterTabs,
+      msStaff: s.masterTab === 'staff', msServices: s.masterTab === 'services', msMaterials: s.masterTab === 'materials', msClients: s.masterTab === 'clients', msDiscount: s.masterTab === 'discount',
+      staffList: s.staffList,
+      newStaffName: s.newStaffName, newStaffRole: s.newStaffRole,
+      onNewStaffName: (e) => this.setState({ newStaffName: e.target.value }),
+      onNewStaffRole: (e) => this.setState({ newStaffRole: e.target.value }),
+      onAddStaff: () => this.addStaffMember(),
+      newServiceName: s.newServiceName, newServiceUnit: s.newServiceUnit, newServicePrice: s.newServicePrice,
+      onNewServiceName: (e) => this.setState({ newServiceName: e.target.value }),
+      onNewServiceUnit: (e) => this.setState({ newServiceUnit: e.target.value }),
+      onNewServicePrice: (e) => this.setState({ newServicePrice: e.target.value }),
+      onAddService: () => this.addServiceItem(),
+      newMaterialName: s.newMaterialName, newMaterialPrice: s.newMaterialPrice,
+      onNewMaterialName: (e) => this.setState({ newMaterialName: e.target.value }),
+      onNewMaterialPrice: (e) => this.setState({ newMaterialPrice: e.target.value }),
+      onAddMaterial: () => this.addMaterialItem(),
+      newClientName2: s.newClientName2, newClientCreditDays: s.newClientCreditDays,
+      onNewClientName: (e) => this.setState({ newClientName2: e.target.value }),
+      onNewClientDays: (e) => this.setState({ newClientCreditDays: e.target.value }),
+      onAddClient: () => this.addCorporateClientEntry(),
+      maxDiscountPct: s.maxDiscountPct,
+      onMaxDiscount: (e) => this.setState({ maxDiscountPct: Number(e.target.value) || 0 }),
+
+      hasDetail: !!detail, detail: detail || {},
+      paymentDraft: s.paymentDraft,
+      onPaymentDraftAmount: (e) => this.updatePaymentDraft('amount', e.target.value),
+      onPaymentDraftMethod: (e) => this.updatePaymentDraft('method', e.target.value),
+      onAddPayment: () => this.addPayment(s.detailOrderId),
+      onConvertToInvoice: () => this.convertToInvoice(s.detailOrderId),
+      onCloseDetail: () => this.closeDetail(),
+    };
+  }
+}
+</script>
+</body>
+</html>

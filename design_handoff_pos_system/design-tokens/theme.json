@@ -1,0 +1,18 @@
+{
+  "name": "Industry",
+  "palette": {
+    "hue": 210, "band": "light", "scheme": "mono", "sat": 0.3,
+    "bg": "#f2f2f3", "surface": "#e9e9ea", "text": "#1d1f20",
+    "accent": "#5980a6", "accent2": "#728fab"
+  },
+  "fonts": {
+    "heading": { "family": "Barlow Condensed", "class": "grotesque", "weights": [400, 600] },
+    "body": { "family": "Barlow", "class": "grotesque", "weights": [400, 500, 700] }
+  },
+  "density": 0.85,
+  "radius": 4,
+  "layoutStyle": "grid",
+  "frame": "blueprint",
+  "imageTreatment": "duotone",
+  "iconSet": "lucide-thin"
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+.DS_Store
+.claude/settings.local.json
+*.tsbuildinfo

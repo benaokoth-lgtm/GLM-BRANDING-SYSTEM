@@ -1,0 +1,35 @@
+.login-shell {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: var(--space-6);
+}
+.login-card {
+  width: min(720px, 100%); display: grid; grid-template-columns: 1fr 1fr;
+  gap: var(--space-6); padding: var(--space-8);
+}
+.login-users { display: flex; flex-direction: column; gap: var(--space-2); }
+.login-user-btn {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3); cursor: pointer; text-align: left;
+  background: transparent; border: 1px solid var(--color-divider); border-radius: 0;
+  font: inherit; color: var(--color-text);
+}
+.login-user-btn.selected { border-color: var(--color-accent); background: var(--color-accent-100); }
+.login-user-avatar {
+  width: 34px; height: 34px; flex: none; display: grid; place-items: center;
+  border: 1px solid var(--color-divider); font-family: var(--font-heading); font-size: 13px;
+}
+.login-pin-dots { display: flex; gap: var(--space-2); justify-content: center; margin: var(--space-4) 0; }
+.login-pin-dot { width: 14px; height: 14px; border: 1.5px solid var(--color-divider); border-radius: 50%; }
+.login-pin-dot.filled { background: var(--color-accent); border-color: var(--color-accent); }
+.login-pin-dots.shake { animation: shake 0.3s; }
+@keyframes shake {
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+.login-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
+.login-pad button {
+  min-height: 52px; font-family: var(--font-heading); font-size: 18px;
+  background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 0; cursor: pointer;
+}
+.login-pad button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.login-error { color: #a33; font-size: 13px; text-align: center; min-height: 18px; }

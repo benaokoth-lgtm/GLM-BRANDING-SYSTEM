@@ -48,11 +48,21 @@ model Service {
 // calc as any other artwork, so film-usage tracking stays exactly as
 // accurate. Not tied to a specific Service — any sqm-priced, film-tracked
 // service can use these. Editable by Admin in Master Data.
+//
+// Stored as length x width (not just area) so a captured artwork's real
+// dimensions can be matched against a band as a bounding box — an artwork
+// only "fits" a band if it fits within both the band's length AND width,
+// since two shapes can share an area while one is too long/narrow to
+// actually sit in a given slot. areaSqm is still stored (derived from
+// lengthCm x widthCm server-side) since it's what feeds the film-length
+// calc and is cheaper to read than recomputing everywhere.
 model ArtworkSizeBand {
-  id      Int    @id @default(autoincrement())
-  label   String // e.g. "6cm x 6cm"
-  areaSqm Float
-  price   Float // flat Ksh per piece at this size
+  id       Int    @id @default(autoincrement())
+  label    String // e.g. "6cm x 6cm"
+  lengthCm Float
+  widthCm  Float
+  areaSqm  Float
+  price    Float // flat Ksh per piece at this size
 }
 
 model Material {

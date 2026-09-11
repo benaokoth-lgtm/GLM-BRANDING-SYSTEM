@@ -37,7 +37,8 @@ export default function MasterData() {
   const [reorderDrafts, setReorderDrafts] = useState<Record<number, string>>({});
 
   const [newBandLabel, setNewBandLabel] = useState('');
-  const [newBandAreaSqm, setNewBandAreaSqm] = useState('');
+  const [newBandLengthCm, setNewBandLengthCm] = useState('');
+  const [newBandWidthCm, setNewBandWidthCm] = useState('');
   const [newBandPrice, setNewBandPrice] = useState('');
 
   const [newClientName, setNewClientName] = useState('');
@@ -154,14 +155,16 @@ export default function MasterData() {
   }
 
   async function addBand() {
-    const areaSqm = Number(newBandAreaSqm);
+    const lengthCm = Number(newBandLengthCm);
+    const widthCm = Number(newBandWidthCm);
     const price = Number(newBandPrice);
-    if (!newBandLabel.trim() || !areaSqm || !price) return setError('Label, size (sqm) and price are all required');
+    if (!newBandLabel.trim() || !lengthCm || !widthCm || !price) return setError('Label, length, width and price are all required');
     setError(null);
     try {
-      await api.post('/master-data/artwork-size-bands', { label: newBandLabel, areaSqm, price });
+      await api.post('/master-data/artwork-size-bands', { label: newBandLabel, lengthCm, widthCm, price });
       setNewBandLabel('');
-      setNewBandAreaSqm('');
+      setNewBandLengthCm('');
+      setNewBandWidthCm('');
       setNewBandPrice('');
       catalog.reload();
     } catch (err) {
@@ -477,14 +480,18 @@ export default function MasterData() {
         <>
           <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
             Flat "quick pick" prices for common small DTF artwork sizes — an alternative to the area × Ksh/sqm
-            formula, which underprices tiny prints dominated by fixed setup/press time rather than material. Shows as
-            "Quick size" on order line items for any sqm-priced, film-tracked service; film usage still deducts
-            correctly off each size's area.
+            formula, which underprices tiny prints dominated by fixed setup/press time rather than material. When
+            staff capture an artwork's length × width, it's automatically matched to the smallest band it fits
+            within (both length and width, either orientation) — a strict match, no rounding; anything too big for
+            every band falls back to the normal formula. Film usage still deducts correctly off the matched band's
+            area.
           </p>
           <table className="table">
             <thead>
               <tr>
                 <th>Size</th>
+                <th>Length (cm)</th>
+                <th>Width (cm)</th>
                 <th>Area (sqm)</th>
                 <th>Price (Ksh)</th>
                 <th></th>
@@ -494,6 +501,8 @@ export default function MasterData() {
               {catalog.artworkSizeBands.map((b) => (
                 <tr key={b.id}>
                   <td>{b.label}</td>
+                  <td className="text-muted">{b.lengthCm}</td>
+                  <td className="text-muted">{b.widthCm}</td>
                   <td className="text-muted">{b.areaSqm}</td>
                   <td>{fmtKsh(b.price)}</td>
                   <td className="no-print">
@@ -506,14 +515,18 @@ export default function MasterData() {
             </tbody>
           </table>
           {catalog.artworkSizeBands.length === 0 && <p className="note">No artwork size bands yet — add one below.</p>}
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.8fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.7fr 0.7fr 0.8fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 860 }}>
             <div className="field">
               <label>Size label</label>
               <input className="input" value={newBandLabel} onChange={(e) => setNewBandLabel(e.target.value)} placeholder="e.g. 6cm x 6cm" />
             </div>
             <div className="field">
-              <label>Area (sqm)</label>
-              <input className="input" value={newBandAreaSqm} onChange={(e) => setNewBandAreaSqm(e.target.value)} placeholder="e.g. 0.0036" />
+              <label>Length (cm)</label>
+              <input className="input" value={newBandLengthCm} onChange={(e) => setNewBandLengthCm(e.target.value)} placeholder="e.g. 6" />
+            </div>
+            <div className="field">
+              <label>Width (cm)</label>
+              <input className="input" value={newBandWidthCm} onChange={(e) => setNewBandWidthCm(e.target.value)} placeholder="e.g. 6" />
             </div>
             <div className="field">
               <label>Price (Ksh)</label>

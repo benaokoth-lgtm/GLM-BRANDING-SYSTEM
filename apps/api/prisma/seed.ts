@@ -55,7 +55,7 @@ async function main() {
   // Only the 6cm x 6cm price (Ksh 50, confirmed with GLM) is seeded — other
   // sizes like 8cm x 8cm should be added with their real prices in Master
   // Data rather than guessed here.
-  await prisma.artworkSizeBand.create({ data: { label: '6cm x 6cm', areaSqm: 0.0036, price: 50 } });
+  await prisma.artworkSizeBand.create({ data: { label: '6cm x 6cm', lengthCm: 6, widthCm: 6, areaSqm: 0.0036, price: 50 } });
 
   const [zenith, nairobiBottlers] = await Promise.all([
     prisma.corporateClient.create({ data: { name: 'Zenith Sacco', creditDays: 30 } }),

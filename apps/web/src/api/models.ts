@@ -26,6 +26,8 @@ export interface CatalogMaterial {
 export interface ArtworkSizeBand {
   id: number;
   label: string;
+  lengthCm: number;
+  widthCm: number;
   areaSqm: number;
   price: number;
 }

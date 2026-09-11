@@ -74,29 +74,46 @@ masterDataRouter.get('/artwork-size-bands', async (_req, res) => {
 
 const artworkSizeBandSchema = z.object({
   label: z.string().min(1),
-  areaSqm: z.number().positive(),
+  lengthCm: z.number().positive(),
+  widthCm: z.number().positive(),
   price: z.number().positive(),
 });
 
 masterDataRouter.post('/artwork-size-bands', requireRole('Admin'), async (req, res) => {
   const parsed = artworkSizeBandSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  res.status(201).json(await prisma.artworkSizeBand.create({ data: parsed.data }));
+  const { label, lengthCm, widthCm, price } = parsed.data;
+  const areaSqm = (lengthCm * widthCm) / 10000;
+  res.status(201).json(await prisma.artworkSizeBand.create({ data: { label, lengthCm, widthCm, areaSqm, price } }));
 });
 
 const artworkSizeBandUpdateSchema = z
   .object({
     label: z.string().min(1).optional(),
-    areaSqm: z.number().positive().optional(),
+    lengthCm: z.number().positive().optional(),
+    widthCm: z.number().positive().optional(),
     price: z.number().positive().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
+// areaSqm is never accepted directly — it's re-derived server-side from
+// lengthCm x widthCm whenever either changes, so it can never drift out of
+// sync with the dimensions that actually define the band.
 masterDataRouter.put('/artwork-size-bands/:id', requireRole('Admin'), async (req, res) => {
   const parsed = artworkSizeBandUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const band = await prisma.artworkSizeBand.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
-  if (!band) return res.status(404).json({ error: 'Artwork size band not found' });
+
+  const existing = await prisma.artworkSizeBand.findUnique({ where: { id: Number(req.params.id) } });
+  if (!existing) return res.status(404).json({ error: 'Artwork size band not found' });
+
+  const lengthCm = parsed.data.lengthCm ?? existing.lengthCm;
+  const widthCm = parsed.data.widthCm ?? existing.widthCm;
+  const areaSqm = (lengthCm * widthCm) / 10000;
+
+  const band = await prisma.artworkSizeBand.update({
+    where: { id: existing.id },
+    data: { ...parsed.data, lengthCm, widthCm, areaSqm },
+  });
   res.json(band);
 });
 

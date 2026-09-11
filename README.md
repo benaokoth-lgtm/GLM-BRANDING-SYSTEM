@@ -180,14 +180,22 @@ own roster.
   - **Master Data → Artwork Size Bands** are flat "quick pick" prices for common small
     artwork sizes (e.g. "6cm x 6cm" → Ksh 50, seeded from GLM's confirmed real price) — an
     alternative to the area × Ksh/sqm formula, which underprices tiny prints dominated by
-    fixed setup/press time rather than material. A "Quick size" dropdown appears above
-    Artwork size (sqm) on any sqm-priced, film-tracked line whenever at least one band
-    exists; picking one sets both the flat price *and* the area together, so film usage
-    still deducts exactly as accurately as a custom-sized artwork — only the price
-    diverges from the formula. Not tied to a specific service, so any future sqm-priced
-    film-tracked service could use the same bands. Only one band ships seeded (the
-    confirmed 6x6cm price) — add more (e.g. 8x8cm) once GLM confirms their real prices,
-    rather than guessing.
+    fixed setup/press time rather than material. Bands store `lengthCm`/`widthCm` (not
+    just a derived `areaSqm`, recomputed server-side whenever either changes), since two
+    shapes can share an area while one is too long/narrow to actually fit a slot.
+  - Two ways to apply a band on an order line: the **"Quick size" dropdown** (a manual
+    pick, above Artwork size (sqm)), or **auto-match via the 📐 calculator**
+    (`ArtworkSizeDialog.tsx`'s `findMatchingBand`) — staff enter the artwork's real
+    length × width and the smallest band it strictly fits within (both dimensions,
+    either orientation, no rounding) is applied automatically, with a live preview
+    before confirming; if it's bigger than every band in both orientations, the normal
+    area formula applies instead. Either path sets price *and* area together, so film
+    usage always deducts exactly as accurately as a custom-sized artwork — only the
+    price diverges from the formula, and a "Matched: <label>" tag on the line item
+    confirms which band applied. Not tied to a specific service, so any future
+    sqm-priced film-tracked service could reuse the same bands. Only one band ships
+    seeded (the confirmed 6x6cm price) — add more (e.g. 8x8cm) once GLM confirms real
+    prices, rather than guessing.
 - **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO

@@ -194,6 +194,9 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
         const tracksFilm = !isMaterial && !!rowService?.tracksFilm;
         const isSqmFilmService = tracksFilm && rowService?.unit === 'sqm';
         const chargesPressingFee = !isMaterial && !!rowService?.chargesPressingFee;
+        const matchedBand = isSqmFilmService
+          ? artworkSizeBands.find((b) => Number(row.artworkAreaSqm) === b.areaSqm && Number(row.unitPrice) === b.price)
+          : undefined;
         const baseCols = '1.3fr 1.3fr 0.7fr 0.9fr 0.7fr 0.7fr';
         const extraCols = (isSqmFilmService ? ' 0.9fr' : '') + (tracksFilm ? ' 0.8fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
         const cols = baseCols + extraCols + ' auto';
@@ -274,6 +277,11 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
                   📐
                 </button>
               </div>
+              {matchedBand && (
+                <span className="tag tag-neutral" style={{ fontSize: 10, marginTop: 2 }}>
+                  Matched: {matchedBand.label}
+                </span>
+              )}
             </div>
           )}
           <div className="field" style={{ margin: 0 }}>
@@ -335,8 +343,9 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
         for the cap, then a Service line for the print job. A Service line with no matching Material line above it
         means the client brought their own item. For an sqm-priced print service, enter one artwork's size and the
         quantity — unit price and film used are computed for you (multiply area × Ksh/sqm rate, and area × qty for
-        total film). Small, common artwork sizes can instead use "Quick size" for a flat pre-set price (set up in
-        Master Data → Artwork Size Bands) — film usage still tracks correctly off that size's area.
+        total film). Small, common artwork sizes can instead use "Quick size", or the 📐 calculator, which
+        auto-matches a predefined band from the length × width you enter (set up in Master Data → Artwork Size
+        Bands) — either way, film usage still tracks correctly off that size's area.
       </p>
       {missingArtworkArea && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
@@ -358,8 +367,18 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
       )}
       {calcIdx !== null && (
         <ArtworkSizeDialog
-          onApply={(areaSqm) => {
-            updateLine(calcIdx, { artworkAreaSqm: areaSqm });
+          artworkSizeBands={artworkSizeBands}
+          onApply={({ areaSqm, band }) => {
+            // Always set unitPrice explicitly here (never leave it to the
+            // auto-sync heuristic in updateLine) — the calculator is a
+            // fresh computation each time, so a previous band's flat price
+            // must never linger once the artwork no longer matches it.
+            if (band) {
+              updateLine(calcIdx, { artworkAreaSqm: band.areaSqm, unitPrice: band.price });
+            } else {
+              const sv = services.find((s) => s.id === lineItems[calcIdx].serviceId);
+              updateLine(calcIdx, { artworkAreaSqm: areaSqm, unitPrice: sv ? computedUnitPrice(sv.price, areaSqm) : 0 });
+            }
             setCalcIdx(null);
           }}
           onClose={() => setCalcIdx(null)}

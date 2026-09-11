@@ -1,4 +1,4 @@
-import { HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
+import { FILM_ROLL_WIDTH_M, HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
 import type { CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
 
 interface Props {
@@ -25,6 +25,7 @@ function defaultLine(services: CatalogService[], materials: CatalogMaterial[]): 
     discountAmt: 0,
     filmLengthM: '',
     heatPressFee: '',
+    artworkAreaSqm: '',
   };
 }
 
@@ -32,21 +33,65 @@ export function makeDefaultLine(services: CatalogService[], materials: CatalogMa
   return defaultLine(services, materials);
 }
 
+// Per-piece price for an sqm-priced, film-tracked service (e.g. DTF
+// Printing): a single artwork's area × the service's Ksh/sqm rate.
+function computedUnitPrice(rate: number, areaSqm: number): number {
+  return Math.round(rate * areaSqm * 100) / 100;
+}
+
+// Total film consumed across all pieces, in linear metres off the fixed
+// roll width — the same unit FilmRoll/FilmUsage track in everywhere else.
+function computedFilmLengthM(areaSqm: number, qty: number): number {
+  return Math.round((areaSqm * qty * 100) / FILM_ROLL_WIDTH_M) / 100;
+}
+
+function initialUnitPriceFor(sv: CatalogService | undefined): number {
+  // An sqm-priced, film-tracked service (DTF Printing) has no artwork area
+  // yet on a fresh selection, so its per-piece price starts at 0 rather
+  // than the raw Ksh/sqm rate — it fills in once an area is entered.
+  if (sv?.unit === 'sqm' && sv.tracksFilm) return 0;
+  return sv?.price ?? 0;
+}
+
 export default function LineItemsEditor({ lineItems, services, materials, onChange }: Props) {
   function updateLine(idx: number, patch: Partial<DraftLineItem>) {
     const next = lineItems.slice();
     const current = next[idx];
     const merged: DraftLineItem = { ...current, ...patch };
-
-    // For a per-metre film-tracked service, Film used (m) defaults to match
-    // Metres — most jobs consume exactly what's billed, and it's an easy
-    // trap to fill in Metres and assume that alone logs film usage. Only
-    // auto-sync while the two are still in sync (or film length hasn't been
-    // set yet) so an explicit override to Film used (m) itself always wins.
     const sv = services.find((s) => s.id === merged.serviceId);
+
+    // For a per-metre film-tracked service (DTF Sheet), Film used (m)
+    // defaults to match Metres — most jobs consume exactly what's billed.
+    // Only auto-sync while the two are still in sync (or film length hasn't
+    // been set yet) so an explicit override to Film used (m) always wins.
     if (sv?.tracksFilm && sv.unit === 'metre' && !('filmLengthM' in patch)) {
       const inSync = current.filmLengthM === '' || current.filmLengthM == null || String(current.filmLengthM) === String(current.qty);
       if (inSync) merged.filmLengthM = merged.qty;
+    }
+
+    // For an sqm-priced, film-tracked service (DTF Printing), a single
+    // artwork's area × the service's Ksh/sqm rate gives the per-piece
+    // price, and that same area × quantity gives the total film consumed
+    // (converted to linear metres). Both recompute whenever area or qty
+    // changes, but only while still in sync with what was last
+    // auto-computed — an explicit override to Unit price or Film used (m)
+    // itself always wins.
+    if (sv?.tracksFilm && sv.unit === 'sqm') {
+      const area = Number(merged.artworkAreaSqm) || 0;
+      const qty = Number(merged.qty) || 0;
+
+      if (!('unitPrice' in patch)) {
+        const prevArea = Number(current.artworkAreaSqm) || 0;
+        const priceInSync = current.unitPrice === '' || current.unitPrice == null || Number(current.unitPrice) === computedUnitPrice(sv.price, prevArea);
+        if (priceInSync) merged.unitPrice = area > 0 ? computedUnitPrice(sv.price, area) : '';
+      }
+
+      if (!('filmLengthM' in patch)) {
+        const prevArea = Number(current.artworkAreaSqm) || 0;
+        const prevQty = Number(current.qty) || 0;
+        const filmInSync = current.filmLengthM === '' || current.filmLengthM == null || Number(current.filmLengthM) === computedFilmLengthM(prevArea, prevQty);
+        if (filmInSync) merged.filmLengthM = area > 0 && qty > 0 ? computedFilmLengthM(area, qty) : '';
+      }
     }
 
     next[idx] = merged;
@@ -56,16 +101,16 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
   function handleTypeChange(idx: number, itemType: DraftLineItem['itemType']) {
     if (itemType === 'material') {
       const mt = materials.find((m) => m.id === lineItems[idx].materialId) ?? materials[0];
-      updateLine(idx, { itemType, serviceId: null, materialId: mt?.id ?? null, unitPrice: mt?.price ?? 0 });
+      updateLine(idx, { itemType, serviceId: null, materialId: mt?.id ?? null, unitPrice: mt?.price ?? 0, artworkAreaSqm: '' });
     } else {
       const sv = services.find((s) => s.id === lineItems[idx].serviceId) ?? services[0];
-      updateLine(idx, { itemType, materialId: null, serviceId: sv?.id ?? null, unitPrice: sv?.price ?? 0 });
+      updateLine(idx, { itemType, materialId: null, serviceId: sv?.id ?? null, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '' });
     }
   }
 
   function handleServiceChange(idx: number, serviceId: number) {
     const sv = services.find((s) => s.id === serviceId);
-    updateLine(idx, { serviceId, unitPrice: sv?.price ?? 0 });
+    updateLine(idx, { serviceId, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '', filmLengthM: '' });
   }
 
   function handleMaterialChange(idx: number, materialId: number) {
@@ -103,6 +148,11 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
     return sv?.tracksFilm && !(Number(li.filmLengthM) > 0);
   });
 
+  const missingArtworkArea = lineItems.some((li) => {
+    const sv = services.find((s) => s.id === li.serviceId);
+    return sv?.tracksFilm && sv.unit === 'sqm' && !(Number(li.artworkAreaSqm) > 0);
+  });
+
   const missingPressingFee = lineItems.some((li) => {
     const sv = services.find((s) => s.id === li.serviceId);
     return sv?.chargesPressingFee && !(Number(li.heatPressFee) > 0);
@@ -127,9 +177,10 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         const isMaterial = row.itemType === 'material';
         const rowService = services.find((sv) => sv.id === row.serviceId);
         const tracksFilm = !isMaterial && !!rowService?.tracksFilm;
+        const isSqmFilmService = tracksFilm && rowService?.unit === 'sqm';
         const chargesPressingFee = !isMaterial && !!rowService?.chargesPressingFee;
         const baseCols = '1.3fr 1.3fr 0.7fr 0.9fr 0.7fr 0.7fr';
-        const extraCols = (tracksFilm ? ' 0.8fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
+        const extraCols = (isSqmFilmService ? ' 0.9fr' : '') + (tracksFilm ? ' 0.8fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
         const cols = baseCols + extraCols + ' auto';
         return (
         <div
@@ -178,6 +229,17 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
             <label>{row.itemType === 'per-metre' ? 'Metres' : 'Qty'}</label>
             <input className="input" value={row.qty} onChange={(e) => updateLine(idx, { qty: e.target.value })} />
           </div>
+          {isSqmFilmService && (
+            <div className="field" style={{ margin: 0 }}>
+              <label>Artwork size (sqm)</label>
+              <input
+                className="input"
+                value={row.artworkAreaSqm}
+                onChange={(e) => updateLine(idx, { artworkAreaSqm: e.target.value })}
+                placeholder="e.g. 0.06"
+              />
+            </div>
+          )}
           <div className="field" style={{ margin: 0 }}>
             <label>Unit price</label>
             <input className="input" value={row.unitPrice} onChange={(e) => updateLine(idx, { unitPrice: e.target.value })} />
@@ -198,6 +260,7 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
                 value={row.filmLengthM}
                 onChange={(e) => updateLine(idx, { filmLengthM: e.target.value })}
                 placeholder={row.itemType === 'per-metre' ? String(row.qty) : 'e.g. 2.5'}
+                readOnly={isSqmFilmService}
               />
             </div>
           )}
@@ -234,9 +297,17 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
       <p className="note" style={{ marginTop: 'var(--space-2)' }}>
         Selling and servicing the same item (e.g. printing a cap you're also selling) is two lines: a Material line
         for the cap, then a Service line for the print job. A Service line with no matching Material line above it
-        means the client brought their own item.
+        means the client brought their own item. For an sqm-priced print service, enter one artwork's size and the
+        quantity — unit price and film used are computed for you (multiply area × Ksh/sqm rate, and area × qty for
+        total film).
       </p>
-      {missingFilmLength && (
+      {missingArtworkArea && (
+        <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+          <span className="tag tag-accent">Artwork size not entered</span> — fill in "Artwork size (sqm)" so price and
+          film usage compute correctly.
+        </p>
+      )}
+      {missingFilmLength && !missingArtworkArea && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
           <span className="tag tag-accent">Film usage not entered</span> — fill in "Film used (m)" on the DTF line(s)
           above so it logs against the active film roll.

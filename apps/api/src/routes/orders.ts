@@ -85,6 +85,7 @@ function serializeDetail(order: FullOrder) {
       discountAmt: li.discountAmt,
       filmLengthM: li.filmLengthM,
       heatPressFee: li.heatPressFee,
+      artworkAreaSqm: li.artworkAreaSqm,
       lineTotal: buildLineTotal(toLineItemInput(li)),
     })),
     payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method })),
@@ -134,6 +135,7 @@ const lineItemSchema = z
     discountAmt: z.number().min(0).default(0),
     filmLengthM: z.number().positive().nullable().optional(),
     heatPressFee: z.number().nonnegative().nullable().optional(),
+    artworkAreaSqm: z.number().positive().nullable().optional(),
   })
   .refine((li) => (li.itemType === 'material' ? !!li.materialId : !!li.serviceId), {
     message: 'A material line needs a material, a service line needs a service',

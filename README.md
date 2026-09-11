@@ -154,6 +154,17 @@ own roster.
     - discountPct/100) - discountAmt`), shown on printed invoices/receipts and the order
     detail dialog, and folded into the effective rate used for film-roll revenue/margin
     tracking above. A tag warns if it's left blank on a line item that needs one.
+  - **DTF Printing is priced per sqm, not per piece** (unit "sqm", seeded at Ksh 750/sqm —
+    the midpoint of the Ksh 667–833/sqm band implied by the existing 400–500/linear-metre
+    film sale). A service that's both unit "sqm" and "Tracks film" shows an "Artwork size
+    (sqm)" field on its line items instead of a flat price: staff enter one artwork's area
+    and the quantity of pieces, and the system computes both the per-piece price (area ×
+    Ksh/sqm rate) and the total film consumed (area × qty, converted to linear metres via
+    `FILM_ROLL_WIDTH_M` = 0.6m) — shown read-only on the line, editable by hand if it's
+    ever wrong. The per-metre film sale (DTF Sheet) is unchanged; both mechanisms deduct
+    from the same active roll. Unit and price for any service are now editable in place in
+    Master Data → Service Price List (not just Admin-only creation), so this is
+    reconfigurable without a code change.
 - **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO

@@ -224,6 +224,14 @@ model OrderLineItem {
   // Staff-picked heat press fee (Ksh/piece), added to unitPrice before qty
   // and discounts — only meaningful when service.chargesPressingFee is true.
   heatPressFee Float?
+  // Single-artwork print area (sqm) — only meaningful when service.unit is
+  // 'sqm' and service.tracksFilm is true (e.g. DTF Printing priced per
+  // sqm/artwork rather than per running metre). qty × artworkAreaSqm gives
+  // both the per-piece price (area × service.price, the Ksh/sqm rate) and
+  // the total film consumed (÷ FILM_ROLL_WIDTH_M for linear metres) — both
+  // computed client-side into unitPrice/filmLengthM, stored here too for
+  // traceability.
+  artworkAreaSqm Float?
 }
 
 // DTF transfer-film roll inventory. One Active roll at a time; every metre

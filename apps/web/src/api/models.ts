@@ -67,6 +67,7 @@ export interface OrderLineItemView {
   discountAmt: number;
   filmLengthM: number | null;
   heatPressFee: number | null;
+  artworkAreaSqm: number | null;
   lineTotal: number;
 }
 
@@ -251,6 +252,7 @@ export interface DraftLineItem {
   discountAmt: number | string;
   filmLengthM: number | string;
   heatPressFee: number | string;
+  artworkAreaSqm: number | string;
 }
 
 export interface FilmRollRow {

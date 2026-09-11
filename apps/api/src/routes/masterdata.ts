@@ -46,12 +46,17 @@ masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
   res.status(201).json(await prisma.service.create({ data: parsed.data }));
 });
 
-// Flags whether a service consumes DTF transfer film, and/or charges a
-// staff-picked heat press fee — toggled by Admin, same access level as
-// adding a service, since these are catalog definition properties rather
-// than day-to-day operational values.
+// Price/unit and the film/pressing-fee flags are all catalog definition
+// properties — Admin-only, same access level as adding a service. Lets
+// Admin reconfigure a service in place (e.g. switching DTF Printing from a
+// flat per-piece price to a per-sqm rate) instead of needing a new service.
 const serviceUpdateSchema = z
-  .object({ tracksFilm: z.boolean().optional(), chargesPressingFee: z.boolean().optional() })
+  .object({
+    price: z.number().positive().optional(),
+    unit: z.enum(['piece', 'metre', 'sqm']).optional(),
+    tracksFilm: z.boolean().optional(),
+    chargesPressingFee: z.boolean().optional(),
+  })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
 masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => {

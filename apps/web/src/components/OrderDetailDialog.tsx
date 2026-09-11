@@ -139,6 +139,11 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <tr key={li.id}>
                   <td>
                     {[li.serviceName, li.materialName].filter(Boolean).join(' + ')}
+                    {li.artworkAreaSqm != null && (
+                      <div className="text-muted" style={{ fontSize: 11 }}>
+                        Artwork: {li.artworkAreaSqm} sqm × {li.qty} pcs
+                      </div>
+                    )}
                     {li.filmLengthM != null && (
                       <div className="text-muted" style={{ fontSize: 11 }}>
                         Film used: {li.filmLengthM} m

@@ -29,6 +29,7 @@ export default function MasterData() {
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceUnit, setNewServiceUnit] = useState<'piece' | 'metre' | 'sqm'>('piece');
   const [newServicePrice, setNewServicePrice] = useState('');
+  const [servicePriceDrafts, setServicePriceDrafts] = useState<Record<number, string>>({});
 
   const [newMaterialName, setNewMaterialName] = useState('');
   const [newMaterialPrice, setNewMaterialPrice] = useState('');
@@ -103,6 +104,33 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update service');
+    }
+  }
+
+  async function saveServicePrice(serviceId: number, value: string) {
+    const price = Number(value);
+    if (!price || price <= 0) return;
+    setError(null);
+    try {
+      await api.put(`/master-data/services/${serviceId}`, { price });
+      setServicePriceDrafts((d) => {
+        const next = { ...d };
+        delete next[serviceId];
+        return next;
+      });
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update service price');
+    }
+  }
+
+  async function changeServiceUnit(serviceId: number, unit: 'piece' | 'metre' | 'sqm') {
+    setError(null);
+    try {
+      await api.put(`/master-data/services/${serviceId}`, { unit });
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update service unit');
     }
   }
 
@@ -282,8 +310,26 @@ export default function MasterData() {
               {catalog.services.map((sv) => (
                 <tr key={sv.id}>
                   <td>{sv.name}</td>
-                  <td className="text-muted">{sv.unit}</td>
-                  <td>{fmtKsh(sv.price)}</td>
+                  <td>
+                    <select className="input" style={{ width: 90 }} value={sv.unit} onChange={(e) => changeServiceUnit(sv.id, e.target.value as 'piece' | 'metre' | 'sqm')}>
+                      <option value="piece">piece</option>
+                      <option value="metre">metre</option>
+                      <option value="sqm">sqm</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      style={{ width: 100 }}
+                      value={servicePriceDrafts[sv.id] ?? String(sv.price)}
+                      onChange={(e) => setServicePriceDrafts((d) => ({ ...d, [sv.id]: e.target.value }))}
+                      onBlur={(e) => saveServicePrice(sv.id, e.target.value)}
+                    />
+                    <span className="text-muted" style={{ fontSize: 11 }}>
+                      {' '}
+                      /{sv.unit}
+                    </span>
+                  </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={sv.tracksFilm} onChange={(e) => toggleTracksFilm(sv.id, e.target.checked)} />
@@ -301,10 +347,13 @@ export default function MasterData() {
             </tbody>
           </table>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Services flagged "Tracks film" show a Film used (m) field on order line items, feeding Film → Film Usage
-            and decrementing the active film roll. Services flagged "Charges pressing fee" show a staff-picked heat
-            press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM prints and presses,
-            not a pure film sale.
+            Unit and price are editable in place — a service flagged both "Tracks film" and unit "sqm" (e.g. DTF
+            Printing) shows an "Artwork size (sqm)" field on order line items instead of a flat per-piece price:
+            price and film used are computed from one artwork's area × quantity, at the Ksh/sqm rate set here.
+            Services flagged "Tracks film" with unit "metre" (e.g. DTF Sheet) instead default Film used (m) to match
+            Metres — a pure film sale, unaffected by pressing fees. Services flagged "Charges pressing fee" show a
+            staff-picked heat press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM
+            prints and presses.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
             <div className="field">

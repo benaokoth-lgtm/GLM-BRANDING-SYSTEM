@@ -34,6 +34,7 @@ export default function NewQuotation() {
     discountAmt: Number(li.discountAmt) || 0,
     filmLengthM: Number(li.filmLengthM) > 0 ? Number(li.filmLengthM) : undefined,
     heatPressFee: Number(li.heatPressFee) > 0 ? Number(li.heatPressFee) : undefined,
+    artworkAreaSqm: Number(li.artworkAreaSqm) > 0 ? Number(li.artworkAreaSqm) : undefined,
   }));
   const totals = computeOrderTotals({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 });
   const discountWarning = exceedsDiscountCeiling({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 }, maxDiscountPct);

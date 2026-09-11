@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { DTF_PRINT_DEFAULT_RATE_PER_SQM } from '@glm/shared';
 
 const prisma = new PrismaClient();
 
@@ -36,7 +37,7 @@ async function main() {
 
   const [embroidery, dtf, uv, largeFormat, digital, dtfSheet] = await Promise.all([
     prisma.service.create({ data: { name: 'Embroidery', unit: 'piece', price: 350 } }),
-    prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 250, tracksFilm: true, chargesPressingFee: true } }),
+    prisma.service.create({ data: { name: 'DTF Printing', unit: 'sqm', price: DTF_PRINT_DEFAULT_RATE_PER_SQM, tracksFilm: true, chargesPressingFee: true } }),
     prisma.service.create({ data: { name: 'UV Printing', unit: 'piece', price: 400 } }),
     prisma.service.create({ data: { name: 'Large Format Printing', unit: 'sqm', price: 600 } }),
     prisma.service.create({ data: { name: 'Digital Printing', unit: 'piece', price: 200 } }),
@@ -78,7 +79,14 @@ async function main() {
       orderNo: 'W-1002', kind: 'walkin', customerName: 'Susan Achieng', phone: '0722000002',
       staffId: brian.id, createdDate: '2026-09-06', status: 'Order', stage: 'In Production', paymentTiming: 'onCompletion',
       orderDiscountPct: 0, orderDiscountAmt: 0,
-      lineItems: { create: [{ itemType: 'service', serviceId: dtf.id, materialId: null, qty: 15, unitPrice: 250, discountPct: 0, discountAmt: 0 }] },
+      // Client's own T-shirts, printed and pressed: a 0.1 sqm artwork on 15
+      // pieces — DTF Printing's new sqm-based pricing (0.1 x 750 = Ksh 75/pc)
+      // plus a staff-picked heat press fee, and 2.5m of film consumed
+      // (0.1 x 15 / 0.6m roll width).
+      lineItems: { create: [{
+        itemType: 'service', serviceId: dtf.id, materialId: null, qty: 15, unitPrice: 75,
+        discountPct: 0, discountAmt: 0, artworkAreaSqm: 0.1, filmLengthM: 2.5, heatPressFee: 25,
+      }] },
     },
   });
 

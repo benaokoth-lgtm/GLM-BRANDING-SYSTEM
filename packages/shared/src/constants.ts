@@ -64,3 +64,9 @@ export const FILM_ROLL_WIDTH_M = 0.6;
 // so pricing stays within GLM's approved band. Only applies to jobs where
 // GLM prints AND presses (e.g. DTF Printing) — never on a pure film sale.
 export const HEAT_PRESS_FEE_OPTIONS = [20, 25, 30, 35, 40, 45, 50] as const;
+
+// Default per-sqm rate for artwork-based DTF Printing — the midpoint of the
+// Ksh 667-833/sqm band implied by GLM's existing 400-500/linear-metre film
+// sale (400-500 ÷ FILM_ROLL_WIDTH_M), so the per-artwork service starts from
+// the same economics as the per-metre film sale. Editable in Master Data.
+export const DTF_PRINT_DEFAULT_RATE_PER_SQM = 750;

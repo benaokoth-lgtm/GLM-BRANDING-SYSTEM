@@ -156,10 +156,12 @@ export async function logFilmUsageForOrder(
     orderId: number;
     date: string;
     capturedByName: string;
-    lineItems: { serviceId: number; filmLengthM: number | null | undefined; lineTotal: number }[];
+    lineItems: { serviceId: number | null | undefined; filmLengthM: number | null | undefined; lineTotal: number }[];
   },
 ) {
-  const filmLines = params.lineItems.filter((li): li is typeof li & { filmLengthM: number } => !!li.filmLengthM && li.filmLengthM > 0);
+  const filmLines = params.lineItems.filter(
+    (li): li is typeof li & { serviceId: number; filmLengthM: number } => !!li.serviceId && !!li.filmLengthM && li.filmLengthM > 0,
+  );
   if (filmLines.length === 0) return;
 
   const serviceIds = [...new Set(filmLines.map((li) => li.serviceId))];

@@ -10,7 +10,7 @@ function esc(s: string): string {
 function ticketItemsHtml(order: OrderDetail): string {
   return order.lineItems
     .map((li) => {
-      const label = esc(li.serviceName + (li.materialName ? ' + ' + li.materialName : ''));
+      const label = esc([li.serviceName, li.materialName].filter(Boolean).join(' + '));
       const unit = li.itemType === 'per-metre' ? 'm' : '';
       const pressNote = li.heatPressFee ? `<div class="disc">+ ${fmtKsh(li.heatPressFee)} heat press fee/pc</div>` : '';
       const discNote =

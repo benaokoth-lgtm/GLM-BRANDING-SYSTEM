@@ -21,7 +21,7 @@ type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
 function toLineItemInput(li: {
   itemType: string;
-  serviceId: number;
+  serviceId: number | null;
   materialId: number | null;
   qty: number;
   unitPrice: number;
@@ -76,7 +76,7 @@ function serializeDetail(order: FullOrder) {
       id: li.id,
       itemType: li.itemType,
       serviceId: li.serviceId,
-      serviceName: li.service.name,
+      serviceName: li.service?.name ?? null,
       materialId: li.materialId,
       materialName: li.material?.name ?? null,
       qty: li.qty,
@@ -120,17 +120,24 @@ ordersRouter.get('/:id', async (req, res) => {
   res.json(serializeDetail(order));
 });
 
-const lineItemSchema = z.object({
-  itemType: z.enum(['material-service', 'service-only', 'per-metre']),
-  serviceId: z.number().int(),
-  materialId: z.number().int().nullable().optional(),
-  qty: z.number().positive(),
-  unitPrice: z.number().nonnegative(),
-  discountPct: z.number().min(0).max(100).default(0),
-  discountAmt: z.number().min(0).default(0),
-  filmLengthM: z.number().positive().nullable().optional(),
-  heatPressFee: z.number().nonnegative().nullable().optional(),
-});
+// A line is either a material sale ('material': materialId set, no service)
+// or a service fee ('service'/'per-metre': serviceId set, no material) —
+// never both, matching the schema.prisma comment on OrderLineItem.
+const lineItemSchema = z
+  .object({
+    itemType: z.enum(['material', 'service', 'per-metre']),
+    serviceId: z.number().int().nullable().optional(),
+    materialId: z.number().int().nullable().optional(),
+    qty: z.number().positive(),
+    unitPrice: z.number().nonnegative(),
+    discountPct: z.number().min(0).max(100).default(0),
+    discountAmt: z.number().min(0).default(0),
+    filmLengthM: z.number().positive().nullable().optional(),
+    heatPressFee: z.number().nonnegative().nullable().optional(),
+  })
+  .refine((li) => (li.itemType === 'material' ? !!li.materialId : !!li.serviceId), {
+    message: 'A material line needs a material, a service line needs a service',
+  });
 
 const walkinSchema = z.object({
   customerName: z.string().min(1),
@@ -168,7 +175,7 @@ ordersRouter.post('/walkin', requireRole('Staff'), async (req, res) => {
         paymentTiming: form.paymentTiming,
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, materialId: li.materialId ?? null })) },
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
         payments:
           form.paymentTiming === 'onAcceptance' && form.paymentAmount && form.paymentAmount > 0
             ? { create: [{ date: todayStr(), amount: form.paymentAmount, method: form.paymentMethod ?? 'Cash', staffId: form.staffId }] }
@@ -222,7 +229,7 @@ ordersRouter.post('/quote', requireRole('Staff'), async (req, res) => {
         stage: 'Order Received',
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, materialId: li.materialId ?? null })) },
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
       },
       include: orderInclude,
     });

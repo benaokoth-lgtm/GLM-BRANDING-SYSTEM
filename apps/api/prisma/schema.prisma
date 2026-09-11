@@ -198,13 +198,20 @@ model Order {
   filmUsages FilmUsage[]
 }
 
+// A line item is either a standalone material sale (Cap, Polo Shirt, canvas,
+// ...) or a standalone service fee (DTF Printing, Embroidery, Large Format
+// Printing, ...) — never both. Selling and servicing the same physical item
+// (e.g. print a client's own cap) is two separate line items: a 'material'
+// line for the cap and a 'service' line for the print job, rather than one
+// combined row — so serviceId/materialId are each optional, with exactly one
+// set per row depending on itemType (validated at the API layer).
 model OrderLineItem {
   id          Int      @id @default(autoincrement())
   orderId     Int
   order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  itemType    String // 'material-service' | 'service-only' | 'per-metre'
-  serviceId   Int
-  service     Service  @relation(fields: [serviceId], references: [id])
+  itemType    String // 'material' | 'service' | 'per-metre'
+  serviceId   Int?
+  service     Service? @relation(fields: [serviceId], references: [id])
   materialId  Int?
   material    Material? @relation(fields: [materialId], references: [id])
   qty         Float

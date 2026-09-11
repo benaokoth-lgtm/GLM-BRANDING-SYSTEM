@@ -62,7 +62,10 @@ async function main() {
       orderNo: 'W-1001', kind: 'walkin', customerName: 'Peter Mwangi', phone: '0722000001',
       staffId: amina.id, createdDate: '2026-09-02', status: 'Order', stage: 'Completed', paymentTiming: 'onAcceptance',
       orderDiscountPct: 0, orderDiscountAmt: 0,
-      lineItems: { create: [{ itemType: 'material-service', serviceId: embroidery.id, materialId: polo.id, qty: 20, unitPrice: 1250, discountPct: 5, discountAmt: 0 }] },
+      lineItems: { create: [
+        { itemType: 'material', materialId: polo.id, qty: 20, unitPrice: 900, discountPct: 5, discountAmt: 0 },
+        { itemType: 'service', serviceId: embroidery.id, qty: 20, unitPrice: 350, discountPct: 5, discountAmt: 0 },
+      ] },
       payments: { create: [
         { date: '2026-09-02', amount: 20000, method: 'Cash', staffId: amina.id },
         { date: '2026-09-05', amount: 3750, method: 'M-Pesa', staffId: amina.id },
@@ -75,7 +78,7 @@ async function main() {
       orderNo: 'W-1002', kind: 'walkin', customerName: 'Susan Achieng', phone: '0722000002',
       staffId: brian.id, createdDate: '2026-09-06', status: 'Order', stage: 'In Production', paymentTiming: 'onCompletion',
       orderDiscountPct: 0, orderDiscountAmt: 0,
-      lineItems: { create: [{ itemType: 'service-only', serviceId: dtf.id, materialId: null, qty: 15, unitPrice: 250, discountPct: 0, discountAmt: 0 }] },
+      lineItems: { create: [{ itemType: 'service', serviceId: dtf.id, materialId: null, qty: 15, unitPrice: 250, discountPct: 0, discountAmt: 0 }] },
     },
   });
 
@@ -94,7 +97,10 @@ async function main() {
       orderNo: 'C-2001', kind: 'corporate', corporateClientId: zenith.id,
       staffId: brian.id, createdDate: '2026-08-28', status: 'Quote', stage: 'Order Received', dueDate: null,
       orderDiscountPct: 5, orderDiscountAmt: 0,
-      lineItems: { create: [{ itemType: 'material-service', serviceId: embroidery.id, materialId: polo.id, qty: 100, unitPrice: 1250, discountPct: 10, discountAmt: 0 }] },
+      lineItems: { create: [
+        { itemType: 'material', materialId: polo.id, qty: 100, unitPrice: 900, discountPct: 10, discountAmt: 0 },
+        { itemType: 'service', serviceId: embroidery.id, qty: 100, unitPrice: 350, discountPct: 10, discountAmt: 0 },
+      ] },
     },
   });
 
@@ -103,7 +109,7 @@ async function main() {
       orderNo: 'C-2002', kind: 'corporate', corporateClientId: nairobiBottlers.id,
       staffId: amina.id, createdDate: '2026-08-20', status: 'Invoice', stage: 'In Production', dueDate: '2026-09-03',
       orderDiscountPct: 0, orderDiscountAmt: 0,
-      lineItems: { create: [{ itemType: 'service-only', serviceId: largeFormat.id, materialId: null, qty: 40, unitPrice: 600, discountPct: 0, discountAmt: 5000 }] },
+      lineItems: { create: [{ itemType: 'service', serviceId: largeFormat.id, materialId: null, qty: 40, unitPrice: 600, discountPct: 0, discountAmt: 5000 }] },
       payments: { create: [{ date: '2026-08-22', amount: 10000, method: 'Bank Transfer', staffId: amina.id }] },
     },
   });
@@ -113,7 +119,10 @@ async function main() {
       orderNo: 'C-2003', kind: 'corporate', corporateClientId: zenith.id,
       staffId: brian.id, createdDate: '2026-08-10', status: 'Invoice', stage: 'Completed', dueDate: '2026-09-09',
       orderDiscountPct: 0, orderDiscountAmt: 0,
-      lineItems: { create: [{ itemType: 'material-service', serviceId: uv.id, materialId: cap.id, qty: 50, unitPrice: 1000, discountPct: 0, discountAmt: 0 }] },
+      lineItems: { create: [
+        { itemType: 'material', materialId: cap.id, qty: 50, unitPrice: 450, discountPct: 0, discountAmt: 0 },
+        { itemType: 'service', serviceId: uv.id, qty: 50, unitPrice: 550, discountPct: 0, discountAmt: 0 },
+      ] },
       payments: { create: [
         { date: '2026-08-12', amount: 25000, method: 'Bank Transfer', staffId: brian.id },
         { date: '2026-09-01', amount: 25000, method: 'Bank Transfer', staffId: brian.id },

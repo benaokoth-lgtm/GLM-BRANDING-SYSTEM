@@ -42,6 +42,7 @@ async function loadOrdersForPnl(): Promise<OrderForPnl[]> {
       unitPrice: li.unitPrice,
       discountPct: li.discountPct,
       discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee,
     })),
     payments: o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] })),
   }));

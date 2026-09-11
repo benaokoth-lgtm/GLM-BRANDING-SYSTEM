@@ -8,15 +8,19 @@ interface Props {
   onChange: (items: DraftLineItem[]) => void;
 }
 
+// A line is either a material sale (Cap, Polo Shirt, canvas, ...) or a
+// service fee (DTF Printing, Embroidery, Large Format Printing, ...) — never
+// both. Selling and servicing the same physical item is two separate line
+// items (a material line, then a service line), not one combined row — so
+// new lines default to a material sale, the natural first step.
 function defaultLine(services: CatalogService[], materials: CatalogMaterial[]): DraftLineItem {
-  const sv = services[0];
   const mt = materials[0];
   return {
-    itemType: 'material-service',
-    serviceId: sv?.id ?? 0,
+    itemType: 'material',
+    serviceId: null,
     materialId: mt?.id ?? null,
     qty: 1,
-    unitPrice: (sv?.price ?? 0) + (mt?.price ?? 0),
+    unitPrice: mt?.price ?? 0,
     discountPct: 0,
     discountAmt: 0,
     filmLengthM: '',
@@ -50,26 +54,23 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
   }
 
   function handleTypeChange(idx: number, itemType: DraftLineItem['itemType']) {
-    const li = lineItems[idx];
-    const sv = services.find((s) => s.id === li.serviceId);
-    const mt = materials.find((m) => m.id === li.materialId);
-    const unitPrice = itemType === 'material-service' ? (sv?.price ?? 0) + (mt?.price ?? 0) : sv?.price ?? 0;
-    updateLine(idx, { itemType, unitPrice });
+    if (itemType === 'material') {
+      const mt = materials.find((m) => m.id === lineItems[idx].materialId) ?? materials[0];
+      updateLine(idx, { itemType, serviceId: null, materialId: mt?.id ?? null, unitPrice: mt?.price ?? 0 });
+    } else {
+      const sv = services.find((s) => s.id === lineItems[idx].serviceId) ?? services[0];
+      updateLine(idx, { itemType, materialId: null, serviceId: sv?.id ?? null, unitPrice: sv?.price ?? 0 });
+    }
   }
 
   function handleServiceChange(idx: number, serviceId: number) {
-    const li = lineItems[idx];
     const sv = services.find((s) => s.id === serviceId);
-    const mt = materials.find((m) => m.id === li.materialId);
-    const unitPrice = li.itemType === 'material-service' ? (sv?.price ?? 0) + (mt?.price ?? 0) : sv?.price ?? 0;
-    updateLine(idx, { serviceId, unitPrice });
+    updateLine(idx, { serviceId, unitPrice: sv?.price ?? 0 });
   }
 
   function handleMaterialChange(idx: number, materialId: number) {
-    const li = lineItems[idx];
-    const sv = services.find((s) => s.id === li.serviceId);
     const mt = materials.find((m) => m.id === materialId);
-    updateLine(idx, { materialId, unitPrice: (sv?.price ?? 0) + (mt?.price ?? 0) });
+    updateLine(idx, { materialId, unitPrice: mt?.price ?? 0 });
   }
 
   function addLine() {
@@ -123,10 +124,11 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
       </div>
 
       {lineItems.map((row, idx) => {
+        const isMaterial = row.itemType === 'material';
         const rowService = services.find((sv) => sv.id === row.serviceId);
-        const tracksFilm = !!rowService?.tracksFilm;
-        const chargesPressingFee = !!rowService?.chargesPressingFee;
-        const baseCols = row.itemType === 'material-service' ? '1.3fr 1fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr' : '1.3fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr';
+        const tracksFilm = !isMaterial && !!rowService?.tracksFilm;
+        const chargesPressingFee = !isMaterial && !!rowService?.chargesPressingFee;
+        const baseCols = '1.3fr 1.3fr 0.7fr 0.9fr 0.7fr 0.7fr';
         const extraCols = (tracksFilm ? ' 0.8fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
         const cols = baseCols + extraCols + ' auto';
         return (
@@ -144,28 +146,29 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
           <div className="field" style={{ margin: 0 }}>
             <label>Type</label>
             <select className="input" value={row.itemType} onChange={(e) => handleTypeChange(idx, e.target.value as DraftLineItem['itemType'])}>
-              <option value="material-service">Material + Service</option>
-              <option value="service-only">Service only (client's item)</option>
+              <option value="material">Material</option>
+              <option value="service">Service</option>
               <option value="per-metre">Per-metre service</option>
             </select>
           </div>
-          <div className="field" style={{ margin: 0 }}>
-            <label>Service</label>
-            <select className="input" value={row.serviceId} onChange={(e) => handleServiceChange(idx, Number(e.target.value))}>
-              {services.map((sv) => (
-                <option key={sv.id} value={sv.id}>
-                  {sv.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {row.itemType === 'material-service' && (
+          {isMaterial ? (
             <div className="field" style={{ margin: 0 }}>
               <label>Material</label>
               <select className="input" value={row.materialId ?? ''} onChange={(e) => handleMaterialChange(idx, Number(e.target.value))}>
                 {materials.map((mt) => (
                   <option key={mt.id} value={mt.id}>
                     {mt.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="field" style={{ margin: 0 }}>
+              <label>Service</label>
+              <select className="input" value={row.serviceId ?? ''} onChange={(e) => handleServiceChange(idx, Number(e.target.value))}>
+                {services.map((sv) => (
+                  <option key={sv.id} value={sv.id}>
+                    {sv.name}
                   </option>
                 ))}
               </select>
@@ -228,6 +231,11 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         </button>
         <div style={{ textAlign: 'right', fontFamily: 'var(--font-heading)' }}>Subtotal: {fmtKsh(subtotal)}</div>
       </div>
+      <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+        Selling and servicing the same item (e.g. printing a cap you're also selling) is two lines: a Material line
+        for the cap, then a Service line for the print job. A Service line with no matching Material line above it
+        means the client brought their own item.
+      </p>
       {missingFilmLength && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
           <span className="tag tag-accent">Film usage not entered</span> — fill in "Film used (m)" on the DTF line(s)

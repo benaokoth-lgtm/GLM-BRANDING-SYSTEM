@@ -138,8 +138,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
               {detail.lineItems.map((li) => (
                 <tr key={li.id}>
                   <td>
-                    {li.serviceName}
-                    {li.materialName ? ` + ${li.materialName}` : ''}
+                    {[li.serviceName, li.materialName].filter(Boolean).join(' + ')}
                     {li.filmLengthM != null && (
                       <div className="text-muted" style={{ fontSize: 11 }}>
                         Film used: {li.filmLengthM} m

@@ -127,6 +127,7 @@ financeRouter.get('/vat', async (req, res) => {
       unitPrice: li.unitPrice,
       discountPct: li.discountPct,
       discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee,
     })),
   }));
 

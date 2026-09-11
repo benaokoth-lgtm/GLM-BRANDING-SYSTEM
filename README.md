@@ -65,6 +65,13 @@ own roster.
 - Order/line-item totals are always computed from source values (qty, price,
   discounts, payments) via `packages/shared/src/calc.ts` — never stored, so there's
   nothing to fall out of sync.
+- **Materials and services are always separate line items** — there's no combined
+  "material + service" row. Selling a material GLM stocks (Cap, Polo Shirt, canvas, ...)
+  is a `material` line; a service fee (DTF Printing, Embroidery, Large Format Printing,
+  ...) is its own `service` line. Printing/servicing an item GLM also sold is two lines
+  (a material line, then a service line); a service line with no matching material line
+  means the client brought their own item — no separate flag needed, the presence or
+  absence of the material line says it.
 - Walk-in and quotation capture are Staff-only actions, matching the design handoff:
   Supervisor/Admin trace and manage but don't originate new orders.
 - The P&L account's cost-of-sales % is a single adjustable assumption (default 40% of
@@ -151,4 +158,9 @@ own roster.
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO
   `YYYY-MM-DD`, as the HTML date input requires).
+- **API crash safety**: `express-async-errors` is imported at the top of `apps/api/src/app.ts`
+  so a rejected promise inside any async route handler (a bad foreign key, an unexpected
+  DB error) is forwarded to a catch-all error middleware and returned as a clean JSON 500
+  — without it, Express 4 lets that rejection crash the whole process, taking the API
+  down for every user over a single bad request.
 - No production deployment config yet (cPanel/Vercel) — add when ready to ship.

@@ -30,7 +30,7 @@ export default function NewWalkinOrder() {
 
   const normalized = items.map((li) => ({
     itemType: li.itemType,
-    serviceId: Number(li.serviceId),
+    serviceId: li.serviceId != null ? Number(li.serviceId) : null,
     materialId: li.materialId,
     qty: Number(li.qty) || 0,
     unitPrice: Number(li.unitPrice) || 0,

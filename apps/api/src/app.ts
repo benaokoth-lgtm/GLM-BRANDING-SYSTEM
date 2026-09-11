@@ -1,5 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+// Patches Express to forward a rejected promise from an async route handler
+// to the error middleware below — without it, Express 4 lets that rejection
+// become an unhandled rejection, which crashes the whole process (killing
+// the API for every user) on any unexpected error, e.g. a bad foreign key.
+import 'express-async-errors';
 import { authRouter } from './routes/auth';
 import { masterDataRouter } from './routes/masterdata';
 import { ordersRouter } from './routes/orders';
@@ -24,3 +29,12 @@ app.use('/api/pnl', pnlRouter);
 app.use('/api/finance', financeRouter);
 app.use('/api/stock', stockRouter);
 app.use('/api/film', filmRouter);
+
+// Catch-all — any error forwarded here (including async rejections, thanks
+// to express-async-errors above) gets a clean JSON 500 instead of Express's
+// default HTML error page or an unhandled crash. Logged server-side so the
+// real cause is still visible in the dev console / production logs.
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: 'Something went wrong on the server' });
+});

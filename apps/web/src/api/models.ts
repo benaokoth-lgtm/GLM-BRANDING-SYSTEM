@@ -57,8 +57,8 @@ export interface OrderSummary {
 export interface OrderLineItemView {
   id: number;
   itemType: ItemType;
-  serviceId: number;
-  serviceName: string;
+  serviceId: number | null;
+  serviceName: string | null;
   materialId: number | null;
   materialName: string | null;
   qty: number;
@@ -243,7 +243,7 @@ export interface StockRequisitionRow {
 
 export interface DraftLineItem {
   itemType: ItemType;
-  serviceId: number;
+  serviceId: number | null;
   materialId: number | null;
   qty: number | string;
   unitPrice: number | string;

@@ -21,8 +21,8 @@ export const FINANCE_ROLES: Role[] = ['Finance Manager', 'General Manager', 'Adm
 export const MANAGEMENT_ROLES: Role[] = ['Supervisor', 'Finance Manager', 'General Manager', 'Admin'];
 
 export const ITEM_TYPE_LABELS: Record<string, string> = {
-  'material-service': 'Material + Service',
-  'service-only': "Service only (client's item)",
+  material: 'Material',
+  service: 'Service',
   'per-metre': 'Per-metre service',
 };
 

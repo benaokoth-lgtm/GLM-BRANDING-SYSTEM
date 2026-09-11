@@ -9,14 +9,18 @@ export type OrderStage =
   | 'Ready for Pickup/Delivery'
   | 'Completed';
 
-export type ItemType = 'material-service' | 'service-only' | 'per-metre';
+// A line item is either a standalone material sale ('material') or a
+// standalone service fee ('service' / 'per-metre') — never both. Selling
+// and servicing the same physical item is two separate line items instead
+// of one combined row.
+export type ItemType = 'material' | 'service' | 'per-metre';
 export type ServiceUnit = 'piece' | 'metre' | 'sqm';
 export type PaymentMethod = 'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card';
 export type PaymentTiming = 'onAcceptance' | 'onCompletion';
 
 export interface LineItemInput {
   itemType: ItemType;
-  serviceId: number;
+  serviceId?: number | null;
   materialId?: number | null;
   qty: number;
   unitPrice: number;

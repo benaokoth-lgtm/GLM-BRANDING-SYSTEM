@@ -164,7 +164,19 @@ own roster.
     ever wrong. The per-metre film sale (DTF Sheet) is unchanged; both mechanisms deduct
     from the same active roll. Unit and price for any service are now editable in place in
     Master Data → Service Price List (not just Admin-only creation), so this is
-    reconfigurable without a code change.
+    reconfigurable without a code change. A 📐 button next to Artwork size opens a small
+    calculator (`ArtworkSizeDialog.tsx`) — length × width in cm → sqm — for staff who know
+    a print's dimensions but not its area; it only appears on sqm-priced, film-tracked
+    services (today, only DTF Printing), never on other printing services.
+  - **Film → Print Queue** lists every sqm-priced, film-tracked artwork line (`printedAt`
+    still null) not yet run through the press, across every order and client — small DTF
+    jobs are typically gang-sheeted together into one efficient run rather than printed
+    one at a time. Each row stays billed to its own order regardless of how many other
+    clients' artworks share the physical sheet; marking a batch "printed" only clears it
+    off the queue (`OrderLineItem.printedAt`) and touches neither billing nor film usage,
+    both of which already happened at order capture. The suggested 0.3 sqm batch
+    threshold (`DTF_PRINT_QUEUE_BATCH_SQM`) is a machine-time efficiency starting point,
+    not a pricing rule — GLM's real press cycle time should set the actual number.
 - **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO

@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requireRole } from '../middleware/auth';
-import { MANAGEMENT_ROLES, todayStr } from '@glm/shared';
+import { DTF_PRINT_QUEUE_BATCH_SQM, MANAGEMENT_ROLES, todayStr } from '@glm/shared';
 
 export const filmRouter = Router();
 filmRouter.use(requireAuth, requireRole(...MANAGEMENT_ROLES));
@@ -145,6 +145,68 @@ filmRouter.post('/usage', async (req, res) => {
     },
   });
   res.status(201).json(usage);
+});
+
+// ── DTF Print Queue ──────────────────────────────────────────────────────
+// Small DTF artworks are often gang-sheeted together — possibly across
+// different clients/orders — into one press run rather than run
+// individually. Each order/line item is still billed separately (that's
+// unaffected by how they're physically batched); this just surfaces what's
+// accumulated and not yet run, so staff know when it's worth firing up the
+// press instead of running a mostly-empty sheet.
+filmRouter.get('/print-queue', async (_req, res) => {
+  const items = await prisma.orderLineItem.findMany({
+    where: {
+      printedAt: null,
+      itemType: 'service',
+      artworkAreaSqm: { not: null },
+      order: { status: { not: 'Quote' } },
+      service: { tracksFilm: true, unit: 'sqm' },
+    },
+    include: { order: { include: { corporateClient: true } }, service: true },
+    orderBy: { id: 'asc' },
+  });
+
+  const rows = items.map((li) => {
+    const totalAreaSqm = (li.artworkAreaSqm ?? 0) * li.qty;
+    return {
+      id: li.id,
+      orderId: li.orderId,
+      orderNo: li.order.orderNo,
+      clientName: li.order.kind === 'corporate' ? li.order.corporateClient?.name ?? '—' : li.order.customerName ?? '—',
+      date: li.order.createdDate,
+      serviceName: li.service!.name,
+      artworkAreaSqm: li.artworkAreaSqm as number,
+      qty: li.qty,
+      totalAreaSqm,
+      heatPressFee: li.heatPressFee,
+    };
+  });
+
+  const totalPendingSqm = rows.reduce((a, r) => a + r.totalAreaSqm, 0);
+  res.json({
+    items: rows,
+    totalPendingSqm,
+    batchThresholdSqm: DTF_PRINT_QUEUE_BATCH_SQM,
+    readyToRun: totalPendingSqm >= DTF_PRINT_QUEUE_BATCH_SQM,
+  });
+});
+
+const markPrintedSchema = z.object({ lineItemIds: z.array(z.number().int()).min(1) });
+
+// Staff select whichever queued artworks actually went into one press run
+// (usually "select all" once the batch is ready) and mark them printed
+// together — this doesn't touch billing or film usage, both already
+// happened at order capture; it only clears them off the queue.
+filmRouter.post('/print-queue/mark-printed', async (req, res) => {
+  const parsed = markPrintedSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+
+  const result = await prisma.orderLineItem.updateMany({
+    where: { id: { in: parsed.data.lineItemIds }, printedAt: null },
+    data: { printedAt: new Date() },
+  });
+  res.json({ updated: result.count });
 });
 
 // ── Internal helper, used by the orders router ──────────────────────────

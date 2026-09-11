@@ -232,6 +232,12 @@ model OrderLineItem {
   // computed client-side into unitPrice/filmLengthM, stored here too for
   // traceability.
   artworkAreaSqm Float?
+  // When this DTF artwork was actually run through the press — null means
+  // it's still sitting in the DTF Print Queue waiting to be gang-sheeted
+  // with other small jobs (possibly from other clients/orders) into one
+  // efficient print run. Only meaningful for sqm-priced, film-tracked
+  // service lines; other line items never get marked.
+  printedAt DateTime?
 }
 
 // DTF transfer-film roll inventory. One Active roll at a time; every metre

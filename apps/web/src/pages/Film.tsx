@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { FILM_ROLL_DEFAULT_COST, FILM_ROLL_DEFAULT_LENGTH_M, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
-import type { FilmRollRow, FilmUsageRow } from '../api/models';
+import type { FilmRollRow, FilmUsageRow, PrintQueueData } from '../api/models';
 
-type FilmTab = 'usage' | 'rolls';
+type FilmTab = 'usage' | 'rolls' | 'queue';
 type Preset = 'week' | 'month' | 'all';
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
@@ -27,6 +27,8 @@ export default function Film() {
 
   const [rolls, setRolls] = useState<FilmRollRow[]>([]);
   const [usages, setUsages] = useState<FilmUsageRow[]>([]);
+  const [queue, setQueue] = useState<PrintQueueData | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -45,6 +47,38 @@ export default function Film() {
   }
 
   useEffect(load, [fromDate, toDate]);
+
+  function loadQueue() {
+    api.get<PrintQueueData>('/film/print-queue').then((q) => {
+      setQueue(q);
+      setSelectedIds((ids) => ids.filter((id) => q.items.some((it) => it.id === id)));
+    });
+  }
+
+  useEffect(loadQueue, []);
+
+  function toggleSelect(id: number) {
+    setSelectedIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
+  }
+
+  function selectAllQueue() {
+    setSelectedIds(queue?.items.map((it) => it.id) ?? []);
+  }
+
+  async function markPrinted() {
+    if (selectedIds.length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post('/film/print-queue/mark-printed', { lineItemIds: selectedIds });
+      setSelectedIds([]);
+      loadQueue();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to mark as printed');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function applyPreset(preset: Preset) {
     const r = presetRange(preset, today);
@@ -104,13 +138,18 @@ export default function Film() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
       <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-        {(['usage', 'rolls'] as FilmTab[]).map((id) => (
+        {(['usage', 'rolls', 'queue'] as FilmTab[]).map((id) => (
           <button key={id} type="button" className={'btn blueprint ' + (tab === id ? 'btn-primary' : 'btn-secondary')} onClick={() => setTab(id)}>
             <i className="corner tl"></i>
             <i className="corner tr"></i>
             <i className="corner bl"></i>
             <i className="corner br"></i>
-            {id === 'usage' ? 'Film Usage' : 'Film Rolls'}
+            {id === 'usage' ? 'Film Usage' : id === 'rolls' ? 'Film Rolls' : 'Print Queue'}
+            {id === 'queue' && queue && queue.items.length > 0 && (
+              <span className="tag tag-accent" style={{ marginLeft: 'var(--space-2)', fontSize: 10 }}>
+                {queue.items.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -408,6 +447,107 @@ export default function Film() {
           </div>
         </>
       )}
+
+      {tab === 'queue' &&
+        (queue ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
+              <div className="card blueprint elev-sm">
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                <div className="card-kicker">Pending artwork area</div>
+                <div className="card-title">{queue.totalPendingSqm.toFixed(2)} sqm</div>
+              </div>
+              <div className="card blueprint elev-sm">
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                <div className="card-kicker">Suggested batch threshold</div>
+                <div className="card-title">{queue.batchThresholdSqm} sqm</div>
+              </div>
+              <div className="card blueprint elev-sm">
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                <div className="card-kicker">Status</div>
+                <div className="card-title">
+                  <span className={queue.readyToRun ? 'tag tag-accent' : 'tag tag-outline'}>
+                    {queue.readyToRun ? 'Ready to run' : 'Still accumulating'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+                <div className="card-title">Pending DTF artworks</div>
+                <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                  <button type="button" className="btn btn-secondary" onClick={selectAllQueue} disabled={queue.items.length === 0}>
+                    Select all
+                  </button>
+                  <button type="button" className="btn btn-primary blueprint" onClick={markPrinted} disabled={busy || selectedIds.length === 0}>
+                    <i className="corner tl"></i>
+                    <i className="corner tr"></i>
+                    <i className="corner bl"></i>
+                    <i className="corner br"></i>
+                    Mark {selectedIds.length > 0 ? `${selectedIds.length} ` : ''}printed
+                  </button>
+                </div>
+              </div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th className="no-print"></th>
+                    <th>Date</th>
+                    <th>Order</th>
+                    <th>Client</th>
+                    <th>Service</th>
+                    <th style={{ textAlign: 'right' }}>Artwork</th>
+                    <th style={{ textAlign: 'right' }}>Qty</th>
+                    <th style={{ textAlign: 'right' }}>Total sqm</th>
+                    <th style={{ textAlign: 'right' }}>Press fee</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {queue.items.map((it) => (
+                    <tr key={it.id}>
+                      <td className="no-print">
+                        <input type="checkbox" checked={selectedIds.includes(it.id)} onChange={() => toggleSelect(it.id)} />
+                      </td>
+                      <td className="text-muted">{fmtDate(it.date)}</td>
+                      <td>{it.orderNo}</td>
+                      <td className="text-muted">{it.clientName}</td>
+                      <td className="text-muted">{it.serviceName}</td>
+                      <td style={{ textAlign: 'right' }}>{it.artworkAreaSqm} sqm</td>
+                      <td style={{ textAlign: 'right' }}>{it.qty}</td>
+                      <td style={{ textAlign: 'right' }}>{it.totalAreaSqm.toFixed(3)} sqm</td>
+                      <td style={{ textAlign: 'right' }}>{it.heatPressFee != null ? fmtKsh(it.heatPressFee) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {queue.items.length === 0 && <p className="note">No DTF artworks waiting to be printed.</p>}
+              <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+                Each artwork here is still billed to its own order/client — gang-sheeting several together onto one
+                run doesn't change that. Marking a batch printed just clears it off this queue once it's actually
+                gone through the press; it doesn't touch billing or film usage, both already happened at order
+                capture. The {queue.batchThresholdSqm} sqm threshold is a starting point for efficient press runs
+                (roughly half the roll's 60cm width run out 50cm), not a pricing rule — adjust it once you know your
+                real press cycle time.
+              </p>
+            </div>
+          </>
+        ) : (
+          <p className="note">Loading…</p>
+        ))}
     </div>
   );
 }

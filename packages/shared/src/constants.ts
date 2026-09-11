@@ -70,3 +70,11 @@ export const HEAT_PRESS_FEE_OPTIONS = [20, 25, 30, 35, 40, 45, 50] as const;
 // sale (400-500 ÷ FILM_ROLL_WIDTH_M), so the per-artwork service starts from
 // the same economics as the per-metre film sale. Editable in Master Data.
 export const DTF_PRINT_DEFAULT_RATE_PER_SQM = 750;
+
+// Suggested minimum accumulated area (sqm) before running a batch of small
+// DTF artworks through the press — roughly half the roll's 60cm width run
+// out 50cm (60cm x 50cm), a starting point for machine-time efficiency, not
+// a pricing floor (each job is already priced to cover its own cost). This
+// is a guess pending GLM's real press cycle-time economics — adjust once
+// known.
+export const DTF_PRINT_QUEUE_BATCH_SQM = 0.3;

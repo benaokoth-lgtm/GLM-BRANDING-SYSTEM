@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { FILM_ROLL_WIDTH_M, HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
 import type { CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
+import ArtworkSizeDialog from './ArtworkSizeDialog';
 
 interface Props {
   lineItems: DraftLineItem[];
@@ -54,6 +56,8 @@ function initialUnitPriceFor(sv: CatalogService | undefined): number {
 }
 
 export default function LineItemsEditor({ lineItems, services, materials, onChange }: Props) {
+  const [calcIdx, setCalcIdx] = useState<number | null>(null);
+
   function updateLine(idx: number, patch: Partial<DraftLineItem>) {
     const next = lineItems.slice();
     const current = next[idx];
@@ -232,12 +236,23 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
           {isSqmFilmService && (
             <div className="field" style={{ margin: 0 }}>
               <label>Artwork size (sqm)</label>
-              <input
-                className="input"
-                value={row.artworkAreaSqm}
-                onChange={(e) => updateLine(idx, { artworkAreaSqm: e.target.value })}
-                placeholder="e.g. 0.06"
-              />
+              <div style={{ display: 'flex', gap: 4 }}>
+                <input
+                  className="input"
+                  value={row.artworkAreaSqm}
+                  onChange={(e) => updateLine(idx, { artworkAreaSqm: e.target.value })}
+                  placeholder="e.g. 0.06"
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-icon"
+                  aria-label="Calculate from length × width"
+                  title="Calculate from length × width"
+                  onClick={() => setCalcIdx(idx)}
+                >
+                  📐
+                </button>
+              </div>
             </div>
           )}
           <div className="field" style={{ margin: 0 }}>
@@ -318,6 +333,15 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
           <span className="tag tag-accent">Heat press fee not selected</span> — pick a fee on the print + press line(s)
           above before capturing the order.
         </p>
+      )}
+      {calcIdx !== null && (
+        <ArtworkSizeDialog
+          onApply={(areaSqm) => {
+            updateLine(calcIdx, { artworkAreaSqm: areaSqm });
+            setCalcIdx(null);
+          }}
+          onClose={() => setCalcIdx(null)}
+        />
       )}
     </div>
   );

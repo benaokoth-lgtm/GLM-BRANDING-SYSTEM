@@ -284,3 +284,23 @@ export interface FilmUsageRow {
   note: string;
   capturedByName: string;
 }
+
+export interface PrintQueueItem {
+  id: number;
+  orderId: number;
+  orderNo: string;
+  clientName: string;
+  date: string;
+  serviceName: string;
+  artworkAreaSqm: number;
+  qty: number;
+  totalAreaSqm: number;
+  heatPressFee: number | null;
+}
+
+export interface PrintQueueData {
+  items: PrintQueueItem[];
+  totalPendingSqm: number;
+  batchThresholdSqm: number;
+  readyToRun: boolean;
+}

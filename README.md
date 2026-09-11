@@ -177,6 +177,17 @@ own roster.
     both of which already happened at order capture. The suggested 0.3 sqm batch
     threshold (`DTF_PRINT_QUEUE_BATCH_SQM`) is a machine-time efficiency starting point,
     not a pricing rule — GLM's real press cycle time should set the actual number.
+  - **Master Data → Artwork Size Bands** are flat "quick pick" prices for common small
+    artwork sizes (e.g. "6cm x 6cm" → Ksh 50, seeded from GLM's confirmed real price) — an
+    alternative to the area × Ksh/sqm formula, which underprices tiny prints dominated by
+    fixed setup/press time rather than material. A "Quick size" dropdown appears above
+    Artwork size (sqm) on any sqm-priced, film-tracked line whenever at least one band
+    exists; picking one sets both the flat price *and* the area together, so film usage
+    still deducts exactly as accurately as a custom-sized artwork — only the price
+    diverges from the formula. Not tied to a specific service, so any future sqm-priced
+    film-tracked service could use the same bands. Only one band ships seeded (the
+    confirmed 6x6cm price) — add more (e.g. 8x8cm) once GLM confirms their real prices,
+    rather than guessing.
 - **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO

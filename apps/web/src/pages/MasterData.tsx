@@ -5,12 +5,13 @@ import type { Role } from '@glm/shared';
 import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
 
-type MasterTab = 'staff' | 'services' | 'materials' | 'clients' | 'discount' | 'company';
+type MasterTab = 'staff' | 'services' | 'materials' | 'artworkBands' | 'clients' | 'discount' | 'company';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
   ['services', 'Service Price List'],
   ['materials', 'Material Price List'],
+  ['artworkBands', 'Artwork Size Bands'],
   ['clients', 'Corporate Clients'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
@@ -34,6 +35,10 @@ export default function MasterData() {
   const [newMaterialName, setNewMaterialName] = useState('');
   const [newMaterialPrice, setNewMaterialPrice] = useState('');
   const [reorderDrafts, setReorderDrafts] = useState<Record<number, string>>({});
+
+  const [newBandLabel, setNewBandLabel] = useState('');
+  const [newBandAreaSqm, setNewBandAreaSqm] = useState('');
+  const [newBandPrice, setNewBandPrice] = useState('');
 
   const [newClientName, setNewClientName] = useState('');
   const [newClientCreditDays, setNewClientCreditDays] = useState('');
@@ -145,6 +150,32 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add material');
+    }
+  }
+
+  async function addBand() {
+    const areaSqm = Number(newBandAreaSqm);
+    const price = Number(newBandPrice);
+    if (!newBandLabel.trim() || !areaSqm || !price) return setError('Label, size (sqm) and price are all required');
+    setError(null);
+    try {
+      await api.post('/master-data/artwork-size-bands', { label: newBandLabel, areaSqm, price });
+      setNewBandLabel('');
+      setNewBandAreaSqm('');
+      setNewBandPrice('');
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add artwork size band');
+    }
+  }
+
+  async function removeBand(id: number) {
+    setError(null);
+    try {
+      await api.del(`/master-data/artwork-size-bands/${id}`);
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove artwork size band');
     }
   }
 
@@ -432,6 +463,63 @@ export default function MasterData() {
               <input className="input" value={newMaterialPrice} onChange={(e) => setNewMaterialPrice(e.target.value)} />
             </div>
             <button type="button" className="btn btn-primary blueprint" onClick={addMaterial}>
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              Add
+            </button>
+          </div>
+        </>
+      )}
+
+      {tab === 'artworkBands' && (
+        <>
+          <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
+            Flat "quick pick" prices for common small DTF artwork sizes — an alternative to the area × Ksh/sqm
+            formula, which underprices tiny prints dominated by fixed setup/press time rather than material. Shows as
+            "Quick size" on order line items for any sqm-priced, film-tracked service; film usage still deducts
+            correctly off each size's area.
+          </p>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Size</th>
+                <th>Area (sqm)</th>
+                <th>Price (Ksh)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {catalog.artworkSizeBands.map((b) => (
+                <tr key={b.id}>
+                  <td>{b.label}</td>
+                  <td className="text-muted">{b.areaSqm}</td>
+                  <td>{fmtKsh(b.price)}</td>
+                  <td className="no-print">
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeBand(b.id)}>
+                      ✕
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {catalog.artworkSizeBands.length === 0 && <p className="note">No artwork size bands yet — add one below.</p>}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 0.8fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
+            <div className="field">
+              <label>Size label</label>
+              <input className="input" value={newBandLabel} onChange={(e) => setNewBandLabel(e.target.value)} placeholder="e.g. 6cm x 6cm" />
+            </div>
+            <div className="field">
+              <label>Area (sqm)</label>
+              <input className="input" value={newBandAreaSqm} onChange={(e) => setNewBandAreaSqm(e.target.value)} placeholder="e.g. 0.0036" />
+            </div>
+            <div className="field">
+              <label>Price (Ksh)</label>
+              <input className="input" value={newBandPrice} onChange={(e) => setNewBandPrice(e.target.value)} placeholder="e.g. 50" />
+            </div>
+            <button type="button" className="btn btn-primary blueprint" onClick={addBand}>
               <i className="corner tl"></i>
               <i className="corner tr"></i>
               <i className="corner bl"></i>

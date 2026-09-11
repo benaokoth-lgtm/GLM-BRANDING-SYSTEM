@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { FILM_ROLL_WIDTH_M, HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
-import type { CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
+import type { ArtworkSizeBand, CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
 import ArtworkSizeDialog from './ArtworkSizeDialog';
 
 interface Props {
   lineItems: DraftLineItem[];
   services: CatalogService[];
   materials: CatalogMaterial[];
+  artworkSizeBands: ArtworkSizeBand[];
   onChange: (items: DraftLineItem[]) => void;
 }
 
@@ -55,7 +56,7 @@ function initialUnitPriceFor(sv: CatalogService | undefined): number {
   return sv?.price ?? 0;
 }
 
-export default function LineItemsEditor({ lineItems, services, materials, onChange }: Props) {
+export default function LineItemsEditor({ lineItems, services, materials, artworkSizeBands, onChange }: Props) {
   const [calcIdx, setCalcIdx] = useState<number | null>(null);
 
   function updateLine(idx: number, patch: Partial<DraftLineItem>) {
@@ -115,6 +116,16 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
   function handleServiceChange(idx: number, serviceId: number) {
     const sv = services.find((s) => s.id === serviceId);
     updateLine(idx, { serviceId, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '', filmLengthM: '' });
+  }
+
+  // A size band sets area AND price together as a flat quick-pick, bypassing
+  // the area × Ksh/sqm formula — small artworks are dominated by fixed
+  // setup/press time, not material, so a pure area rate underprices them.
+  // Film used (m) still recomputes off the band's own area, so usage
+  // tracking stays exactly as accurate as a custom-sized artwork.
+  function handleSizeBand(idx: number, bandId: string) {
+    const band = artworkSizeBands.find((b) => String(b.id) === bandId);
+    if (band) updateLine(idx, { artworkAreaSqm: band.areaSqm, unitPrice: band.price });
   }
 
   function handleMaterialChange(idx: number, materialId: number) {
@@ -236,6 +247,16 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
           {isSqmFilmService && (
             <div className="field" style={{ margin: 0 }}>
               <label>Artwork size (sqm)</label>
+              {artworkSizeBands.length > 0 && (
+                <select className="input" style={{ marginBottom: 4 }} value="" onChange={(e) => handleSizeBand(idx, e.target.value)}>
+                  <option value="">Quick size…</option>
+                  {artworkSizeBands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.label} — Ksh {b.price}
+                    </option>
+                  ))}
+                </select>
+              )}
               <div style={{ display: 'flex', gap: 4 }}>
                 <input
                   className="input"
@@ -314,7 +335,8 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         for the cap, then a Service line for the print job. A Service line with no matching Material line above it
         means the client brought their own item. For an sqm-priced print service, enter one artwork's size and the
         quantity — unit price and film used are computed for you (multiply area × Ksh/sqm rate, and area × qty for
-        total film).
+        total film). Small, common artwork sizes can instead use "Quick size" for a flat pre-set price (set up in
+        Master Data → Artwork Size Bands) — film usage still tracks correctly off that size's area.
       </p>
       {missingArtworkArea && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>

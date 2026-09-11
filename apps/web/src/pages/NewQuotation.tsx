@@ -8,7 +8,7 @@ import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 
 export default function NewQuotation() {
-  const { services, materials, staff, corporateClients, maxDiscountPct, loading } = useCatalog();
+  const { services, materials, artworkSizeBands, staff, corporateClients, maxDiscountPct, loading } = useCatalog();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -93,7 +93,7 @@ export default function NewQuotation() {
         </div>
       </div>
 
-      <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />
+      <LineItemsEditor lineItems={items} services={services} materials={materials} artworkSizeBands={artworkSizeBands} onChange={setLineItems} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
         <div className="field">

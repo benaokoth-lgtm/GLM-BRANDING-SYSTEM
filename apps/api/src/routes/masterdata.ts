@@ -67,6 +67,44 @@ masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => 
   res.json(service);
 });
 
+// ── Artwork Size Bands (small DTF artwork flat-fee "quick picks") ───────
+masterDataRouter.get('/artwork-size-bands', async (_req, res) => {
+  res.json(await prisma.artworkSizeBand.findMany({ orderBy: { areaSqm: 'asc' } }));
+});
+
+const artworkSizeBandSchema = z.object({
+  label: z.string().min(1),
+  areaSqm: z.number().positive(),
+  price: z.number().positive(),
+});
+
+masterDataRouter.post('/artwork-size-bands', requireRole('Admin'), async (req, res) => {
+  const parsed = artworkSizeBandSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  res.status(201).json(await prisma.artworkSizeBand.create({ data: parsed.data }));
+});
+
+const artworkSizeBandUpdateSchema = z
+  .object({
+    label: z.string().min(1).optional(),
+    areaSqm: z.number().positive().optional(),
+    price: z.number().positive().optional(),
+  })
+  .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
+
+masterDataRouter.put('/artwork-size-bands/:id', requireRole('Admin'), async (req, res) => {
+  const parsed = artworkSizeBandUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const band = await prisma.artworkSizeBand.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!band) return res.status(404).json({ error: 'Artwork size band not found' });
+  res.json(band);
+});
+
+masterDataRouter.delete('/artwork-size-bands/:id', requireRole('Admin'), async (req, res) => {
+  await prisma.artworkSizeBand.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
+  res.status(204).end();
+});
+
 // ── Material Price List ─────────────────────────────────────────────────
 masterDataRouter.get('/materials', async (_req, res) => {
   res.json(await prisma.material.findMany({ orderBy: { name: 'asc' } }));

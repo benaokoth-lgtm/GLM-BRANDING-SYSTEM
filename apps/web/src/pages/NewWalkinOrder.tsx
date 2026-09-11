@@ -9,7 +9,7 @@ import { useAuth } from '../state/AuthContext';
 import { printWalkinReceipt } from '../utils/printTicket';
 
 export default function NewWalkinOrder() {
-  const { services, materials, staff, maxDiscountPct, loading } = useCatalog();
+  const { services, materials, artworkSizeBands, staff, maxDiscountPct, loading } = useCatalog();
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -120,7 +120,7 @@ export default function NewWalkinOrder() {
         </div>
       </div>
 
-      <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />
+      <LineItemsEditor lineItems={items} services={services} materials={materials} artworkSizeBands={artworkSizeBands} onChange={setLineItems} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
         <div className="field">

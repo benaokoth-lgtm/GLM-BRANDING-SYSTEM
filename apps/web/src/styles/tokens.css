@@ -58,6 +58,26 @@
   --shadow-sm: 0 1px 2px color-mix(in srgb, #2b2b2d 14%, transparent);
   --shadow-md: 0 3px 10px color-mix(in srgb, #2b2b2d 16%, transparent);
   --shadow-lg: 0 12px 32px color-mix(in srgb, #2b2b2d 22%, transparent);
+
+  /* — glass — a frosted, glossy material layered on top of the blueprint
+     system: translucent surfaces over a soft colour-mesh backdrop, a blur so
+     content behind a panel reads as depth rather than clutter, a bright
+     top-edge "sheen" gradient for the glossy highlight, and an inset
+     highlight/shadow pair so edges catch light like real glass. */
+  --glass-blur: 18px;
+  --glass-bg: color-mix(in srgb, #ffffff 58%, transparent);
+  --glass-bg-strong: color-mix(in srgb, #ffffff 74%, transparent);
+  /* For glass-look elements nested INSIDE an already-blurred surface (buttons,
+     inputs, tags, ...) — stacking backdrop-filter on nested elements is both
+     expensive and, in Chromium, can corrupt the compositor (button text
+     silently disappears). These skip backdrop-filter entirely and lean on a
+     more opaque tint instead, so they still read as glass without blurring. */
+  --glass-bg-opaque: color-mix(in srgb, #ffffff 80%, transparent);
+  --glass-bg-opaque-strong: color-mix(in srgb, #ffffff 92%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 65%, var(--color-divider) 35%);
+  --glass-sheen: linear-gradient(180deg, color-mix(in srgb, #ffffff 55%, transparent) 0%, color-mix(in srgb, #ffffff 0%, transparent) 45%);
+  --glass-shadow: 0 8px 32px color-mix(in srgb, #1d2d3d 16%, transparent), inset 0 1px 0 color-mix(in srgb, #ffffff 65%, transparent);
+  --glass-shadow-lg: 0 20px 60px color-mix(in srgb, #1d2d3d 26%, transparent), inset 0 1px 0 color-mix(in srgb, #ffffff 70%, transparent);
 }
 
 * ,
@@ -72,7 +92,14 @@ body,
 }
 body {
   margin: 0;
-  background: var(--color-bg);
+  /* A soft, fixed colour-mesh backdrop — glass surfaces need something with
+     variation behind them or the blur/translucency has nothing to show. */
+  background:
+    radial-gradient(1100px 760px at 8% -8%, color-mix(in srgb, var(--color-accent-300) 45%, transparent), transparent 60%),
+    radial-gradient(900px 680px at 105% 0%, color-mix(in srgb, #7c3aed 16%, transparent), transparent 55%),
+    radial-gradient(1000px 820px at 40% 115%, color-mix(in srgb, #14b8a6 14%, transparent), transparent 55%),
+    linear-gradient(180deg, #eef2f6 0%, #e7ebf1 100%);
+  background-attachment: fixed;
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: 15px;
@@ -109,11 +136,20 @@ img { display: block; max-width: 100%; }
   background: var(--color-divider);
 }
 
-/* — blueprint frame — */
+/* — blueprint frame — corner-mark decoration only, no blur here: this class
+   lands on buttons as often as on cards/dialogs, and stacking
+   backdrop-filter across nested/overlapping elements (a button inside a
+   blurred dialog inside a blurred backdrop) corrupts Chromium's compositor
+   — button text silently stops painting. Actual frosted-glass blur lives on
+   the few large container surfaces that need it (.card, .dialog, .nav
+   below); this just adds a translucent tint + border so a bare .blueprint
+   element (without one of those) still reads as glass. */
 .blueprint {
   position: relative;
-  border: 1px solid var(--color-divider);
+  border: 1px solid var(--glass-border);
   border-radius: 0;
+  background: var(--glass-sheen), var(--glass-bg-opaque);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
 }
 .blueprint.duotone { overflow: visible; }
 .blueprint > .corner {
@@ -130,25 +166,35 @@ img { display: block; max-width: 100%; }
 .blueprint > .corner.bl { bottom: -6px; left: -6px; }
 .blueprint > .corner.br { bottom: -6px; right: -6px; }
 
-/* — buttons — */
+/* — buttons — glass pills with a glossy top-half highlight, like light
+   catching a curved glass surface. */
 .btn {
+  position: relative; overflow: hidden;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   cursor: pointer; text-decoration: none;
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
   font-size: 14px; line-height: 1.2; color: var(--color-text);
-  background: transparent; border: 1px solid var(--color-divider);
+  background: var(--glass-sheen), var(--glass-bg-opaque);
+  border: 1px solid var(--glass-border);
   padding: var(--space-2) calc(var(--space-3) * 1.2);
   border-radius: 0;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 55%, transparent), 0 1px 3px color-mix(in srgb, #1d2d3d 10%, transparent);
+  transition: transform 0.08s ease, box-shadow 0.15s ease;
 }
 .btn svg { display: block; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn-primary { background: var(--color-accent); color: var(--color-bg); border-color: var(--color-accent); }
-.btn-primary:hover:not(:disabled) { background: var(--color-accent-600); }
-.btn-primary:active:not(:disabled) { background: var(--color-accent-700); }
-.btn-secondary { border-color: var(--color-divider); }
-.btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
-.btn-secondary:active:not(:disabled) { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
-.btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); border-color: transparent; }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 42%, transparent) 0%, transparent 50%), var(--color-accent);
+  color: var(--color-bg); border-color: var(--color-accent-700);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 55%, transparent), 0 4px 14px color-mix(in srgb, var(--color-accent-900) 35%, transparent);
+}
+.btn-primary:hover:not(:disabled) { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 32%, transparent) 0%, transparent 50%), var(--color-accent-600); }
+.btn-primary:active:not(:disabled) { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 18%, transparent) 0%, transparent 50%), var(--color-accent-700); }
+.btn-secondary { border-color: var(--glass-border); }
+.btn-secondary:hover:not(:disabled) { background: var(--glass-sheen), var(--glass-bg-opaque-strong); }
+.btn-secondary:active:not(:disabled) { background: color-mix(in srgb, var(--color-text) 14%, var(--glass-bg-opaque-strong)); }
+.btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); border-color: transparent; background: transparent; box-shadow: none; }
 .btn-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .btn-ghost:active:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
 .btn-icon { width: 36px; height: 36px; padding: 0; }
@@ -163,24 +209,33 @@ img { display: block; max-width: 100%; }
 .input {
   width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
   font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
-  background: var(--color-surface);
-  border: 1px solid var(--color-divider); border-radius: var(--radius-md);
+  background: color-mix(in srgb, #ffffff 72%, var(--color-surface) 28%);
+  border: 1px solid var(--glass-border); border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, #1d2d3d 8%, transparent);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
-.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; box-shadow: inset 0 1px 2px color-mix(in srgb, #1d2d3d 8%, transparent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
 textarea.input { min-height: 90px; resize: vertical; }
-.seg { display: inline-flex; overflow: hidden; border: 1px solid var(--color-divider); border-radius: var(--radius-md); }
+.seg {
+  display: inline-flex; overflow: hidden; border-radius: var(--radius-md);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-sheen), var(--glass-bg-opaque);
+}
 .seg-opt { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
-.seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+.seg-opt + .seg-opt { border-left: 1px solid var(--glass-border); }
 .seg-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-.seg-opt.checked { background: var(--color-accent); color: var(--color-bg); }
-.seg-opt:not(.checked):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.seg-opt.checked { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 38%, transparent) 0%, transparent 50%), var(--color-accent); color: var(--color-bg); }
+.seg-opt:not(.checked):hover { background: color-mix(in srgb, #ffffff 30%, transparent); }
 
 /* — cards — */
 .card {
   display: flex; flex-direction: column; gap: var(--space-2);
-  padding: var(--space-3); border-radius: 0; background: transparent;
-  border: 1px solid var(--color-divider);
+  padding: var(--space-3); border-radius: 0;
+  background: var(--glass-sheen), var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border: 1px solid var(--glass-border);
 }
 .card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
 .card-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 17px; line-height: 1.2; }
@@ -190,39 +245,55 @@ textarea.input { min-height: 90px; resize: vertical; }
 .elev-md { box-shadow: var(--shadow-md); }
 .elev-lg { box-shadow: var(--shadow-lg); }
 
-/* — tags — */
-.tag { display: inline-flex; align-items: center; font-size: 11px; letter-spacing: 0.02em; padding: 3px 10px; border-radius: 3px; }
-.tag-accent { background: var(--color-accent-100); color: var(--color-accent-800); }
-.tag-accent-2 { background: var(--color-accent-2-100); color: var(--color-accent-2-800); }
-.tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
-.tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); }
+/* — tags — glassy pills with a thin gloss line along the top edge */
+.tag { position: relative; display: inline-flex; align-items: center; font-size: 11px; letter-spacing: 0.02em; padding: 3px 10px; border-radius: 3px; box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent); }
+.tag-accent { background: color-mix(in srgb, var(--color-accent-100) 80%, transparent); color: var(--color-accent-800); }
+.tag-accent-2 { background: color-mix(in srgb, var(--color-accent-2-100) 80%, transparent); color: var(--color-accent-2-800); }
+.tag-neutral { background: color-mix(in srgb, var(--color-neutral-100) 75%, transparent); color: var(--color-neutral-800); }
+.tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, #ffffff 30%, transparent); }
 
-/* — navigation — */
-.nav { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); }
+/* — navigation — a frosted glass bar that stays glossy as content scrolls under it */
+.nav {
+  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4);
+  position: sticky; top: 0; z-index: 40;
+  background: var(--glass-sheen), var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  border-bottom: 1px solid var(--glass-border);
+  box-shadow: 0 4px 20px color-mix(in srgb, #1d2d3d 10%, transparent);
+}
 .nav-brand { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 18px; margin-right: auto; }
 .nav a { color: inherit; text-decoration: none; font-size: 14px; }
 .nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent); }
 
-/* — tables — */
-.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+/* — tables — sit on a lightly frosted sheet so dense data stays easy to read
+   against the glass backdrop, while headers/rows keep a glassy sheen */
+.table { width: 100%; border-collapse: collapse; font-size: 14px; background: color-mix(in srgb, #ffffff 35%, transparent); }
 .table th {
   text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
   color: color-mix(in srgb, var(--color-text) 60%, transparent);
-  padding: var(--space-2); border-bottom: 1px solid var(--color-divider);
+  padding: var(--space-2); border-bottom: 1px solid var(--glass-border);
+  background: color-mix(in srgb, #ffffff 25%, transparent);
 }
 .table td { padding: var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
-.table tbody tr:hover { background: color-mix(in srgb, var(--color-text) 4%, transparent); }
+.table tbody tr:hover { background: color-mix(in srgb, #ffffff 35%, transparent); }
 
-/* — dialog — */
+/* — dialog — a glossy glass pane floating over a blurred backdrop */
 .dialog-backdrop {
   position: fixed; inset: 0; display: grid; place-items: center; z-index: 50;
   padding: var(--space-4);
-  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 .dialog {
   width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
-  padding: var(--space-4); border-radius: 0;
-  background: var(--color-bg); box-shadow: var(--shadow-lg);
+  padding: var(--space-4); border-radius: var(--radius-lg);
+  background: var(--glass-sheen), var(--glass-bg-strong);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow-lg);
 }
 .dialog-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 20px; }
 .dialog-body { font-size: 14px; opacity: 0.85; }

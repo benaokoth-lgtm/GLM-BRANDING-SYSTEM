@@ -10,17 +10,27 @@
 .login-user-btn {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-3); cursor: pointer; text-align: left;
-  background: transparent; border: 1px solid var(--color-divider); border-radius: 0;
+  background: var(--glass-sheen), var(--glass-bg);
+  backdrop-filter: blur(10px) saturate(150%);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
+  border: 1px solid var(--glass-border); border-radius: 0;
   font: inherit; color: var(--color-text);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
-.login-user-btn.selected { border-color: var(--color-accent); background: var(--color-accent-100); }
+.login-user-btn:hover { background: var(--glass-sheen), var(--glass-bg-strong); }
+.login-user-btn.selected {
+  border-color: var(--color-accent);
+  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 45%, transparent) 0%, transparent 50%), var(--color-accent-100);
+}
 .login-user-avatar {
   width: 34px; height: 34px; flex: none; display: grid; place-items: center;
-  border: 1px solid var(--color-divider); font-family: var(--font-heading); font-size: 13px;
+  border: 1px solid var(--glass-border); font-family: var(--font-heading); font-size: 13px;
+  background: color-mix(in srgb, #ffffff 40%, transparent);
 }
 .login-pin-dots { display: flex; gap: var(--space-2); justify-content: center; margin: var(--space-4) 0; }
-.login-pin-dot { width: 14px; height: 14px; border: 1.5px solid var(--color-divider); border-radius: 50%; }
-.login-pin-dot.filled { background: var(--color-accent); border-color: var(--color-accent); }
+.login-pin-dot { width: 14px; height: 14px; border: 1.5px solid var(--glass-border); border-radius: 50%; background: color-mix(in srgb, #ffffff 35%, transparent); }
+.login-pin-dot.filled { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 55%, transparent) 0%, transparent 55%), var(--color-accent); border-color: var(--color-accent); }
 .login-pin-dots.shake { animation: shake 0.3s; }
 @keyframes shake {
   25% { transform: translateX(-6px); }
@@ -29,7 +39,13 @@
 .login-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
 .login-pad button {
   min-height: 52px; font-family: var(--font-heading); font-size: 18px;
-  background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: 0; cursor: pointer;
+  background: var(--glass-sheen), var(--glass-bg);
+  backdrop-filter: blur(10px) saturate(150%);
+  -webkit-backdrop-filter: blur(10px) saturate(150%);
+  border: 1px solid var(--glass-border); border-radius: 0; cursor: pointer;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
+  transition: background 0.12s ease, transform 0.08s ease;
 }
-.login-pad button:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.login-pad button:hover { background: var(--glass-sheen), var(--glass-bg-strong); }
+.login-pad button:active { transform: translateY(1px); }
 .login-error { color: #a33; font-size: 13px; text-align: center; min-height: 18px; }

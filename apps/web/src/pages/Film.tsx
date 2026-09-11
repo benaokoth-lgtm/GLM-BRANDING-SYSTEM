@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FILM_ROLL_DEFAULT_COST, FILM_ROLL_DEFAULT_LENGTH_M, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
-import type { FilmRollRow, FilmUsageRow, PrintQueueData } from '../api/models';
+import type { FilmExpenseOption, FilmRollRow, FilmUsageRow, PrintQueueData } from '../api/models';
 
 type FilmTab = 'usage' | 'rolls' | 'queue';
 type Preset = 'week' | 'month' | 'all';
@@ -29,19 +29,28 @@ export default function Film() {
   const [usages, setUsages] = useState<FilmUsageRow[]>([]);
   const [queue, setQueue] = useState<PrintQueueData | null>(null);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [availableExpenses, setAvailableExpenses] = useState<FilmExpenseOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [newUsage, setNewUsage] = useState({ date: today, lengthM: '', ratePerMeter: '', note: '' });
-  const [newRoll, setNewRoll] = useState({ lengthM: String(FILM_ROLL_DEFAULT_LENGTH_M), costTotal: String(FILM_ROLL_DEFAULT_COST), date: today });
+  const [rollMode, setRollMode] = useState<'new' | 'existing'>('new');
+  const [newRoll, setNewRoll] = useState({ lengthM: String(FILM_ROLL_DEFAULT_LENGTH_M), costTotal: String(FILM_ROLL_DEFAULT_COST), invoiceNumber: '', date: today });
+  const [existingRoll, setExistingRoll] = useState({ lengthM: String(FILM_ROLL_DEFAULT_LENGTH_M), expenseId: null as number | null, date: today });
 
   function load() {
     setLoading(true);
-    Promise.all([api.get<FilmRollRow[]>('/film/rolls'), api.get<FilmUsageRow[]>(`/film/usage?from=${fromDate}&to=${toDate}`)])
-      .then(([r, u]) => {
+    Promise.all([
+      api.get<FilmRollRow[]>('/film/rolls'),
+      api.get<FilmUsageRow[]>(`/film/usage?from=${fromDate}&to=${toDate}`),
+      api.get<FilmExpenseOption[]>('/film/available-expenses'),
+    ])
+      .then(([r, u, ae]) => {
         setRolls(r);
         setUsages(u);
+        setAvailableExpenses(ae);
+        setExistingRoll((er) => ({ ...er, expenseId: er.expenseId ?? ae[0]?.id ?? null }));
       })
       .finally(() => setLoading(false));
   }
@@ -111,20 +120,37 @@ export default function Film() {
   }
 
   async function installRoll() {
-    const lengthM = Number(newRoll.lengthM);
-    const costTotal = Number(newRoll.costTotal);
-    if (!lengthM || lengthM <= 0) return setError('Roll length must be greater than 0');
-    if (!costTotal || costTotal <= 0) return setError('Roll cost must be greater than 0');
     setError(null);
-    setBusy(true);
-    try {
-      await api.post('/film/rolls', { lengthM, costTotal, date: newRoll.date });
-      setNewRoll({ lengthM: String(FILM_ROLL_DEFAULT_LENGTH_M), costTotal: String(FILM_ROLL_DEFAULT_COST), date: today });
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to install film roll');
-    } finally {
-      setBusy(false);
+    if (rollMode === 'new') {
+      const lengthM = Number(newRoll.lengthM);
+      const costTotal = Number(newRoll.costTotal);
+      if (!lengthM || lengthM <= 0) return setError('Roll length must be greater than 0');
+      if (!costTotal || costTotal <= 0) return setError('Roll cost must be greater than 0');
+      if (!newRoll.invoiceNumber.trim()) return setError('Invoice/receipt number is required');
+      setBusy(true);
+      try {
+        await api.post('/film/rolls', { mode: 'new', lengthM, costTotal, invoiceNumber: newRoll.invoiceNumber, date: newRoll.date });
+        setNewRoll({ lengthM: String(FILM_ROLL_DEFAULT_LENGTH_M), costTotal: String(FILM_ROLL_DEFAULT_COST), invoiceNumber: '', date: today });
+        load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to install film roll');
+      } finally {
+        setBusy(false);
+      }
+    } else {
+      const lengthM = Number(existingRoll.lengthM);
+      if (!lengthM || lengthM <= 0) return setError('Roll length must be greater than 0');
+      if (!existingRoll.expenseId) return setError('Select an already-logged film purchase');
+      setBusy(true);
+      try {
+        await api.post('/film/rolls', { mode: 'existing', lengthM, expenseId: existingRoll.expenseId, date: existingRoll.date });
+        setExistingRoll({ lengthM: String(FILM_ROLL_DEFAULT_LENGTH_M), expenseId: null, date: today });
+        load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to install film roll');
+      } finally {
+        setBusy(false);
+      }
     }
   }
 
@@ -368,27 +394,82 @@ export default function Film() {
                   : 'This retires the current roll (fully used, no waste to log).'
                 : 'Starts a fresh roll for usage to draw against.'}
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
-              <div className="field">
-                <label>Roll length (m)</label>
-                <input className="input" value={newRoll.lengthM} onChange={(e) => setNewRoll((r) => ({ ...r, lengthM: e.target.value }))} />
-              </div>
-              <div className="field">
-                <label>Cost (Ksh)</label>
-                <input className="input" value={newRoll.costTotal} onChange={(e) => setNewRoll((r) => ({ ...r, costTotal: e.target.value }))} />
-              </div>
-              <div className="field">
-                <label>Date installed</label>
-                <input className="input" type="date" value={newRoll.date} onChange={(e) => setNewRoll((r) => ({ ...r, date: e.target.value }))} />
-              </div>
-              <button type="button" className="btn btn-primary blueprint" onClick={installRoll} disabled={busy}>
-                <i className="corner tl"></i>
-                <i className="corner tr"></i>
-                <i className="corner bl"></i>
-                <i className="corner br"></i>
-                Install
+
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+              <button type="button" className={'btn ' + (rollMode === 'new' ? 'btn-primary' : 'btn-secondary')} onClick={() => setRollMode('new')}>
+                New purchase
+              </button>
+              <button type="button" className={'btn ' + (rollMode === 'existing' ? 'btn-primary' : 'btn-secondary')} onClick={() => setRollMode('existing')}>
+                Already logged as an expense
               </button>
             </div>
+
+            {rollMode === 'new' ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+                <div className="field">
+                  <label>Roll length (m)</label>
+                  <input className="input" value={newRoll.lengthM} onChange={(e) => setNewRoll((r) => ({ ...r, lengthM: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>Cost (Ksh)</label>
+                  <input className="input" value={newRoll.costTotal} onChange={(e) => setNewRoll((r) => ({ ...r, costTotal: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>Invoice/receipt #</label>
+                  <input className="input" value={newRoll.invoiceNumber} onChange={(e) => setNewRoll((r) => ({ ...r, invoiceNumber: e.target.value }))} placeholder="Required" />
+                </div>
+                <div className="field">
+                  <label>Date installed</label>
+                  <input className="input" type="date" value={newRoll.date} onChange={(e) => setNewRoll((r) => ({ ...r, date: e.target.value }))} />
+                </div>
+                <button type="button" className="btn btn-primary blueprint" onClick={installRoll} disabled={busy}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  Install
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+                <div className="field">
+                  <label>Roll length (m)</label>
+                  <input className="input" value={existingRoll.lengthM} onChange={(e) => setExistingRoll((r) => ({ ...r, lengthM: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>Film purchase (Finance → Expenses)</label>
+                  <select
+                    className="input"
+                    value={existingRoll.expenseId ?? ''}
+                    onChange={(e) => setExistingRoll((r) => ({ ...r, expenseId: Number(e.target.value) }))}
+                  >
+                    {availableExpenses.length === 0 && <option value="">No unlinked film purchases</option>}
+                    {availableExpenses.map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {fmtDate(ex.date)} — {ex.invoiceNumber} — {fmtKsh(ex.amount)}
+                        {ex.note ? ` (${ex.note})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Date installed</label>
+                  <input className="input" type="date" value={existingRoll.date} onChange={(e) => setExistingRoll((r) => ({ ...r, date: e.target.value }))} />
+                </div>
+                <button type="button" className="btn btn-primary blueprint" onClick={installRoll} disabled={busy || availableExpenses.length === 0}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  Install
+                </button>
+              </div>
+            )}
+            <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+              Installing a new purchase automatically logs it under Finance → Expenses (category "DTF Film Rolls")
+              with its invoice/receipt number. If it's already logged there, pick it from the dropdown instead —
+              once picked, that expense can never be picked again.
+            </p>
           </div>
 
           <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
@@ -404,6 +485,7 @@ export default function Film() {
                 <tr>
                   <th>Installed</th>
                   <th>Finished</th>
+                  <th>Invoice #</th>
                   <th style={{ textAlign: 'right' }}>Length</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
                   <th style={{ textAlign: 'right' }}>Cost/m</th>
@@ -419,6 +501,7 @@ export default function Film() {
                   <tr key={r.id}>
                     <td className="text-muted">{fmtDate(r.installedDate)}</td>
                     <td className="text-muted">{fmtDate(r.finishedDate)}</td>
+                    <td className="text-muted">{r.invoiceNumber || '—'}</td>
                     <td style={{ textAlign: 'right' }}>{fmtM(r.lengthM)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtKsh(r.costTotal)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtKsh(r.costPerMeter)}</td>

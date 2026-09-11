@@ -58,14 +58,10 @@ const PAYMENT_ICONS: [string, string][] = [
   ['💳', 'Card'],
 ];
 
-/**
- * Opens a popup and prints it — popup must already be open (via a synchronous
- * window.open in the click handler) so browser popup blockers don't kill it
- * once we're past an await elsewhere in the caller.
- */
-export function printCorporateDocument(w: Window | null, order: OrderDetail, company: CompanySettings) {
-  if (!w) return;
-
+// Pure HTML string builder — no `window`/DOM dependency — so the exact same
+// markup used for the print popup can also be sent as an email body (see
+// "Send email" in OrderDetailDialog.tsx) without duplicating the template.
+export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanySettings): string {
   const isInvoice = order.status === 'Invoice';
   const docTitle = isInvoice ? 'INVOICE' : 'QUOTATION';
   const isPaid = isInvoice && order.totals.balanceDue <= 0;
@@ -251,6 +247,17 @@ export function printCorporateDocument(w: Window | null, order: OrderDetail, com
 </body>
 </html>`;
 
+  return html;
+}
+
+/**
+ * Opens a popup and prints it — popup must already be open (via a synchronous
+ * window.open in the click handler) so browser popup blockers don't kill it
+ * once we're past an await elsewhere in the caller.
+ */
+export function printCorporateDocument(w: Window | null, order: OrderDetail, company: CompanySettings) {
+  if (!w) return;
+  const html = buildCorporateDocumentHtml(order, company);
   w.document.open();
   w.document.write(html);
   w.document.close();

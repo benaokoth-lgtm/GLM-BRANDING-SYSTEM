@@ -2,11 +2,12 @@ import { Prisma } from '@prisma/client';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { requireAuth, requireRole } from '../middleware/auth';
-import { DTF_PRINT_QUEUE_BATCH_SQM, MANAGEMENT_ROLES, todayStr } from '@glm/shared';
+import { requireAuth, requirePermission } from '../middleware/auth';
+import { DTF_PRINT_QUEUE_BATCH_SQM, todayStr } from '@glm/shared';
+import { computePettyCashBalance } from './finance';
 
 export const filmRouter = Router();
-filmRouter.use(requireAuth, requireRole(...MANAGEMENT_ROLES));
+filmRouter.use(requireAuth, requirePermission('canAccessFilm'));
 
 // ── Shared aggregation helpers ──────────────────────────────────────────
 function weightedAvgRate(usages: { lengthM: number; ratePerMeter: number | null }[]): number | null {
@@ -30,6 +31,7 @@ function serializeRoll(roll: Prisma.FilmRollGetPayload<{ include: { usages: true
     id: roll.id,
     lengthM: roll.lengthM,
     costTotal: roll.costTotal,
+    invoiceNumber: roll.invoiceNumber,
     costPerMeter,
     installedDate: roll.installedDate,
     installedByName: roll.installedByName,
@@ -50,22 +52,78 @@ filmRouter.get('/rolls', async (_req, res) => {
   res.json(rolls.map(serializeRoll));
 });
 
-const installRollSchema = z.object({
-  lengthM: z.number().positive(),
-  costTotal: z.number().positive(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+// Film purchases already logged under Finance → Expenses (category "DTF
+// Film Rolls", with an invoice/receipt number on file) that haven't yet
+// been used to install a roll — the "pick from a dropdown" side of feeding
+// film. An expense drops off this list the moment it's linked to a roll,
+// since FilmRoll.expenseId is unique — one purchase funds exactly one roll.
+filmRouter.get('/available-expenses', async (_req, res) => {
+  const linked = await prisma.filmRoll.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } });
+  const linkedIds = linked.map((r) => r.expenseId as number);
+  const expenses = await prisma.expense.findMany({
+    where: { category: 'DTF Film Rolls', invoiceNumber: { not: null }, id: { notIn: linkedIds } },
+    orderBy: { date: 'desc' },
+  });
+  res.json(expenses.map((e) => ({ id: e.id, date: e.date, invoiceNumber: e.invoiceNumber, amount: e.amount, note: e.note })));
 });
 
-// Installing a new roll retires whichever roll is currently Active. If that
-// roll still shows a positive remaining balance (usage under-logged vs. what
-// physically ran through the machine), the shortfall is booked as waste
-// right here — that's the "system still thinks film's there but the roll is
-// physically done" case — and its avgRatePerMeter is snapshotted from its
-// own usage history before it's retired.
+// Installing a roll either logs a brand-new purchase (creating its Expense
+// right here, category "DTF Film Rolls") or links an already-logged one
+// picked from /available-expenses — either way every roll ends up with an
+// invoice/receipt number and a linked Expense, so film purchases always
+// post to the P&L. Whichever mode, installing also retires whichever roll
+// is currently Active: if that roll still shows a positive remaining
+// balance (usage under-logged vs. what physically ran through the
+// machine), the shortfall is booked as waste right here — the "system
+// still thinks film's there but the roll is physically done" case — and
+// its avgRatePerMeter is snapshotted from its own usage history before
+// it's retired.
+const installRollSchema = z.discriminatedUnion('mode', [
+  z.object({
+    mode: z.literal('new'),
+    lengthM: z.number().positive(),
+    costTotal: z.number().positive(),
+    invoiceNumber: z.string().min(1, 'Invoice/receipt number is required'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
+  z.object({
+    mode: z.literal('existing'),
+    lengthM: z.number().positive(),
+    expenseId: z.number().int(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  }),
+]);
+
 filmRouter.post('/rolls', async (req, res) => {
   const parsed = installRollSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const { lengthM, costTotal, date } = parsed.data;
+  const data = parsed.data;
+  const date = data.date ?? todayStr();
+
+  let costTotal: number;
+  let invoiceNumber: string;
+  let expenseIdToLink: number | null = null;
+  let expenseToCreate: { note: string; amount: number; invoiceNumber: string } | null = null;
+
+  if (data.mode === 'new') {
+    const balance = await computePettyCashBalance();
+    if (data.costTotal > balance) {
+      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString('en-KE')} available, Ksh ${Math.round(data.costTotal).toLocaleString('en-KE')} needed)` });
+    }
+    costTotal = data.costTotal;
+    invoiceNumber = data.invoiceNumber;
+    expenseToCreate = { note: `Film roll — invoice/receipt ${data.invoiceNumber}`, amount: data.costTotal, invoiceNumber: data.invoiceNumber };
+  } else {
+    const expense = await prisma.expense.findUnique({ where: { id: data.expenseId } });
+    if (!expense) return res.status(404).json({ error: 'Expense not found' });
+    if (expense.category !== 'DTF Film Rolls') return res.status(400).json({ error: 'That expense is not a film roll purchase' });
+    if (!expense.invoiceNumber) return res.status(400).json({ error: 'That expense has no invoice/receipt number recorded' });
+    const alreadyLinked = await prisma.filmRoll.findFirst({ where: { expenseId: expense.id } });
+    if (alreadyLinked) return res.status(400).json({ error: 'That expense has already been used to install a film roll' });
+    costTotal = expense.amount;
+    invoiceNumber = expense.invoiceNumber;
+    expenseIdToLink = expense.id;
+  }
 
   const newRoll = await prisma.$transaction(async (tx) => {
     const active = await tx.filmRoll.findFirst({ where: { status: 'Active' }, include: { usages: true } });
@@ -78,8 +136,17 @@ filmRouter.post('/rolls', async (req, res) => {
         data: { status: 'Finished', finishedDate: todayStr(), wasteM: remainingM, avgRatePerMeter },
       });
     }
+
+    let finalExpenseId = expenseIdToLink;
+    if (expenseToCreate) {
+      const created = await tx.expense.create({
+        data: { date, category: 'DTF Film Rolls', note: expenseToCreate.note, amount: expenseToCreate.amount, invoiceNumber: expenseToCreate.invoiceNumber, capturedByName: req.user!.name },
+      });
+      finalExpenseId = created.id;
+    }
+
     return tx.filmRoll.create({
-      data: { lengthM, costTotal, installedDate: date ?? todayStr(), installedByName: req.user!.name },
+      data: { lengthM: data.lengthM, costTotal, invoiceNumber, expenseId: finalExpenseId, installedDate: date, installedByName: req.user!.name },
       include: { usages: true },
     });
   });

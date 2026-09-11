@@ -1,4 +1,32 @@
-export type Role = 'Staff' | 'Supervisor' | 'Finance Manager' | 'General Manager' | 'Admin';
+// Roles are now dynamic (Master Data → Roles & Access can add/rename them),
+// so a role is just a name — validated against the Role table at write time,
+// not a fixed union. 'Admin' is the one name the system treats specially
+// (see PermissionKey/Role model docs in schema.prisma).
+export type Role = string;
+
+// One flag per gated nav area/action. A user's access is the union of their
+// Role row's flags (or, for the literal 'Admin' role, always every flag) —
+// see requirePermission() in apps/api/src/middleware/auth.ts and
+// buildTabs() in apps/web/src/layouts/AppLayout.tsx.
+export const PERMISSION_KEYS = [
+  'canCaptureOrders',
+  'canViewAllOrders',
+  'canManagePayments',
+  'canAccessPnl',
+  'canAccessFinance',
+  'canAccessStock',
+  'canApproveStock',
+  'canAccessFilm',
+  'canAccessReports',
+] as const;
+export type PermissionKey = (typeof PERMISSION_KEYS)[number];
+export type Permissions = Record<PermissionKey, boolean>;
+
+export interface RoleRow {
+  id: number;
+  name: string;
+  permissions: Permissions;
+}
 
 export type OrderKind = 'walkin' | 'corporate';
 export type OrderStatus = 'Quote' | 'Invoice' | 'Order';

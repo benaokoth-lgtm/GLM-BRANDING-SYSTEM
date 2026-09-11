@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { requireAuth, requireRole } from '../middleware/auth';
-import { computeOrderTotals, EXPENSE_CATEGORIES, FINANCE_ROLES } from '@glm/shared';
+import { requireAuth, requirePermission } from '../middleware/auth';
+import { computeOrderTotals, EXPENSE_CATEGORIES } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
 export const pnlRouter = Router();
-pnlRouter.use(requireAuth, requireRole(...FINANCE_ROLES));
+pnlRouter.use(requireAuth, requirePermission('canAccessPnl'));
 
 interface OrderForPnl {
   kind: string;
@@ -24,6 +24,11 @@ interface ExpenseRow {
   category: string;
   note: string;
   amount: number;
+}
+
+interface PayrollForPnl {
+  date: string;
+  grossPay: number;
 }
 
 async function loadOrdersForPnl(): Promise<OrderForPnl[]> {
@@ -52,7 +57,15 @@ function inRange(d: string, from: string, to: string): boolean {
   return d >= from && d <= to;
 }
 
-function computeAgg(orders: OrderForPnl[], expenses: ExpenseRow[], cogsPct: number, from: string, to: string) {
+// "Salaries & wages" is deliberately not a pickable Expense category (see
+// EXPENSE_CATEGORIES in packages/shared/src/constants.ts) — it's captured
+// exactly once, via Finance > Compliance > Payroll, and folded into the P&L
+// expense breakdown here from PayrollEntry.grossPay directly. This keeps a
+// single source of truth: there's no Expense row to also delete/amend when a
+// payroll entry changes, and no way to double-book the same salary cost.
+const SALARIES_CATEGORY = 'Salaries & wages';
+
+function computeAgg(orders: OrderForPnl[], expenses: ExpenseRow[], payroll: PayrollForPnl[], cogsPct: number, from: string, to: string) {
   let revAccrualWalkin = 0;
   let revAccrualCorp = 0;
   let revCash = 0;
@@ -71,10 +84,13 @@ function computeAgg(orders: OrderForPnl[], expenses: ExpenseRow[], cogsPct: numb
   const cogs = revAccrual * (cogsPct / 100);
   const grossProfit = revAccrual - cogs;
   const expensesInRange = expenses.filter((e) => inRange(e.date, from, to));
-  const totalExpenses = expensesInRange.reduce((a, e) => a + e.amount, 0);
+  const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
+  const salariesTotal = payrollInRange.reduce((a, p) => a + p.grossPay, 0);
+  const totalExpenses = expensesInRange.reduce((a, e) => a + e.amount, 0) + salariesTotal;
   const netProfit = grossProfit - totalExpenses;
   const byCategory: Record<string, number> = {};
   for (const e of expensesInRange) byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
+  if (salariesTotal > 0) byCategory[SALARIES_CATEGORY] = (byCategory[SALARIES_CATEGORY] || 0) + salariesTotal;
   return { revAccrualWalkin, revAccrualCorp, revAccrual, revCash, cogs, grossProfit, totalExpenses, netProfit, byCategory };
 }
 
@@ -100,16 +116,17 @@ pnlRouter.get('/', async (req, res) => {
     return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
   }
 
-  const [orders, allExpenses, settings] = await Promise.all([
+  const [orders, allExpenses, allPayroll, settings] = await Promise.all([
     loadOrdersForPnl(),
     prisma.expense.findMany({ orderBy: { date: 'desc' } }),
+    prisma.payrollEntry.findMany({ select: { date: true, grossPay: true } }),
     prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} }),
   ]);
   const cogsPct = settings.cogsPct;
 
-  const agg = computeAgg(orders, allExpenses, cogsPct, from, to);
+  const agg = computeAgg(orders, allExpenses, allPayroll, cogsPct, from, to);
   const prior = priorRange(from, to);
-  const priorAgg = computeAgg(orders, allExpenses, cogsPct, prior.from, prior.to);
+  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, prior.from, prior.to);
 
   const toDateObj = new Date(to + 'T00:00:00');
   const trend = [];
@@ -118,7 +135,7 @@ pnlRouter.get('/', async (req, res) => {
     const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
     const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     const mTo = monthEnd.toISOString().slice(0, 10);
-    const mAgg = computeAgg(orders, allExpenses, cogsPct, mFrom, mTo);
+    const mAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, mFrom, mTo);
     trend.push({ label: `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
   }
 
@@ -141,7 +158,7 @@ pnlRouter.get('/', async (req, res) => {
     priorFrom: prior.from,
     priorTo: prior.to,
     trend,
-    expenseCategories: EXPENSE_CATEGORIES,
+    expenseCategories: [SALARIES_CATEGORY, ...EXPENSE_CATEGORIES],
   });
 });
 

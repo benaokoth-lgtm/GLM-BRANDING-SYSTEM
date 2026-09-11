@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { DTF_PRINT_DEFAULT_RATE_PER_SQM } from '@glm/shared';
+import { DEFAULT_ROLE_PERMISSIONS, DTF_PRINT_DEFAULT_RATE_PER_SQM } from '@glm/shared';
 
 const prisma = new PrismaClient();
 
@@ -9,6 +9,7 @@ async function pin(p: string) {
 }
 
 async function main() {
+  await prisma.mpesaTransaction.deleteMany();
   await prisma.filmUsage.deleteMany();
   await prisma.filmRoll.deleteMany();
   await prisma.payment.deleteMany();
@@ -20,12 +21,24 @@ async function main() {
   await prisma.payrollEntry.deleteMany();
   await prisma.pettyCashTopUp.deleteMany();
   await prisma.stockRequisition.deleteMany();
+  await prisma.stockTake.deleteMany();
   await prisma.corporateClient.deleteMany();
   await prisma.material.deleteMany();
   await prisma.artworkSizeBand.deleteMany();
   await prisma.service.deleteMany();
   await prisma.user.deleteMany();
   await prisma.setting.deleteMany();
+  await prisma.role.deleteMany();
+
+  // 'Admin' is never a Role row — it's always all-permissions by server rule
+  // (see apps/api/src/permissions.ts) — so only the other four are seeded
+  // here, each with the permission set that reproduces this app's
+  // historical fixed-role behavior exactly.
+  await Promise.all(
+    (['Staff', 'Supervisor', 'Finance Manager', 'General Manager'] as const).map((name) =>
+      prisma.role.create({ data: { name, ...DEFAULT_ROLE_PERMISSIONS[name] } }),
+    ),
+  );
 
   const [amina, brian, grace, financeManager, generalManager, admin] = await Promise.all([
     prisma.user.create({ data: { name: 'Amina Otieno', role: 'Staff', pinHash: await pin('1111') } }),
@@ -147,9 +160,11 @@ async function main() {
   // Modest two-month expense ledger so the P&L account isn't empty on first
   // view (a full deterministic history generator, as the design prototype
   // used for its demo, isn't warranted here — a real deployment fills this
-  // from actual petty cash entries).
+  // from actual petty cash entries). "Salaries & wages" is deliberately not
+  // seeded here — that cost only ever comes from PayrollEntry rows (see
+  // below), never from a plain Expense, so the P&L's "Salaries & wages" line
+  // can't be double-counted.
   const expenseBaselines: [string, number][] = [
-    ['Salaries & wages', 180000],
     ['Printing Materials & Consumables', 60000],
     ['Casual Labour', 35000],
     ['Transport', 25000],
@@ -165,6 +180,30 @@ async function main() {
   ];
   await prisma.expense.createMany({
     data: ['2026-08-05', '2026-09-05'].flatMap((date) => expenseBaselines.map(([category, amount]) => ({ date, category, amount }))),
+  });
+
+  // A film-roll purchase already logged as an expense, not yet linked to a
+  // FilmRoll — demonstrates the "pick from dropdown" install flow (Film →
+  // Film Rolls → "Already logged as an expense").
+  await prisma.expense.create({
+    data: { date: '2026-09-08', category: 'DTF Film Rolls', note: 'DTF film roll — Cool Print Ltd', amount: 8500, invoiceNumber: 'INV-4471' },
+  });
+
+  // Petty cash float — a top-up big enough to cover the expense baselines
+  // above and demonstrate the insufficient-balance guard failing gracefully
+  // once it's actually exhausted, rather than starting permanently negative.
+  await prisma.pettyCashTopUp.create({
+    data: { date: '2026-08-01', source: 'Bank Withdrawal', amount: 250000, note: 'Monthly float', authorizedByName: 'David Kamau' },
+  });
+
+  // Payroll — the sole source of the P&L's "Salaries & wages" line. One
+  // salaried Employee (fixed monthly pay, paid by bank) and one day-rate
+  // Casual (paid from petty cash), demonstrating both entry shapes.
+  await prisma.payrollEntry.create({
+    data: { date: '2026-09-05', staffId: financeManager.id, employeeType: 'Employee', department: 'Finance', grossPay: 65000, paymentSource: 'Bank/Cheque', capturedByName: 'David Kamau' },
+  });
+  await prisma.payrollEntry.create({
+    data: { date: '2026-09-05', staffId: amina.id, employeeType: 'Casual', department: 'Production', daysWorked: 20, rate: 800, grossPay: 16000, paymentSource: 'Petty Cash', capturedByName: 'David Kamau' },
   });
 
   console.log('Seeded GLM Branding POS demo data.');

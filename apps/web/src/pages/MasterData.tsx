@@ -1,21 +1,34 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { ROLES, fmtKsh } from '@glm/shared';
-import type { Role } from '@glm/shared';
+import { PERMISSION_KEYS, fmtKsh } from '@glm/shared';
+import type { PermissionKey, RoleRow } from '@glm/shared';
 import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
 
-type MasterTab = 'staff' | 'services' | 'materials' | 'artworkBands' | 'clients' | 'discount' | 'company';
+type MasterTab = 'staff' | 'roles' | 'services' | 'materials' | 'artworkBands' | 'clients' | 'discount' | 'company';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
+  ['roles', 'Roles & Access'],
   ['services', 'Service Price List'],
-  ['materials', 'Material Price List'],
+  ['materials', 'Stock Price List'],
   ['artworkBands', 'Artwork Size Bands'],
   ['clients', 'Corporate Clients'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
 ];
+
+const PERMISSION_LABELS: Record<PermissionKey, string> = {
+  canCaptureOrders: 'Capture orders',
+  canViewAllOrders: 'View all orders',
+  canManagePayments: 'Payments',
+  canAccessPnl: 'P&L',
+  canAccessFinance: 'Finance / Compliance',
+  canAccessStock: 'Stock',
+  canApproveStock: 'Approve stock',
+  canAccessFilm: 'Film',
+  canAccessReports: 'Reports',
+};
 
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 
@@ -23,8 +36,25 @@ export default function MasterData() {
   const catalog = useCatalog();
   const [tab, setTab] = useState<MasterTab>('staff');
 
+  const [roles, setRoles] = useState<RoleRow[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(true);
+  const [newRoleName, setNewRoleName] = useState('');
+  const [roleNameDrafts, setRoleNameDrafts] = useState<Record<number, string>>({});
+
+  function loadRoles() {
+    setRolesLoading(true);
+    api
+      .get<RoleRow[]>('/master-data/roles')
+      .then(setRoles)
+      .finally(() => setRolesLoading(false));
+  }
+
+  useEffect(loadRoles, []);
+
+  const roleNames = ['Admin', ...roles.map((r) => r.name)];
+
   const [newStaffName, setNewStaffName] = useState('');
-  const [newStaffRole, setNewStaffRole] = useState<Role>('Staff');
+  const [newStaffRole, setNewStaffRole] = useState('Staff');
   const [newStaffPin, setNewStaffPin] = useState('');
 
   const [newServiceName, setNewServiceName] = useState('');
@@ -43,6 +73,9 @@ export default function MasterData() {
 
   const [newClientName, setNewClientName] = useState('');
   const [newClientCreditDays, setNewClientCreditDays] = useState('');
+  const [newClientEmail, setNewClientEmail] = useState('');
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [clientDrafts, setClientDrafts] = useState<Record<number, { email?: string; phone?: string }>>({});
 
   const [maxDiscountPct, setMaxDiscountPct] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +108,62 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add staff member');
+    }
+  }
+
+  async function addRole() {
+    if (!newRoleName.trim()) return setError('Role name is required');
+    setError(null);
+    try {
+      await api.post('/master-data/roles', { name: newRoleName.trim() });
+      setNewRoleName('');
+      loadRoles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add role');
+    }
+  }
+
+  async function toggleRolePermission(role: RoleRow, key: PermissionKey, value: boolean) {
+    setError(null);
+    try {
+      await api.put(`/master-data/roles/${role.id}`, { permissions: { [key]: value } });
+      loadRoles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update role');
+    }
+  }
+
+  async function renameRole(role: RoleRow, name: string) {
+    if (!name.trim() || name.trim() === role.name) {
+      setRoleNameDrafts((d) => {
+        const next = { ...d };
+        delete next[role.id];
+        return next;
+      });
+      return;
+    }
+    setError(null);
+    try {
+      await api.put(`/master-data/roles/${role.id}`, { name: name.trim() });
+      setRoleNameDrafts((d) => {
+        const next = { ...d };
+        delete next[role.id];
+        return next;
+      });
+      loadRoles();
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to rename role');
+    }
+  }
+
+  async function removeRole(id: number) {
+    setError(null);
+    try {
+      await api.del(`/master-data/roles/${id}`);
+      loadRoles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove role');
     }
   }
 
@@ -142,7 +231,7 @@ export default function MasterData() {
 
   async function addMaterial() {
     const price = Number(newMaterialPrice);
-    if (!newMaterialName.trim() || !price) return setError('Material name and price are required');
+    if (!newMaterialName.trim() || !price) return setError('Item name and price are required');
     setError(null);
     try {
       await api.post('/master-data/materials', { name: newMaterialName, price });
@@ -150,7 +239,7 @@ export default function MasterData() {
       setNewMaterialPrice('');
       catalog.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add material');
+      setError(err instanceof Error ? err.message : 'Failed to add item');
     }
   }
 
@@ -203,12 +292,25 @@ export default function MasterData() {
     if (!newClientName.trim()) return setError('Client name is required');
     setError(null);
     try {
-      await api.post('/master-data/corporate-clients', { name: newClientName, creditDays: days });
+      await api.post('/master-data/corporate-clients', { name: newClientName, creditDays: days, email: newClientEmail, phone: newClientPhone });
       setNewClientName('');
       setNewClientCreditDays('');
+      setNewClientEmail('');
+      setNewClientPhone('');
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add corporate client');
+    }
+  }
+
+  async function saveClientField(clientId: number, field: 'email' | 'phone', value: string) {
+    setError(null);
+    try {
+      await api.put(`/master-data/corporate-clients/${clientId}`, { [field]: value });
+      setClientDrafts((d) => ({ ...d, [clientId]: { ...d[clientId], [field]: undefined } }));
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update client');
     }
   }
 
@@ -305,8 +407,8 @@ export default function MasterData() {
             </div>
             <div className="field">
               <label>Role</label>
-              <select className="input" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value as Role)}>
-                {ROLES.map((r) => (
+              <select className="input" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value)}>
+                {roleNames.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
@@ -325,6 +427,87 @@ export default function MasterData() {
               Add
             </button>
           </div>
+          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+            Roles beyond "Admin" are defined under Roles &amp; Access — add or amend one there before assigning it here.
+          </p>
+        </>
+      )}
+
+      {tab === 'roles' && (
+        <>
+          <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
+            "Admin" always has full access to every area and isn't listed here — there's nothing to configure for it.
+            Every other role is a row you can add, rename, or delete (once no staff member is still assigned to it),
+            with a checkbox per area of the app it should be able to reach.
+          </p>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  {PERMISSION_KEYS.map((k) => (
+                    <th key={k} style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      {PERMISSION_LABELS[k]}
+                    </th>
+                  ))}
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {roles.map((r) => {
+                  const inUse = catalog.staff.some((s) => s.role === r.name);
+                  return (
+                    <tr key={r.id}>
+                      <td>
+                        <input
+                          className="input"
+                          style={{ minWidth: 140 }}
+                          value={roleNameDrafts[r.id] ?? r.name}
+                          onChange={(e) => setRoleNameDrafts((d) => ({ ...d, [r.id]: e.target.value }))}
+                          onBlur={(e) => renameRole(r, e.target.value)}
+                        />
+                      </td>
+                      {PERMISSION_KEYS.map((k) => (
+                        <td key={k} style={{ textAlign: 'center' }}>
+                          <input type="checkbox" checked={r.permissions[k]} onChange={(e) => toggleRolePermission(r, k, e.target.checked)} />
+                        </td>
+                      ))}
+                      <td className="no-print">
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-icon"
+                          aria-label="Remove"
+                          onClick={() => removeRole(r.id)}
+                          disabled={inUse}
+                          title={inUse ? 'Reassign every staff member off this role first' : undefined}
+                        >
+                          ✕
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {!rolesLoading && roles.length === 0 && <p className="note">No custom roles yet — add one below.</p>}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 480 }}>
+            <div className="field">
+              <label>New role name</label>
+              <input className="input" value={newRoleName} onChange={(e) => setNewRoleName(e.target.value)} placeholder="e.g. Accountant" />
+            </div>
+            <button type="button" className="btn btn-primary blueprint" onClick={addRole}>
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              Add role
+            </button>
+          </div>
+          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+            A new role starts with only "Capture orders" checked — tick the boxes above to open up whatever else it
+            needs.
+          </p>
         </>
       )}
 
@@ -422,7 +605,7 @@ export default function MasterData() {
           <table className="table">
             <thead>
               <tr>
-                <th>Material</th>
+                <th>Item</th>
                 <th>Price</th>
                 <th>Stock on hand</th>
                 <th>Reorder level</th>
@@ -453,12 +636,12 @@ export default function MasterData() {
             </tbody>
           </table>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Stock on hand increases via approved requisitions under Stock → Stock Approval. Reorder level is editable
-            here — materials at or below it are flagged for reorder.
+            Stock on hand increases via approved requisitions or a stock take under Stock. Reorder level is editable
+            here — items at or below it are flagged for reorder.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 640 }}>
             <div className="field">
-              <label>New material</label>
+              <label>New item</label>
               <input className="input" value={newMaterialName} onChange={(e) => setNewMaterialName(e.target.value)} />
             </div>
             <div className="field">
@@ -550,6 +733,8 @@ export default function MasterData() {
               <tr>
                 <th>Corporate client</th>
                 <th>Credit terms</th>
+                <th>Email</th>
+                <th>Phone</th>
               </tr>
             </thead>
             <tbody>
@@ -557,11 +742,35 @@ export default function MasterData() {
                 <tr key={c.id}>
                   <td>{c.name}</td>
                   <td className="text-muted">{c.creditDays} days</td>
+                  <td>
+                    <input
+                      className="input"
+                      style={{ minWidth: 160 }}
+                      value={clientDrafts[c.id]?.email ?? c.email}
+                      onChange={(e) => setClientDrafts((d) => ({ ...d, [c.id]: { ...d[c.id], email: e.target.value } }))}
+                      onBlur={(e) => saveClientField(c.id, 'email', e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="input"
+                      style={{ minWidth: 140 }}
+                      value={clientDrafts[c.id]?.phone ?? c.phone}
+                      onChange={(e) => setClientDrafts((d) => ({ ...d, [c.id]: { ...d[c.id], phone: e.target.value } }))}
+                      onBlur={(e) => saveClientField(c.id, 'phone', e.target.value)}
+                      placeholder="Optional"
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 640 }}>
+          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+            Email and phone prefill the "Send email"/"Send WhatsApp" targets on that client's invoices and
+            quotations.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 960 }}>
             <div className="field">
               <label>New corporate client</label>
               <input className="input" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
@@ -569,6 +778,14 @@ export default function MasterData() {
             <div className="field">
               <label>Credit terms (days)</label>
               <input className="input" value={newClientCreditDays} onChange={(e) => setNewClientCreditDays(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Email</label>
+              <input className="input" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="Optional" />
+            </div>
+            <div className="field">
+              <label>Phone</label>
+              <input className="input" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} placeholder="Optional" />
             </div>
             <button type="button" className="btn btn-primary blueprint" onClick={addClient}>
               <i className="corner tl"></i>

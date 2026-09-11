@@ -1,4 +1,5 @@
-import type { OrderStage, Role } from './types';
+import type { OrderStage, Permissions } from './types';
+import { PERMISSION_KEYS } from './types';
 
 export const STAGES: OrderStage[] = [
   'Order Received',
@@ -10,15 +11,42 @@ export const STAGES: OrderStage[] = [
 
 export const PAYMENT_METHODS = ['Cash', 'M-Pesa', 'Bank Transfer', 'Card'] as const;
 
-export const ROLES = ['Staff', 'Supervisor', 'Finance Manager', 'General Manager', 'Admin'] as const satisfies readonly Role[];
+// Default permission sets for the five roles this app ships seeded with —
+// used by both the API's seed script (to create the matching Role rows) and
+// Master Data's "Add role" form (a starting point, e.g. cloning "Staff").
+// 'Admin' is the one row the server always treats as all-true regardless of
+// what's stored (see Role model docs in schema.prisma) — its entry here is
+// just for display consistency.
+const ALL_FALSE: Permissions = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false])) as Permissions;
+const ALL_TRUE: Permissions = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true])) as Permissions;
 
-// Who can access/capture P&L, Finance (VAT/NSSF/SHIF/Payroll/Expenses/Petty Cash) records.
-export const FINANCE_ROLES: Role[] = ['Finance Manager', 'General Manager', 'Admin'];
-
-// Everyone above Staff — order/payment oversight (All Orders, Payments) and
-// Stock visibility. Stock requisitions can be raised by any of these, but
-// approval is still finance-gated (FINANCE_ROLES only).
-export const MANAGEMENT_ROLES: Role[] = ['Supervisor', 'Finance Manager', 'General Manager', 'Admin'];
+export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
+  Staff: { ...ALL_FALSE, canCaptureOrders: true },
+  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessFilm: true },
+  'Finance Manager': {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessPnl: true,
+    canAccessFinance: true,
+    canAccessStock: true,
+    canApproveStock: true,
+    canAccessFilm: true,
+    canAccessReports: true,
+  },
+  'General Manager': {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessPnl: true,
+    canAccessFinance: true,
+    canAccessStock: true,
+    canApproveStock: true,
+    canAccessFilm: true,
+    canAccessReports: true,
+  },
+  Admin: ALL_TRUE,
+};
 
 export const ITEM_TYPE_LABELS: Record<string, string> = {
   material: 'Material',
@@ -26,10 +54,18 @@ export const ITEM_TYPE_LABELS: Record<string, string> = {
   'per-metre': 'Per-metre service',
 };
 
-// Matches GLM's own Petty Cash Tracker spreadsheet, plus Salaries & wages
-// which sits outside petty cash. Used by the P&L expense ledger.
+// Matches GLM's own Petty Cash Tracker spreadsheet. Used by the P&L expense
+// ledger. "DTF Film Rolls" is its own category (not folded into Printing
+// Materials & Consumables) so the Film → Install roll flow can filter
+// cleanly for expenses eligible to link to a roll (see Expense.invoiceNumber
+// and FilmRoll.expenseId). "Salaries & wages" is deliberately NOT a pickable
+// category here — that cost is captured exactly once, in Finance →
+// Compliance → Payroll, and the P&L's "Salaries & wages" line is derived
+// from PayrollEntry.grossPay directly (see pnl.ts) rather than from this
+// Expense table, so there's no way to double-capture it via Expenses or
+// Petty Cash.
 export const EXPENSE_CATEGORIES = [
-  'Salaries & wages',
+  'DTF Film Rolls',
   'Printing Materials & Consumables',
   'Casual Labour',
   'Transport',
@@ -48,6 +84,14 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
 export const EMPLOYEE_TYPES = ['Employee', 'Casual'] as const;
 export type EmployeeType = (typeof EMPLOYEE_TYPES)[number];
+
+// Where a pay-run's cash actually comes from — distinct from PAYMENT_METHODS
+// (customer-facing) since payroll only ever leaves the business two ways.
+// 'Petty Cash' registers netPay as an outflow against the Petty Cash float
+// (see finance.ts's computePettyCashBalance) and is rejected if the float
+// can't cover it; 'Bank/Cheque' has no further bookkeeping here.
+export const PAYROLL_PAYMENT_SOURCES = ['Petty Cash', 'Bank/Cheque'] as const;
+export type PayrollPaymentSource = (typeof PAYROLL_PAYMENT_SOURCES)[number];
 
 export const PETTY_CASH_SOURCES = ['Bank Withdrawal', 'Cash Sales Allocation'] as const;
 export type PettyCashSource = (typeof PETTY_CASH_SOURCES)[number];

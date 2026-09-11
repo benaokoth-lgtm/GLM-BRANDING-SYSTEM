@@ -1,12 +1,18 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { Role } from '@glm/shared';
+import type { Permissions, Role } from '@glm/shared';
 import { api, clearToken, getToken, setToken } from '../api/client';
 
 export interface CurrentUser {
   id: number;
   name: string;
   role: Role;
+  // Snapshotted at login time — a permission change an Admin makes in Master
+  // Data → Roles & Access takes effect on the backend immediately (see
+  // requirePermission in apps/api/src/middleware/auth.ts), but this
+  // frontend copy (and therefore the nav/route gates built from it) only
+  // refreshes the next time the affected user logs in.
+  permissions: Permissions;
 }
 
 const USER_KEY = 'glm_pos_user';

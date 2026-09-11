@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../db';
 import { requireAuth, signToken } from '../middleware/auth';
+import { permissionsForRole } from '../permissions';
 
 export const authRouter = Router();
 
@@ -48,9 +49,10 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
 
   await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
 
-  const authedUser = { id: user.id, name: user.name, role: user.role as 'Staff' | 'Supervisor' | 'Admin' };
+  const authedUser = { id: user.id, name: user.name, role: user.role };
   const token = signToken(authedUser);
-  res.json({ token, user: authedUser });
+  const permissions = await permissionsForRole(user.role);
+  res.json({ token, user: { ...authedUser, permissions } });
 });
 
 authRouter.post('/change-pin', requireAuth, async (req, res) => {

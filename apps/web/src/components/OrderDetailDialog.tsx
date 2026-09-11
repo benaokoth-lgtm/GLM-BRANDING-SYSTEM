@@ -4,7 +4,8 @@ import type { OrderStage } from '@glm/shared';
 import { api } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printWalkinReceipt } from '../utils/printTicket';
-import { printCorporateDocument } from '../utils/printInvoice';
+import { buildCorporateDocumentHtml, printCorporateDocument } from '../utils/printInvoice';
+import MpesaStkButton from './MpesaStkButton';
 
 interface Props {
   orderId: number;
@@ -14,16 +15,29 @@ interface Props {
 
 export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props) {
   const [detail, setDetail] = useState<OrderDetail | null>(null);
+  const [company, setCompany] = useState<CompanySettings | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'>('Cash');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [emailTo, setEmailTo] = useState('');
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [showEmailField, setShowEmailField] = useState(false);
 
   function load() {
     api.get<OrderDetail>(`/orders/${orderId}`).then(setDetail).catch((err) => setError(err.message));
   }
 
   useEffect(load, [orderId]);
+  useEffect(() => {
+    api.get<CompanySettings>('/master-data/settings').then(setCompany);
+  }, []);
+
+  useEffect(() => {
+    if (detail?.kind === 'corporate' && detail.corporateClient?.email) setEmailTo(detail.corporateClient.email);
+  }, [detail]);
 
   async function recordPayment() {
     const amt = Number(paymentAmount);
@@ -70,12 +84,39 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     // blockers don't treat it as an unsolicited window; fill it in once the
     // company profile (name/address/logo) has loaded.
     const w = window.open('', '_blank');
-    const company = await api.get<CompanySettings>('/master-data/settings');
+    const co = company ?? (await api.get<CompanySettings>('/master-data/settings'));
     if (detail.kind === 'walkin') {
-      printWalkinReceipt(w, detail, company);
+      printWalkinReceipt(w, detail, co);
     } else {
-      printCorporateDocument(w, detail, company);
+      printCorporateDocument(w, detail, co);
     }
+  }
+
+  async function sendEmail() {
+    if (!detail || !company) return;
+    if (!emailTo.trim()) return setError('Enter a recipient email address');
+    setError(null);
+    setEmailBusy(true);
+    setEmailSent(false);
+    try {
+      const html = buildCorporateDocumentHtml(detail, company);
+      const docLabel = detail.status === 'Quote' ? 'Quotation' : 'Invoice';
+      await api.post('/email/send', { to: emailTo.trim(), subject: `${docLabel} ${detail.orderNo} — ${company.companyName || 'GLM Branding'}`, html });
+      setEmailSent(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send email');
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  function sendWhatsapp() {
+    if (!detail) return;
+    const phone = (detail.corporateClient?.phone || '').replace(/[^\d]/g, '');
+    const docLabel = detail.status === 'Quote' ? 'quotation' : 'invoice';
+    const message = `Hi, here is your ${docLabel} ${detail.orderNo} from ${company?.companyName || 'GLM Branding'} — total ${fmtKsh(detail.totals.grandTotal)}${detail.status === 'Invoice' ? `, balance due ${fmtKsh(detail.totals.balanceDue)}` : ''}. We'll send the document itself separately.`;
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
   }
 
   if (!detail) {
@@ -255,14 +296,35 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <option value="Card">Card</option>
               </select>
             </div>
-            <button type="button" className="btn btn-secondary blueprint" onClick={recordPayment} disabled={busy}>
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              Record
-            </button>
+            {paymentMethod === 'M-Pesa' ? (
+              <MpesaStkButton
+                phone={detail.phone || detail.corporateClient?.phone || ''}
+                amount={Number(paymentAmount) || 0}
+                accountReference={detail.orderNo}
+                description={`${detail.orderNo} payment`}
+                orderId={detail.id}
+                disabled={busy}
+                onSuccess={() => {
+                  setPaymentAmount('');
+                  load();
+                  onChanged();
+                }}
+              />
+            ) : (
+              <button type="button" className="btn btn-secondary blueprint" onClick={recordPayment} disabled={busy}>
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                Record
+              </button>
+            )}
           </div>
+          {paymentMethod === 'M-Pesa' && !(detail.phone || detail.corporateClient?.phone) && (
+            <p className="note" style={{ color: '#a33' }}>
+              No phone number on file for this {detail.kind === 'walkin' ? 'customer' : 'client'} — add one before sending an STK push.
+            </p>
+          )}
 
           {detail.status === 'Quote' && (
             <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)' }}>
@@ -273,6 +335,53 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <i className="corner br"></i>
                 Convert quotation to invoice
               </button>
+            </div>
+          )}
+
+          {detail.kind === 'corporate' && (
+            <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)' }}>
+              <div
+                style={{
+                  fontFamily: 'var(--font-body)',
+                  fontSize: 11,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  opacity: 0.55,
+                  marginBottom: 'var(--space-2)',
+                }}
+              >
+                Send this {detail.status === 'Quote' ? 'quotation' : 'invoice'}
+              </div>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                {showEmailField ? (
+                  <>
+                    <input className="input" style={{ maxWidth: 240 }} value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="client@example.com" />
+                    <button type="button" className="btn btn-secondary" onClick={sendEmail} disabled={emailBusy}>
+                      Send
+                    </button>
+                    {emailSent && <span className="tag tag-accent">Sent</span>}
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-secondary blueprint" onClick={() => setShowEmailField(true)}>
+                    <i className="corner tl"></i>
+                    <i className="corner tr"></i>
+                    <i className="corner bl"></i>
+                    <i className="corner br"></i>
+                    ✉️ Send email
+                  </button>
+                )}
+                <button type="button" className="btn btn-secondary blueprint" onClick={sendWhatsapp}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  💬 Send WhatsApp
+                </button>
+              </div>
+              <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+                WhatsApp opens a pre-filled message to the client's phone on file — WhatsApp's click-to-chat links
+                can't attach the document itself, so share it (printed or emailed) separately.
+              </p>
             </div>
           )}
         </div>

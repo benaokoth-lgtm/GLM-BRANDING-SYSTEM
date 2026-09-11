@@ -1,51 +1,36 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
+import type { CurrentUser } from '../state/AuthContext';
 
-const TABS_BY_ROLE: Record<string, [string, string][]> = {
-  Staff: [
-    ['/orders/new/walkin', 'New Walk-in Order'],
-    ['/orders/new/quote', 'New Quotation'],
-    ['/orders/mine', 'My Orders'],
-  ],
-  // P&L/Finance moved off Supervisor to the dedicated finance roles below;
-  // Supervisor keeps order/payment oversight and can still raise (but not
-  // approve) stock requisitions.
-  Supervisor: [
-    ['/orders/all', 'All Orders'],
-    ['/payments', 'Payments'],
-    ['/stock', 'Stock'],
-    ['/film', 'Film'],
-  ],
-  'Finance Manager': [
-    ['/orders/all', 'All Orders'],
-    ['/payments', 'Payments'],
-    ['/pnl', 'P&L'],
-    ['/finance', 'Finance'],
-    ['/stock', 'Stock'],
-    ['/film', 'Film'],
-  ],
-  'General Manager': [
-    ['/orders/all', 'All Orders'],
-    ['/payments', 'Payments'],
-    ['/pnl', 'P&L'],
-    ['/finance', 'Finance'],
-    ['/stock', 'Stock'],
-    ['/film', 'Film'],
-  ],
-  Admin: [
-    ['/orders/all', 'All Orders'],
-    ['/payments', 'Payments'],
-    ['/master-data', 'Master Data'],
-    ['/pnl', 'P&L'],
-    ['/finance', 'Finance'],
-    ['/stock', 'Stock'],
-    ['/film', 'Film'],
-  ],
-};
+// Built from the logged-in user's permissions rather than a hardcoded map
+// keyed by role name — a custom role created in Master Data → Roles &
+// Access shows exactly the nav entries its permissions unlock, with no code
+// change needed. 'Admin' always sees everything (including Master Data,
+// which stays a fixed role check, not a configurable permission — see
+// RequireRole on that route in App.tsx).
+function buildTabs(user: CurrentUser): [string, string][] {
+  const isAdmin = user.role === 'Admin';
+  const p = user.permissions;
+  const tabs: [string, string][] = [];
+
+  if (isAdmin || p.canCaptureOrders) {
+    tabs.push(['/orders/new/walkin', 'New Walk-in Order'], ['/orders/new/quote', 'New Quotation'], ['/orders/mine', 'My Orders']);
+  }
+  if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
+  if (isAdmin || p.canManagePayments) tabs.push(['/payments', 'Payments']);
+  if (isAdmin) tabs.push(['/master-data', 'Master Data']);
+  if (isAdmin || p.canAccessPnl) tabs.push(['/pnl', 'P&L']);
+  if (isAdmin || p.canAccessFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
+  if (isAdmin || p.canAccessReports) tabs.push(['/reports', 'Reports']);
+  if (isAdmin || p.canAccessStock) tabs.push(['/stock', 'Stock']);
+  if (isAdmin || p.canAccessFilm) tabs.push(['/film', 'Film']);
+
+  return tabs;
+}
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
-  const tabs = user ? TABS_BY_ROLE[user.role] ?? [] : [];
+  const tabs = user ? buildTabs(user) : [];
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>

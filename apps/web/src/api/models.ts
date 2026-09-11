@@ -36,6 +36,8 @@ export interface CorporateClient {
   id: number;
   name: string;
   creditDays: number;
+  email: string;
+  phone: string;
 }
 
 export interface CompanySettings {
@@ -53,7 +55,7 @@ export interface OrderSummary {
   kind: 'walkin' | 'corporate';
   customerName: string | null;
   phone: string | null;
-  corporateClient: { id: number; name: string } | null;
+  corporateClient: { id: number; name: string; email: string; phone: string } | null;
   staff: { id: number; name: string };
   createdDate: string;
   status: OrderStatus;
@@ -101,6 +103,7 @@ export interface ExpenseRow {
   category: string;
   note: string;
   amount: number;
+  invoiceNumber: string | null;
   capturedByName: string;
 }
 
@@ -173,9 +176,9 @@ export interface PayrollRow {
   name: string;
   employeeType: 'Employee' | 'Casual';
   department: string;
-  daysWorked: number;
-  rate: number;
-  paymentMethod: PaymentMethod;
+  daysWorked: number | null;
+  rate: number | null;
+  paymentSource: 'Petty Cash' | 'Bank/Cheque';
   grossPay: number;
   paye: number;
   nssf: number;
@@ -268,6 +271,7 @@ export interface FilmRollRow {
   id: number;
   lengthM: number;
   costTotal: number;
+  invoiceNumber: string | null;
   costPerMeter: number;
   installedDate: string;
   installedByName: string;
@@ -312,4 +316,38 @@ export interface PrintQueueData {
   totalPendingSqm: number;
   batchThresholdSqm: number;
   readyToRun: boolean;
+}
+
+export interface FilmExpenseOption {
+  id: number;
+  date: string;
+  invoiceNumber: string | null;
+  amount: number;
+  note: string;
+}
+
+export interface StockTakeRow {
+  id: number;
+  materialId: number;
+  materialName: string;
+  date: string;
+  systemQty: number;
+  countedQty: number;
+  varianceQty: number;
+  note: string;
+  countedByName: string;
+  countedAt: string;
+}
+
+export interface SalesCategoryRow {
+  name: string;
+  qty: number;
+  revenue: number;
+}
+
+export interface SalesByCategoryData {
+  fromDate: string;
+  toDate: string;
+  categories: SalesCategoryRow[];
+  materials: { qty: number; revenue: number };
 }

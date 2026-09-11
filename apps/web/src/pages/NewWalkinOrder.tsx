@@ -7,6 +7,7 @@ import LineItemsEditor, { makeDefaultLine } from '../components/LineItemsEditor'
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printWalkinReceipt } from '../utils/printTicket';
+import MpesaStkButton from '../components/MpesaStkButton';
 
 export default function NewWalkinOrder() {
   const { services, materials, artworkSizeBands, staff, maxDiscountPct, loading } = useCatalog();
@@ -19,6 +20,7 @@ export default function NewWalkinOrder() {
   const [paymentTiming, setPaymentTiming] = useState<'onAcceptance' | 'onCompletion'>('onAcceptance');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'>('Cash');
+  const [mpesaConfirmed, setMpesaConfirmed] = useState(false);
   const [lineItems, setLineItems] = useState<DraftLineItem[] | null>(null);
   const [orderDiscountPct, setOrderDiscountPct] = useState('0');
   const [orderDiscountAmt, setOrderDiscountAmt] = useState('0');
@@ -135,20 +137,51 @@ export default function NewWalkinOrder() {
       </div>
 
       {paymentTiming === 'onAcceptance' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
           <div className="field">
             <label>Amount received now (Ksh)</label>
-            <input className="input" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} placeholder="Full or partial" />
+            <input
+              className="input"
+              value={paymentAmount}
+              onChange={(e) => {
+                setPaymentAmount(e.target.value);
+                setMpesaConfirmed(false);
+              }}
+              placeholder="Full or partial"
+            />
           </div>
           <div className="field">
             <label>Method</label>
-            <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}>
+            <select
+              className="input"
+              value={paymentMethod}
+              onChange={(e) => {
+                setPaymentMethod(e.target.value as typeof paymentMethod);
+                setMpesaConfirmed(false);
+              }}
+            >
               <option value="Cash">Cash</option>
               <option value="M-Pesa">M-Pesa</option>
               <option value="Bank Transfer">Bank Transfer</option>
               <option value="Card">Card</option>
             </select>
           </div>
+          {paymentMethod === 'M-Pesa' && (
+            <div style={{ gridColumn: '1 / -1' }}>
+              {mpesaConfirmed ? (
+                <span className="tag tag-accent">M-Pesa payment confirmed — ready to capture the order</span>
+              ) : (
+                <MpesaStkButton
+                  phone={phone}
+                  amount={Number(paymentAmount) || 0}
+                  accountReference={customerName || 'Walk-in order'}
+                  description="Walk-in order payment"
+                  onSuccess={() => setMpesaConfirmed(true)}
+                />
+              )}
+              {!phone && <p className="note" style={{ marginTop: 'var(--space-2)' }}>Enter the customer's phone number above to send the STK push.</p>}
+            </div>
+          )}
         </div>
       )}
 
@@ -169,7 +202,12 @@ export default function NewWalkinOrder() {
         }}
       >
         <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>Grand total: {fmtKsh(totals.grandTotal)}</div>
-        <button type="button" className="btn btn-primary blueprint" onClick={submit} disabled={submitting || !customerName.trim()}>
+        <button
+          type="button"
+          className="btn btn-primary blueprint"
+          onClick={submit}
+          disabled={submitting || !customerName.trim() || (paymentTiming === 'onAcceptance' && paymentMethod === 'M-Pesa' && Number(paymentAmount) > 0 && !mpesaConfirmed)}
+        >
           <i className="corner tl"></i>
           <i className="corner tr"></i>
           <i className="corner bl"></i>

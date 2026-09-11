@@ -2,8 +2,8 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { requireAuth, requireRole } from '../middleware/auth';
-import { FINANCE_ROLES, ROLES } from '@glm/shared';
+import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS } from '@glm/shared';
 
 export const masterDataRouter = Router();
 masterDataRouter.use(requireAuth);
@@ -16,7 +16,7 @@ masterDataRouter.get('/staff', async (_req, res) => {
 
 const staffSchema = z.object({
   name: z.string().min(1),
-  role: z.enum(ROLES),
+  role: z.string().min(1),
   pin: z.string().regex(/^\d{4}$/),
 });
 
@@ -24,9 +24,81 @@ masterDataRouter.post('/staff', requireRole('Admin'), async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const { name, role, pin } = parsed.data;
+  if (role !== 'Admin') {
+    const roleExists = await prisma.role.findUnique({ where: { name: role } });
+    if (!roleExists) return res.status(400).json({ error: 'Unknown role — add it under Roles & Access first' });
+  }
   const pinHash = await bcrypt.hash(pin, 10);
   const user = await prisma.user.create({ data: { name, role, pinHash } });
   res.status(201).json({ id: user.id, name: user.name, role: user.role });
+});
+
+// ── Roles & Access — Admin-only, same level as every other Master Data ──
+// mutation. 'Admin' itself isn't a row here: it's always all-permissions by
+// server rule (see permissions.ts), so there's nothing to configure for it —
+// listing it as a phantom row would only invite someone to "edit" it and be
+// confused when nothing changes.
+masterDataRouter.get('/roles', requireRole('Admin'), async (_req, res) => {
+  const roles = await prisma.role.findMany({ orderBy: { name: 'asc' } });
+  res.json(
+    roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, r[k]])),
+    })),
+  );
+});
+
+const roleSchema = z.object({
+  name: z.string().min(1).max(60),
+  permissions: z.record(z.string(), z.boolean()).optional(),
+});
+
+function permissionFields(permissions: Record<string, boolean> | undefined) {
+  const out: Record<string, boolean> = {};
+  for (const k of PERMISSION_KEYS) out[k] = permissions?.[k] ?? false;
+  return out;
+}
+
+masterDataRouter.post('/roles', requireRole('Admin'), async (req, res) => {
+  const parsed = roleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  if (parsed.data.name === 'Admin') return res.status(400).json({ error: '"Admin" is reserved and always has full access' });
+  const role = await prisma.role
+    .create({ data: { name: parsed.data.name, ...permissionFields(parsed.data.permissions ?? DEFAULT_ROLE_PERMISSIONS.Staff) } })
+    .catch(() => null);
+  if (!role) return res.status(400).json({ error: 'A role with that name already exists' });
+  res.status(201).json({ id: role.id, name: role.name, permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]])) });
+});
+
+const roleUpdateSchema = z.object({
+  name: z.string().min(1).max(60).optional(),
+  permissions: z.record(z.string(), z.boolean()).optional(),
+});
+
+masterDataRouter.put('/roles/:id', requireRole('Admin'), async (req, res) => {
+  const parsed = roleUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const existing = await prisma.role.findUnique({ where: { id: Number(req.params.id) } });
+  if (!existing) return res.status(404).json({ error: 'Role not found' });
+  if (parsed.data.name === 'Admin') return res.status(400).json({ error: '"Admin" is reserved and always has full access' });
+
+  const data: Record<string, unknown> = {};
+  if (parsed.data.name) data.name = parsed.data.name;
+  if (parsed.data.permissions) Object.assign(data, permissionFields({ ...Object.fromEntries(PERMISSION_KEYS.map((k) => [k, existing[k]])), ...parsed.data.permissions }));
+
+  const role = await prisma.role.update({ where: { id: existing.id }, data }).catch(() => null);
+  if (!role) return res.status(400).json({ error: 'A role with that name already exists' });
+  res.json({ id: role.id, name: role.name, permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]])) });
+});
+
+masterDataRouter.delete('/roles/:id', requireRole('Admin'), async (req, res) => {
+  const existing = await prisma.role.findUnique({ where: { id: Number(req.params.id) } });
+  if (!existing) return res.status(404).json({ error: 'Role not found' });
+  const inUse = await prisma.user.findFirst({ where: { role: existing.name } });
+  if (inUse) return res.status(400).json({ error: 'Reassign every staff member off this role before deleting it' });
+  await prisma.role.delete({ where: { id: existing.id } });
+  res.status(204).end();
 });
 
 // ── Service Price List ──────────────────────────────────────────────────
@@ -145,7 +217,7 @@ const materialUpdateSchema = z
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
-masterDataRouter.put('/materials/:id', requireRole(...FINANCE_ROLES), async (req, res) => {
+masterDataRouter.put('/materials/:id', requirePermission('canApproveStock'), async (req, res) => {
   const parsed = materialUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const material = await prisma.material.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
@@ -158,12 +230,33 @@ masterDataRouter.get('/corporate-clients', async (_req, res) => {
   res.json(await prisma.corporateClient.findMany({ orderBy: { name: 'asc' } }));
 });
 
-const clientSchema = z.object({ name: z.string().min(1), creditDays: z.number().int().positive() });
+const clientSchema = z.object({
+  name: z.string().min(1),
+  creditDays: z.number().int().positive(),
+  email: z.string().max(200).optional(),
+  phone: z.string().max(50).optional(),
+});
 
 masterDataRouter.post('/corporate-clients', requireRole('Admin'), async (req, res) => {
   const parsed = clientSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  res.status(201).json(await prisma.corporateClient.create({ data: parsed.data }));
+  res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? '', phone: parsed.data.phone ?? '' } }));
+});
+
+const clientUpdateSchema = z
+  .object({
+    creditDays: z.number().int().positive().optional(),
+    email: z.string().max(200).optional(),
+    phone: z.string().max(50).optional(),
+  })
+  .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
+
+masterDataRouter.put('/corporate-clients/:id', requireRole('Admin'), async (req, res) => {
+  const parsed = clientUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const client = await prisma.corporateClient.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!client) return res.status(404).json({ error: 'Corporate client not found' });
+  res.json(client);
 });
 
 // ── Discount Rules ───────────────────────────────────────────────────────

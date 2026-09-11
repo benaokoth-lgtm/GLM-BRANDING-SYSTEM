@@ -1,21 +1,20 @@
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requirePermission } from '../middleware/auth';
 import {
   computeOrderTotals,
   computePay,
   EMPLOYEE_TYPES,
   EXPENSE_CATEGORIES,
-  FINANCE_ROLES,
-  PAYMENT_METHODS,
+  PAYROLL_PAYMENT_SOURCES,
   PETTY_CASH_SOURCES,
   splitVatInclusive,
 } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 
 export const financeRouter = Router();
-financeRouter.use(requireAuth, requireRole(...FINANCE_ROLES));
+financeRouter.use(requireAuth, requirePermission('canAccessFinance'));
 
 function inRange(d: string, from: string, to: string): boolean {
   return d >= from && d <= to;
@@ -26,6 +25,27 @@ function parseRange(req: { query: Record<string, unknown> }): { from: string; to
   const to = String(req.query.to || '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
   return { from, to };
+}
+
+// Current Petty Cash float: all-time top-ups minus all-time Expense rows
+// minus all-time PayrollEntry rows paid from 'Petty Cash' (netPay only — the
+// statutory deductions on a petty-cash-paid salary are a separate downstream
+// remittance, not cash that left the tin). Shared by the /petty-cash read
+// endpoint and the insufficient-funds guards on new Expense/Payroll entries
+// below, so both always agree on the same number.
+export async function computePettyCashBalance(asOfDate?: string): Promise<number> {
+  const [topUps, expenses, pettyPayroll] = await Promise.all([
+    prisma.pettyCashTopUp.findMany(),
+    prisma.expense.findMany(),
+    prisma.payrollEntry.findMany({ where: { paymentSource: 'Petty Cash' } }),
+  ]);
+  const cutoff = asOfDate ?? '9999-12-31';
+  const topUpsTotal = topUps.filter((t) => t.date <= cutoff).reduce((a, t) => a + t.amount, 0);
+  const expensesTotal = expenses.filter((e) => e.date <= cutoff).reduce((a, e) => a + e.amount, 0);
+  const payrollTotal = pettyPayroll
+    .filter((p) => p.date <= cutoff)
+    .reduce((a, p) => a + computePay(p.grossPay, p.employeeType as 'Employee' | 'Casual').netPay, 0);
+  return topUpsTotal - expensesTotal - payrollTotal;
 }
 
 // ── Payroll (also backs the NSSF/SHIF derived views on the frontend) ───────
@@ -50,7 +70,7 @@ financeRouter.get('/payroll', async (req, res) => {
       department: e.department,
       daysWorked: e.daysWorked,
       rate: e.rate,
-      paymentMethod: e.paymentMethod,
+      paymentSource: e.paymentSource,
       capturedByName: e.capturedByName,
       ...pay,
     };
@@ -72,26 +92,58 @@ financeRouter.get('/payroll', async (req, res) => {
   res.json({ fromDate: range.from, toDate: range.to, rows, ...totals });
 });
 
-const payrollSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  staffId: z.number().int(),
-  employeeType: z.enum(EMPLOYEE_TYPES),
-  department: z.string().max(100).optional(),
-  daysWorked: z.number().positive(),
-  rate: z.number().positive(),
-  paymentMethod: z.enum(PAYMENT_METHODS),
-});
+// Employees are paid a fixed monthly salary (grossPay entered directly) —
+// no daysWorked/rate. Casuals stay day-rate (grossPay = daysWorked * rate).
+const payrollSchema = z.discriminatedUnion('employeeType', [
+  z.object({
+    employeeType: z.literal('Employee'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    staffId: z.number().int(),
+    department: z.string().max(100).optional(),
+    grossPay: z.number().positive(),
+    paymentSource: z.enum(PAYROLL_PAYMENT_SOURCES),
+  }),
+  z.object({
+    employeeType: z.literal('Casual'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    staffId: z.number().int(),
+    department: z.string().max(100).optional(),
+    daysWorked: z.number().positive(),
+    rate: z.number().positive(),
+    paymentSource: z.enum(PAYROLL_PAYMENT_SOURCES),
+  }),
+]);
 
 financeRouter.post('/payroll', async (req, res) => {
   const parsed = payrollSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const { daysWorked, rate, staffId } = parsed.data;
+  const data = parsed.data;
 
-  const staff = await prisma.user.findUnique({ where: { id: staffId } });
+  const staff = await prisma.user.findUnique({ where: { id: data.staffId } });
   if (!staff) return res.status(400).json({ error: 'Selected staff member not found' });
 
+  const grossPay = data.employeeType === 'Employee' ? data.grossPay : data.daysWorked * data.rate;
+
+  if (data.paymentSource === 'Petty Cash') {
+    const netPay = computePay(grossPay, data.employeeType).netPay;
+    const balance = await computePettyCashBalance();
+    if (netPay > balance) {
+      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString('en-KE')} available, Ksh ${Math.round(netPay).toLocaleString('en-KE')} needed)` });
+    }
+  }
+
   const entry = await prisma.payrollEntry.create({
-    data: { ...parsed.data, department: parsed.data.department ?? '', grossPay: daysWorked * rate, capturedByName: req.user!.name },
+    data: {
+      date: data.date,
+      staffId: data.staffId,
+      employeeType: data.employeeType,
+      department: data.department ?? '',
+      daysWorked: data.employeeType === 'Casual' ? data.daysWorked : null,
+      rate: data.employeeType === 'Casual' ? data.rate : null,
+      grossPay,
+      paymentSource: data.paymentSource,
+      capturedByName: req.user!.name,
+    },
   });
   res.status(201).json({ ...entry, name: staff.name });
 });
@@ -167,11 +219,25 @@ const expenseSchema = z.object({
   category: z.enum(EXPENSE_CATEGORIES),
   note: z.string().max(200).optional(),
   amount: z.number().positive(),
+  // Optional generally, but a "DTF Film Rolls" expense needs one on file to
+  // later be picked when installing a roll (see routes/film.ts).
+  invoiceNumber: z.string().max(100).optional(),
 });
 
+// Every Expense row is implicitly petty-cash-funded (see the Petty Cash
+// ledger's balance calc) — so no expense can be captured for more than the
+// float currently holds, full stop. This is the same rule payroll's
+// 'Petty Cash' payment source enforces, just applied unconditionally here
+// since there's no separate funding-source field on Expense.
 financeRouter.post('/expenses', async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+
+  const balance = await computePettyCashBalance();
+  if (parsed.data.amount > balance) {
+    return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString('en-KE')} available, Ksh ${Math.round(parsed.data.amount).toLocaleString('en-KE')} needed)` });
+  }
+
   const expense = await prisma.expense.create({
     data: { ...parsed.data, note: parsed.data.note ?? '', capturedByName: req.user!.name },
   });
@@ -272,20 +338,21 @@ financeRouter.get('/petty-cash', async (req, res) => {
   const range = parseRange(req);
   if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
 
-  const [allTopUps, allExpenses, cashPayments] = await Promise.all([
+  const [allTopUps, allExpenses, allPettyPayroll, cashPayments] = await Promise.all([
     prisma.pettyCashTopUp.findMany(),
     prisma.expense.findMany(),
+    prisma.payrollEntry.findMany({ where: { paymentSource: 'Petty Cash' }, include: { staff: true } }),
     prisma.payment.findMany({ where: { method: 'Cash', date: { gte: range.from, lte: range.to } } }),
   ]);
+  const pettyPayrollNet = allPettyPayroll.map((p) => ({ ...p, netPay: computePay(p.grossPay, p.employeeType as 'Employee' | 'Casual').netPay }));
 
-  const balance =
-    allTopUps.filter((t) => t.date <= range.to).reduce((a, t) => a + t.amount, 0) -
-    allExpenses.filter((e) => e.date <= range.to).reduce((a, e) => a + e.amount, 0);
+  const balance = await computePettyCashBalance(range.to);
 
   const periodTopUps = allTopUps.filter((t) => inRange(t.date, range.from, range.to));
   const periodExpenses = allExpenses.filter((e) => inRange(e.date, range.from, range.to));
+  const periodPayroll = pettyPayrollNet.filter((p) => inRange(p.date, range.from, range.to));
   const periodTopUpsTotal = periodTopUps.reduce((a, t) => a + t.amount, 0);
-  const periodExpensesTotal = periodExpenses.reduce((a, e) => a + e.amount, 0);
+  const periodExpensesTotal = periodExpenses.reduce((a, e) => a + e.amount, 0) + periodPayroll.reduce((a, p) => a + p.netPay, 0);
   const cashSalesInPeriod = cashPayments.reduce((a, p) => a + p.amount, 0);
 
   const ledger = [
@@ -305,6 +372,15 @@ financeRouter.get('/petty-cash', async (req, res) => {
       description: e.category + (e.note ? ': ' + e.note : '') + (e.capturedByName ? ` (by ${e.capturedByName})` : ''),
       amountIn: 0,
       amountOut: e.amount,
+      topUpId: null as number | null,
+    })),
+    ...periodPayroll.map((p) => ({
+      id: 'p' + p.id,
+      date: p.date,
+      type: 'expense' as const,
+      description: `Payroll: ${p.staff.name} (net pay)`,
+      amountIn: 0,
+      amountOut: p.netPay,
       topUpId: null as number | null,
     })),
   ].sort((a, b) => (a.date < b.date ? 1 : -1));

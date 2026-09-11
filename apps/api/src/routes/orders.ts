@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requirePermission } from '../middleware/auth';
 import { addDays, buildLineTotal, computeOrderTotals, isOverdue, todayStr } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 import { logFilmUsageForOrder } from './film';
@@ -54,7 +54,9 @@ function serializeSummary(order: FullOrder) {
     kind: order.kind,
     customerName: order.customerName,
     phone: order.phone,
-    corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name } : null,
+    corporateClient: order.corporateClient
+      ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone }
+      : null,
     staff: { id: order.staff.id, name: order.staff.name },
     createdDate: order.createdDate,
     status: order.status,
@@ -153,8 +155,8 @@ const walkinSchema = z.object({
   orderDiscountAmt: z.number().min(0).default(0),
 });
 
-// ── Create walk-in order (Staff only — matches the prototype's role-gated tabs) ──
-ordersRouter.post('/walkin', requireRole('Staff'), async (req, res) => {
+// ── Create walk-in order (canCaptureOrders — Staff by default) ───────────
+ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, res) => {
   const parsed = walkinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
@@ -209,8 +211,8 @@ const quoteSchema = z.object({
   orderDiscountAmt: z.number().min(0).default(0),
 });
 
-// ── Create quotation (Staff only) ───────────────────────────────────────
-ordersRouter.post('/quote', requireRole('Staff'), async (req, res) => {
+// ── Create quotation (canCaptureOrders — Staff by default) ───────────────
+ordersRouter.post('/quote', requirePermission('canCaptureOrders'), async (req, res) => {
   const parsed = quoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
@@ -279,7 +281,7 @@ ordersRouter.patch('/:id/stage', async (req, res) => {
 // This is when corporate production actually starts, so it's also when
 // film-tracked lines deplete the active roll — not at quote-drafting time,
 // since a quote may never be accepted.
-ordersRouter.post('/:id/convert', requireRole('Staff', 'Supervisor', 'Admin'), async (req, res) => {
+ordersRouter.post('/:id/convert', requirePermission('canCaptureOrders', 'canViewAllOrders'), async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true, lineItems: true } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });

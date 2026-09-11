@@ -12,6 +12,9 @@ import { pnlRouter } from './routes/pnl';
 import { financeRouter } from './routes/finance';
 import { stockRouter } from './routes/stock';
 import { filmRouter } from './routes/film';
+import { reportsRouter } from './routes/reports';
+import { emailRouter } from './routes/email';
+import { mpesaRouter } from './routes/mpesa';
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5174').split(',').map((o) => o.trim());
 
@@ -29,6 +32,9 @@ app.use('/api/pnl', pnlRouter);
 app.use('/api/finance', financeRouter);
 app.use('/api/stock', stockRouter);
 app.use('/api/film', filmRouter);
+app.use('/api/reports', reportsRouter);
+app.use('/api/email', emailRouter);
+app.use('/api/mpesa', mpesaRouter);
 
 // Catch-all — any error forwarded here (including async rejections, thanks
 // to express-async-errors above) gets a clean JSON 500 instead of Express's

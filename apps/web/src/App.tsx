@@ -1,8 +1,8 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { FINANCE_ROLES, MANAGEMENT_ROLES } from '@glm/shared';
 import { useAuth } from './state/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import RequireRole from './components/RequireRole';
+import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
 import NewWalkinOrder from './pages/NewWalkinOrder';
 import NewQuotation from './pages/NewQuotation';
@@ -11,13 +11,15 @@ import Payments from './pages/Payments';
 import MasterData from './pages/MasterData';
 import PnL from './pages/PnL';
 import Finance from './pages/Finance';
+import Compliance from './pages/Compliance';
+import Reports from './pages/Reports';
 import Stock from './pages/Stock';
 import Film from './pages/Film';
 
 function DefaultRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.role === 'Staff' ? '/orders/new/walkin' : '/orders/all'} replace />;
+  return <Navigate to={user.permissions.canCaptureOrders && user.role !== 'Admin' ? '/orders/new/walkin' : '/orders/all'} replace />;
 }
 
 export default function App() {
@@ -31,41 +33,41 @@ export default function App() {
         <Route
           path="/orders/new/walkin"
           element={
-            <RequireRole roles={['Staff']}>
+            <RequirePermission keys={['canCaptureOrders']}>
               <NewWalkinOrder />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route
           path="/orders/new/quote"
           element={
-            <RequireRole roles={['Staff']}>
+            <RequirePermission keys={['canCaptureOrders']}>
               <NewQuotation />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route
           path="/orders/mine"
           element={
-            <RequireRole roles={['Staff']}>
+            <RequirePermission keys={['canCaptureOrders']}>
               <Orders scope="mine" />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route
           path="/orders/all"
           element={
-            <RequireRole roles={MANAGEMENT_ROLES}>
+            <RequirePermission keys={['canViewAllOrders']}>
               <Orders scope="all" />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route
           path="/payments"
           element={
-            <RequireRole roles={MANAGEMENT_ROLES}>
+            <RequirePermission keys={['canManagePayments']}>
               <Payments />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route
@@ -79,33 +81,49 @@ export default function App() {
         <Route
           path="/pnl"
           element={
-            <RequireRole roles={FINANCE_ROLES}>
+            <RequirePermission keys={['canAccessPnl']}>
               <PnL />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route
           path="/finance"
           element={
-            <RequireRole roles={FINANCE_ROLES}>
+            <RequirePermission keys={['canAccessFinance']}>
               <Finance />
-            </RequireRole>
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/compliance"
+          element={
+            <RequirePermission keys={['canAccessFinance']}>
+              <Compliance />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/reports"
+          element={
+            <RequirePermission keys={['canAccessReports']}>
+              <Reports />
+            </RequirePermission>
           }
         />
         <Route
           path="/stock"
           element={
-            <RequireRole roles={MANAGEMENT_ROLES}>
+            <RequirePermission keys={['canAccessStock']}>
               <Stock />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route
           path="/film"
           element={
-            <RequireRole roles={MANAGEMENT_ROLES}>
+            <RequirePermission keys={['canAccessFilm']}>
               <Film />
-            </RequireRole>
+            </RequirePermission>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

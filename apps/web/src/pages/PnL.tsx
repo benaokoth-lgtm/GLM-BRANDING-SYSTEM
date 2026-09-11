@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { EXPENSE_CATEGORIES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
+import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import type { PnlData } from '../api/models';
 
@@ -204,7 +204,7 @@ export default function PnL() {
             <span>Gross profit</span>
             <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(data.grossProfit)}</span>
           </div>
-          {EXPENSE_CATEGORIES.map((cat) => (
+          {data.expenseCategories.map((cat) => (
             <div key={cat} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0' }}>
               <span>{cat}</span>
               <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>({fmtKsh(data.byCategory[cat] || 0)})</span>

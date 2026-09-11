@@ -3,23 +3,27 @@
 An order capture, quotation/invoicing, and payment-tracking system for GLM Branding
 (embroidery, DTF printing, UV printing, large-format printing, digital printing).
 
-Five roles: **Staff** (captures orders/quotes), **Supervisor** (traces orders/payments,
-raises stock requisitions), **Finance Manager** and **General Manager** (P&L, Finance,
-and Stock approval — everything financial), and **Admin** (all of the above plus
-master-data management).
+Five roles ship seeded — **Staff** (captures orders/quotes), **Supervisor** (traces
+orders/payments, raises stock requisitions), **Finance Manager** and **General Manager**
+(P&L, Finance, and Stock approval — everything financial), and **Admin** (all of the
+above plus master-data management) — but roles are no longer fixed: Master Data → Roles
+& Access lets Admin add/rename/delete roles and toggle exactly which areas of the app
+each one can reach. See "Roles & access levels" below.
 
 Built from a design handoff (`design_handoff_pos_system/`), recreated in this codebase
 using the conventions of the Olerai Hotel System / Word Power Church System projects.
 Extended with a **P&L account** tab (`design_handoff_pnl_account/`) that aggregates
-orders/payments into a filterable profit-and-loss statement, a **Finance** tab (VAT /
-NSSF / SHIF / Payroll / Expenses / Petty Cash — Kenyan statutory deductions computed via
-`packages/shared/src/tax.ts`, ported from Olerai Hotel System for consistent, vetted
-formulas), a **Stock** tab (requisition/approval workflow with reorder alerts), and a
-**Film** tab (DTF transfer-film roll inventory — usage log, roll install/replace, and a
-waste report; goes beyond the `design_handoff_pnl_account/` handoff's read-only Film
-Usage report screen into full roll-level inventory tracking, per direct request).
-Printing/company-branding, Finance, Stock, and Film were added directly (no design
-handoff for the operational parts of any of them).
+orders/payments into a filterable profit-and-loss statement, a **Finance** tab (Expenses,
+Petty Cash) and a **Compliance** tab (VAT / NSSF / SHIF / Payroll — Kenyan statutory
+deductions computed via `packages/shared/src/tax.ts`, ported from Olerai Hotel System for
+consistent, vetted formulas), a **Stock** tab (stock levels, requisition/approval
+workflow, and stock take reconciliation, with reorder alerts), a **Film** tab (DTF
+transfer-film roll inventory — usage log, roll install/replace tied to Finance Expenses
+via invoice number, and a waste report; goes beyond the `design_handoff_pnl_account/`
+handoff's read-only Film Usage report screen into full roll-level inventory tracking, per
+direct request), and a **Reports** tab (filterable sales, film usage, and sales-by-service
+reports). Printing/company-branding, Finance, Compliance, Stock, Film, and Reports were
+added directly (no design handoff for the operational parts of any of them).
 
 ## Stack
 
@@ -82,15 +86,13 @@ own roster.
   Info and reused across every printed document. Walk-in orders auto-open the receipt
   print dialog right after capture.
 - Finance → Payroll's staff picker pulls from Master Data → Staff & Users (a real
-  `staffId`, not free text) — pick the employee, GLM's Casual day-rate labour is still
-  supported via the Employee/Casual type on each pay-run entry. The VAT tab shows
-  Output VAT on sales only (assumes VAT-inclusive pricing at 16%) — Input VAT on
-  purchases isn't tracked yet, so this isn't net VAT payable to KRA.
-- P&L, Finance (VAT/NSSF/SHIF/Payroll/Expenses/Petty Cash), and Stock approval are
-  gated to **Finance Manager, General Manager, and Admin** only — Supervisor lost this
-  access and keeps All Orders/Payments/Stock (requisition only, not approval).
-  `packages/shared/src/constants.ts` exports `FINANCE_ROLES` and `MANAGEMENT_ROLES` as
-  the single source of truth for this gating on both the API and the frontend.
+  `staffId`, not free text). The VAT tab shows Output VAT on sales only (assumes
+  VAT-inclusive pricing at 16%) — Input VAT on purchases isn't tracked yet, so this isn't
+  net VAT payable to KRA.
+- P&L, Finance/Compliance, and Stock approval default to **Finance Manager, General
+  Manager, and Admin** only (seeded permissions) — Supervisor defaults to All
+  Orders/Payments/Stock (requisition only, not approval). This is now configurable per
+  role rather than hardcoded — see "Roles & access levels" below.
 - Every Expense, PayrollEntry, and PettyCashTopUp row records `capturedByName` (or
   `authorizedByName` for top-ups) — a plain-text snapshot of who created it, not a
   foreign key, so the trail survives even if that user is later removed.
@@ -115,11 +117,11 @@ own roster.
   Finance roles can all raise a requisition, but only the Finance roles can approve or
   reject one, and a requester can't approve their own request. Reorder alerts are
   computed live (stockQty ≤ reorderLevel), shown on the Stock tab and as a tag in
-  Master Data → Material Price List, where reorderLevel is inline-editable.
+  Master Data → Stock Price List, where reorderLevel is inline-editable.
 - Payments (top nav) has Pending Payments / Paid sub-tabs with a shared date-range
   filter (presets + custom From/To), filtered by each order's created date. All Orders
   now shows an order date column too.
-- **Film** (next to Stock, same MANAGEMENT_ROLES access — Supervisor + Finance roles +
+- **Film** (next to Stock, same default access as Stock — Supervisor + Finance roles +
   Admin) tracks DTF transfer-film roll inventory:
   - A Service can be flagged **"Tracks film"** in Master Data → Service Price List
     (Admin-only toggle; seeded true for DTF Printing and DTF Sheet (per metre)). Order
@@ -206,3 +208,136 @@ own roster.
   — without it, Express 4 lets that rejection crash the whole process, taking the API
   down for every user over a single bad request.
 - No production deployment config yet (cPanel/Vercel) — add when ready to ship.
+- **Finance was split into Finance (Expenses, Petty Cash) and Compliance (VAT, NSSF,
+  SHIF, Payroll)** — both gated by the same `canAccessFinance` permission (see "Roles &
+  access levels" below), seeded true for Finance Manager, General Manager, Admin.
+  `DeleteReasonRow` and `DeletionRequestsCard` were pulled out to
+  `apps/web/src/components/` so both pages share one implementation instead of
+  duplicating the deletion-request UI.
+- **Stock now has a Stock Levels tab** (plain table of every material's price/on-hand/
+  reorder level — the previous Stock page only surfaced items already *below* reorder,
+  with no way to see the full picture) and a **Stock Take tab** for physical count
+  reconciliation: staff record what's actually on the shelf, and `Material.stockQty` is
+  corrected to match immediately. Each count snapshots `systemQty`/`countedQty`/
+  `varianceQty` to a `StockTake` row for audit, so a shortfall or overage is logged, not
+  silently discarded — the same "physical reality overrides the system tally" pattern
+  already used for film-roll waste-on-replacement.
+- **Every film roll now carries an invoice/receipt number, tied to Finance → Expenses**:
+  Film → Film Rolls' install form has two modes. **"New purchase"** requires an
+  invoice/receipt number and automatically creates the matching Expense (category "DTF
+  Film Rolls") at install time — no separate manual entry needed. **"Already logged as
+  an expense"** shows a dropdown of unlinked "DTF Film Rolls" expenses that have an
+  invoice number on file; picking one reuses its cost/invoice number instead of creating
+  a duplicate Expense. Once an expense is linked to a roll (`FilmRoll.expenseId`, a
+  `@unique` foreign key), it permanently drops off that dropdown — enforced both by the
+  `GET /film/available-expenses` query (excludes already-linked ids) and server-side on
+  `POST /film/rolls` (rejects reusing a linked expense even if called directly), so "no
+  film picked again from Expenses" holds regardless of UI state.
+- **New Reports menu** (gated by its own `canAccessReports` permission, seeded alongside
+  P&L/Finance/Compliance) with three
+  sub-tabs, all sharing one Today/This Month/This Year/Custom date-range filter bar
+  (custom range is whatever From/To are set to once either is edited by hand):
+  - **Sales** — every walk-in order and invoiced corporate order dated in range
+    (accrual basis, matching the P&L/VAT convention exactly — same `kind === 'walkin' ||
+    status === 'Invoice'` rule), listed with totals and a running grand total.
+  - **Film Usage** — reuses `GET /film/usage`, same log Film → Film Usage already shows.
+  - **Sales by Category** — new `GET /reports/sales-by-category` endpoint groups revenue
+    by *service* (Embroidery, DTF Printing, Laser Engraving, etc. — the thing that maps
+    to "which machine/production line is performing"), with a separate combined
+    "Materials" bucket for plain product sales (Cap, T-Shirt, ...), since a material sale
+    isn't a machine/service and mixing it in would distort the per-service ranking.
+- **Petty Cash → P&L flow confirmed intact after the above changes**: Petty Cash expenses
+  and film-roll-linked expenses both write to the same `Expense` table `pnl.ts` already
+  reads unfiltered by category, so both show up correctly in the P&L's operating-expense
+  breakdown with no extra plumbing — verified live by installing a film roll against an
+  existing expense and confirming its "DTF Film Rolls" line appeared in the P&L total
+  with no double-count.
+
+## Roles & access levels
+
+Roles are no longer a fixed union — Master Data → Roles & Access (Admin-only) manages a
+`Role` table with one Boolean per gated area: `canCaptureOrders`, `canViewAllOrders`,
+`canManagePayments`, `canAccessPnl`, `canAccessFinance` (covers both Finance and
+Compliance, since they share one backend router), `canAccessStock`, `canApproveStock`,
+`canAccessFilm`, `canAccessReports`. Add a role (e.g. "Accountant"), tick the boxes it
+needs, assign it to a staff member in Staff & Users — no code change required.
+
+- **"Admin" is never a row in that table.** The server treats the literal role name
+  `Admin` as having every permission unconditionally (`apps/api/src/permissions.ts`), and
+  rejects creating or renaming any role to `Admin`. This is the deliberate fixed recovery
+  path: however roles get misconfigured, logging in as Admin always has full access to
+  fix it. Master Data itself (adding services/materials/staff/settings, and managing
+  roles) stays hardcoded Admin-only — not a configurable permission — since it's the most
+  sensitive area and includes the roles screen itself.
+- Permissions are checked **live** on every gated backend request
+  (`requirePermission()` in `apps/api/src/middleware/auth.ts` looks up the caller's Role
+  row fresh each time, not from the JWT) — a permission change takes effect immediately
+  for that user, no re-login needed for the *backend* to enforce it. The *frontend* nav
+  (which tabs render) is built from a snapshot of permissions taken at login time
+  (`apps/web/src/state/AuthContext.tsx`), so a user whose access changed mid-session sees
+  the old nav until they next log in — a stale nav link still hits a live, correctly
+  enforced backend check underneath, it just won't render until refreshed.
+- Deleting a role is blocked while any staff member is still assigned to it (reassign
+  them first); this and the Admin protections above are the only guardrails — nothing
+  stops an Admin from otherwise emptying out any other role's access entirely.
+
+## Payroll, Petty Cash, and no double-booking salaries
+
+- **Employees are paid a fixed monthly salary**, entered directly as one amount (Finance
+  → Compliance → Payroll) — no more days × rate for them. **Casuals stay day-rate**
+  (days worked × Ksh/day), unchanged, since that's genuinely variable pay.
+- **"Salaries & wages" is not a pickable category under Finance → Expenses or Petty
+  Cash** (removed from `EXPENSE_CATEGORIES`) — every payroll entry, by construction, is
+  the only place that cost gets captured. The P&L's "Salaries & wages" line is derived
+  directly from `PayrollEntry.grossPay` summed over the period (`apps/api/src/routes/pnl.ts`),
+  not from any Expense row, so there is exactly one place to enter a salary cost and no
+  way to double-book it via Expenses or Petty Cash.
+- **Payroll's payment source** is `Petty Cash` or `Bank/Cheque` (`PAYROLL_PAYMENT_SOURCES`
+  in `packages/shared/src/constants.ts`) — distinct from the customer-facing
+  `PAYMENT_METHODS` used elsewhere. Choosing `Petty Cash` registers that entry's **net**
+  pay (not gross — the statutory deductions are a separate downstream remittance, not
+  cash that left the tin) as an outflow against the Petty Cash float.
+- **Insufficient petty cash blocks the entry outright**, both for a payroll entry marked
+  "Petty Cash" and for a plain Expense (every Expense row is implicitly petty-cash-funded
+  — see the ledger's own balance calc): `computePettyCashBalance()` in
+  `apps/api/src/routes/finance.ts` is the single source of truth for the float's current
+  balance (all-time top-ups minus all-time Expenses minus all-time petty-cash-sourced
+  payroll net pay), checked before either kind of entry is allowed to save. A film-roll
+  "new purchase" (which auto-creates a DTF Film Rolls Expense — see above) is checked the
+  same way. Nothing partially saves; the request is rejected with the shortfall shown.
+
+## M-Pesa STK Push, email, and WhatsApp
+
+- **M-Pesa STK Push** prompts the customer's own phone to complete a payment — available
+  both during walk-in order capture (`NewWalkinOrder.tsx`, before the order exists yet)
+  and from any existing order's payment flow (`OrderDetailDialog.tsx`, used by Payments
+  and Orders). `apps/api/src/routes/mpesa.ts` wraps Safaricom's Daraja API: `POST
+  /mpesa/stkpush` initiates the push, `POST /mpesa/callback` is Safaricom's webhook
+  target, `GET /mpesa/status/:id` is polled by the frontend (`MpesaStkButton.tsx`) every
+  3s, and once a push resolves Success against an *existing* order, its Payment record is
+  created automatically — no separate manual "Record payment" step. **Requires real
+  Safaricom Daraja credentials and, in production, a publicly reachable HTTPS
+  `MPESA_CALLBACK_URL`** (Safaricom cannot reach `localhost`) — set `MPESA_*` in
+  `apps/api/.env` (commented template included); until then, initiating a push returns a
+  clear "not configured" error rather than failing silently. A **"confirm payment
+  received manually"** fallback appears ~12s after sending a push, for an environment
+  with no reachable callback yet (e.g. local development) — staff confirm once they've
+  verified payment through other means (the till's own SMS alert), which records the
+  payment the same way a successful callback would.
+- **"Send email"** on a corporate invoice/quotation (`OrderDetailDialog.tsx`) sends the
+  *exact* HTML the Print button renders — `buildCorporateDocumentHtml()` in
+  `apps/web/src/utils/printInvoice.ts` was extracted as a pure string builder shared by
+  both, so the layout is defined in exactly one place. The frontend renders the HTML and
+  posts it to `POST /api/email/send`, which relays it via nodemailer using standard SMTP
+  credentials (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS`/`SMTP_FROM` in
+  `apps/api/.env`, commented template included) — any provider works (Gmail app
+  password, Zoho, SendGrid's SMTP relay, ...). Returns a clear "not configured" error
+  until those are set. The recipient field prefills from the corporate client's email on
+  file (Master Data → Corporate Clients) when present.
+- **"Send WhatsApp"** opens a `wa.me` click-to-chat link pre-filled with a short summary
+  (order number, total, balance due) to the client's phone on file — no API credentials
+  needed, since it's a plain deep link, not the WhatsApp Business API. The trade-off:
+  click-to-chat links can't attach a file, so the actual invoice/quotation document still
+  has to be shared separately (printed or emailed) — the button's own note says so.
+  `CorporateClient` gained `email`/`phone` fields (Master Data → Corporate Clients,
+  inline-editable) to back both buttons.

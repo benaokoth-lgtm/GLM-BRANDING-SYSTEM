@@ -46,10 +46,13 @@ masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
   res.status(201).json(await prisma.service.create({ data: parsed.data }));
 });
 
-// Flags whether a service consumes DTF transfer film — toggled by Admin,
-// same access level as adding a service, since it's a catalog definition
-// property rather than a day-to-day operational value.
-const serviceUpdateSchema = z.object({ tracksFilm: z.boolean() });
+// Flags whether a service consumes DTF transfer film, and/or charges a
+// staff-picked heat press fee — toggled by Admin, same access level as
+// adding a service, since these are catalog definition properties rather
+// than day-to-day operational values.
+const serviceUpdateSchema = z
+  .object({ tracksFilm: z.boolean().optional(), chargesPressingFee: z.boolean().optional() })
+  .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
 masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => {
   const parsed = serviceUpdateSchema.safeParse(req.body);

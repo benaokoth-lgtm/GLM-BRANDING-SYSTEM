@@ -36,7 +36,7 @@ async function main() {
 
   const [embroidery, dtf, uv, largeFormat, digital, dtfSheet] = await Promise.all([
     prisma.service.create({ data: { name: 'Embroidery', unit: 'piece', price: 350 } }),
-    prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 250, tracksFilm: true } }),
+    prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 250, tracksFilm: true, chargesPressingFee: true } }),
     prisma.service.create({ data: { name: 'UV Printing', unit: 'piece', price: 400 } }),
     prisma.service.create({ data: { name: 'Large Format Printing', unit: 'sqm', price: 600 } }),
     prisma.service.create({ data: { name: 'Digital Printing', unit: 'piece', price: 200 } }),

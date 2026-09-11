@@ -96,6 +96,16 @@ export default function MasterData() {
     }
   }
 
+  async function toggleChargesPressingFee(serviceId: number, chargesPressingFee: boolean) {
+    setError(null);
+    try {
+      await api.put(`/master-data/services/${serviceId}`, { chargesPressingFee });
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update service');
+    }
+  }
+
   async function addMaterial() {
     const price = Number(newMaterialPrice);
     if (!newMaterialName.trim() || !price) return setError('Material name and price are required');
@@ -265,6 +275,7 @@ export default function MasterData() {
                 <th>Unit</th>
                 <th>Price</th>
                 <th>Tracks film</th>
+                <th>Charges pressing fee</th>
               </tr>
             </thead>
             <tbody>
@@ -279,13 +290,21 @@ export default function MasterData() {
                       {sv.tracksFilm && <span className="tag tag-accent">DTF film</span>}
                     </label>
                   </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={sv.chargesPressingFee} onChange={(e) => toggleChargesPressingFee(sv.id, e.target.checked)} />
+                      {sv.chargesPressingFee && <span className="tag tag-accent">Heat press</span>}
+                    </label>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
             Services flagged "Tracks film" show a Film used (m) field on order line items, feeding Film → Film Usage
-            and decrementing the active film roll.
+            and decrementing the active film roll. Services flagged "Charges pressing fee" show a staff-picked heat
+            press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM prints and presses,
+            not a pure film sale.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
             <div className="field">

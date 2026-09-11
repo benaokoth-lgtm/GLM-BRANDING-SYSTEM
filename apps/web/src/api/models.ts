@@ -12,6 +12,7 @@ export interface CatalogService {
   unit: ServiceUnit;
   price: number;
   tracksFilm: boolean;
+  chargesPressingFee: boolean;
 }
 
 export interface CatalogMaterial {
@@ -65,6 +66,7 @@ export interface OrderLineItemView {
   discountPct: number;
   discountAmt: number;
   filmLengthM: number | null;
+  heatPressFee: number | null;
   lineTotal: number;
 }
 
@@ -248,6 +250,7 @@ export interface DraftLineItem {
   discountPct: number | string;
   discountAmt: number | string;
   filmLengthM: number | string;
+  heatPressFee: number | string;
 }
 
 export interface FilmRollRow {

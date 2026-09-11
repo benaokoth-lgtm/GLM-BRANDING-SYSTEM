@@ -134,9 +134,19 @@ own roster.
     weighted) against its cost/metre (cost ÷ roll length) to flag whether it was
     **undercharged** — the Roll history & waste report lists every replacement cycle
     with its waste quantity, avg rate charged, and margin/metre.
-  - Roll length/cost defaults (100m / Ksh 3,500) are placeholders on the install form,
-    not stored assumptions — enter GLM's real roll spec off the purchase invoice each
-    time.
+  - Roll length/cost defaults on the install form (100m / Ksh 7,000 — GLM's real 60cm×100m
+    invoice price as of Sep 2026, i.e. Ksh 70/linear metre or Ksh 116.67/sqm) are a
+    starting point, not a stored assumption — enter the actual figure off each purchase
+    invoice, since cost varies by supplier order.
+  - A Service can also be flagged **"Charges pressing fee"** in Master Data → Service
+    Price List (seeded true for DTF Printing only — not DTF Sheet (per metre), which is
+    a pure film sale with no press step). Its line items show a **staff-picked** "Heat
+    press fee (Ksh/pc)" dropdown (Ksh 20/25/30/35/40/45/50 — deliberately a fixed pick
+    list, not free text, so pricing stays within GLM's approved band) added on top of
+    the base price for every piece (`lineTotal = qty × (unitPrice + heatPressFee) × (1
+    - discountPct/100) - discountAmt`), shown on printed invoices/receipts and the order
+    detail dialog, and folded into the effective rate used for film-roll revenue/margin
+    tracking above. A tag warns if it's left blank on a line item that needs one.
 - **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO

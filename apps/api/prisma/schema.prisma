@@ -25,15 +25,19 @@ model User {
 }
 
 model Service {
-  id         Int     @id @default(autoincrement())
-  name       String
-  unit       String // 'piece' | 'metre' | 'sqm'
-  price      Float
+  id                  Int     @id @default(autoincrement())
+  name                String
+  unit                String // 'piece' | 'metre' | 'sqm'
+  price               Float
   // DTF services consume transfer film — flagging a service here is what
   // makes its line items show the film-length capture field and feed the
   // Film roll inventory. Editable by Admin in Master Data.
-  tracksFilm Boolean @default(false)
-  lineItems  OrderLineItem[]
+  tracksFilm          Boolean @default(false)
+  // Jobs where GLM prints AND heat-presses (not a pure film sale) show a
+  // staff-picked heat press fee (Ksh/piece) on the line item, added on top
+  // of the base price. Editable by Admin in Master Data.
+  chargesPressingFee  Boolean @default(false)
+  lineItems           OrderLineItem[]
 }
 
 model Material {
@@ -210,6 +214,9 @@ model OrderLineItem {
   // Metres of DTF transfer film this line consumed — only meaningful when
   // service.tracksFilm is true; feeds a FilmUsage row on capture/conversion.
   filmLengthM Float?
+  // Staff-picked heat press fee (Ksh/piece), added to unitPrice before qty
+  // and discounts — only meaningful when service.chargesPressingFee is true.
+  heatPressFee Float?
 }
 
 // DTF transfer-film roll inventory. One Active roll at a time; every metre

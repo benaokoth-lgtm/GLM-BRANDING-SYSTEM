@@ -1,4 +1,4 @@
-import { buildLineTotal, fmtKsh } from '@glm/shared';
+import { HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
 import type { CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
 
 interface Props {
@@ -20,6 +20,7 @@ function defaultLine(services: CatalogService[], materials: CatalogMaterial[]): 
     discountPct: 0,
     discountAmt: 0,
     filmLengthM: '',
+    heatPressFee: '',
   };
 }
 
@@ -30,7 +31,21 @@ export function makeDefaultLine(services: CatalogService[], materials: CatalogMa
 export default function LineItemsEditor({ lineItems, services, materials, onChange }: Props) {
   function updateLine(idx: number, patch: Partial<DraftLineItem>) {
     const next = lineItems.slice();
-    next[idx] = { ...next[idx], ...patch };
+    const current = next[idx];
+    const merged: DraftLineItem = { ...current, ...patch };
+
+    // For a per-metre film-tracked service, Film used (m) defaults to match
+    // Metres — most jobs consume exactly what's billed, and it's an easy
+    // trap to fill in Metres and assume that alone logs film usage. Only
+    // auto-sync while the two are still in sync (or film length hasn't been
+    // set yet) so an explicit override to Film used (m) itself always wins.
+    const sv = services.find((s) => s.id === merged.serviceId);
+    if (sv?.tracksFilm && sv.unit === 'metre' && !('filmLengthM' in patch)) {
+      const inSync = current.filmLengthM === '' || current.filmLengthM == null || String(current.filmLengthM) === String(current.qty);
+      if (inSync) merged.filmLengthM = merged.qty;
+    }
+
+    next[idx] = merged;
     onChange(next);
   }
 
@@ -77,6 +92,7 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         unitPrice: Number(li.unitPrice) || 0,
         discountPct: Number(li.discountPct) || 0,
         discountAmt: Number(li.discountAmt) || 0,
+        heatPressFee: Number(li.heatPressFee) || 0,
       }),
     0,
   );
@@ -84,6 +100,11 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
   const missingFilmLength = lineItems.some((li) => {
     const sv = services.find((s) => s.id === li.serviceId);
     return sv?.tracksFilm && !(Number(li.filmLengthM) > 0);
+  });
+
+  const missingPressingFee = lineItems.some((li) => {
+    const sv = services.find((s) => s.id === li.serviceId);
+    return sv?.chargesPressingFee && !(Number(li.heatPressFee) > 0);
   });
 
   return (
@@ -104,8 +125,10 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
       {lineItems.map((row, idx) => {
         const rowService = services.find((sv) => sv.id === row.serviceId);
         const tracksFilm = !!rowService?.tracksFilm;
+        const chargesPressingFee = !!rowService?.chargesPressingFee;
         const baseCols = row.itemType === 'material-service' ? '1.3fr 1fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr' : '1.3fr 1fr 0.7fr 0.9fr 0.7fr 0.7fr';
-        const cols = (tracksFilm ? baseCols + ' 0.8fr' : baseCols) + ' auto';
+        const extraCols = (tracksFilm ? ' 0.8fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
+        const cols = baseCols + extraCols + ' auto';
         return (
         <div
           key={idx}
@@ -175,6 +198,19 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
               />
             </div>
           )}
+          {chargesPressingFee && (
+            <div className="field" style={{ margin: 0 }}>
+              <label>Heat press fee (Ksh/pc)</label>
+              <select className="input" value={row.heatPressFee} onChange={(e) => updateLine(idx, { heatPressFee: e.target.value })}>
+                <option value="">Select…</option>
+                {HEAT_PRESS_FEE_OPTIONS.map((fee) => (
+                  <option key={fee} value={fee}>
+                    Ksh {fee}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeLine(idx)}>
             ✕
           </button>
@@ -196,6 +232,12 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
           <span className="tag tag-accent">Film usage not entered</span> — fill in "Film used (m)" on the DTF line(s)
           above so it logs against the active film roll.
+        </p>
+      )}
+      {missingPressingFee && (
+        <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+          <span className="tag tag-accent">Heat press fee not selected</span> — pick a fee on the print + press line(s)
+          above before capturing the order.
         </p>
       )}
     </div>

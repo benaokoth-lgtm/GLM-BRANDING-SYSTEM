@@ -12,6 +12,7 @@ function ticketItemsHtml(order: OrderDetail): string {
     .map((li) => {
       const label = esc(li.serviceName + (li.materialName ? ' + ' + li.materialName : ''));
       const unit = li.itemType === 'per-metre' ? 'm' : '';
+      const pressNote = li.heatPressFee ? `<div class="disc">+ ${fmtKsh(li.heatPressFee)} heat press fee/pc</div>` : '';
       const discNote =
         li.discountPct || li.discountAmt
           ? `<div class="disc">disc ${li.discountPct}% / ${fmtKsh(li.discountAmt)}</div>`
@@ -20,6 +21,7 @@ function ticketItemsHtml(order: OrderDetail): string {
         <div class="item">
           <div class="item-row"><span>${label}</span><span>${fmtKsh(li.lineTotal)}</span></div>
           <div class="item-sub">${li.qty}${unit} &times; ${fmtKsh(li.unitPrice)}</div>
+          ${pressNote}
           ${discNote}
         </div>`;
     })

@@ -28,6 +28,7 @@ function toLineItemInput(li: {
   discountPct: number;
   discountAmt: number;
   filmLengthM?: number | null;
+  heatPressFee?: number | null;
 }): LineItemInput {
   return {
     itemType: li.itemType as LineItemInput['itemType'],
@@ -38,6 +39,7 @@ function toLineItemInput(li: {
     discountPct: li.discountPct,
     discountAmt: li.discountAmt,
     filmLengthM: li.filmLengthM ?? null,
+    heatPressFee: li.heatPressFee ?? null,
   };
 }
 
@@ -82,6 +84,7 @@ function serializeDetail(order: FullOrder) {
       discountPct: li.discountPct,
       discountAmt: li.discountAmt,
       filmLengthM: li.filmLengthM,
+      heatPressFee: li.heatPressFee,
       lineTotal: buildLineTotal(toLineItemInput(li)),
     })),
     payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method })),
@@ -126,6 +129,7 @@ const lineItemSchema = z.object({
   discountPct: z.number().min(0).max(100).default(0),
   discountAmt: z.number().min(0).default(0),
   filmLengthM: z.number().positive().nullable().optional(),
+  heatPressFee: z.number().nonnegative().nullable().optional(),
 });
 
 const walkinSchema = z.object({

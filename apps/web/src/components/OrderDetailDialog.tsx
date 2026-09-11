@@ -145,6 +145,11 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                         Film used: {li.filmLengthM} m
                       </div>
                     )}
+                    {li.heatPressFee != null && (
+                      <div className="text-muted" style={{ fontSize: 11 }}>
+                        Heat press fee: {fmtKsh(li.heatPressFee)}/pc
+                      </div>
+                    )}
                   </td>
                   <td>{li.qty}</td>
                   <td>{fmtKsh(li.unitPrice)}</td>

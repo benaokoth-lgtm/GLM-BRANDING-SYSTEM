@@ -19,11 +19,12 @@ function lineItemsRows(order: OrderDetail): string {
     .map((li) => {
       const label = esc(li.serviceName) + (li.materialName ? ' + ' + esc(li.materialName) : '');
       const unit = li.itemType === 'per-metre' ? 'm' : '';
+      const pressNote = li.heatPressFee ? `<div class="disc">+ ${fmtKsh(li.heatPressFee)} heat press fee/pc</div>` : '';
       const discNote =
         li.discountPct || li.discountAmt ? `<div class="disc">${li.discountPct}% / -${fmtKsh(li.discountAmt)} off</div>` : '';
       return `
       <tr>
-        <td>${label}${discNote}</td>
+        <td>${label}${pressNote}${discNote}</td>
         <td class="num muted">${li.qty}${unit}</td>
         <td class="num muted">${fmtKsh(li.unitPrice)}</td>
         <td class="num amount">${fmtKsh(li.lineTotal)}</td>

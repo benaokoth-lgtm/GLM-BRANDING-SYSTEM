@@ -20,9 +20,10 @@ export function fmtDate(iso: string | null | undefined): string {
 export function buildLineTotal(li: LineItemInput): number {
   const qty = Number(li.qty) || 0;
   const price = Number(li.unitPrice) || 0;
+  const heatPressFee = Number(li.heatPressFee) || 0;
   const pct = Number(li.discountPct) || 0;
   const amt = Number(li.discountAmt) || 0;
-  return Math.max(0, qty * price * (1 - pct / 100) - amt);
+  return Math.max(0, qty * (price + heatPressFee) * (1 - pct / 100) - amt);
 }
 
 export function computeOrderTotals(order: OrderTotalsInput, payments: PaymentRecord[] = []): OrderTotals {

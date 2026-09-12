@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
-import type { FilmUsageRow, OrderSummary, SalesByCategoryData } from '../api/models';
+import type { EmbroideryProfitabilityData, FilmUsageRow, OrderSummary, SalesByCategoryData } from '../api/models';
 
-type ReportTab = 'sales' | 'filmusage' | 'category';
+type ReportTab = 'sales' | 'filmusage' | 'category' | 'embroidery';
 type Preset = 'today' | 'month' | 'year' | 'custom';
 
 const TABS: [ReportTab, string][] = [
   ['sales', 'Sales'],
   ['filmusage', 'Film Usage'],
   ['category', 'Sales by Category'],
+  ['embroidery', 'Embroidery Profitability'],
 ];
 
 function presetRange(preset: Preset, today: string, current: { from: string; to: string }): { from: string; to: string } {
@@ -33,6 +34,7 @@ export default function Reports() {
   const [orders, setOrders] = useState<OrderSummary[] | null>(null);
   const [usages, setUsages] = useState<FilmUsageRow[] | null>(null);
   const [category, setCategory] = useState<SalesByCategoryData | null>(null);
+  const [embroidery, setEmbroidery] = useState<EmbroideryProfitabilityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,11 +54,13 @@ export default function Reports() {
       api.get<OrderSummary[]>('/orders'),
       api.get<FilmUsageRow[]>(`/film/usage?from=${fromDate}&to=${toDate}`),
       api.get<SalesByCategoryData>(`/reports/sales-by-category?from=${fromDate}&to=${toDate}`),
+      api.get<EmbroideryProfitabilityData>(`/reports/embroidery-profitability?from=${fromDate}&to=${toDate}`),
     ])
-      .then(([o, u, c]) => {
+      .then(([o, u, c, e]) => {
         setOrders(o);
         setUsages(u);
         setCategory(c);
+        setEmbroidery(e);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load reports'))
       .finally(() => setLoading(false));
@@ -361,6 +365,118 @@ export default function Reports() {
               Ranked by revenue — the top rows are the services (embroidery, DTF printing, laser engraving, etc.)
               driving the most sales, useful for judging which machines/production lines are earning their keep.
             </p>
+          </div>
+        </>
+      )}
+
+      {tab === 'embroidery' && embroidery && (
+        <>
+          {!embroidery.serviceFound && (
+            <p className="note">
+              No "Embroidery" service found in Master Data → Service Price List — add one to enable this report.
+            </p>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Embroidery revenue</div>
+              <div className="card-title">{fmtKsh(embroidery.revenue)}</div>
+            </div>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Thread &amp; needle cost</div>
+              <div className="card-title">{fmtKsh(embroidery.consumablesCost)}</div>
+            </div>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Gross profit</div>
+              <div className="card-title">{fmtKsh(embroidery.grossProfit)}</div>
+            </div>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Gross margin</div>
+              <div className="card-title">{embroidery.marginPct != null ? `${embroidery.marginPct.toFixed(1)}%` : '—'}</div>
+            </div>
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+              Per piece
+              {embroidery.underpriced && <span className="tag tag-accent" style={{ marginLeft: 8 }}>Underpriced</span>}
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'right' }}>Pieces sold</th>
+                  <th style={{ textAlign: 'right' }}>Avg revenue/piece</th>
+                  <th style={{ textAlign: 'right' }}>Avg consumable cost/piece</th>
+                  <th style={{ textAlign: 'right' }}>Margin/piece</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'right' }}>{embroidery.qtyPieces}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.avgRevenuePerPiece != null ? fmtKsh(embroidery.avgRevenuePerPiece) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.avgCostPerPiece != null ? fmtKsh(embroidery.avgCostPerPiece) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.marginPerPiece != null ? fmtKsh(embroidery.marginPerPiece) : '—'}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+              Consumable cost is spread evenly across pieces sold in range as a rough per-piece average — it isn't
+              matched job-by-job (thread/needle usage isn't captured per order), so treat this as a gauge of whether
+              Embroidery's price covers its consumables overall, not an exact per-job cost.
+            </p>
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+              Consumables bought in range
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th style={{ textAlign: 'right' }}>Qty</th>
+                  <th style={{ textAlign: 'right' }}>Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {embroidery.consumableBreakdown.map((row) => (
+                  <tr key={row.materialName}>
+                    <td>{row.materialName}</td>
+                    <td style={{ textAlign: 'right' }}>{row.qty}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtKsh(row.totalCost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {embroidery.consumableBreakdown.length === 0 && (
+              <p className="note">
+                No accepted thread/needle purchases in range — capture them under Stock → Purchases (Material:
+                Embroidery Thread / Embroidery Needles) for this report to pick up their cost.
+              </p>
+            )}
           </div>
         </>
       )}

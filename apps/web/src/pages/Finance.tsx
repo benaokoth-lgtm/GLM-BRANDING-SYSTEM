@@ -6,6 +6,7 @@ import type { DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesDa
 import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
 import CorporateOrderForm from '../components/CorporateOrderForm';
+import AssetRegister from '../components/AssetRegister';
 import Orders from './Orders';
 import Payments from './Payments';
 import PnL from './PnL';
@@ -17,7 +18,7 @@ import PnL from './PnL';
 // oversight but not Finance access, still reaches All Orders/Payments as
 // their own top-level entries — this consolidation only applies once
 // canAccessFinance is already true.
-type FinanceTab = 'quotation' | 'invoice' | 'allOrders' | 'payments' | 'pnl' | 'expenses' | 'pettycash';
+type FinanceTab = 'quotation' | 'invoice' | 'allOrders' | 'payments' | 'pnl' | 'expenses' | 'pettycash' | 'assets';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [FinanceTab, string][] = [
@@ -28,12 +29,13 @@ const TABS: [FinanceTab, string][] = [
   ['pnl', 'P&L'],
   ['expenses', 'Expenses'],
   ['pettycash', 'Petty Cash'],
+  ['assets', 'Asset Register'],
 ];
 
 // Tabs that manage their own data/date-range internally — the shared
 // preset/from-to filter bar below (and the Expenses/Petty Cash data load)
 // isn't relevant to them.
-const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'allOrders', 'payments', 'pnl'];
+const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'allOrders', 'payments', 'pnl', 'assets'];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
   const y = today.slice(0, 4);
@@ -383,6 +385,7 @@ export default function Finance() {
       {tab === 'allOrders' && <Orders scope="all" />}
       {tab === 'payments' && <Payments />}
       {tab === 'pnl' && <PnL />}
+      {tab === 'assets' && <AssetRegister />}
 
       {error && (
         <p className="note" style={{ color: '#a33' }}>

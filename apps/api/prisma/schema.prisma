@@ -59,21 +59,32 @@ model Service {
   // makes its line items show the film-length capture field and feed the
   // Film roll inventory. Editable by Admin in Master Data.
   tracksFilm          Boolean @default(false)
+  // An sqm-priced service billed off one artwork's area (length x width),
+  // independent of tracksFilm — DTF Printing happens to be both (its area
+  // also drives film consumption), but Embroidery is priced by artwork size
+  // with no film to track, so the two are separate flags rather than one
+  // conflated "sqm + film" mode. Governs whether order line items show the
+  // "Artwork size (sqm)"/size-band quick-pick UI and compute unit price as
+  // area x this service's Ksh/sqm rate (see LineItemsEditor.tsx). Editable
+  // by Admin in Master Data.
+  usesArtworkPricing  Boolean @default(false)
   // Jobs where GLM prints AND heat-presses (not a pure film sale) show a
   // staff-picked heat press fee (Ksh/piece) on the line item, added on top
   // of the base price. Editable by Admin in Master Data.
   chargesPressingFee  Boolean @default(false)
   lineItems           OrderLineItem[]
+  artworkSizeBands    ArtworkSizeBand[]
 }
 
-// A flat-fee "quick pick" for common small DTF artwork sizes (e.g. 6cm x
-// 6cm), as an alternative to the continuous area x Ksh/sqm formula on
-// OrderLineItem. Small prints are dominated by fixed setup/press time, not
-// material, so a pure area-based rate underprices them — a preset flat fee
-// per known size fixes that while areaSqm still feeds the same film-length
-// calc as any other artwork, so film-usage tracking stays exactly as
-// accurate. Not tied to a specific Service — any sqm-priced, film-tracked
-// service can use these. Editable by Admin in Master Data.
+// A flat-fee "quick pick" for common small artwork sizes (e.g. 6cm x 6cm) on
+// an artwork-priced service (Service.usesArtworkPricing), as an alternative
+// to the continuous area x Ksh/sqm formula on OrderLineItem. Small
+// jobs are dominated by fixed setup/press/stitch-out time, not material, so
+// a pure area-based rate underprices them — a preset flat fee per known size
+// fixes that while areaSqm still feeds film-length calc for services that
+// also track film. Scoped to one Service (serviceId) since two services
+// pricing the same physical size (e.g. a DTF print vs. an embroidered patch)
+// have very different flat fees for it. Editable by Admin in Master Data.
 //
 // Stored as length x width (not just area) so a captured artwork's real
 // dimensions can be matched against a band as a bounding box — an artwork
@@ -83,12 +94,14 @@ model Service {
 // lengthCm x widthCm server-side) since it's what feeds the film-length
 // calc and is cheaper to read than recomputing everywhere.
 model ArtworkSizeBand {
-  id       Int    @id @default(autoincrement())
-  label    String // e.g. "6cm x 6cm"
-  lengthCm Float
-  widthCm  Float
-  areaSqm  Float
-  price    Float // flat Ksh per piece at this size
+  id        Int     @id @default(autoincrement())
+  serviceId Int
+  service   Service @relation(fields: [serviceId], references: [id])
+  label     String // e.g. "6cm x 6cm"
+  lengthCm  Float
+  widthCm   Float
+  areaSqm   Float
+  price     Float // flat Ksh per piece at this size
 }
 
 model Material {
@@ -476,4 +489,32 @@ model MpesaTransaction {
   confirmedManually Boolean  @default(false)
   createdByName     String
   createdAt         DateTime @default(now())
+}
+
+// Finance > Asset Register — fixed-asset tracking (machines, vehicles,
+// computers, furniture), separate from Material (consumable stock sold to
+// customers) and StockItem-style inventory. Modeled on the Olerai Hotel
+// System's own Asset Register (same machine, sibling project — read to
+// match its shape): a tag/name/category/quantity/location record with a
+// condition lifecycle (Active/Under Repair/Retired) changed directly, no
+// approval workflow — this is routine record-keeping, not a spend decision
+// (that already happened at purchase time; Value here is just what's on
+// record for book-value/insurance purposes, not linked to Expense the way
+// FilmRoll/Purchase are, since a capital asset purchase is typically a
+// one-off already captured under Finance → Expenses however the business
+// normally records it).
+model Asset {
+  id           Int       @id @default(autoincrement())
+  tag          String    @unique
+  name         String
+  category     String // Printing Equipment | Embroidery Machines | Heat Press & Curing | Computers & IT Equipment | Furniture & Fixtures | Vehicles | Office Equipment | Other
+  quantity     Int       @default(1)
+  location     String    @default("")
+  condition    String    @default("Active") // Active | Under Repair | Retired
+  purchaseDate String? // 'YYYY-MM-DD'
+  value        Float?
+  notes        String    @default("")
+  createdByName String   @default("")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }

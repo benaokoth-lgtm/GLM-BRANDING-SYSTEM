@@ -110,6 +110,7 @@ const serviceSchema = z.object({
   name: z.string().min(1),
   unit: z.enum(['piece', 'metre', 'sqm']),
   price: z.number().positive(),
+  usesArtworkPricing: z.boolean().optional(),
 });
 
 masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
@@ -127,6 +128,7 @@ const serviceUpdateSchema = z
     price: z.number().positive().optional(),
     unit: z.enum(['piece', 'metre', 'sqm']).optional(),
     tracksFilm: z.boolean().optional(),
+    usesArtworkPricing: z.boolean().optional(),
     chargesPressingFee: z.boolean().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
@@ -139,12 +141,17 @@ masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => 
   res.json(service);
 });
 
-// ── Artwork Size Bands (small DTF artwork flat-fee "quick picks") ───────
-masterDataRouter.get('/artwork-size-bands', async (_req, res) => {
-  res.json(await prisma.artworkSizeBand.findMany({ orderBy: { areaSqm: 'asc' } }));
+// ── Artwork Size Bands (small artwork flat-fee "quick picks") ───────────
+// Scoped per-service (?serviceId=) since the same physical size prices
+// differently across services (e.g. a DTF print vs. an embroidered patch).
+masterDataRouter.get('/artwork-size-bands', async (req, res) => {
+  const { serviceId } = req.query as { serviceId?: string };
+  const where = serviceId ? { serviceId: Number(serviceId) } : undefined;
+  res.json(await prisma.artworkSizeBand.findMany({ where, orderBy: { areaSqm: 'asc' } }));
 });
 
 const artworkSizeBandSchema = z.object({
+  serviceId: z.number().int().positive(),
   label: z.string().min(1),
   lengthCm: z.number().positive(),
   widthCm: z.number().positive(),
@@ -154,9 +161,13 @@ const artworkSizeBandSchema = z.object({
 masterDataRouter.post('/artwork-size-bands', requireRole('Admin'), async (req, res) => {
   const parsed = artworkSizeBandSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const { label, lengthCm, widthCm, price } = parsed.data;
+  const { serviceId, label, lengthCm, widthCm, price } = parsed.data;
   const areaSqm = (lengthCm * widthCm) / 10000;
-  res.status(201).json(await prisma.artworkSizeBand.create({ data: { label, lengthCm, widthCm, areaSqm, price } }));
+  const band = await prisma.artworkSizeBand
+    .create({ data: { serviceId, label, lengthCm, widthCm, areaSqm, price } })
+    .catch(() => null);
+  if (!band) return res.status(400).json({ error: 'Service not found' });
+  res.status(201).json(band);
 });
 
 const artworkSizeBandUpdateSchema = z

@@ -462,3 +462,101 @@ parameterized by `kind`.
   logged immediately — the exact end state `convertQuoteToInvoice` leaves a quote in,
   just without ever having been a quote. Verified live: created a direct invoice, confirmed
   it never touched Quote status, and its due date matched the client's credit-days terms.
+
+## Asset Register: fixed-asset tracking under Finance
+
+Finance → **Asset Register** (`apps/web/src/components/AssetRegister.tsx`,
+`apps/api/src/routes/assets.ts`) tracks GLM's own fixed assets — printers, embroidery
+machines, heat presses, computers, furniture, vehicles — as distinct from `Material`
+(consumable stock sold to customers). Modeled directly on the Olerai Hotel System's own
+Asset Register (same machine, sibling project — read to match its shape).
+
+- **Deliberately no approval workflow.** Unlike Stock Purchases or Requisitions, a
+  condition change (Active → Under Repair → Retired, or reactivating) is routine
+  record-keeping, not a spend decision, so `POST /assets/:id/condition` applies directly
+  — no requester/approver split, no self-block. The spend decision already happened at
+  purchase time.
+- **Deliberately no Expense linkage.** FilmRoll and Stock Purchase both auto-create (or
+  link to) an `Expense` via a `@unique expenseId`, because those are recurring
+  consumable buys that need to hit the P&L/Petty Cash ledger. A capital asset purchase is
+  typically a one-off already captured under Finance → Expenses however the business
+  normally records it, so `Asset.value` is just a book-value/insurance record, not wired
+  into Petty Cash sufficiency checks the way Purchases/FilmRolls are.
+- **Categories are GLM-specific**, not reused from `EXPENSE_CATEGORIES` or
+  `ASSET_CATEGORIES`'s consumable-stock cousin: Printing Equipment, Embroidery Machines,
+  Heat Press & Curing, Computers & IT Equipment, Furniture & Fixtures, Vehicles, Office
+  Equipment, Other (`packages/shared/src/constants.ts`).
+  - **Hard-delete is Admin-only** (`DELETE /assets/:id`), one level up from
+    `canAccessFinance`'s general read/write/condition-change access — deleting the record
+    entirely (as opposed to retiring it, which keeps history) is the same tier as Master
+    Data's other destructive catalog actions.
+  - Access to the tab itself, and to add/edit/change-condition, only requires
+    `canAccessFinance` (Finance Manager, General Manager, Admin). Verified live: added an
+    asset, ran it through the full condition lifecycle (Active → Under Repair → Retired →
+    reactivated), edited it, filtered by category and condition, and deleted it as Admin.
+
+## Embroidery: artwork-size pricing (no film) + gross profitability vs. thread/needle cost
+
+Embroidery is now priced the same way DTF Printing is — by artwork size — but tracks no
+film, since embroidery consumes thread/needles, not transfer film. This required
+decoupling two things that used to be one conflated flag.
+
+- **`Service.usesArtworkPricing` is new, separate from `Service.tracksFilm`.** Before this,
+  the "Artwork size (sqm)" UI and the area × Ksh/sqm price formula
+  (`LineItemsEditor.tsx`) only appeared for a service that was *both* unit `sqm` *and*
+  `tracksFilm` — correct for DTF Printing, but wrong for Embroidery, which needs the same
+  artwork-size pricing with zero film tracking. Now pricing is gated on
+  `usesArtworkPricing && unit === 'sqm'`, and film-length capture/computation stays gated
+  on `tracksFilm` alone — independent flags, so a service can have either, both (DTF
+  Printing), or neither. The real "DTF Printing" service was flipped to
+  `usesArtworkPricing: true` (preserving its exact existing behavior) as part of this
+  change; "Embroidery" was flipped to `unit: 'sqm', usesArtworkPricing: true` (from its
+  old flat `piece` pricing) with a starter Ksh 8,000/sqm formula rate for custom sizes —
+  a placeholder pending GLM's real figures.
+- **Artwork Size Bands are now scoped per service** (`ArtworkSizeBand.serviceId`, a
+  required FK) instead of one global list — a DTF print and an embroidered patch of the
+  same physical size price very differently, so a 6cm × 6cm band can no longer leak its
+  DTF price onto an Embroidery line. Master Data → Artwork Size Bands gained a service
+  picker; `LineItemsEditor.tsx`'s quick-size dropdown and the 📐 calculator both filter to
+  the current line's own service. Seeded four starter bands for Embroidery (small logo
+  5×5cm/Ksh 300, medium logo 8×8cm/Ksh 450, large design 12×12cm/Ksh 700, jacket back
+  25×25cm/Ksh 1,800) — small embroidery jobs are dominated by machine setup/stitch-out
+  time even more than DTF prints are, so these flat tiers are the primary pricing path in
+  practice, with the per-sqm formula as a fallback for anything larger/custom. All are
+  placeholders — adjust to GLM's real pricing in Master Data.
+- **No FilmRoll/FilmUsage changes were needed at all.** `tracksFilm: false` on Embroidery
+  alone keeps it out of `logFilmUsageForOrder` (film.ts) and the DTF print queue — verified
+  live by capturing an Embroidery order line (Medium logo band, Ksh 450) and confirming
+  its `OrderLineItem.filmLengthM` is `null` and zero `FilmUsage` rows were created for it.
+
+**Reports → Embroidery Profitability** (`GET /reports/embroidery-profitability`,
+`apps/api/src/routes/reports.ts`) gives a gross-profit view: Embroidery service revenue in
+range (same accrual basis as Sales by Category) against the cost of thread/needles bought
+in range, via the existing Stock → Purchases pipeline rather than a new cost-tracking
+model.
+
+- **Thread and needles are ordinary `Material` rows** ("Embroidery Thread", "Embroidery
+  Needles" — added via Master Data → Stock Price List, same as any consumable), bought
+  through the existing requisition → purchase (held) → reconciled acceptance (released)
+  pipeline from the Stock feature, not a new mechanism.
+- **Only `status: 'Accepted'` purchases count as real cost** — a Held or Rejected purchase
+  hasn't actually entered the store, matching the same "held vs. released" reasoning as
+  everywhere else in Stock.
+- **Consumables are identified by exact Material name**
+  (`EMBROIDERY_CONSUMABLE_MATERIAL_NAMES` in `packages/shared/src/constants.ts`), not a
+  new Expense category or a schema link between Material and Service — there's no
+  per-service consumable-material relationship in this schema (a Material line is a
+  standalone sale/stock item, never "consumed by" a service line), and matching by name
+  mirrors how Sales by Category already groups revenue by `service.name` with no ID-based
+  flagging either. Adding another embroidery consumable later (e.g. stabilizer backing)
+  means adding its Material name to that constant.
+- **Per-piece margin is a gauge, not an exact job cost** — consumable cost is spread
+  evenly across pieces sold in range (mirroring FilmRoll's weighted-average
+  margin-per-metre pattern, translated to per-piece), since thread/needle usage isn't
+  captured per individual order the way film length is. An "Underpriced" flag surfaces
+  when average revenue per piece falls below average consumable cost per piece.
+- Verified live: inserted a test Accepted thread purchase (10 units, Ksh 2,500) and a test
+  Embroidery order (Ksh 450), confirmed the report correctly summed revenue and cost, computed
+  gross profit/margin, and broke the cost down by material — then deleted both test rows
+  (plus a temporary test Finance Manager user created to exercise the accept step) to keep
+  the real data clean.

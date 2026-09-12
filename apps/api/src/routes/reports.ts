@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { buildLineTotal } from '@glm/shared';
+import { buildLineTotal, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 
 export const reportsRouter = Router();
@@ -72,5 +72,90 @@ reportsRouter.get('/sales-by-category', async (req, res) => {
     toDate: range.to,
     categories,
     materials: { qty: materialsQty, revenue: materialsRevenue },
+  });
+});
+
+// Gross profitability for the Embroidery service: revenue from Embroidery
+// line items (same accrual basis as sales-by-category) against the cost of
+// its own consumables — thread and needles — bought through the Stock
+// Purchases pipeline (only 'Accepted' purchases count as real, reconciled
+// cost; 'Held'/'Rejected' purchases haven't actually entered the store).
+// Matches the FilmRoll margin-analysis pattern (avgRatePerMeter/
+// marginPerMeter/undercharged) translated to a per-piece view, since
+// Embroidery has no roll/usage model of its own to derive it from directly.
+reportsRouter.get('/embroidery-profitability', async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
+
+  const embroideryService = await prisma.service.findFirst({ where: { name: 'Embroidery' } });
+
+  let revenue = 0;
+  let qtyPieces = 0;
+  if (embroideryService) {
+    const orders = await prisma.order.findMany({
+      where: { OR: [{ kind: 'walkin' }, { status: 'Invoice' }] },
+      include: { lineItems: { where: { serviceId: embroideryService.id } } },
+    });
+    for (const o of orders) {
+      if (!inRange(o.createdDate, range.from, range.to)) continue;
+      for (const li of o.lineItems) {
+        const lineTotal = buildLineTotal({
+          itemType: li.itemType as LineItemInput['itemType'],
+          serviceId: li.serviceId,
+          materialId: li.materialId,
+          qty: li.qty,
+          unitPrice: li.unitPrice,
+          discountPct: li.discountPct,
+          discountAmt: li.discountAmt,
+          heatPressFee: li.heatPressFee,
+        });
+        revenue += lineTotal;
+        qtyPieces += li.qty;
+      }
+    }
+  }
+
+  const consumableMaterials = await prisma.material.findMany({
+    where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } },
+  });
+  const materialIds = consumableMaterials.map((m) => m.id);
+  const purchases = materialIds.length
+    ? await prisma.purchase.findMany({ where: { materialId: { in: materialIds }, status: 'Accepted' }, include: { material: true } })
+    : [];
+
+  const breakdownMap = new Map<string, { qty: number; totalCost: number }>();
+  let consumablesCost = 0;
+  for (const p of purchases) {
+    if (!inRange(p.date, range.from, range.to)) continue;
+    consumablesCost += p.totalCost;
+    const b = breakdownMap.get(p.material.name) ?? { qty: 0, totalCost: 0 };
+    b.qty += p.qty;
+    b.totalCost += p.totalCost;
+    breakdownMap.set(p.material.name, b);
+  }
+  const consumableBreakdown = Array.from(breakdownMap.entries())
+    .map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: v.totalCost }))
+    .sort((a, b) => b.totalCost - a.totalCost);
+
+  const grossProfit = revenue - consumablesCost;
+  const marginPct = revenue > 0 ? (grossProfit / revenue) * 100 : null;
+  const avgRevenuePerPiece = qtyPieces > 0 ? revenue / qtyPieces : null;
+  const avgCostPerPiece = qtyPieces > 0 ? consumablesCost / qtyPieces : null;
+  const marginPerPiece = avgRevenuePerPiece != null && avgCostPerPiece != null ? avgRevenuePerPiece - avgCostPerPiece : null;
+
+  res.json({
+    fromDate: range.from,
+    toDate: range.to,
+    serviceFound: !!embroideryService,
+    revenue,
+    qtyPieces,
+    consumablesCost,
+    grossProfit,
+    marginPct,
+    avgRevenuePerPiece,
+    avgCostPerPiece,
+    marginPerPiece,
+    underpriced: marginPerPiece != null && marginPerPiece < 0,
+    consumableBreakdown,
   });
 });

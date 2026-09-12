@@ -66,6 +66,7 @@ export default function MasterData() {
   const [newMaterialPrice, setNewMaterialPrice] = useState('');
   const [reorderDrafts, setReorderDrafts] = useState<Record<number, string>>({});
 
+  const [bandServiceId, setBandServiceId] = useState<number | null>(null);
   const [newBandLabel, setNewBandLabel] = useState('');
   const [newBandLengthCm, setNewBandLengthCm] = useState('');
   const [newBandWidthCm, setNewBandWidthCm] = useState('');
@@ -81,6 +82,12 @@ export default function MasterData() {
   const [error, setError] = useState<string | null>(null);
 
   const discountValue = maxDiscountPct ?? String(catalog.maxDiscountPct);
+
+  // Artwork Size Bands are scoped per service — default to the first
+  // artwork-priced service (DTF Printing, Embroidery, ...) so the tab opens
+  // somewhere useful rather than empty.
+  const activeBandServiceId = bandServiceId ?? catalog.services.find((s) => s.usesArtworkPricing)?.id ?? catalog.services[0]?.id ?? null;
+  const bandsForActiveService = catalog.artworkSizeBands.filter((b) => b.serviceId === activeBandServiceId);
 
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [legalName, setLegalName] = useState<string | null>(null);
@@ -194,6 +201,16 @@ export default function MasterData() {
     }
   }
 
+  async function toggleUsesArtworkPricing(serviceId: number, usesArtworkPricing: boolean) {
+    setError(null);
+    try {
+      await api.put(`/master-data/services/${serviceId}`, { usesArtworkPricing });
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update service');
+    }
+  }
+
   async function toggleChargesPressingFee(serviceId: number, chargesPressingFee: boolean) {
     setError(null);
     try {
@@ -249,10 +266,11 @@ export default function MasterData() {
     const lengthCm = Number(newBandLengthCm);
     const widthCm = Number(newBandWidthCm);
     const price = Number(newBandPrice);
+    if (!activeBandServiceId) return setError('Add an artwork-priced service first');
     if (!newBandLabel.trim() || !lengthCm || !widthCm || !price) return setError('Label, length, width and price are all required');
     setError(null);
     try {
-      await api.post('/master-data/artwork-size-bands', { label: newBandLabel, lengthCm, widthCm, price });
+      await api.post('/master-data/artwork-size-bands', { serviceId: activeBandServiceId, label: newBandLabel, lengthCm, widthCm, price });
       setNewBandLabel('');
       setNewBandLengthCm('');
       setNewBandWidthCm('');
@@ -522,6 +540,7 @@ export default function MasterData() {
                 <th>Service</th>
                 <th>Unit</th>
                 <th>Price</th>
+                <th>Artwork pricing</th>
                 <th>Tracks film</th>
                 <th>Charges pressing fee</th>
               </tr>
@@ -552,6 +571,12 @@ export default function MasterData() {
                   </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={sv.usesArtworkPricing} onChange={(e) => toggleUsesArtworkPricing(sv.id, e.target.checked)} />
+                      {sv.usesArtworkPricing && <span className="tag tag-accent">By artwork size</span>}
+                    </label>
+                  </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={sv.tracksFilm} onChange={(e) => toggleTracksFilm(sv.id, e.target.checked)} />
                       {sv.tracksFilm && <span className="tag tag-accent">DTF film</span>}
                     </label>
@@ -567,13 +592,14 @@ export default function MasterData() {
             </tbody>
           </table>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Unit and price are editable in place — a service flagged both "Tracks film" and unit "sqm" (e.g. DTF
-            Printing) shows an "Artwork size (sqm)" field on order line items instead of a flat per-piece price:
-            price and film used are computed from one artwork's area × quantity, at the Ksh/sqm rate set here.
-            Services flagged "Tracks film" with unit "metre" (e.g. DTF Sheet) instead default Film used (m) to match
-            Metres — a pure film sale, unaffected by pressing fees. Services flagged "Charges pressing fee" show a
-            staff-picked heat press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM
-            prints and presses.
+            Unit and price are editable in place — a service flagged "Artwork pricing" with unit "sqm" (e.g. DTF
+            Printing, Embroidery) shows an "Artwork size (sqm)" field on order line items instead of a flat
+            per-piece price: price is computed from one artwork's area, at the Ksh/sqm rate set here, with its own
+            size bands under Artwork Size Bands. A service additionally flagged "Tracks film" (DTF Printing only)
+            also computes film used from that same area × quantity — Embroidery is artwork-priced but never tracks
+            film. Services flagged "Tracks film" with unit "metre" (e.g. DTF Sheet) instead default Film used (m) to
+            match Metres — a pure film sale. Services flagged "Charges pressing fee" show a staff-picked heat press
+            fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM prints and presses.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
             <div className="field">
@@ -665,13 +691,26 @@ export default function MasterData() {
       {tab === 'artworkBands' && (
         <>
           <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
-            Flat "quick pick" prices for common small DTF artwork sizes — an alternative to the area × Ksh/sqm
-            formula, which underprices tiny prints dominated by fixed setup/press time rather than material. When
-            staff capture an artwork's length × width, it's automatically matched to the smallest band it fits
-            within (both length and width, either orientation) — a strict match, no rounding; anything too big for
-            every band falls back to the normal formula. Film usage still deducts correctly off the matched band's
-            area.
+            Flat "quick pick" prices for common small artwork sizes, per artwork-priced service — an alternative to
+            the area × Ksh/sqm formula, which underprices tiny jobs dominated by fixed setup/press/stitch-out time
+            rather than material. When staff capture an artwork's length × width, it's automatically matched to the
+            smallest band it fits within (both length and width, either orientation) — a strict match, no rounding;
+            anything too big for every band falls back to the normal formula. Bands are scoped to one service (a DTF
+            print and an embroidered patch of the same size price very differently), so pick which service's bands
+            to view/edit below.
           </p>
+          <div className="field" style={{ maxWidth: 320, marginBottom: 'var(--space-3)' }}>
+            <label>Service</label>
+            <select className="input" value={activeBandServiceId ?? ''} onChange={(e) => setBandServiceId(Number(e.target.value))}>
+              {catalog.services
+                .filter((sv) => sv.usesArtworkPricing || sv.id === activeBandServiceId)
+                .map((sv) => (
+                  <option key={sv.id} value={sv.id}>
+                    {sv.name}
+                  </option>
+                ))}
+            </select>
+          </div>
           <table className="table">
             <thead>
               <tr>
@@ -684,7 +723,7 @@ export default function MasterData() {
               </tr>
             </thead>
             <tbody>
-              {catalog.artworkSizeBands.map((b) => (
+              {bandsForActiveService.map((b) => (
                 <tr key={b.id}>
                   <td>{b.label}</td>
                   <td className="text-muted">{b.lengthCm}</td>
@@ -700,7 +739,7 @@ export default function MasterData() {
               ))}
             </tbody>
           </table>
-          {catalog.artworkSizeBands.length === 0 && <p className="note">No artwork size bands yet — add one below.</p>}
+          {bandsForActiveService.length === 0 && <p className="note">No artwork size bands yet for this service — add one below.</p>}
           <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.7fr 0.7fr 0.8fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 860 }}>
             <div className="field">
               <label>Size label</label>

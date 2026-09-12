@@ -122,3 +122,31 @@ export const DTF_PRINT_DEFAULT_RATE_PER_SQM = 750;
 // is a guess pending GLM's real press cycle-time economics — adjust once
 // known.
 export const DTF_PRINT_QUEUE_BATCH_SQM = 0.3;
+
+// Finance > Asset Register — fixed-asset categories for a print/branding
+// business (machines, vehicles, computers, furniture), as opposed to
+// Material's consumable stock sold to customers.
+export const ASSET_CATEGORIES = [
+  'Printing Equipment',
+  'Embroidery Machines',
+  'Heat Press & Curing',
+  'Computers & IT Equipment',
+  'Furniture & Fixtures',
+  'Vehicles',
+  'Office Equipment',
+  'Other',
+] as const;
+export type AssetCategory = (typeof ASSET_CATEGORIES)[number];
+
+export const ASSET_CONDITIONS = ['Active', 'Under Repair', 'Retired'] as const;
+export type AssetCondition = (typeof ASSET_CONDITIONS)[number];
+
+// Reports > Embroidery Profitability — the Material rows treated as
+// Embroidery's own consumables (as opposed to Printing Materials &
+// Consumables generally), so their Purchase cost can be matched against
+// Embroidery service revenue for a gross-profit view. Matched by exact
+// Material.name since there's no per-service consumable-material link in
+// the schema (Material lines are standalone, not "consumed by" a service
+// line) — adding another embroidery consumable (e.g. stabilizer backing)
+// means adding its exact Material name here.
+export const EMBROIDERY_CONSUMABLE_MATERIAL_NAMES = ['Embroidery Thread', 'Embroidery Needles'] as const;

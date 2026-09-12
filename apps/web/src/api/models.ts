@@ -12,6 +12,7 @@ export interface CatalogService {
   unit: ServiceUnit;
   price: number;
   tracksFilm: boolean;
+  usesArtworkPricing: boolean;
   chargesPressingFee: boolean;
 }
 
@@ -25,6 +26,7 @@ export interface CatalogMaterial {
 
 export interface ArtworkSizeBand {
   id: number;
+  serviceId: number;
   label: string;
   lengthCm: number;
   widthCm: number;
@@ -357,6 +359,22 @@ export interface PurchaseExpenseOption {
   note: string;
 }
 
+export interface AssetRow {
+  id: number;
+  tag: string;
+  name: string;
+  category: string;
+  quantity: number;
+  location: string;
+  condition: 'Active' | 'Under Repair' | 'Retired';
+  purchaseDate: string | null;
+  value: number | null;
+  notes: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PurchaseRow {
   id: number;
   requisitionId: number | null;
@@ -389,4 +407,26 @@ export interface SalesByCategoryData {
   toDate: string;
   categories: SalesCategoryRow[];
   materials: { qty: number; revenue: number };
+}
+
+export interface EmbroideryConsumableBreakdownRow {
+  materialName: string;
+  qty: number;
+  totalCost: number;
+}
+
+export interface EmbroideryProfitabilityData {
+  fromDate: string;
+  toDate: string;
+  serviceFound: boolean;
+  revenue: number;
+  qtyPieces: number;
+  consumablesCost: number;
+  grossProfit: number;
+  marginPct: number | null;
+  avgRevenuePerPiece: number | null;
+  avgCostPerPiece: number | null;
+  marginPerPiece: number | null;
+  underpriced: boolean;
+  consumableBreakdown: EmbroideryConsumableBreakdownRow[];
 }

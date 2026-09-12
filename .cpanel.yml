@@ -2,20 +2,16 @@
 # cPanel Git Version Control deployment task — runs when you click "Deploy HEAD Commit" on
 # this repo's "Pull or Deploy" tab. Builds and places both halves of this monorepo that get
 # hosted on the web: apps/api as a running Node process (via Passenger), apps/web as static
-# files copied out to a separate subdomain's document root.
+# files copied out to pos.glmgroup.co.ke's document root.
 #
-# IMPORTANT — three placeholders below need real values before this works, all only knowable
-# after you've done the corresponding cPanel setup step (see DEPLOYMENT.md):
-#   REPLACE_WITH_CPANEL_USERNAME — your cPanel username
-#   REPLACE_WITH_NODE_VERSION    — the Node version you picked in Setup Node.js App (e.g. 20)
-#   REPLACE_WITH_POS_DOCROOT     — pos.glmgroup.co.ke's document root, shown on cPanel's
-#                                   Subdomains page once you create it (relative to your home
-#                                   directory, e.g. "pos.glmgroup.co.ke")
+# Configured for cPanel user "glmgroup", Node.js 18 (must match the version picked in Setup
+# Node.js App — if that ever changes, update the "18" in the ACTIVATE path below to match). See
+# DEPLOYMENT.md for the full one-time cPanel setup this depends on.
 deployment:
   tasks:
-    - export REPOPATH=/home/REPLACE_WITH_CPANEL_USERNAME/repositories/glm-branding-pos-system/
-    - export ACTIVATE="source /home/REPLACE_WITH_CPANEL_USERNAME/nodevenv/repositories/glm-branding-pos-system/REPLACE_WITH_NODE_VERSION/bin/activate"
-    - export POSDOCROOT=/home/REPLACE_WITH_CPANEL_USERNAME/REPLACE_WITH_POS_DOCROOT/
+    - export REPOPATH=/home/glmgroup/repositories/glm-branding-pos-system/
+    - export ACTIVATE="source /home/glmgroup/nodevenv/repositories/glm-branding-pos-system/18/bin/activate"
+    - export POSDOCROOT=/home/glmgroup/pos.glmgroup.co.ke/
     # Prisma's datasource provider is a static string in schema.prisma (see the comment there
     # and in scripts/set-db-provider.mjs) — flip it to postgresql before installing, so
     # `npm install`'s prisma postinstall hook generates the right client.

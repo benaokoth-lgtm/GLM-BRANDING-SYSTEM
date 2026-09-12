@@ -358,3 +358,73 @@ stockRouter.post('/purchases/:id/reject', requirePermission('canApproveStock'), 
   });
   res.json({ ...updated, materialName: updated.material.name });
 });
+
+// ── China Import Costing → Stock ─────────────────────────────────────────
+// The Import Cost Calculator (KRA Full Tax / Consolidator models) computes a
+// per-line landed cost in KES entirely client-side; this route just turns
+// its output into stock, one Held Purchase per line — reusing the exact
+// same held-then-released pipeline as any other purchase above (a different
+// finance/general manager/admin must still accept each one before it
+// touches Material.stockQty). An import shipment is a single multi-material
+// transaction typically settled by bank transfer/LC rather than petty cash,
+// so unlike a "new"-mode local purchase these are never linked to an
+// Expense (Purchase.expenseId stays null) — same judgment call as Asset
+// Register purchases not linking to Expense either.
+const importLineSchema = z.object({
+  description: z.string().min(1),
+  qty: z.number().positive(),
+  unitCost: z.number().positive(),
+  totalCost: z.number().positive(),
+});
+
+const importBatchSchema = z.object({
+  model: z.enum(['kra', 'consolidator']),
+  reference: z.string().max(200).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  lines: z.array(importLineSchema).min(1),
+});
+
+stockRouter.post('/imports', async (req, res) => {
+  const parsed = importBatchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const { model, lines } = parsed.data;
+  const date = parsed.data.date ?? todayStr();
+  const reference = parsed.data.reference?.trim() || '';
+  const supplier = `China Import (${model === 'kra' ? 'KRA Full Tax' : 'Consolidator'})${reference ? ' — ' + reference : ''}`;
+
+  // A line's Description is matched case-insensitively against the existing
+  // Material catalog so re-importing something already stocked (e.g. "Caps")
+  // doesn't create a duplicate row — SQLite's Prisma provider has no
+  // query-level case-insensitive filter, so the match happens in JS against
+  // a name lookup fetched once up front.
+  const existingMaterials = await prisma.material.findMany();
+  const byLowerName = new Map(existingMaterials.map((m) => [m.name.toLowerCase(), m]));
+
+  const created = await prisma.$transaction(async (tx) => {
+    const rows: Array<Awaited<ReturnType<typeof tx.purchase.create>> & { materialName: string }> = [];
+    for (const line of lines) {
+      const name = line.description.trim();
+      let material = byLowerName.get(name.toLowerCase());
+      if (!material) {
+        material = await tx.material.create({ data: { name, price: Math.round(line.unitCost) } });
+        byLowerName.set(name.toLowerCase(), material);
+      }
+      const purchase = await tx.purchase.create({
+        data: {
+          materialId: material.id,
+          date,
+          supplier,
+          qty: line.qty,
+          unitCost: line.unitCost,
+          totalCost: line.totalCost,
+          invoiceNumber: reference || null,
+          capturedByName: req.user!.name,
+        },
+      });
+      rows.push({ ...purchase, materialName: material.name });
+    }
+    return rows;
+  });
+
+  res.status(201).json(created);
+});

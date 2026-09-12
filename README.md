@@ -560,3 +560,53 @@ model.
   gross profit/margin, and broke the cost down by material — then deleted both test rows
   (plus a temporary test Finance Manager user created to exercise the accept step) to keep
   the real data clean.
+
+## China Import Costing → Stock (Stock tab)
+
+A design-handoff build: Stock → **China Import Costing** (`apps/web/src/components/ImportCostCalculator.tsx`)
+recreates the delivered `.dc.html` prototype natively against this codebase's own component/CSS conventions
+(`.card.blueprint`, `.seg`/`.seg-opt`, `.table`, `.input`, `.card-kicker`/`.card-title`) rather than porting any
+new styling — the handoff's own README calls for exactly that ("recreate this design ... using the target
+codebase's existing ... patterns"), and this app had already ported the same "Industry" design system the
+handoff was built against, so every class it needed already existed.
+
+- **Two independent, self-contained costing models**, switched by a segmented control, formulas taken
+  verbatim from the handoff spec:
+  - **KRA Full Tax** — CIF is built from each line's FOB value plus its share of shipment freight/insurance,
+    then Import Duty, Excise, VAT (16%), Railway Development Levy (2% of CIF) and IDF Fee (2.25% of total
+    CIF, KES 5,000 minimum, allocated back to lines by CIF share) stack on top, landing at a per-line and
+    per-unit cost in KES.
+  - **Consolidator (Weight/CBM)** — a flat clearing-agent "tax" on chargeable weight (KES/kg) or shipment
+    volume (KES/CBM, computed from each line's L×W×H×qty), plus a separate inland-freight charge, both
+    allocated to lines by their share of total goods value.
+  - Verified live against the handoff's own seed data (Phone accessories $2.50×500, LED strip lights
+    $4.00×200) for all three paths (KRA, Consolidator/weight, Consolidator/CBM) — every computed figure
+    (CIF, duty, VAT, RDL, IDF, consolidator tax, CBM, grand total) matched the spec's formulas exactly.
+  - Deliberately shows 2-decimal KES (`n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })`)
+    rather than this app's usual whole-Ksh `fmtKsh` — duty/VAT/RDL/IDF compound off fractional CIF, so this
+    one screen needs the precision a POS receipt doesn't.
+- **"Send to Stock" is the one addition beyond the handoff spec** (which is explicitly a single-session,
+  no-persistence calculator) — the actual ask behind building this: turn the computed breakdown into real
+  stock. It reuses the *exact same* held-then-released Purchase pipeline as any other stock purchase
+  (`POST /stock/imports` in `apps/api/src/routes/stock.ts`), creating one Held `Purchase` per line at its
+  computed per-unit landed cost — a different finance/general manager/admin still has to accept each one
+  (under Stock → Purchases) before it touches `Material.stockQty`, same segregation-of-duties rule as
+  everywhere else.
+  - **A line's Description is matched case-insensitively against the existing Material catalog** (in JS,
+    not a Prisma query filter — SQLite's Prisma provider has no case-insensitive `mode`) so re-importing
+    something already stocked (e.g. "Caps") re-purchases the same Material instead of creating a duplicate;
+    no match creates a new Material seeded at the computed per-unit cost. Verified live: pushed the same two
+    line-item names twice (once via Consolidator, once via KRA) and confirmed only one Material row exists
+    for each, with two separate Purchase rows against it — then accepted one as a second (Finance Manager)
+    user and confirmed `Material.stockQty` incremented correctly, exactly as any other accepted purchase
+    would.
+  - **Never linked to an Expense** (`Purchase.expenseId` stays null) — an import shipment is a single
+    multi-material transaction typically settled by bank transfer/LC, not petty cash, so it doesn't fit the
+    existing "new"-mode local purchase's Petty Cash sufficiency check (a real shipment would fail it
+    outright against this business's actual float). Same judgment call as Asset Register purchases not
+    linking to Expense either. `supplier` records which model computed it and the optional shipment
+    reference (e.g. `"China Import (Consolidator) — BL-88213"`), and that reference doubles as the
+    Purchase's `invoiceNumber` when given.
+  - All test purchases, auto-created test materials, and a temporary test Finance Manager user (needed to
+    exercise the accept step, since acceptance blocks self-accept) were deleted after verification, leaving
+    the real catalog untouched.

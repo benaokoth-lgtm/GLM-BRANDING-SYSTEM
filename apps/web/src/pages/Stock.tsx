@@ -4,8 +4,9 @@ import { api } from '../api/client';
 import type { CatalogMaterial, PurchaseExpenseOption, PurchaseRow, RequisitionAwaitingPurchase, StockRequisitionRow, StockTakeRow } from '../api/models';
 import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
+import ImportCostCalculator from '../components/ImportCostCalculator';
 
-type StockTab = 'levels' | 'requisition' | 'approval' | 'purchases' | 'take';
+type StockTab = 'levels' | 'requisition' | 'approval' | 'purchases' | 'take' | 'imports';
 
 const TABS: [StockTab, string][] = [
   ['levels', 'Stock Levels'],
@@ -13,6 +14,7 @@ const TABS: [StockTab, string][] = [
   ['approval', 'Stock Approval'],
   ['purchases', 'Purchases'],
   ['take', 'Stock Take'],
+  ['imports', 'China Import Costing'],
 ];
 
 const STANDALONE = 'standalone';
@@ -719,6 +721,15 @@ export default function Stock() {
             {stockTakes.length === 0 && <p className="note">No stock takes recorded yet.</p>}
           </div>
         </>
+      )}
+
+      {tab === 'imports' && (
+        <ImportCostCalculator
+          onImported={() => {
+            reloadCatalog();
+            load();
+          }}
+        />
       )}
     </div>
   );

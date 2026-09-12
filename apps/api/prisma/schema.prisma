@@ -1,6 +1,8 @@
 // Dev datasource is SQLite for zero-setup local development. For production,
 // flip provider to "postgresql" and point DATABASE_URL at a Postgres instance
-// — the models below are written to be compatible with both.
+// — the models below are written to be compatible with both. The cPanel
+// deploy does this flip automatically via scripts/set-db-provider.mjs (see
+// DEPLOYMENT.md) — never edit this line directly in what you commit.
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")

@@ -1,0 +1,38 @@
+---
+# cPanel Git Version Control deployment task — runs when you click "Deploy HEAD Commit" on
+# this repo's "Pull or Deploy" tab. Builds and places both halves of this monorepo that get
+# hosted on the web: apps/api as a running Node process (via Passenger), apps/web as static
+# files copied out to a separate subdomain's document root.
+#
+# IMPORTANT — three placeholders below need real values before this works, all only knowable
+# after you've done the corresponding cPanel setup step (see DEPLOYMENT.md):
+#   REPLACE_WITH_CPANEL_USERNAME — your cPanel username
+#   REPLACE_WITH_NODE_VERSION    — the Node version you picked in Setup Node.js App (e.g. 20)
+#   REPLACE_WITH_POS_DOCROOT     — pos.glmgroup.co.ke's document root, shown on cPanel's
+#                                   Subdomains page once you create it (relative to your home
+#                                   directory, e.g. "pos.glmgroup.co.ke")
+deployment:
+  tasks:
+    - export REPOPATH=/home/REPLACE_WITH_CPANEL_USERNAME/repositories/glm-branding-pos-system/
+    - export ACTIVATE="source /home/REPLACE_WITH_CPANEL_USERNAME/nodevenv/repositories/glm-branding-pos-system/REPLACE_WITH_NODE_VERSION/bin/activate"
+    - export POSDOCROOT=/home/REPLACE_WITH_CPANEL_USERNAME/REPLACE_WITH_POS_DOCROOT/
+    # Prisma's datasource provider is a static string in schema.prisma (see the comment there
+    # and in scripts/set-db-provider.mjs) — flip it to postgresql before installing, so
+    # `npm install`'s prisma postinstall hook generates the right client.
+    - $ACTIVATE && cd $REPOPATH/apps/api && node scripts/set-db-provider.mjs postgresql
+    - $ACTIVATE && cd $REPOPATH && npm install
+    # Syncs the production database's schema to match schema.prisma — safe to run on every
+    # deploy (no-ops when nothing changed). This app has no Prisma Migrate history (dev has
+    # always used `db push` — see package.json), so this is the same tool, just pointed at
+    # Postgres via DATABASE_URL (set as an environment variable on the Node.js App — see
+    # DEPLOYMENT.md). `db push` refuses (rather than silently applying) any change that would
+    # lose data once real data exists in production — such a failure needs a manual look via
+    # cPanel Terminal, not a blind re-run.
+    - $ACTIVATE && cd $REPOPATH/apps/api && npx prisma db push
+    - $ACTIVATE && cd $REPOPATH && npm run build -w packages/shared
+    - $ACTIVATE && cd $REPOPATH && npm run build -w apps/api
+    - $ACTIVATE && cd $REPOPATH && VITE_API_URL=https://api.glmgroup.co.ke/api npm run build -w apps/web
+    - mkdir -p $POSDOCROOT
+    - /bin/cp -R $REPOPATH/apps/web/dist/* $POSDOCROOT
+    - mkdir -p $REPOPATH/apps/api/tmp
+    - touch $REPOPATH/apps/api/tmp/restart.txt

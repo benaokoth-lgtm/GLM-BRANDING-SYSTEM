@@ -43,6 +43,7 @@ export interface CorporateClient {
 export interface CompanySettings {
   maxDiscountPct: number;
   companyName: string;
+  legalName: string;
   companyAddress: string;
   companyPhone: string;
   companyEmail: string;
@@ -337,6 +338,44 @@ export interface StockTakeRow {
   note: string;
   countedByName: string;
   countedAt: string;
+}
+
+export interface RequisitionAwaitingPurchase {
+  id: number;
+  materialId: number;
+  materialName: string;
+  qty: number;
+  note: string;
+  requestedByName: string;
+}
+
+export interface PurchaseExpenseOption {
+  id: number;
+  date: string;
+  invoiceNumber: string | null;
+  amount: number;
+  note: string;
+}
+
+export interface PurchaseRow {
+  id: number;
+  requisitionId: number | null;
+  materialId: number;
+  materialName: string;
+  date: string;
+  supplier: string;
+  qty: number;
+  unitCost: number;
+  totalCost: number;
+  invoiceNumber: string | null;
+  status: 'Held' | 'Accepted' | 'Rejected';
+  requisitionedQty: number | null;
+  varianceQty: number | null;
+  acceptedByName: string | null;
+  acceptedAt: string | null;
+  rejectReason: string | null;
+  capturedByName: string;
+  createdAt: string;
 }
 
 export interface SalesCategoryRow {

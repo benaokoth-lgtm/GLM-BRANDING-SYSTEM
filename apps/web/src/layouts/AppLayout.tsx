@@ -12,15 +12,21 @@ function buildTabs(user: CurrentUser): [string, string][] {
   const isAdmin = user.role === 'Admin';
   const p = user.permissions;
   const tabs: [string, string][] = [];
+  // Finance now hosts Quotation, Invoice, All Orders, Payments and P&L as
+  // its own tabs — anyone who can reach Finance sees those there instead of
+  // as separate top-level nav entries. A role like Supervisor, which has
+  // order/payment oversight but not Finance access, still gets All
+  // Orders/Payments as their own entries so that access isn't lost.
+  const hasFinance = isAdmin || p.canAccessFinance;
 
   if (isAdmin || p.canCaptureOrders) {
-    tabs.push(['/orders/new/walkin', 'New Walk-in Order'], ['/orders/new/quote', 'New Quotation'], ['/orders/mine', 'My Orders']);
+    tabs.push(['/orders/new/walkin', 'New Walk-in Order'], ['/orders/mine', 'My Orders']);
   }
-  if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
-  if (isAdmin || p.canManagePayments) tabs.push(['/payments', 'Payments']);
+  if (!hasFinance && (isAdmin || p.canViewAllOrders)) tabs.push(['/orders/all', 'All Orders']);
+  if (!hasFinance && (isAdmin || p.canManagePayments)) tabs.push(['/payments', 'Payments']);
   if (isAdmin) tabs.push(['/master-data', 'Master Data']);
-  if (isAdmin || p.canAccessPnl) tabs.push(['/pnl', 'P&L']);
-  if (isAdmin || p.canAccessFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
+  if (!hasFinance && (isAdmin || p.canAccessPnl)) tabs.push(['/pnl', 'P&L']);
+  if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
   if (isAdmin || p.canAccessReports) tabs.push(['/reports', 'Reports']);
   if (isAdmin || p.canAccessStock) tabs.push(['/stock', 'Stock']);
   if (isAdmin || p.canAccessFilm) tabs.push(['/film', 'Film']);

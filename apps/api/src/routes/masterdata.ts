@@ -263,6 +263,7 @@ masterDataRouter.put('/corporate-clients/:id', requireRole('Admin'), async (req,
 function serializeSettings(settings: {
   maxDiscountPct: number;
   companyName: string;
+  legalName: string;
   companyAddress: string;
   companyPhone: string;
   companyEmail: string;
@@ -271,6 +272,7 @@ function serializeSettings(settings: {
   return {
     maxDiscountPct: settings.maxDiscountPct,
     companyName: settings.companyName,
+    legalName: settings.legalName,
     companyAddress: settings.companyAddress,
     companyPhone: settings.companyPhone,
     companyEmail: settings.companyEmail,
@@ -289,6 +291,10 @@ const settingsSchema = z
   .object({
     maxDiscountPct: z.number().min(0).optional(),
     companyName: z.string().min(1).max(200).optional(),
+    // The registered company the "companyName" trading name operates under —
+    // shown as a small "trading name of ..." line under the brand name on
+    // printed invoices/quotations (see printInvoice.ts). Blank hides it.
+    legalName: z.string().max(200).optional(),
     companyAddress: z.string().max(500).optional(),
     companyPhone: z.string().max(50).optional(),
     companyEmail: z.string().max(200).optional(),

@@ -5,7 +5,6 @@ import RequireRole from './components/RequireRole';
 import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
 import NewWalkinOrder from './pages/NewWalkinOrder';
-import NewQuotation from './pages/NewQuotation';
 import Orders from './pages/Orders';
 import Payments from './pages/Payments';
 import MasterData from './pages/MasterData';
@@ -35,14 +34,6 @@ export default function App() {
           element={
             <RequirePermission keys={['canCaptureOrders']}>
               <NewWalkinOrder />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/orders/new/quote"
-          element={
-            <RequirePermission keys={['canCaptureOrders']}>
-              <NewQuotation />
             </RequirePermission>
           }
         />

@@ -335,6 +335,10 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <i className="corner br"></i>
                 Convert quotation to invoice
               </button>
+              <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+                Only needed if the client accepts with nothing paid upfront — recording any payment above (a deposit)
+                converts this quotation to an invoice automatically.
+              </p>
             </div>
           )}
 

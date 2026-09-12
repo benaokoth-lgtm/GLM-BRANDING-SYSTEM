@@ -341,3 +341,124 @@ needs, assign it to a staff member in Staff & Users — no code change required.
   has to be shared separately (printed or emailed) — the button's own note says so.
   `CorporateClient` gained `email`/`phone` fields (Master Data → Corporate Clients,
   inline-editable) to back both buttons.
+
+## Trading name vs. registered company name
+
+GLM trades as "GLM Branding" but the uploaded logo carries the registered company's
+name, "GLM Group Limited" — showing both with no stated relationship on a printed
+invoice/quotation reads like two unrelated businesses sharing a header. `Setting` gained
+a `legalName` field (Master Data → Company Info → "Registered/legal entity name",
+defaults to "GLM Group Limited") that prints as a small "Trading name of ..." line
+directly under the bold trading name in the invoice/quotation header
+(`apps/web/src/utils/printInvoice.ts`) — the same "trading as" disclosure convention as
+a real letterhead, establishing the hierarchy (prominent trading name, quiet legal fine
+print) instead of two same-weight names competing for attention. The line only renders
+when `legalName` is set and differs from `companyName`; leaving it blank hides it
+entirely. Walk-in receipts (`printTicket.ts`) don't carry a logo image (plain text on
+thermal paper) but show the same "Trading name of ..." line as text under the brand
+name, in the slot a reference receipt template would put its marketing tagline.
+
+## Quotation → invoice: auto-converts on deposit, VAT-inclusive pricing, thermal receipt redesign
+
+- **A quotation now converts to an invoice automatically the moment any payment is
+  recorded against it** — receiving money is itself proof the client accepted, so there's
+  no need for a separate manual step. `POST /orders/:id/payments`
+  (`apps/api/src/routes/orders.ts`) creates the Payment and, if the order's status is
+  still `Quote`, converts it in the same transaction (sets `status: 'Invoice'`, the due
+  date from the client's credit terms, and logs film usage for any film-tracked lines —
+  exactly what the explicit "Convert quotation to invoice" button already did, now
+  extracted into a shared `convertQuoteToInvoice()` helper both paths call). The manual
+  button still exists for a quote accepted with nothing paid upfront, and
+  `OrderDetailDialog.tsx` notes the auto-convert behavior next to it so it doesn't look
+  redundant.
+- **Prices were already computed as VAT-inclusive** (see Compliance → VAT's own
+  disclosure), but nothing on a printed invoice, quotation, or receipt actually said so —
+  a customer had no way to tell whether 16% VAT was baked into the total. Both
+  `printInvoice.ts` (A4 invoices/quotations) and `printTicket.ts` (thermal receipts) now
+  split the final total via the existing `splitVatInclusive()` helper
+  (`packages/shared/src/tax.ts`) and print a small "Includes VAT (16%)" / "Net amount
+  (excl. VAT)" pair directly under the grand total — the underlying numbers were already
+  correct, this only makes the VAT treatment explicit on the document itself.
+- **The walk-in thermal receipt (`printTicket.ts`) was redesigned against a reference
+  UK-supermarket-style thermal receipt** the same structural template: bold centred brand
+  block, dashed section rules, an order/customer/staff block, itemised purchases, a
+  totals block (now with the VAT breakdown above), a payment/balance-due block, a
+  "please keep this receipt" note with an item count, a scannable barcode, and a closing
+  thank-you line. Every field on it is real GLM data — order number, customer, staff,
+  line items, payments, balance due — deliberately never inventing the reference's
+  till/terminal/card-authorisation numbers, which don't correspond to anything this
+  system tracks (no card-network integration here). The barcode (Code128 of the order
+  number, via JsBarcode loaded from a CDN — the same "external resource during print"
+  pattern `printInvoice.ts` already uses for its Google Font) is a genuine scannable
+  reference, not decoration.
+
+## Stock: requisition → purchase (held) → reconciled acceptance (released)
+
+Modeled directly on the Olerai Hotel System's purchase-order capture/approve-receipt
+flow (same machine, sibling project — read to match its shape rather than invent a new
+one). Stock → **Purchases** is the new middle stage between an approved requisition and
+`Material.stockQty` actually increasing:
+
+- **Approving a requisition no longer touches stock.** It only authorizes buying it —
+  `stockRouter`'s requisition-approve route dropped the `stockQty` increment it used to
+  do (`apps/api/src/routes/stock.ts`). An approved requisition instead becomes pickable
+  under Purchases (`GET /stock/requisitions/awaiting-purchase`), pre-filling the
+  material/quantity when selected — or a purchase can be captured standalone, with no
+  requisition at all.
+- **A captured purchase is "Held"** — the new `Purchase` model records what was actually
+  bought (supplier, quantity, unit cost, invoice number) but does not touch
+  `Material.stockQty` yet. It uses the exact same "new purchase creates the Expense" /
+  "already logged, pick it from a dropdown" linkage as Film Roll installs
+  (`FilmRoll.expenseId`) — a "new" purchase auto-creates a "Printing Materials &
+  Consumables" Expense (checked against the Petty Cash float, same insufficient-balance
+  guard as everywhere else money leaves it) and an "existing" one links an already-logged
+  expense; either way `Purchase.expenseId` is `@unique`, so one expense can only ever
+  back one purchase.
+- **Reconciliation happens at acceptance**, not before: a *different* finance
+  manager/general manager/admin than whoever captured the purchase (self-accept is
+  blocked, same segregation-of-duties rule as every other approve/reject in this app)
+  reviews `requisitionedQty` (what was asked for) against `qty` (what was actually
+  bought) — the variance is computed and snapshotted right then
+  (`POST /stock/purchases/:id/accept`) — and only accepting is what runs
+  `Material.stockQty += qty`, i.e. releases it into the store. Rejecting
+  (`POST /stock/purchases/:id/reject`, a reason required) leaves stock untouched so the
+  purchase can be corrected and re-captured. Verified live end-to-end: raised a
+  requisition for 20 Caps, approved it as one manager, captured a purchase of only 18 as
+  a second manager (confirmed self-accept is blocked), accepted it as a third — stock
+  went from 0 to exactly 18 only at that final step, with the -2 variance recorded
+  against the purchase.
+
+## Finance consolidation: Quotation, Invoice, All Orders, Payments and P&L moved in
+
+Anyone who can reach Finance (`canAccessFinance` — Finance Manager, General Manager,
+Admin) now does **everything** sales/order/finance-related from inside it, as tabs, in
+one place — Quotation, Invoice, All Orders, Payments, P&L, Expenses, Petty Cash
+(`apps/web/src/pages/Finance.tsx`) — instead of six separate top-level nav entries. All
+Orders/Payments/P&L are the *exact same* `Orders`/`Payments`/`PnL` components mounted as
+tab content (no duplicated logic); Quotation and Invoice share one new
+`CorporateOrderForm` component (`apps/web/src/components/CorporateOrderForm.tsx`)
+parameterized by `kind`.
+
+- **This consolidation is conditional on having Finance access, not universal.**
+  Supervisor has order/payment oversight (`canViewAllOrders`/`canManagePayments`) but not
+  `canAccessFinance`, and still gets All Orders/Payments as their own top-level nav
+  entries exactly as before (`AppLayout.tsx`'s `buildTabs` only folds these into Finance
+  once `canAccessFinance` is already true, so Supervisor loses nothing). Staff's "New
+  Walk-in Order"/"My Orders" are untouched — only "New Quotation" moved, and it moved
+  *into* Finance rather than staying a Staff self-service action, since creating a
+  quotation is now bundled with the same finance-role-only Invoice/pricing-negotiation
+  work.
+- **Quotation creation now requires Finance access, not just order capture** —
+  `POST /orders/quote`'s permission changed from `canCaptureOrders` to `canAccessFinance`
+  (`apps/api/src/routes/orders.ts`), enforced server-side (verified a Staff account gets
+  a clean 403 calling it directly, not just a missing nav link). The "Prepared by" picker
+  on the quotation/invoice form also changed from Staff-only to all staff, since a
+  Finance Manager negotiating and capturing the deal themselves needs to appear in their
+  own picker.
+- **New: "Invoice" creates a corporate order that skips the quotation stage entirely** —
+  for a client who's already negotiated and agreed, `POST /orders/invoice` (same
+  `canAccessFinance` gate, same line-item shape as `/orders/quote`) posts straight to
+  `status: 'Invoice'` with the due date set from the client's credit terms and film usage
+  logged immediately — the exact end state `convertQuoteToInvoice` leaves a quote in,
+  just without ever having been a quote. Verified live: created a direct invoice, confirmed
+  it never touched Quote status, and its due date matched the client's credit-days terms.

@@ -5,14 +5,35 @@ import { api } from '../api/client';
 import type { DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesData, PettyCashData } from '../api/models';
 import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
+import CorporateOrderForm from '../components/CorporateOrderForm';
+import Orders from './Orders';
+import Payments from './Payments';
+import PnL from './PnL';
 
-type FinanceTab = 'expenses' | 'pettycash';
+// Quotation, Invoice, All Orders, Payments and P&L all moved in here from
+// their own top-level nav entries — one "Finance" tab for everything a
+// Finance Manager/General Manager/Admin does, instead of six scattered
+// links (see AppLayout.tsx's buildTabs). Supervisor, who has order/payment
+// oversight but not Finance access, still reaches All Orders/Payments as
+// their own top-level entries — this consolidation only applies once
+// canAccessFinance is already true.
+type FinanceTab = 'quotation' | 'invoice' | 'allOrders' | 'payments' | 'pnl' | 'expenses' | 'pettycash';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [FinanceTab, string][] = [
+  ['quotation', 'Quotation'],
+  ['invoice', 'Invoice'],
+  ['allOrders', 'All Orders'],
+  ['payments', 'Payments'],
+  ['pnl', 'P&L'],
   ['expenses', 'Expenses'],
   ['pettycash', 'Petty Cash'],
 ];
+
+// Tabs that manage their own data/date-range internally — the shared
+// preset/from-to filter bar below (and the Expenses/Petty Cash data load)
+// isn't relevant to them.
+const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'allOrders', 'payments', 'pnl'];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
   const y = today.slice(0, 4);
@@ -129,6 +150,11 @@ export default function Finance() {
   const [deletionRequests, setDeletionRequests] = useState<DeletionRequest[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<{ type: DeletableRecordType; id: number } | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
+
+  const [justCreated, setJustCreated] = useState<{ kind: 'quote' | 'invoice'; orderNo: string } | null>(null);
+  function handleOrderCreated(kind: 'quote' | 'invoice', orderNo: string) {
+    setJustCreated({ kind, orderNo });
+  }
 
   function load() {
     setLoading(true);
@@ -262,7 +288,8 @@ export default function Finance() {
     return deletionRequests.find((r) => r.recordType === type && r.recordId === id && r.status === 'Pending');
   }
 
-  if (loading || !expenses || !pettyCash) return <p className="note">Loading…</p>;
+  const isSelfContained = SELF_CONTAINED_TABS.includes(tab);
+  if (!isSelfContained && (loading || !expenses || !pettyCash)) return <p className="note">Loading…</p>;
 
   const pendingAmendments = amendments.filter((a) => a.status === 'Pending');
   const expenseDeletionRequests = deletionRequests.filter((r) => r.recordType === 'Expense');
@@ -282,45 +309,80 @@ export default function Finance() {
         ))}
       </div>
 
-      <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
-        <i className="corner tl"></i>
-        <i className="corner tr"></i>
-        <i className="corner bl"></i>
-        <i className="corner br"></i>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'end', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('month')}>
-              This month
+      {justCreated && (
+        <div className="card blueprint elev-sm no-print" style={{ padding: 'var(--space-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <span>
+            <span className="tag tag-accent">{justCreated.kind === 'quote' ? 'Quotation' : 'Invoice'} {justCreated.orderNo} created</span>
+          </span>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setTab('allOrders');
+                setJustCreated(null);
+              }}
+            >
+              View in All Orders
             </button>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('quarter')}>
-              This quarter
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('year')}>
-              Year to date
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('last12')}>
-              Last 12 months
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end', flexWrap: 'wrap' }}>
-            <div className="field" style={{ margin: 0 }}>
-              <label>From</label>
-              <input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            </div>
-            <div className="field" style={{ margin: 0 }}>
-              <label>To</label>
-              <input className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
-            <button type="button" className="btn btn-primary blueprint" onClick={() => window.print()}>
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              Print / PDF
+            <button type="button" className="btn btn-ghost" onClick={() => setJustCreated(null)}>
+              Dismiss
             </button>
           </div>
         </div>
-      </div>
+      )}
+
+      {!isSelfContained && (
+        <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'end', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('month')}>
+                This month
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('quarter')}>
+                This quarter
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('year')}>
+                Year to date
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('last12')}>
+                Last 12 months
+              </button>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end', flexWrap: 'wrap' }}>
+              <div className="field" style={{ margin: 0 }}>
+                <label>From</label>
+                <input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>To</label>
+                <input className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+              <button type="button" className="btn btn-primary blueprint" onClick={() => window.print()}>
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                Print / PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'quotation' && <CorporateOrderForm kind="quote" onCreated={(orderNo) => handleOrderCreated('quote', orderNo)} />}
+      {tab === 'invoice' && <CorporateOrderForm kind="invoice" onCreated={(orderNo) => handleOrderCreated('invoice', orderNo)} />}
+      {tab === 'allOrders' && <Orders scope="all" />}
+      {tab === 'payments' && <Payments />}
+      {tab === 'pnl' && <PnL />}
 
       {error && (
         <p className="note" style={{ color: '#a33' }}>
@@ -328,7 +390,7 @@ export default function Finance() {
         </p>
       )}
 
-      {tab === 'expenses' && (
+      {tab === 'expenses' && expenses && (
         <>
           <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
             <i className="corner tl"></i>
@@ -505,7 +567,7 @@ export default function Finance() {
         </>
       )}
 
-      {tab === 'pettycash' && (
+      {tab === 'pettycash' && pettyCash && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
             <div className="card blueprint elev-sm">

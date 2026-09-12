@@ -99,6 +99,28 @@ function canAccessOrder(userRole: string, userId: number, order: { staffId: numb
   return true;
 }
 
+// Shared by the explicit "Convert quotation to invoice" action and by
+// receiving a deposit payment against a quote (see POST /:id/payments) —
+// either is the moment a client has actually accepted the quote and
+// production starts, so it's also when film-tracked lines deplete the
+// active roll (never at quote-drafting time, since a quote may never be
+// accepted).
+async function convertQuoteToInvoice(
+  tx: Prisma.TransactionClient,
+  order: { id: number; corporateClient: { creditDays: number } | null; lineItems: { serviceId: number | null; filmLengthM: number | null; itemType: string; materialId: number | null; qty: number; unitPrice: number; discountPct: number; discountAmt: number; heatPressFee: number | null }[] },
+  capturedByName: string,
+) {
+  const days = order.corporateClient?.creditDays ?? 30;
+  const dueDate = addDays(todayStr(), days);
+  await tx.order.update({ where: { id: order.id }, data: { status: 'Invoice', dueDate } });
+  await logFilmUsageForOrder(tx, {
+    orderId: order.id,
+    date: todayStr(),
+    capturedByName,
+    lineItems: order.lineItems.map((li) => ({ serviceId: li.serviceId, filmLengthM: li.filmLengthM, lineTotal: buildLineTotal(toLineItemInput(li)) })),
+  });
+}
+
 // ── List ─────────────────────────────────────────────────────────────────
 ordersRouter.get('/', async (req, res) => {
   const { staffId, status } = req.query as { staffId?: string; status?: string };
@@ -211,8 +233,10 @@ const quoteSchema = z.object({
   orderDiscountAmt: z.number().min(0).default(0),
 });
 
-// ── Create quotation (canCaptureOrders — Staff by default) ───────────────
-ordersRouter.post('/quote', requirePermission('canCaptureOrders'), async (req, res) => {
+// ── Create quotation — now a Finance-tab action (New Quotation moved into
+// Finance alongside Invoice, All Orders, Payments and P&L), not a Staff
+// self-service one ──────────────────────────────────────────────────────
+ordersRouter.post('/quote', requirePermission('canAccessFinance'), async (req, res) => {
   const parsed = quoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
@@ -242,19 +266,78 @@ ordersRouter.post('/quote', requirePermission('canCaptureOrders'), async (req, r
   res.status(201).json(serializeDetail(order));
 });
 
+// ── Create invoice directly — for a client who's already negotiated and
+// agreed, with no quotation step needed first. Same shape as a quote, but
+// skips straight to 'Invoice' (due date set from the client's credit terms,
+// film usage logged immediately) — exactly the end state
+// convertQuoteToInvoice would leave a quote in, just without ever having
+// been a quote.
+ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req, res) => {
+  const parsed = quoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const form = parsed.data;
+
+  const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
+  if (!client) return res.status(400).json({ error: 'Corporate client not found' });
+  const dueDate = addDays(todayStr(), client.creditDays);
+
+  const order = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const orderNo = 'C-' + settings.nextCorpNo;
+    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
+
+    const created = await tx.order.create({
+      data: {
+        orderNo,
+        kind: 'corporate',
+        corporateClientId: form.corporateClientId,
+        staffId: form.staffId,
+        createdDate: todayStr(),
+        status: 'Invoice',
+        stage: 'Order Received',
+        dueDate,
+        orderDiscountPct: form.orderDiscountPct,
+        orderDiscountAmt: form.orderDiscountAmt,
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
+      },
+      include: orderInclude,
+    });
+
+    await logFilmUsageForOrder(tx, {
+      orderId: created.id,
+      date: created.createdDate,
+      capturedByName: req.user!.name,
+      lineItems: form.lineItems.map((li) => ({ serviceId: li.serviceId, filmLengthM: li.filmLengthM, lineTotal: buildLineTotal(li) })),
+    });
+
+    return created;
+  });
+
+  res.status(201).json(serializeDetail(order));
+});
+
 // ── Record a payment ────────────────────────────────────────────────────
 const paymentSchema = z.object({ amount: z.number().positive(), method: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']) });
 
 ordersRouter.post('/:id/payments', async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true, lineItems: true } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
 
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
 
-  await prisma.payment.create({
-    data: { orderId: order.id, date: todayStr(), amount: parsed.data.amount, method: parsed.data.method, staffId: req.user!.id },
+  await prisma.$transaction(async (tx) => {
+    await tx.payment.create({
+      data: { orderId: order.id, date: todayStr(), amount: parsed.data.amount, method: parsed.data.method, staffId: req.user!.id },
+    });
+    // A payment against a quote — of any size — is a deposit: the client
+    // has accepted it, so it converts to an invoice right here rather than
+    // needing a separate manual "Convert quotation to invoice" click. A
+    // quote accepted with no money down still uses that manual button.
+    if (order.status === 'Quote') {
+      await convertQuoteToInvoice(tx, order, req.user!.name);
+    }
   });
 
   const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
@@ -287,18 +370,7 @@ ordersRouter.post('/:id/convert', requirePermission('canCaptureOrders', 'canView
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
   if (order.status !== 'Quote') return res.status(400).json({ error: 'Only quotes can be converted' });
 
-  const days = order.corporateClient?.creditDays ?? 30;
-  const dueDate = addDays(todayStr(), days);
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const result = await tx.order.update({ where: { id: order.id }, data: { status: 'Invoice', dueDate }, include: orderInclude });
-    await logFilmUsageForOrder(tx, {
-      orderId: order.id,
-      date: todayStr(),
-      capturedByName: req.user!.name,
-      lineItems: order.lineItems.map((li) => ({ serviceId: li.serviceId, filmLengthM: li.filmLengthM, lineTotal: buildLineTotal(toLineItemInput(li)) })),
-    });
-    return result;
-  });
-  res.json(serializeDetail(updated));
+  await prisma.$transaction((tx) => convertQuoteToInvoice(tx, order, req.user!.name));
+  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  res.json(serializeDetail(updated!));
 });

@@ -5,6 +5,7 @@ import type { ArtworkSizeBand, CatalogMaterial, CatalogService, CompanySettings,
 const DEFAULT_SETTINGS: CompanySettings = {
   maxDiscountPct: 15,
   companyName: 'GLM Branding',
+  legalName: 'GLM Group Limited',
   companyAddress: '',
   companyPhone: '',
   companyEmail: '',

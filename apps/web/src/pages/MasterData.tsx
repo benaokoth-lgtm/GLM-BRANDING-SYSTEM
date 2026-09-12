@@ -83,6 +83,7 @@ export default function MasterData() {
   const discountValue = maxDiscountPct ?? String(catalog.maxDiscountPct);
 
   const [companyName, setCompanyName] = useState<string | null>(null);
+  const [legalName, setLegalName] = useState<string | null>(null);
   const [companyAddress, setCompanyAddress] = useState<string | null>(null);
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
   const [companyEmail, setCompanyEmail] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export default function MasterData() {
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const companyNameValue = companyName ?? catalog.settings.companyName;
+  const legalNameValue = legalName ?? catalog.settings.legalName;
   const companyAddressValue = companyAddress ?? catalog.settings.companyAddress;
   const companyPhoneValue = companyPhone ?? catalog.settings.companyPhone;
   const companyEmailValue = companyEmail ?? catalog.settings.companyEmail;
@@ -346,6 +348,7 @@ export default function MasterData() {
     try {
       await api.put('/master-data/settings', {
         companyName: companyNameValue.trim() || 'GLM Branding',
+        legalName: legalNameValue.trim(),
         companyAddress: companyAddressValue,
         companyPhone: companyPhoneValue,
         companyEmail: companyEmailValue,
@@ -816,8 +819,17 @@ export default function MasterData() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)', maxWidth: 760 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <div className="field">
-                <label>Company name</label>
+                <label>Company name (trading name)</label>
                 <input className="input" value={companyNameValue} onChange={(e) => setCompanyName(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Registered/legal entity name</label>
+                <input className="input" value={legalNameValue} onChange={(e) => setLegalName(e.target.value)} placeholder="e.g. GLM Group Limited" />
+                <p className="note" style={{ marginTop: 'var(--space-1)' }}>
+                  If different from the trading name above (e.g. the logo carries the registered company name),
+                  printed invoices/quotations show it as a small "trading name of ..." line under the brand name —
+                  leave blank to hide it.
+                </p>
               </div>
               <div className="field">
                 <label>Address</label>

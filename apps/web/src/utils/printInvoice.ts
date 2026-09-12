@@ -1,4 +1,4 @@
-import { fmtDate, fmtKsh } from '@glm/shared';
+import { fmtDate, fmtKsh, splitVatInclusive } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 
 // Creative-agency palette — bold black ink with a pink/orange/teal/purple
@@ -69,7 +69,23 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
   const brandMark = company.logoDataUrl
     ? `<img class="brand-logo" src="${company.logoDataUrl}" alt="${companyName}" />`
     : `<div class="brand-mark"><div class="ring"></div><div class="dot-a"></div><div class="dot-b"></div></div>`;
+  // The uploaded logo is the registered company's (e.g. "GLM Group
+  // Limited"), while companyName is the trading name customers know the
+  // business as (e.g. "GLM Branding") — shown big and bold right next to
+  // it. Without this line the two names sit side by side with no stated
+  // relationship, reading like two different businesses; this fine-print
+  // line under the brand name makes the trading-name/legal-name
+  // relationship explicit instead, exactly where a "trading as" disclosure
+  // conventionally goes on an invoice.
+  const legalNameLine =
+    company.legalName && company.legalName.trim() && company.legalName.trim() !== (company.companyName || '').trim()
+      ? `<div class="brand-sub">Trading name of ${esc(company.legalName.trim())}</div>`
+      : '';
   const footerContact = [company.companyAddress, company.companyPhone, company.companyEmail].filter(Boolean).map(esc).join(' &middot; ');
+  // Prices are VAT-inclusive throughout this system (see Compliance → VAT) —
+  // split the final payable amount back out so a tax invoice states that
+  // plainly rather than leaving VAT status ambiguous.
+  const { net, vat } = splitVatInclusive(order.totals.grandTotal);
 
   const html = `<!doctype html>
 <html>
@@ -128,6 +144,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
     background: linear-gradient(90deg, ${PINK}, ${ORANGE}); color: #fff;
     font-weight: 800; font-size: 16px; border-radius: 5px; padding: 10px 14px; margin-top: 8px;
   }
+  .totals .vat-note { display: flex; justify-content: space-between; padding: 3px 0 0; font-size: 10px; color: ${MUTED}; }
 
   .lower { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; margin-top: 28px; align-items: start; }
   .payment-methods h2 { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
@@ -168,6 +185,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
         ${brandMark}
         <div>
           <div class="brand-name">${companyName}</div>
+          ${legalNameLine}
         </div>
       </div>
       <div class="doc-title">
@@ -207,6 +225,8 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
         <div class="row"><span>Subtotal</span><span>${fmtKsh(order.totals.subtotal)}</span></div>
         ${order.totals.orderDiscount > 0 ? `<div class="row"><span>Discount</span><span>-${fmtKsh(order.totals.orderDiscount)}</span></div>` : ''}
         <div class="grand"><span>${isInvoice ? 'Total Amount' : 'Quote Total'}</span><span>${fmtKsh(order.totals.grandTotal)}</span></div>
+        <div class="vat-note"><span>Includes VAT (16%)</span><span>${fmtKsh(vat)}</span></div>
+        <div class="vat-note"><span>Net amount (excl. VAT)</span><span>${fmtKsh(net)}</span></div>
       </div>
     </div>
 

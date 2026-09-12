@@ -100,6 +100,7 @@ model Material {
   lineItems    OrderLineItem[]
   requisitions StockRequisition[]
   stockTakes   StockTake[]
+  purchases    Purchase[]
 }
 
 // A physical count reconciliation — staff count what's actually on the
@@ -141,6 +142,12 @@ model Setting {
 
   // Company profile — used on printed invoices, quotations, and receipts.
   companyName    String  @default("GLM Branding")
+  // The registered company behind the "GLM Branding" trading name — the
+  // uploaded logo is GLM Group Limited's, so printed invoices/quotations
+  // show it as a small "trading name of ..." line under the brand name
+  // rather than as an unexplained second name next to the logo (see
+  // apps/web/src/utils/printInvoice.ts). Blank hides the line entirely.
+  legalName      String  @default("GLM Group Limited")
   companyAddress String  @default("")
   companyPhone   String  @default("")
   companyEmail   String  @default("")
@@ -158,12 +165,15 @@ model Expense {
   amount          Float
   // Invoice/receipt number — optional for expenses generally, but required
   // for a "DTF Film Rolls" expense to be linkable to a FilmRoll (see
-  // FilmRoll.expenseId): only an expense with an invoice number on file can
-  // be picked as "already bought" when installing a roll.
+  // FilmRoll.expenseId), or a "Printing Materials & Consumables" expense to
+  // a stock Purchase (see Purchase.expenseId): only an expense with an
+  // invoice number on file can be picked as "already bought" when
+  // installing a roll or capturing a purchase.
   invoiceNumber   String?
   capturedByName  String   @default("")
   amendments      ExpenseAmendment[]
   filmRoll        FilmRoll?
+  purchase        Purchase?
 }
 
 // A correction request against an existing Expense — never edits the row
@@ -253,20 +263,63 @@ model DeletionRequest {
   decidedAt       DateTime?
 }
 
-// Stock > Requisition/Approval — a requested stock top-up only increases
-// Material.stockQty once approved, so "available for sale" reflects
-// approved stock, not merely requested stock.
+// Stock > Requisition/Approval — approving a requisition only authorizes
+// buying it; it no longer touches Material.stockQty itself (see Purchase
+// below for what actually does). A requisition can have more than one
+// Purchase attempt against it — e.g. a first purchase gets rejected at
+// reconciliation and a corrected one is captured afterward — so this isn't
+// a one-to-one relation.
 model StockRequisition {
-  id              Int       @id @default(autoincrement())
+  id              Int        @id @default(autoincrement())
   materialId      Int
-  material        Material  @relation(fields: [materialId], references: [id])
+  material        Material   @relation(fields: [materialId], references: [id])
   qty             Float
-  note            String    @default("")
-  status          String    @default("Pending") // Pending | Approved | Rejected
+  note            String     @default("")
+  status          String     @default("Pending") // Pending | Approved | Rejected
   requestedByName String
-  requestedAt     DateTime  @default(now())
+  requestedAt     DateTime   @default(now())
   decidedByName   String?
   decidedAt       DateTime?
+  purchases       Purchase[]
+}
+
+// Stock > Purchases — the held-then-released middle stage between a
+// requisition and stock actually increasing, mirroring the Olerai Hotel
+// System's purchase-order capture/approve-receipt flow: a purchase is
+// captured here (supplier, quantity/cost actually bought, invoice number)
+// and sits "Held" — Material.stockQty is NOT touched yet — until a
+// different manager reconciles what was requisitioned against what was
+// actually purchased (varianceQty) and either accepts it into the store
+// (the only thing that releases it into stockQty) or rejects it for
+// re-capture. Same segregation-of-duties rule as every other
+// approve/reject in this app: the capturer can't also accept their own
+// purchase. requisitionId is optional — a purchase can also be raised
+// standalone, with no prior requisition.
+model Purchase {
+  id               Int               @id @default(autoincrement())
+  requisitionId    Int?
+  requisition      StockRequisition? @relation(fields: [requisitionId], references: [id])
+  materialId       Int
+  material         Material          @relation(fields: [materialId], references: [id])
+  date             String // 'YYYY-MM-DD' purchased/received
+  supplier         String            @default("")
+  qty              Float // quantity actually purchased/delivered
+  unitCost         Float
+  totalCost        Float
+  invoiceNumber    String?
+  // Same "new purchase creates the Expense" / "already logged, pick it from
+  // a dropdown" linkage as FilmRoll.expenseId — an Expense can back at most
+  // one purchase (enforced the same way, via this being @unique).
+  expenseId        Int?              @unique
+  expense          Expense?          @relation(fields: [expenseId], references: [id])
+  status           String            @default("Held") // Held | Accepted | Rejected
+  requisitionedQty Float? // snapshot of what was requisitioned, for the variance shown at acceptance
+  varianceQty      Float? // qty - requisitionedQty, snapshotted at acceptance (null if there was no requisition to compare against)
+  acceptedByName   String?
+  acceptedAt       DateTime?
+  rejectReason     String?
+  capturedByName   String
+  createdAt        DateTime          @default(now())
 }
 
 model Order {

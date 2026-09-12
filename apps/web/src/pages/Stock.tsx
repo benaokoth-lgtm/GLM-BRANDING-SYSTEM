@@ -1,18 +1,21 @@
-import { useEffect, useState } from 'react';
-import { fmtDate, todayStr } from '@glm/shared';
+import { Fragment, useEffect, useState } from 'react';
+import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
-import type { CatalogMaterial, StockRequisitionRow, StockTakeRow } from '../api/models';
+import type { CatalogMaterial, PurchaseExpenseOption, PurchaseRow, RequisitionAwaitingPurchase, StockRequisitionRow, StockTakeRow } from '../api/models';
 import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
 
-type StockTab = 'levels' | 'requisition' | 'approval' | 'take';
+type StockTab = 'levels' | 'requisition' | 'approval' | 'purchases' | 'take';
 
 const TABS: [StockTab, string][] = [
   ['levels', 'Stock Levels'],
   ['requisition', 'Stock Requisition'],
   ['approval', 'Stock Approval'],
+  ['purchases', 'Purchases'],
   ['take', 'Stock Take'],
 ];
+
+const STANDALONE = 'standalone';
 
 export default function Stock() {
   const { user } = useAuth();
@@ -20,6 +23,9 @@ export default function Stock() {
   const [tab, setTab] = useState<StockTab>('levels');
   const [requisitions, setRequisitions] = useState<StockRequisitionRow[]>([]);
   const [stockTakes, setStockTakes] = useState<StockTakeRow[]>([]);
+  const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
+  const [awaitingPurchase, setAwaitingPurchase] = useState<RequisitionAwaitingPurchase[]>([]);
+  const [availableExpenses, setAvailableExpenses] = useState<PurchaseExpenseOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -29,12 +35,36 @@ export default function Stock() {
   const [newReq, setNewReq] = useState({ materialId: null as number | null, qty: '', note: '' });
   const [newTake, setNewTake] = useState({ materialId: null as number | null, countedQty: '', note: '', date: todayStr() });
 
+  const [purchaseMode, setPurchaseMode] = useState<'new' | 'existing'>('new');
+  const [newPurchase, setNewPurchase] = useState({
+    requisitionKey: STANDALONE as string,
+    materialId: null as number | null,
+    supplier: '',
+    qty: '',
+    unitCost: '',
+    invoiceNumber: '',
+    expenseId: null as number | null,
+    date: todayStr(),
+  });
+  const [rejectingPurchaseId, setRejectingPurchaseId] = useState<number | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+
   function load() {
     setLoading(true);
-    Promise.all([api.get<StockRequisitionRow[]>('/stock/requisitions'), api.get<StockTakeRow[]>('/stock/takes')])
-      .then(([reqs, takes]) => {
+    Promise.all([
+      api.get<StockRequisitionRow[]>('/stock/requisitions'),
+      api.get<StockTakeRow[]>('/stock/takes'),
+      api.get<PurchaseRow[]>('/stock/purchases'),
+      api.get<RequisitionAwaitingPurchase[]>('/stock/requisitions/awaiting-purchase'),
+      api.get<PurchaseExpenseOption[]>('/stock/available-expenses-for-purchase'),
+    ])
+      .then(([reqs, takes, pur, awaiting, expenses]) => {
         setRequisitions(reqs);
         setStockTakes(takes);
+        setPurchases(pur);
+        setAwaitingPurchase(awaiting);
+        setAvailableExpenses(expenses);
+        setNewPurchase((p) => ({ ...p, expenseId: p.expenseId ?? expenses[0]?.id ?? null }));
       })
       .finally(() => setLoading(false));
   }
@@ -48,8 +78,20 @@ export default function Stock() {
     if (newTake.materialId === null && materials.length > 0) {
       setNewTake((t) => ({ ...t, materialId: materials[0].id }));
     }
+    if (newPurchase.materialId === null && materials.length > 0) {
+      setNewPurchase((p) => ({ ...p, materialId: materials[0].id }));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materials.length]);
+
+  function pickRequisitionForPurchase(key: string) {
+    if (key === STANDALONE) {
+      setNewPurchase((p) => ({ ...p, requisitionKey: key }));
+      return;
+    }
+    const req = awaitingPurchase.find((r) => String(r.id) === key);
+    setNewPurchase((p) => ({ ...p, requisitionKey: key, materialId: req?.materialId ?? p.materialId, qty: req ? String(req.qty) : p.qty }));
+  }
 
   async function addRequisition() {
     const qty = Number(newReq.qty);
@@ -77,6 +119,89 @@ export default function Stock() {
       reloadCatalog();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to decide requisition');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitPurchase() {
+    const qty = Number(newPurchase.qty);
+    if (!newPurchase.materialId) return setError('Select a material');
+    if (!qty || qty <= 0) return setError('Quantity must be greater than 0');
+    setError(null);
+
+    const requisitionId = newPurchase.requisitionKey === STANDALONE ? undefined : Number(newPurchase.requisitionKey);
+    let payload: Record<string, unknown>;
+    if (purchaseMode === 'new') {
+      const unitCost = Number(newPurchase.unitCost);
+      if (!unitCost || unitCost <= 0) return setError('Unit cost must be greater than 0');
+      if (!newPurchase.invoiceNumber.trim()) return setError('Invoice/receipt number is required');
+      payload = {
+        mode: 'new',
+        requisitionId,
+        materialId: newPurchase.materialId,
+        supplier: newPurchase.supplier,
+        qty,
+        unitCost,
+        invoiceNumber: newPurchase.invoiceNumber,
+        date: newPurchase.date,
+      };
+    } else {
+      if (!newPurchase.expenseId) return setError('Select an already-logged purchase expense');
+      payload = {
+        mode: 'existing',
+        requisitionId,
+        materialId: newPurchase.materialId,
+        supplier: newPurchase.supplier,
+        qty,
+        expenseId: newPurchase.expenseId,
+        date: newPurchase.date,
+      };
+    }
+
+    setBusy(true);
+    try {
+      await api.post('/stock/purchases', payload);
+      setNewPurchase((p) => ({ ...p, requisitionKey: STANDALONE, supplier: '', qty: '', unitCost: '', invoiceNumber: '', expenseId: null }));
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to capture purchase');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function acceptPurchase(id: number) {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/stock/purchases/${id}/accept`, {});
+      load();
+      reloadCatalog();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept purchase');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startRejectPurchase(id: number) {
+    setRejectingPurchaseId(id);
+    setRejectReason('');
+    setError(null);
+  }
+
+  async function submitRejectPurchase() {
+    if (rejectingPurchaseId == null) return;
+    if (!rejectReason.trim()) return setError('A reason for rejecting is required');
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/stock/purchases/${rejectingPurchaseId}/reject`, { reason: rejectReason });
+      setRejectingPurchaseId(null);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject purchase');
     } finally {
       setBusy(false);
     }
@@ -223,8 +348,9 @@ export default function Stock() {
               </button>
             </div>
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-              Requested stock only becomes available for sale once a finance manager/general manager/admin approves it
-              under Stock Approval.
+              Approving a requisition (under Stock Approval) only authorizes buying it — stock doesn't actually
+              increase yet. A purchase still has to be captured against it under Purchases, then reconciled and
+              accepted into the store before it's available for sale.
             </p>
           </div>
 
@@ -283,6 +409,224 @@ export default function Stock() {
           </table>
           {pending.length === 0 && <p className="note">No pending requisitions.</p>}
         </div>
+      )}
+
+      {tab === 'purchases' && (
+        <>
+          <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+              Capture a purchase
+            </div>
+            <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
+              Recording a purchase here doesn't add to stock yet — it's held until a different finance
+              manager/general manager/admin reconciles it (what was requisitioned vs. what was actually bought) and
+              accepts it into the store under Purchase history below.
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr 1fr 0.8fr', gap: 'var(--space-3)', alignItems: 'end', marginBottom: 'var(--space-3)' }}>
+              <div className="field">
+                <label>Against requisition (optional)</label>
+                <select className="input" value={newPurchase.requisitionKey} onChange={(e) => pickRequisitionForPurchase(e.target.value)}>
+                  <option value={STANDALONE}>No requisition (standalone purchase)</option>
+                  {awaitingPurchase.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.materialName} — qty {r.qty} — requested by {r.requestedByName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Material</label>
+                <select
+                  className="input"
+                  value={newPurchase.materialId ?? ''}
+                  disabled={newPurchase.requisitionKey !== STANDALONE}
+                  onChange={(e) => setNewPurchase((p) => ({ ...p, materialId: Number(e.target.value) }))}
+                >
+                  {materials.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label>Supplier</label>
+                <input className="input" value={newPurchase.supplier} onChange={(e) => setNewPurchase((p) => ({ ...p, supplier: e.target.value }))} placeholder="Optional" />
+              </div>
+              <div className="field">
+                <label>Date</label>
+                <input className="input" type="date" value={newPurchase.date} onChange={(e) => setNewPurchase((p) => ({ ...p, date: e.target.value }))} />
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+              <button type="button" className={'btn ' + (purchaseMode === 'new' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPurchaseMode('new')}>
+                New purchase
+              </button>
+              <button type="button" className={'btn ' + (purchaseMode === 'existing' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPurchaseMode('existing')}>
+                Already logged as an expense
+              </button>
+            </div>
+
+            {purchaseMode === 'new' ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+                <div className="field">
+                  <label>Quantity purchased</label>
+                  <input className="input" value={newPurchase.qty} onChange={(e) => setNewPurchase((p) => ({ ...p, qty: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>Unit cost (Ksh)</label>
+                  <input className="input" value={newPurchase.unitCost} onChange={(e) => setNewPurchase((p) => ({ ...p, unitCost: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>Invoice/receipt #</label>
+                  <input className="input" value={newPurchase.invoiceNumber} onChange={(e) => setNewPurchase((p) => ({ ...p, invoiceNumber: e.target.value }))} placeholder="Required" />
+                </div>
+                <button type="button" className="btn btn-primary blueprint" onClick={submitPurchase} disabled={busy}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  Capture
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+                <div className="field">
+                  <label>Quantity purchased</label>
+                  <input className="input" value={newPurchase.qty} onChange={(e) => setNewPurchase((p) => ({ ...p, qty: e.target.value }))} />
+                </div>
+                <div className="field">
+                  <label>Purchase expense (Finance → Expenses)</label>
+                  <select className="input" value={newPurchase.expenseId ?? ''} onChange={(e) => setNewPurchase((p) => ({ ...p, expenseId: Number(e.target.value) }))}>
+                    {availableExpenses.length === 0 && <option value="">No unlinked purchase expenses</option>}
+                    {availableExpenses.map((ex) => (
+                      <option key={ex.id} value={ex.id}>
+                        {fmtDate(ex.date)} — {ex.invoiceNumber} — {fmtKsh(ex.amount)}
+                        {ex.note ? ` (${ex.note})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button type="button" className="btn btn-primary blueprint" onClick={submitPurchase} disabled={busy || availableExpenses.length === 0}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  Capture
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+              Purchase history
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Material</th>
+                    <th>Supplier</th>
+                    <th style={{ textAlign: 'right' }}>Requisitioned</th>
+                    <th style={{ textAlign: 'right' }}>Purchased</th>
+                    <th style={{ textAlign: 'right' }}>Variance</th>
+                    <th style={{ textAlign: 'right' }}>Total cost</th>
+                    <th>Invoice #</th>
+                    <th>Status</th>
+                    <th>Captured by</th>
+                    <th className="no-print"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchases.map((p) => (
+                    <Fragment key={p.id}>
+                      <tr>
+                        <td className="text-muted">{fmtDate(p.date)}</td>
+                        <td>{p.materialName}</td>
+                        <td className="text-muted">{p.supplier || '—'}</td>
+                        <td style={{ textAlign: 'right' }}>{p.requisitionedQty ?? '—'}</td>
+                        <td style={{ textAlign: 'right' }}>{p.qty}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          {p.varianceQty == null ? (
+                            '—'
+                          ) : p.varianceQty === 0 ? (
+                            <span className="tag tag-neutral">0</span>
+                          ) : (
+                            <span className={p.varianceQty < 0 ? 'tag tag-accent' : 'tag tag-neutral'}>{p.varianceQty > 0 ? `+${p.varianceQty}` : p.varianceQty}</span>
+                          )}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{fmtKsh(p.totalCost)}</td>
+                        <td className="text-muted">{p.invoiceNumber || '—'}</td>
+                        <td>
+                          <span className={p.status === 'Accepted' ? 'tag tag-accent' : p.status === 'Rejected' ? 'tag tag-neutral' : 'tag tag-outline'}>{p.status}</span>
+                        </td>
+                        <td className="text-muted">{p.capturedByName}</td>
+                        <td className="no-print">
+                          {p.status === 'Held' && canApprove && p.capturedByName !== user?.name && (
+                            <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                              <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }} onClick={() => acceptPurchase(p.id)} disabled={busy}>
+                                Accept
+                              </button>
+                              <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startRejectPurchase(p.id)} disabled={busy}>
+                                Reject
+                              </button>
+                            </div>
+                          )}
+                          {p.status === 'Held' && p.capturedByName === user?.name && (
+                            <span className="tag tag-outline" style={{ fontSize: 10 }}>
+                              Awaiting another manager
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      {rejectingPurchaseId === p.id && (
+                        <tr>
+                          <td colSpan={11} style={{ background: 'var(--color-surface)' }}>
+                            <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
+                              <div className="field" style={{ margin: 0, flex: 1 }}>
+                                <label>Reason for rejecting</label>
+                                <input className="input" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} placeholder="Required" />
+                              </div>
+                              <button type="button" className="btn btn-primary" onClick={submitRejectPurchase} disabled={busy}>
+                                Submit
+                              </button>
+                              <button type="button" className="btn btn-secondary" onClick={() => setRejectingPurchaseId(null)} disabled={busy}>
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {p.status === 'Rejected' && p.rejectReason && (
+                        <tr>
+                          <td colSpan={11} className="text-muted" style={{ fontSize: 11, paddingTop: 0 }}>
+                            Rejected by {p.acceptedByName}: {p.rejectReason}
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {purchases.length === 0 && <p className="note">No purchases captured yet.</p>}
+            <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+              "Held" purchases haven't been added to stock yet — accepting one (by a different manager than whoever
+              captured it) is what releases the quantity into Material stock on hand.
+            </p>
+          </div>
+        </>
       )}
 
       {tab === 'take' && (

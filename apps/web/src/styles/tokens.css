@@ -3,19 +3,22 @@
    <link> in index.html rather than @import here. */
 
 :root {
-  /* — colour scheme — drawn from the brand reference: a bright cyan/sky
-     blue as the primary accent (was a blue-gray before), a warm gold as
-     the secondary accent (was a paler blue-gray before), with the
-     reference's green and orange echoed only in the background mesh below
-     rather than built out as full tonal ramps — every component only ever
-     reads --color-accent/--color-accent-2 (and their ramps), so recoloring
-     those two is enough to recolor the whole app without touching any
-     component file. */
-  --color-bg: #f2f2f2;
-  --color-surface: #e9e9ea;
+  /* — colour scheme — a two-tone brand palette given as exact hex values:
+     "pale gray" #ebebe0 (background) and "rich blue" #1a1264 (primary
+     accent, explicitly for buttons). --color-accent sits at the dark end
+     of its own ramp (~800) since the given blue itself is that dark/rich —
+     tints above it (100-700) are lighter steps toward pale gray, not a
+     separate color. --color-accent-2 is a desaturated, lighter step of the
+     same blue family (this scheme gives only one accent color, so the
+     secondary is a muted variant of it rather than an unrelated hue) — every
+     component only ever reads --color-accent/--color-accent-2 (and their
+     ramps), so retuning those two recolors the whole app with no component
+     changes needed. */
+  --color-bg: #ebebe0;
+  --color-surface: #dedecf;
   --color-text: #1d1f20;
-  --color-accent: #1f88ab;
-  --color-accent-2: #b57e28;
+  --color-accent: #1a1264;
+  --color-accent-2: #625c80;
   --color-divider: color-mix(in srgb, #1d1f20 16%, transparent);
 
   --color-neutral-100: #f5f5f8;
@@ -28,25 +31,25 @@
   --color-neutral-800: #424244;
   --color-neutral-900: #2b2b2d;
 
-  --color-accent-100: #e5f5fa;
-  --color-accent-200: #c7e9f4;
-  --color-accent-300: #97d4e9;
-  --color-accent-400: #5fbbda;
-  --color-accent-500: #2fa1c7;
-  --color-accent-600: #1f88ab;
-  --color-accent-700: #186c87;
-  --color-accent-800: #135164;
-  --color-accent-900: #0d3641;
+  --color-accent-100: #e8e6f5;
+  --color-accent-200: #c9c4e8;
+  --color-accent-300: #a29bd6;
+  --color-accent-400: #7a70c0;
+  --color-accent-500: #554aa3;
+  --color-accent-600: #362c82;
+  --color-accent-700: #241b6e;
+  --color-accent-800: #1a1264;
+  --color-accent-900: #100a42;
 
-  --color-accent-2-100: #fbf1de;
-  --color-accent-2-200: #f5e2bb;
-  --color-accent-2-300: #edcd8a;
-  --color-accent-2-400: #e0b25a;
-  --color-accent-2-500: #cf9736;
-  --color-accent-2-600: #b57e28;
-  --color-accent-2-700: #92641f;
-  --color-accent-2-800: #6e4a18;
-  --color-accent-2-900: #4a3110;
+  --color-accent-2-100: #eeedf3;
+  --color-accent-2-200: #d9d7e4;
+  --color-accent-2-300: #bab6cd;
+  --color-accent-2-400: #9994b5;
+  --color-accent-2-500: #7c7699;
+  --color-accent-2-600: #625c80;
+  --color-accent-2-700: #4a4563;
+  --color-accent-2-800: #343049;
+  --color-accent-2-900: #201d30;
 
   --font-heading: 'Barlow Condensed', system-ui, sans-serif;
   --font-heading-weight: 600;
@@ -100,17 +103,11 @@ body,
 }
 body {
   margin: 0;
-  /* A soft, fixed colour-mesh backdrop — glass surfaces need something with
-     variation behind them or the blur/translucency has nothing to show.
-     Cyan (the new primary accent), plus green and orange echoed straight
-     from the brand reference image even though those two never became
-     full token ramps — this is the one place they show up. */
-  background:
-    radial-gradient(1100px 760px at 8% -8%, color-mix(in srgb, var(--color-accent-300) 45%, transparent), transparent 60%),
-    radial-gradient(900px 680px at 105% 0%, color-mix(in srgb, #f2703c 16%, transparent), transparent 55%),
-    radial-gradient(1000px 820px at 40% 115%, color-mix(in srgb, #1fae6e 16%, transparent), transparent 55%),
-    linear-gradient(180deg, #f5f3ee 0%, #eeece6 100%);
-  background-attachment: fixed;
+  /* Flat, solid pale gray — no gradient glow blobs. The two-tone reference
+     this scheme comes from is a clean flat block of colour, not a mesh
+     illustration, so the backdrop stays flat too; glass surfaces still get
+     their own sheen/blur, they just no longer sit over a tinted glow. */
+  background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
   font-size: 15px;

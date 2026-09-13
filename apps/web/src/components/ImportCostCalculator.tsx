@@ -69,6 +69,7 @@ export default function ImportCostCalculator({ onImported }: Props) {
   const [consRatePerKg, setConsRatePerKg] = useState('85');
   const [consRatePerCbm, setConsRatePerCbm] = useState('85');
   const [consTotalWeightKg, setConsTotalWeightKg] = useState('450');
+  const [consChinaFreightUSD, setConsChinaFreightUSD] = useState('0');
   const [consInlandFreightKES, setConsInlandFreightKES] = useState('8000');
   const [consLines, setConsLines] = useState<ConsLine[]>([
     { id: nextId++, desc: 'Phone accessories', unitPriceUSD: '2.5', qty: '500', lengthCm: '40', widthCm: '30', heightCm: '25' },
@@ -134,21 +135,29 @@ export default function ImportCostCalculator({ onImported }: Props) {
   const basisAmount = consBasis === 'weight' ? num(consTotalWeightKg) : totalCbm;
   const basisRate = consBasis === 'weight' ? num(consRatePerKg) : num(consRatePerCbm);
   const consolidatorTaxKES = basisAmount * basisRate;
+  // Seller -> consolidator's China warehouse, before international shipping even starts — a
+  // single shipment-wide cost (not per item), same as the consolidator tax and Kenya-side
+  // inland freight, so it's allocated to lines the same way: by each line's share of total
+  // goods value. Entered in USD since that's the currency the goods themselves are already
+  // priced in at this point in the journey.
+  const chinaFreightKES = num(consChinaFreightUSD) * num(consRate);
   const inlandFreightKES = num(consInlandFreightKES);
   const consResultRows = consRawLines.map((l) => {
     const share = totalGoodsKES > 0 ? l.totalKES / totalGoodsKES : 0;
+    const chinaFreight = share * chinaFreightKES;
     const tax = share * consolidatorTaxKES;
     const freight = share * inlandFreightKES;
-    const landed = l.totalKES + tax + freight;
+    const landed = l.totalKES + chinaFreight + tax + freight;
     const qty = num(l.qty);
-    return { id: l.id, desc: l.desc, qty, goods: l.totalKES, tax, freight, landed, perUnit: qty > 0 ? landed / qty : 0 };
+    return { id: l.id, desc: l.desc, qty, goods: l.totalKES, chinaFreight, tax, freight, landed, perUnit: qty > 0 ? landed / qty : 0 };
   });
   const consTotals = {
     goods: totalGoodsKES,
     basisAmount,
+    chinaFreight: chinaFreightKES,
     tax: consolidatorTaxKES,
     freight: inlandFreightKES,
-    landed: totalGoodsKES + consolidatorTaxKES + inlandFreightKES,
+    landed: totalGoodsKES + chinaFreightKES + consolidatorTaxKES + inlandFreightKES,
   };
 
   const resultRows = mode === 'kra' ? kraResultRows : consResultRows;
@@ -196,8 +205,10 @@ export default function ImportCostCalculator({ onImported }: Props) {
         </p>
       ) : (
         <p className="note" style={{ maxWidth: '70ch' }}>
-          Consolidator model: the clearing agent charges a per-shipment "tax" based on chargeable weight or volume
-          (CBM) instead of KRA's duty stack, then you pay inland freight from the port/warehouse to your shop.
+          Consolidator model: goods first move from each seller to the consolidator's warehouse in China (its own
+          inland freight cost), the clearing agent then charges a per-shipment "tax" based on chargeable weight or
+          volume (CBM) instead of KRA's duty stack, and finally you pay inland freight from the Kenyan
+          port/warehouse to your shop.
         </p>
       )}
 
@@ -231,6 +242,10 @@ export default function ImportCostCalculator({ onImported }: Props) {
               <div className="field" style={{ margin: 0 }}>
                 <label>USD → KES rate</label>
                 <input className="input" value={consRate} onChange={(e) => { setConsRate(e.target.value); setPushedCount(null); }} />
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>China inland freight — seller to consolidator warehouse (USD)</label>
+                <input className="input" value={consChinaFreightUSD} onChange={(e) => { setConsChinaFreightUSD(e.target.value); setPushedCount(null); }} />
               </div>
               <div className="field" style={{ margin: 0 }}>
                 <label>Inland freight to shop (KES)</label>
@@ -457,6 +472,7 @@ export default function ImportCostCalculator({ onImported }: Props) {
                   <th>Description</th>
                   <th style={{ textAlign: 'right' }}>Qty</th>
                   <th style={{ textAlign: 'right' }}>Goods (KES)</th>
+                  <th style={{ textAlign: 'right' }}>China freight (KES)</th>
                   <th style={{ textAlign: 'right' }}>Consolidator tax (KES)</th>
                   <th style={{ textAlign: 'right' }}>Inland freight (KES)</th>
                   <th style={{ textAlign: 'right' }}>Landed (KES)</th>
@@ -469,6 +485,7 @@ export default function ImportCostCalculator({ onImported }: Props) {
                     <td>{r.desc}</td>
                     <td style={{ textAlign: 'right' }}>{r.qty}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(r.goods)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmt(r.chinaFreight)}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(r.tax)}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(r.freight)}</td>
                     <td style={{ textAlign: 'right' }}>{fmt(r.landed)}</td>
@@ -481,7 +498,8 @@ export default function ImportCostCalculator({ onImported }: Props) {
         </div>
         {mode === 'consolidator' && (
           <p className="note" style={{ marginTop: 'var(--space-3)' }}>
-            Consolidator tax and inland freight are allocated to each line by its share of total goods value.
+            China inland freight, consolidator tax, and Kenya inland freight are all allocated to each line by its
+            share of total goods value.
           </p>
         )}
       </div>
@@ -539,6 +557,10 @@ export default function ImportCostCalculator({ onImported }: Props) {
                   ? `${consTotals.basisAmount.toLocaleString('en-KE', { maximumFractionDigits: 1 })} kg`
                   : `${consTotals.basisAmount.toLocaleString('en-KE', { maximumFractionDigits: 3 })} CBM`}
               </div>
+            </div>
+            <div>
+              <div className="card-kicker">China inland freight</div>
+              <div className="card-title">{fmt(consTotals.chinaFreight)}</div>
             </div>
             <div>
               <div className="card-kicker">Consolidator tax</div>

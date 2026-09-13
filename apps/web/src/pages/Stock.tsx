@@ -723,14 +723,19 @@ export default function Stock() {
         </>
       )}
 
-      {tab === 'imports' && (
+      {/* Always mounted (never conditionally rendered like the tabs above) so switching to
+          another Stock tab to check something — e.g. Purchases, right after sending a shipment
+          here — and back doesn't silently discard an in-progress shipment (mode, line items,
+          settings). Every other Stock tab keeps its state naturally, since it's inline JSX
+          sharing Stock()'s own top-level state rather than a separately mounted component. */}
+      <div hidden={tab !== 'imports'}>
         <ImportCostCalculator
           onImported={() => {
             reloadCatalog();
             load();
           }}
         />
-      )}
+      </div>
     </div>
   );
 }

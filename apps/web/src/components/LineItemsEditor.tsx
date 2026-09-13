@@ -183,7 +183,7 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
           fontSize: 11,
           letterSpacing: '0.1em',
           textTransform: 'uppercase',
-          opacity: 0.55,
+          opacity: 0.65,
           margin: 'var(--space-5) 0 var(--space-2)',
         }}
       >

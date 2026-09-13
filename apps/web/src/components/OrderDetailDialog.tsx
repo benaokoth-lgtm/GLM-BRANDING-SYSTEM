@@ -219,7 +219,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
               fontSize: 11,
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
-              opacity: 0.55,
+              opacity: 0.65,
               margin: 'var(--space-4) 0 var(--space-2)',
             }}
           >
@@ -245,7 +245,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
               fontSize: 11,
               letterSpacing: '0.1em',
               textTransform: 'uppercase',
-              opacity: 0.55,
+              opacity: 0.65,
               margin: 'var(--space-4) 0 var(--space-2)',
             }}
           >
@@ -350,7 +350,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                   fontSize: 11,
                   letterSpacing: '0.1em',
                   textTransform: 'uppercase',
-                  opacity: 0.55,
+                  opacity: 0.65,
                   marginBottom: 'var(--space-2)',
                 }}
               >

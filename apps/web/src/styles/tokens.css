@@ -107,8 +107,11 @@ p { margin: 0 0 var(--space-3); }
 a { color: var(--color-accent-700); text-decoration: none; text-underline-offset: 3px; }
 a:hover { color: var(--color-accent-900); }
 img { display: block; max-width: 100%; }
-.text-muted { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
-.note { color: color-mix(in srgb, var(--color-text) 55%, transparent); font-size: 13px; }
+/* 65% (not 55%) is the lowest opacity of --color-text that still clears
+   WCAG AA's 4.5:1 for normal text against both --color-bg and --color-surface
+   with the current palette — checked directly, not eyeballed. */
+.text-muted { color: color-mix(in srgb, var(--color-text) 65%, transparent); }
+.note { color: color-mix(in srgb, var(--color-text) 65%, transparent); font-size: 13px; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
@@ -197,7 +200,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
 .card-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 17px; line-height: 1.2; }
 .card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
-.card-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: color-mix(in srgb, var(--color-text) 50%, transparent); }
+.card-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: color-mix(in srgb, var(--color-text) 65%, transparent); }
 .elev-sm { box-shadow: var(--shadow-sm); }
 .elev-md { box-shadow: var(--shadow-md); }
 .elev-lg { box-shadow: var(--shadow-lg); }
@@ -219,7 +222,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th {
   text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-  color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  color: color-mix(in srgb, var(--color-text) 65%, transparent);
   padding: var(--space-2); border-bottom: 1px solid var(--color-divider);
 }
 .table td { padding: var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }

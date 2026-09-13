@@ -10,27 +10,32 @@
 .login-user-btn {
   display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-3); cursor: pointer; text-align: left;
-  background: var(--glass-sheen), var(--glass-bg);
-  backdrop-filter: blur(10px) saturate(150%);
-  -webkit-backdrop-filter: blur(10px) saturate(150%);
-  border: 1px solid var(--glass-border); border-radius: 0;
+  background: var(--chrome-sheen), var(--chrome-body);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
+  border-radius: 0;
   font: inherit; color: var(--color-text);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
+  box-shadow: var(--chrome-shadow);
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-.login-user-btn:hover { background: var(--glass-sheen), var(--glass-bg-strong); }
+.login-user-btn:hover { background: var(--chrome-sheen), var(--chrome-body-strong); }
 .login-user-btn.selected {
-  border-color: var(--color-accent);
-  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 45%, transparent) 0%, transparent 50%), var(--color-accent-100);
+  border-top-color: var(--color-accent-300); border-left-color: var(--color-accent-300);
+  border-bottom-color: var(--color-accent-800); border-right-color: var(--color-accent-800);
+  background: var(--chrome-sheen), linear-gradient(180deg, var(--color-accent-200) 0%, var(--color-accent-100) 100%);
 }
 .login-user-avatar {
   width: 34px; height: 34px; flex: none; display: grid; place-items: center;
-  border: 1px solid var(--glass-border); font-family: var(--font-heading); font-size: 13px;
-  background: color-mix(in srgb, #ffffff 40%, transparent);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
+  font-family: var(--font-heading); font-size: 13px;
+  background: var(--chrome-recessed);
 }
 .login-pin-dots { display: flex; gap: var(--space-2); justify-content: center; margin: var(--space-4) 0; }
-.login-pin-dot { width: 14px; height: 14px; border: 1.5px solid var(--glass-border); border-radius: 50%; background: color-mix(in srgb, #ffffff 35%, transparent); }
-.login-pin-dot.filled { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 55%, transparent) 0%, transparent 55%), var(--color-accent); border-color: var(--color-accent); }
+.login-pin-dot { width: 14px; height: 14px; border: 1.5px solid var(--chrome-border-dark); border-radius: 50%; background: var(--chrome-recessed); }
+.login-pin-dot.filled { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 55%, transparent) 0%, transparent 55%), var(--color-accent); border-color: var(--color-accent-800); }
 .login-pin-dots.shake { animation: shake 0.3s; }
 @keyframes shake {
   25% { transform: translateX(-6px); }
@@ -39,13 +44,14 @@
 .login-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); }
 .login-pad button {
   min-height: 52px; font-family: var(--font-heading); font-size: 18px;
-  background: var(--glass-sheen), var(--glass-bg);
-  backdrop-filter: blur(10px) saturate(150%);
-  -webkit-backdrop-filter: blur(10px) saturate(150%);
-  border: 1px solid var(--glass-border); border-radius: 0; cursor: pointer;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
+  background: var(--chrome-sheen), var(--chrome-body);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
+  border-radius: 0; cursor: pointer;
+  box-shadow: var(--chrome-shadow);
   transition: background 0.12s ease, transform 0.08s ease;
 }
-.login-pad button:hover { background: var(--glass-sheen), var(--glass-bg-strong); }
-.login-pad button:active { transform: translateY(1px); }
+.login-pad button:hover { background: var(--chrome-sheen), var(--chrome-body-strong); }
+.login-pad button:active { transform: translateY(1px); box-shadow: inset 0 1px 3px color-mix(in srgb, var(--color-neutral-900) 35%, transparent); }
 .login-error { color: #a33; font-size: 13px; text-align: center; min-height: 18px; }

@@ -59,25 +59,29 @@
   --shadow-md: 0 3px 10px color-mix(in srgb, #2b2b2d 16%, transparent);
   --shadow-lg: 0 12px 32px color-mix(in srgb, #2b2b2d 22%, transparent);
 
-  /* — glass — a frosted, glossy material layered on top of the blueprint
-     system: translucent surfaces over a soft colour-mesh backdrop, a blur so
-     content behind a panel reads as depth rather than clutter, a bright
-     top-edge "sheen" gradient for the glossy highlight, and an inset
-     highlight/shadow pair so edges catch light like real glass. */
-  --glass-blur: 18px;
-  --glass-bg: color-mix(in srgb, #ffffff 58%, transparent);
-  --glass-bg-strong: color-mix(in srgb, #ffffff 74%, transparent);
-  /* For glass-look elements nested INSIDE an already-blurred surface (buttons,
-     inputs, tags, ...) — stacking backdrop-filter on nested elements is both
-     expensive and, in Chromium, can corrupt the compositor (button text
-     silently disappears). These skip backdrop-filter entirely and lean on a
-     more opaque tint instead, so they still read as glass without blurring. */
-  --glass-bg-opaque: color-mix(in srgb, #ffffff 80%, transparent);
-  --glass-bg-opaque-strong: color-mix(in srgb, #ffffff 92%, transparent);
-  --glass-border: color-mix(in srgb, #ffffff 65%, var(--color-divider) 35%);
-  --glass-sheen: linear-gradient(180deg, color-mix(in srgb, #ffffff 55%, transparent) 0%, color-mix(in srgb, #ffffff 0%, transparent) 45%);
-  --glass-shadow: 0 8px 32px color-mix(in srgb, #1d2d3d 16%, transparent), inset 0 1px 0 color-mix(in srgb, #ffffff 65%, transparent);
-  --glass-shadow-lg: 0 20px 60px color-mix(in srgb, #1d2d3d 26%, transparent), inset 0 1px 0 color-mix(in srgb, #ffffff 70%, transparent);
+  /* — chrome — a solid, reflective metal material replacing this system's
+     previous frosted-glass look: opaque tonal gradients banding
+     light-to-dark-to-light (brushed steel catching an overhead light), a
+     crisp specular sheen along the top edge, and a light-top/dark-bottom
+     bevel border pair so edges read as embossed metal rather than a flat
+     panel. Nothing here is translucent or blurred — chrome is an opaque
+     material, which also sidesteps the old glass system's nested
+     backdrop-filter compositor bug (stacking blur across a button inside a
+     dialog inside a backdrop silently broke button text in Chromium) simply
+     by never using backdrop-filter at all.
+     RAISED elements (buttons, cards, nav, dialogs) use --chrome-border-light
+     on top/left and --chrome-border-dark on bottom/right, lit from
+     top-left. RECESSED elements (inputs) invert that pairing, plus an inset
+     shadow, to read as a pressed-in slot instead. */
+  --chrome-body: linear-gradient(180deg, var(--color-neutral-100) 0%, var(--color-neutral-300) 26%, var(--color-neutral-400) 50%, var(--color-neutral-200) 78%, var(--color-neutral-100) 100%);
+  --chrome-body-strong: linear-gradient(180deg, #ffffff 0%, var(--color-neutral-200) 24%, var(--color-neutral-300) 50%, var(--color-neutral-100) 80%, #ffffff 100%);
+  --chrome-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.25) 10%, rgba(255, 255, 255, 0) 26%);
+  --chrome-border-light: #ffffff;
+  --chrome-border-dark: var(--color-neutral-600);
+  --chrome-recessed: linear-gradient(180deg, var(--color-neutral-300) 0%, var(--color-neutral-100) 12%, #ffffff 100%);
+  --chrome-shadow: inset 0 1px 0 #ffffff, inset 0 -1px 0 color-mix(in srgb, var(--color-neutral-700) 60%, transparent), 0 3px 8px color-mix(in srgb, var(--color-neutral-900) 25%, transparent);
+  --chrome-shadow-lg: inset 0 1px 0 #ffffff, inset 0 -1px 0 color-mix(in srgb, var(--color-neutral-700) 65%, transparent), 0 16px 40px color-mix(in srgb, var(--color-neutral-900) 35%, transparent);
+  --chrome-accent-body: linear-gradient(180deg, color-mix(in srgb, #ffffff 55%, var(--color-accent-300)) 0%, var(--color-accent-500) 32%, var(--color-accent-700) 64%, var(--color-accent-600) 100%);
 }
 
 * ,
@@ -92,13 +96,14 @@ body,
 }
 body {
   margin: 0;
-  /* A soft, fixed colour-mesh backdrop — glass surfaces need something with
-     variation behind them or the blur/translucency has nothing to show. */
+  /* A brushed-steel backdrop: a soft diagonal light sweep (as if a panel is
+     tilted under an overhead light) plus a fine repeating diagonal grain,
+     evoking machined aluminum rather than the old colour-mesh (which only
+     existed to be seen *through* translucent glass — with opaque chrome
+     surfaces on top, that's no longer relevant). */
   background:
-    radial-gradient(1100px 760px at 8% -8%, color-mix(in srgb, var(--color-accent-300) 45%, transparent), transparent 60%),
-    radial-gradient(900px 680px at 105% 0%, color-mix(in srgb, #7c3aed 16%, transparent), transparent 55%),
-    radial-gradient(1000px 820px at 40% 115%, color-mix(in srgb, #14b8a6 14%, transparent), transparent 55%),
-    linear-gradient(180deg, #eef2f6 0%, #e7ebf1 100%);
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.4) 0px, rgba(255, 255, 255, 0.4) 1px, transparent 1px, transparent 3px),
+    linear-gradient(160deg, #e6e8ec 0%, #cdd0d6 32%, #eef0f2 52%, #c5c8ce 78%, #e9ebee 100%);
   background-attachment: fixed;
   color: var(--color-text);
   font-family: var(--font-body);
@@ -136,20 +141,17 @@ img { display: block; max-width: 100%; }
   background: var(--color-divider);
 }
 
-/* — blueprint frame — corner-mark decoration only, no blur here: this class
-   lands on buttons as often as on cards/dialogs, and stacking
-   backdrop-filter across nested/overlapping elements (a button inside a
-   blurred dialog inside a blurred backdrop) corrupts Chromium's compositor
-   — button text silently stops painting. Actual frosted-glass blur lives on
-   the few large container surfaces that need it (.card, .dialog, .nav
-   below); this just adds a translucent tint + border so a bare .blueprint
-   element (without one of those) still reads as glass. */
+/* — blueprint frame — corner-mark decoration, now on a chrome (not glass)
+   surface: lands on buttons as often as on cards/dialogs, so it carries the
+   metal body/sheen/bevel itself rather than depending on a parent to blur. */
 .blueprint {
   position: relative;
-  border: 1px solid var(--glass-border);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
   border-radius: 0;
-  background: var(--glass-sheen), var(--glass-bg-opaque);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent);
+  background: var(--chrome-sheen), var(--chrome-body);
+  box-shadow: var(--chrome-shadow);
 }
 .blueprint.duotone { overflow: visible; }
 .blueprint > .corner {
@@ -166,34 +168,39 @@ img { display: block; max-width: 100%; }
 .blueprint > .corner.bl { bottom: -6px; left: -6px; }
 .blueprint > .corner.br { bottom: -6px; right: -6px; }
 
-/* — buttons — glass pills with a glossy top-half highlight, like light
-   catching a curved glass surface. */
+/* — buttons — polished metal pills: a light-to-dark-to-light chrome band
+   with a crisp top sheen, embossed with a light-top/dark-bottom bevel.
+   Pressing one flattens the sheen and nudges it down, like a real button
+   sinking into its housing. */
 .btn {
   position: relative; overflow: hidden;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   cursor: pointer; text-decoration: none;
   font-family: var(--font-heading); font-weight: var(--font-heading-weight);
   font-size: 14px; line-height: 1.2; color: var(--color-text);
-  background: var(--glass-sheen), var(--glass-bg-opaque);
-  border: 1px solid var(--glass-border);
+  background: var(--chrome-sheen), var(--chrome-body);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
   padding: var(--space-2) calc(var(--space-3) * 1.2);
   border-radius: 0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 55%, transparent), 0 1px 3px color-mix(in srgb, #1d2d3d 10%, transparent);
+  box-shadow: var(--chrome-shadow);
   transition: transform 0.08s ease, box-shadow 0.15s ease;
 }
 .btn svg { display: block; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:active:not(:disabled) { transform: translateY(1px); box-shadow: inset 0 1px 3px color-mix(in srgb, var(--color-neutral-900) 35%, transparent); }
 .btn-primary {
-  background: linear-gradient(180deg, color-mix(in srgb, #ffffff 42%, transparent) 0%, transparent 50%), var(--color-accent);
-  color: var(--color-bg); border-color: var(--color-accent-700);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 55%, transparent), 0 4px 14px color-mix(in srgb, var(--color-accent-900) 35%, transparent);
+  background: var(--chrome-sheen), var(--chrome-accent-body);
+  color: #fff; border-top-color: color-mix(in srgb, #ffffff 70%, var(--color-accent-300)); border-left-color: color-mix(in srgb, #ffffff 70%, var(--color-accent-300));
+  border-bottom-color: var(--color-accent-900); border-right-color: var(--color-accent-900);
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--color-accent-900) 60%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 65%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--color-accent-900) 55%, transparent), 0 4px 14px color-mix(in srgb, var(--color-accent-900) 35%, transparent);
 }
-.btn-primary:hover:not(:disabled) { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 32%, transparent) 0%, transparent 50%), var(--color-accent-600); }
-.btn-primary:active:not(:disabled) { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 18%, transparent) 0%, transparent 50%), var(--color-accent-700); }
-.btn-secondary { border-color: var(--glass-border); }
-.btn-secondary:hover:not(:disabled) { background: var(--glass-sheen), var(--glass-bg-opaque-strong); }
-.btn-secondary:active:not(:disabled) { background: color-mix(in srgb, var(--color-text) 14%, var(--glass-bg-opaque-strong)); }
+.btn-primary:hover:not(:disabled) { background: var(--chrome-sheen), linear-gradient(180deg, color-mix(in srgb, #ffffff 45%, var(--color-accent-300)) 0%, var(--color-accent-600) 32%, var(--color-accent-800) 64%, var(--color-accent-700) 100%); }
+.btn-primary:active:not(:disabled) { background: linear-gradient(180deg, var(--color-accent-700) 0%, var(--color-accent-600) 60%, var(--color-accent-500) 100%); }
+.btn-secondary:hover:not(:disabled) { background: var(--chrome-sheen), var(--chrome-body-strong); }
+.btn-secondary:active:not(:disabled) { background: var(--chrome-recessed); }
 .btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); border-color: transparent; background: transparent; box-shadow: none; }
 .btn-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .btn-ghost:active:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
@@ -201,7 +208,9 @@ img { display: block; max-width: 100%; }
 .btn-block { width: 100%; margin-top: var(--space-2); }
 .btn-sm { font-size: 12px; padding: 5px 10px; }
 
-/* — forms — */
+/* — forms — inputs are RECESSED metal (dark-top/light-bottom bevel plus an
+   inset shadow), the inverse of a raised button, so a slot reads as pressed
+   into the panel rather than sitting on top of it. */
 .field > label {
   display: block; font-size: 12px; margin-bottom: 5px;
   color: color-mix(in srgb, var(--color-text) 70%, transparent);
@@ -209,91 +218,100 @@ img { display: block; max-width: 100%; }
 .input {
   width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
   font-size: 14px; color: var(--color-text); caret-color: var(--color-accent);
-  background: color-mix(in srgb, #ffffff 72%, var(--color-surface) 28%);
-  border: 1px solid var(--glass-border); border-radius: var(--radius-md);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, #1d2d3d 8%, transparent);
+  background: var(--chrome-recessed);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-dark); border-left-color: var(--chrome-border-dark);
+  border-bottom-color: var(--chrome-border-light); border-right-color: var(--chrome-border-light);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 2px 3px color-mix(in srgb, var(--color-neutral-900) 18%, transparent);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
-.input:focus-visible { border-color: var(--color-accent); outline-offset: 0; box-shadow: inset 0 1px 2px color-mix(in srgb, #1d2d3d 8%, transparent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
+.input:hover { border-top-color: color-mix(in srgb, var(--color-text) 45%, transparent); border-left-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.input:focus-visible { border-top-color: var(--color-accent); border-left-color: var(--color-accent); outline-offset: 0; box-shadow: inset 0 2px 3px color-mix(in srgb, var(--color-neutral-900) 18%, transparent), 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent); }
 textarea.input { min-height: 90px; resize: vertical; }
 .seg {
   display: inline-flex; overflow: hidden; border-radius: var(--radius-md);
-  border: 1px solid var(--glass-border);
-  background: var(--glass-sheen), var(--glass-bg-opaque);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
+  background: var(--chrome-sheen), var(--chrome-body);
 }
 .seg-opt { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
-.seg-opt + .seg-opt { border-left: 1px solid var(--glass-border); }
+.seg-opt + .seg-opt { border-left: 1px solid var(--chrome-border-dark); }
 .seg-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-.seg-opt.checked { background: linear-gradient(180deg, color-mix(in srgb, #ffffff 38%, transparent) 0%, transparent 50%), var(--color-accent); color: var(--color-bg); }
-.seg-opt:not(.checked):hover { background: color-mix(in srgb, #ffffff 30%, transparent); }
+.seg-opt.checked { background: var(--chrome-sheen), var(--chrome-accent-body); color: #fff; text-shadow: 0 1px 1px color-mix(in srgb, var(--color-accent-900) 60%, transparent); }
+.seg-opt:not(.checked):hover { background: color-mix(in srgb, #ffffff 40%, transparent); }
 
-/* — cards — */
+/* — cards — a solid brushed-metal panel: no blur (chrome is opaque, so there's
+   nothing to see "through" it), same raised bevel as buttons. */
 .card {
   display: flex; flex-direction: column; gap: var(--space-2);
   padding: var(--space-3); border-radius: 0;
-  background: var(--glass-sheen), var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  border: 1px solid var(--glass-border);
+  background: var(--chrome-sheen), var(--chrome-body-strong);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
+  box-shadow: var(--chrome-shadow);
 }
-.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
+.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent-700); }
 .card-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 17px; line-height: 1.2; }
 .card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
 .card-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: color-mix(in srgb, var(--color-text) 50%, transparent); }
-.elev-sm { box-shadow: var(--shadow-sm); }
-.elev-md { box-shadow: var(--shadow-md); }
-.elev-lg { box-shadow: var(--shadow-lg); }
+.elev-sm { box-shadow: var(--chrome-shadow), var(--shadow-sm); }
+.elev-md { box-shadow: var(--chrome-shadow), var(--shadow-md); }
+.elev-lg { box-shadow: var(--chrome-shadow), var(--shadow-lg); }
 
-/* — tags — glassy pills with a thin gloss line along the top edge */
-.tag { position: relative; display: inline-flex; align-items: center; font-size: 11px; letter-spacing: 0.02em; padding: 3px 10px; border-radius: 3px; box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 45%, transparent); }
+/* — tags — small metal pills with a thin gloss line along the top edge */
+.tag { position: relative; display: inline-flex; align-items: center; font-size: 11px; letter-spacing: 0.02em; padding: 3px 10px; border-radius: 3px; box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 55%, transparent); }
 .tag-accent { background: color-mix(in srgb, var(--color-accent-100) 80%, transparent); color: var(--color-accent-800); }
 .tag-accent-2 { background: color-mix(in srgb, var(--color-accent-2-100) 80%, transparent); color: var(--color-accent-2-800); }
 .tag-neutral { background: color-mix(in srgb, var(--color-neutral-100) 75%, transparent); color: var(--color-neutral-800); }
 .tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent); background: color-mix(in srgb, #ffffff 30%, transparent); }
 
-/* — navigation — a frosted glass bar that stays glossy as content scrolls under it */
+/* — navigation — a solid chrome bar, opaque so it never risks the old
+   nested-blur compositor bug, with a bevel line along the bottom edge for
+   depth as content scrolls under it. */
 .nav {
   display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4);
   position: sticky; top: 0; z-index: 40;
-  background: var(--glass-sheen), var(--glass-bg-strong);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  border-bottom: 1px solid var(--glass-border);
-  box-shadow: 0 4px 20px color-mix(in srgb, #1d2d3d 10%, transparent);
+  background: var(--chrome-sheen), var(--chrome-body-strong);
+  border-bottom: 1px solid var(--chrome-border-dark);
+  box-shadow: inset 0 1px 0 #ffffff, 0 4px 14px color-mix(in srgb, var(--color-neutral-900) 22%, transparent);
 }
 .nav-brand { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 18px; margin-right: auto; }
 .nav a { color: inherit; text-decoration: none; font-size: 14px; }
 .nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent); }
 
-/* — tables — sit on a lightly frosted sheet so dense data stays easy to read
-   against the glass backdrop, while headers/rows keep a glassy sheen */
-.table { width: 100%; border-collapse: collapse; font-size: 14px; background: color-mix(in srgb, #ffffff 35%, transparent); }
+/* — tables — sit on a light metal sheet; header row carries a subtle sheen
+   band so dense data still reads against the chrome backdrop */
+.table { width: 100%; border-collapse: collapse; font-size: 14px; background: color-mix(in srgb, #ffffff 55%, transparent); }
 .table th {
   text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
   color: color-mix(in srgb, var(--color-text) 60%, transparent);
-  padding: var(--space-2); border-bottom: 1px solid var(--glass-border);
-  background: color-mix(in srgb, #ffffff 25%, transparent);
+  padding: var(--space-2); border-bottom: 1px solid var(--chrome-border-dark);
+  background: linear-gradient(180deg, #ffffff 0%, var(--color-neutral-200) 100%);
 }
 .table td { padding: var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
-.table tbody tr:hover { background: color-mix(in srgb, #ffffff 35%, transparent); }
+.table tbody tr:hover { background: color-mix(in srgb, #ffffff 55%, transparent); }
 
-/* — dialog — a glossy glass pane floating over a blurred backdrop */
+/* — dialog — an opaque chrome pane; the backdrop keeps a blur since it has
+   no blurred ancestor (nothing nested under it), so it's unaffected by the
+   nested-blur issue chrome's opacity everywhere else avoids. */
 .dialog-backdrop {
   position: fixed; inset: 0; display: grid; place-items: center; z-index: 50;
   padding: var(--space-4);
-  background: color-mix(in srgb, var(--color-neutral-900) 40%, transparent);
+  background: color-mix(in srgb, var(--color-neutral-900) 45%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
 .dialog {
   width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
   padding: var(--space-4); border-radius: var(--radius-lg);
-  background: var(--glass-sheen), var(--glass-bg-strong);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow-lg);
+  background: var(--chrome-sheen), var(--chrome-body-strong);
+  border-width: 1px; border-style: solid;
+  border-top-color: var(--chrome-border-light); border-left-color: var(--chrome-border-light);
+  border-bottom-color: var(--chrome-border-dark); border-right-color: var(--chrome-border-dark);
+  box-shadow: var(--chrome-shadow-lg);
 }
 .dialog-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 20px; }
 .dialog-body { font-size: 14px; opacity: 0.85; }

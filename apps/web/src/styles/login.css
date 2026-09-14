@@ -14,7 +14,16 @@
   font: inherit; color: var(--color-text);
 }
 .login-user-btn:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
-.login-user-btn.selected { border-color: var(--color-accent); background: var(--color-accent-100); }
+/* Tag-style chips (light bg + dark text) stay light even on this dark theme
+   for pop/contrast — but unlike an actual .tag, this button's default state
+   already set color: var(--color-text) (light, for the dark unselected bg),
+   so the light accent-100 background needs its own dark text override too. */
+.login-user-btn.selected { border-color: var(--color-accent); background: var(--color-accent-100); color: var(--color-accent-800); }
+/* .text-muted's own color (a translucent --color-text) is tuned for this
+   theme's dark page background — it doesn't inherit the override above and
+   would be nearly invisible on this light chip background, so it needs its
+   own solid override here (checked: 5.00:1). */
+.login-user-btn.selected .text-muted { color: var(--color-accent-700); }
 .login-user-avatar {
   width: 34px; height: 34px; flex: none; display: grid; place-items: center;
   border: 1px solid var(--color-divider); font-family: var(--font-heading); font-size: 13px;

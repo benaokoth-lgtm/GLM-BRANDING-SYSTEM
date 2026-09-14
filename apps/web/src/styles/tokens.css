@@ -3,23 +3,24 @@
    <link> in index.html rather than @import here. */
 
 :root {
-  /* — colour scheme — a two-tone brand palette given as exact hex values:
-     "pale gray" #ebebe0 (background) and "rich blue" #1a1264 (primary
-     accent, explicitly for buttons). --color-accent sits at the dark end
-     of its own ramp (~800) since the given blue itself is that dark/rich —
-     tints above it (100-700) are lighter steps toward pale gray, not a
-     separate color. --color-accent-2 is a desaturated, lighter step of the
-     same blue family (this scheme gives only one accent color, so the
-     secondary is a muted variant of it rather than an unrelated hue) — every
-     component only ever reads --color-accent/--color-accent-2 (and their
-     ramps), so retuning those two recolors the whole app with no component
-     changes needed. */
-  --color-bg: #ebebe0;
-  --color-surface: #dedecf;
-  --color-text: #1d1f20;
-  --color-accent: #1a1264;
-  --color-accent-2: #625c80;
-  --color-divider: color-mix(in srgb, #1d1f20 16%, transparent);
+  /* — colour scheme: "nocturne" — a dark theme built around the brand's own
+     rich-blue-family identity read as a midnight sky, with a warm gold
+     "moonlight" as the primary accent (used for buttons) and a soft
+     periwinkle-lavender as the secondary. Ramp *labels* (100-900) no longer
+     mean "light tint to dark shade" uniformly — 100/200 stay light because
+     tag chips (.tag-accent etc.) are still light chips with dark text even
+     on a dark page, but --color-accent itself sits at ~500 (vivid, mid-tone)
+     since a dark-ramp step would vanish against this dark background. Every
+     contrast pairing below was checked against actual hex values (WCAG
+     4.5:1 for text), not eyeballed - see the `a`/`a:hover` override further
+     down, which deliberately uses lighter steps than the old light-theme
+     convention for the same reason. */
+  --color-bg: #0f0b28;
+  --color-surface: #191341;
+  --color-text: #ececf5;
+  --color-accent: #d1922e;
+  --color-accent-2: #7568bd;
+  --color-divider: color-mix(in srgb, #ececf5 16%, transparent);
 
   --color-neutral-100: #f5f5f8;
   --color-neutral-200: #e7e7ea;
@@ -31,25 +32,25 @@
   --color-neutral-800: #424244;
   --color-neutral-900: #2b2b2d;
 
-  --color-accent-100: #e8e6f5;
-  --color-accent-200: #c9c4e8;
-  --color-accent-300: #a29bd6;
-  --color-accent-400: #7a70c0;
-  --color-accent-500: #554aa3;
-  --color-accent-600: #362c82;
-  --color-accent-700: #241b6e;
-  --color-accent-800: #1a1264;
-  --color-accent-900: #100a42;
+  --color-accent-100: #fbf0da;
+  --color-accent-200: #f5e0b3;
+  --color-accent-300: #edc97e;
+  --color-accent-400: #e0ac4d;
+  --color-accent-500: #d1922e;
+  --color-accent-600: #b8791f;
+  --color-accent-700: #8f5c18;
+  --color-accent-800: #664213;
+  --color-accent-900: #402a0c;
 
-  --color-accent-2-100: #eeedf3;
-  --color-accent-2-200: #d9d7e4;
-  --color-accent-2-300: #bab6cd;
-  --color-accent-2-400: #9994b5;
-  --color-accent-2-500: #7c7699;
-  --color-accent-2-600: #625c80;
-  --color-accent-2-700: #4a4563;
-  --color-accent-2-800: #343049;
-  --color-accent-2-900: #201d30;
+  --color-accent-2-100: #eeecf9;
+  --color-accent-2-200: #d7d2f0;
+  --color-accent-2-300: #b7aee3;
+  --color-accent-2-400: #9488d1;
+  --color-accent-2-500: #7568bd;
+  --color-accent-2-600: #5c4fa0;
+  --color-accent-2-700: #453c7d;
+  --color-accent-2-800: #302b5c;
+  --color-accent-2-900: #1d1a3d;
 
   --font-heading: 'Barlow Condensed', system-ui, sans-serif;
   --font-heading-weight: 600;
@@ -104,8 +105,11 @@ h4 { font-size: 20px; }
 h5 { font-size: 16px; }
 h6 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
 p { margin: 0 0 var(--space-3); }
-a { color: var(--color-accent-700); text-decoration: none; text-underline-offset: 3px; }
-a:hover { color: var(--color-accent-900); }
+/* Lighter steps than a light theme would use — darker steps (700/900) read
+   fine on a pale background but nearly vanish against this dark one (checked:
+   accent-700 on this bg is 3.38:1, below AA; accent-400/200 are 9.26/14.74). */
+a { color: var(--color-accent-400); text-decoration: none; text-underline-offset: 3px; }
+a:hover { color: var(--color-accent-200); }
 img { display: block; max-width: 100%; }
 /* 65% (not 55%) is the lowest opacity of --color-text that still clears
    WCAG AA's 4.5:1 for normal text against both --color-bg and --color-surface

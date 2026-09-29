@@ -38,7 +38,6 @@ export default function NewWalkinOrder() {
     unitPrice: Number(li.unitPrice) || 0,
     discountPct: Number(li.discountPct) || 0,
     discountAmt: Number(li.discountAmt) || 0,
-    filmLengthM: Number(li.filmLengthM) > 0 ? Number(li.filmLengthM) : undefined,
     heatPressFee: Number(li.heatPressFee) > 0 ? Number(li.heatPressFee) : undefined,
     artworkAreaSqm: Number(li.artworkAreaSqm) > 0 ? Number(li.artworkAreaSqm) : undefined,
   }));

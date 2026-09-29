@@ -10,8 +10,6 @@ async function pin(p: string) {
 
 async function main() {
   await prisma.mpesaTransaction.deleteMany();
-  await prisma.filmUsage.deleteMany();
-  await prisma.filmRoll.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.orderLineItem.deleteMany();
   await prisma.order.deleteMany();
@@ -51,11 +49,11 @@ async function main() {
 
   const [embroidery, dtf, uv, largeFormat, digital, dtfSheet] = await Promise.all([
     prisma.service.create({ data: { name: 'Embroidery', unit: 'piece', price: 350 } }),
-    prisma.service.create({ data: { name: 'DTF Printing', unit: 'sqm', price: DTF_PRINT_DEFAULT_RATE_PER_SQM, tracksFilm: true, chargesPressingFee: true } }),
+    prisma.service.create({ data: { name: 'DTF Printing', unit: 'sqm', price: DTF_PRINT_DEFAULT_RATE_PER_SQM, chargesPressingFee: true } }),
     prisma.service.create({ data: { name: 'UV Printing', unit: 'piece', price: 400 } }),
     prisma.service.create({ data: { name: 'Large Format Printing', unit: 'sqm', price: 600 } }),
     prisma.service.create({ data: { name: 'Digital Printing', unit: 'piece', price: 200 } }),
-    prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 800, tracksFilm: true } }),
+    prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 800 } }),
   ]);
 
   const [polo, tshirt, cap, hoodie] = await Promise.all([
@@ -99,12 +97,11 @@ async function main() {
       staffId: brian.id, createdDate: '2026-09-06', status: 'Order', stage: 'In Production', paymentTiming: 'onCompletion',
       orderDiscountPct: 0, orderDiscountAmt: 0,
       // Client's own T-shirts, printed and pressed: a 0.1 sqm artwork on 15
-      // pieces — DTF Printing's new sqm-based pricing (0.1 x 750 = Ksh 75/pc)
-      // plus a staff-picked heat press fee, and 2.5m of film consumed
-      // (0.1 x 15 / 0.6m roll width).
+      // pieces — DTF Printing's sqm-based pricing (0.1 x 750 = Ksh 75/pc)
+      // plus a staff-picked heat press fee.
       lineItems: { create: [{
         itemType: 'service', serviceId: dtf.id, materialId: null, qty: 15, unitPrice: 75,
-        discountPct: 0, discountAmt: 0, artworkAreaSqm: 0.1, filmLengthM: 2.5, heatPressFee: 25,
+        discountPct: 0, discountAmt: 0, artworkAreaSqm: 0.1, heatPressFee: 25,
       }] },
     },
   });
@@ -180,13 +177,6 @@ async function main() {
   ];
   await prisma.expense.createMany({
     data: ['2026-08-05', '2026-09-05'].flatMap((date) => expenseBaselines.map(([category, amount]) => ({ date, category, amount }))),
-  });
-
-  // A film-roll purchase already logged as an expense, not yet linked to a
-  // FilmRoll — demonstrates the "pick from dropdown" install flow (Film →
-  // Film Rolls → "Already logged as an expense").
-  await prisma.expense.create({
-    data: { date: '2026-09-08', category: 'DTF Film Rolls', note: 'DTF film roll — Cool Print Ltd', amount: 8500, invoiceNumber: 'INV-4471' },
   });
 
   // Petty cash float — a top-up big enough to cover the expense baselines

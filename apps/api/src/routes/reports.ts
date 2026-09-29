@@ -80,9 +80,9 @@ reportsRouter.get('/sales-by-category', async (req, res) => {
 // its own consumables — thread and needles — bought through the Stock
 // Purchases pipeline (only 'Accepted' purchases count as real, reconciled
 // cost; 'Held'/'Rejected' purchases haven't actually entered the store).
-// Matches the FilmRoll margin-analysis pattern (avgRatePerMeter/
-// marginPerMeter/undercharged) translated to a per-piece view, since
-// Embroidery has no roll/usage model of its own to derive it from directly.
+// Reports revenue-per-piece against cost-per-piece (avgRevenuePerPiece/
+// avgCostPerPiece/marginPerPiece/underpriced), since Embroidery has no
+// roll/usage model of its own to derive it from directly.
 reportsRouter.get('/embroidery-profitability', async (req, res) => {
   const range = parseRange(req);
   if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });

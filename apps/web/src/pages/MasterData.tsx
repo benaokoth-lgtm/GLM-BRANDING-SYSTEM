@@ -26,7 +26,6 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canAccessFinance: 'Finance / Compliance',
   canAccessStock: 'Stock',
   canApproveStock: 'Approve stock',
-  canAccessFilm: 'Film',
   canAccessReports: 'Reports',
 };
 
@@ -188,16 +187,6 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add service');
-    }
-  }
-
-  async function toggleTracksFilm(serviceId: number, tracksFilm: boolean) {
-    setError(null);
-    try {
-      await api.put(`/master-data/services/${serviceId}`, { tracksFilm });
-      catalog.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update service');
     }
   }
 
@@ -541,7 +530,6 @@ export default function MasterData() {
                 <th>Unit</th>
                 <th>Price</th>
                 <th>Artwork pricing</th>
-                <th>Tracks film</th>
                 <th>Charges pressing fee</th>
               </tr>
             </thead>
@@ -577,12 +565,6 @@ export default function MasterData() {
                   </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={sv.tracksFilm} onChange={(e) => toggleTracksFilm(sv.id, e.target.checked)} />
-                      {sv.tracksFilm && <span className="tag tag-accent">DTF film</span>}
-                    </label>
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={sv.chargesPressingFee} onChange={(e) => toggleChargesPressingFee(sv.id, e.target.checked)} />
                       {sv.chargesPressingFee && <span className="tag tag-accent">Heat press</span>}
                     </label>
@@ -595,11 +577,8 @@ export default function MasterData() {
             Unit and price are editable in place — a service flagged "Artwork pricing" with unit "sqm" (e.g. DTF
             Printing, Embroidery) shows an "Artwork size (sqm)" field on order line items instead of a flat
             per-piece price: price is computed from one artwork's area, at the Ksh/sqm rate set here, with its own
-            size bands under Artwork Size Bands. A service additionally flagged "Tracks film" (DTF Printing only)
-            also computes film used from that same area × quantity — Embroidery is artwork-priced but never tracks
-            film. Services flagged "Tracks film" with unit "metre" (e.g. DTF Sheet) instead default Film used (m) to
-            match Metres — a pure film sale. Services flagged "Charges pressing fee" show a staff-picked heat press
-            fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM prints and presses.
+            size bands under Artwork Size Bands. Services flagged "Charges pressing fee" show a staff-picked heat
+            press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM prints and presses.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
             <div className="field">

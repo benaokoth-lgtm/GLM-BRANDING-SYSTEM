@@ -119,15 +119,15 @@ masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
   res.status(201).json(await prisma.service.create({ data: parsed.data }));
 });
 
-// Price/unit and the film/pressing-fee flags are all catalog definition
-// properties — Admin-only, same access level as adding a service. Lets
-// Admin reconfigure a service in place (e.g. switching DTF Printing from a
-// flat per-piece price to a per-sqm rate) instead of needing a new service.
+// Price/unit and the artwork-pricing/pressing-fee flags are all catalog
+// definition properties — Admin-only, same access level as adding a
+// service. Lets Admin reconfigure a service in place (e.g. switching DTF
+// Printing from a flat per-piece price to a per-sqm rate) instead of
+// needing a new service.
 const serviceUpdateSchema = z
   .object({
     price: z.number().positive().optional(),
     unit: z.enum(['piece', 'metre', 'sqm']).optional(),
-    tracksFilm: z.boolean().optional(),
     usesArtworkPricing: z.boolean().optional(),
     chargesPressingFee: z.boolean().optional(),
   })

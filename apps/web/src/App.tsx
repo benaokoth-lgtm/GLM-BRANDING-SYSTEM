@@ -13,7 +13,6 @@ import Finance from './pages/Finance';
 import Compliance from './pages/Compliance';
 import Reports from './pages/Reports';
 import Stock from './pages/Stock';
-import Film from './pages/Film';
 
 function DefaultRedirect() {
   const { user } = useAuth();
@@ -106,14 +105,6 @@ export default function App() {
           element={
             <RequirePermission keys={['canAccessStock']}>
               <Stock />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/film"
-          element={
-            <RequirePermission keys={['canAccessFilm']}>
-              <Film />
             </RequirePermission>
           }
         />

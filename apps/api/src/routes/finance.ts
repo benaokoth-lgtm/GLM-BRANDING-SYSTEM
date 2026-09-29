@@ -219,8 +219,9 @@ const expenseSchema = z.object({
   category: z.enum(EXPENSE_CATEGORIES),
   note: z.string().max(200).optional(),
   amount: z.number().positive(),
-  // Optional generally, but a "DTF Film Rolls" expense needs one on file to
-  // later be picked when installing a roll (see routes/film.ts).
+  // Optional generally, but a "Printing Materials & Consumables" expense
+  // needs one on file to later be linked to a Stock purchase (see
+  // routes/stock.ts).
   invoiceNumber: z.string().max(100).optional(),
 });
 

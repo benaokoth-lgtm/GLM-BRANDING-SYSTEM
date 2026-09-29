@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FILM_ROLL_WIDTH_M, HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
+import { HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
 import type { ArtworkSizeBand, CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
 import ArtworkSizeDialog from './ArtworkSizeDialog';
 
@@ -26,7 +26,6 @@ function defaultLine(services: CatalogService[], materials: CatalogMaterial[]): 
     unitPrice: mt?.price ?? 0,
     discountPct: 0,
     discountAmt: 0,
-    filmLengthM: '',
     heatPressFee: '',
     artworkAreaSqm: '',
   };
@@ -40,13 +39,6 @@ export function makeDefaultLine(services: CatalogService[], materials: CatalogMa
 // Embroidery): a single artwork's area × the service's Ksh/sqm rate.
 function computedUnitPrice(rate: number, areaSqm: number): number {
   return Math.round(rate * areaSqm * 100) / 100;
-}
-
-// Total film consumed across all pieces, in linear metres off the fixed
-// roll width — the same unit FilmRoll/FilmUsage track in everywhere else.
-// Only meaningful for a service that also tracksFilm (Embroidery doesn't).
-function computedFilmLengthM(areaSqm: number, qty: number): number {
-  return Math.round((areaSqm * qty * 100) / FILM_ROLL_WIDTH_M) / 100;
 }
 
 function initialUnitPriceFor(sv: CatalogService | undefined): number {
@@ -66,39 +58,16 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
     const merged: DraftLineItem = { ...current, ...patch };
     const sv = services.find((s) => s.id === merged.serviceId);
 
-    // For a per-metre film-tracked service (DTF Sheet), Film used (m)
-    // defaults to match Metres — most jobs consume exactly what's billed.
-    // Only auto-sync while the two are still in sync (or film length hasn't
-    // been set yet) so an explicit override to Film used (m) always wins.
-    if (sv?.tracksFilm && sv.unit === 'metre' && !('filmLengthM' in patch)) {
-      const inSync = current.filmLengthM === '' || current.filmLengthM == null || String(current.filmLengthM) === String(current.qty);
-      if (inSync) merged.filmLengthM = merged.qty;
-    }
-
     // For an artwork-priced service (DTF Printing, Embroidery), a single
     // artwork's area × the service's Ksh/sqm rate gives the per-piece
     // price — recomputed whenever area changes, but only while still in
     // sync with what was last auto-computed (an explicit override to Unit
-    // price always wins). Independent of film tracking: Embroidery prices
-    // by artwork size with no film to track at all.
+    // price always wins).
     if (sv?.usesArtworkPricing && sv.unit === 'sqm' && !('unitPrice' in patch)) {
       const area = Number(merged.artworkAreaSqm) || 0;
       const prevArea = Number(current.artworkAreaSqm) || 0;
       const priceInSync = current.unitPrice === '' || current.unitPrice == null || Number(current.unitPrice) === computedUnitPrice(sv.price, prevArea);
       if (priceInSync) merged.unitPrice = area > 0 ? computedUnitPrice(sv.price, area) : '';
-    }
-
-    // That same area × quantity gives the total film consumed (converted to
-    // linear metres) for a service that also tracksFilm (DTF Printing) —
-    // separate from the price calc above since a service can be
-    // artwork-priced without tracking film (Embroidery).
-    if (sv?.tracksFilm && sv.unit === 'sqm' && !('filmLengthM' in patch)) {
-      const area = Number(merged.artworkAreaSqm) || 0;
-      const qty = Number(merged.qty) || 0;
-      const prevArea = Number(current.artworkAreaSqm) || 0;
-      const prevQty = Number(current.qty) || 0;
-      const filmInSync = current.filmLengthM === '' || current.filmLengthM == null || Number(current.filmLengthM) === computedFilmLengthM(prevArea, prevQty);
-      if (filmInSync) merged.filmLengthM = area > 0 && qty > 0 ? computedFilmLengthM(area, qty) : '';
     }
 
     next[idx] = merged;
@@ -117,14 +86,12 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
 
   function handleServiceChange(idx: number, serviceId: number) {
     const sv = services.find((s) => s.id === serviceId);
-    updateLine(idx, { serviceId, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '', filmLengthM: '' });
+    updateLine(idx, { serviceId, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '' });
   }
 
   // A size band sets area AND price together as a flat quick-pick, bypassing
   // the area × Ksh/sqm formula — small artworks are dominated by fixed
   // setup/press time, not material, so a pure area rate underprices them.
-  // Film used (m) still recomputes off the band's own area, so usage
-  // tracking stays exactly as accurate as a custom-sized artwork.
   function handleSizeBand(idx: number, bandId: string) {
     const band = artworkSizeBands.find((b) => String(b.id) === bandId);
     if (band) updateLine(idx, { artworkAreaSqm: band.areaSqm, unitPrice: band.price });
@@ -160,14 +127,9 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
     0,
   );
 
-  const missingFilmLength = lineItems.some((li) => {
-    const sv = services.find((s) => s.id === li.serviceId);
-    return sv?.tracksFilm && !(Number(li.filmLengthM) > 0);
-  });
-
   const missingArtworkArea = lineItems.some((li) => {
     const sv = services.find((s) => s.id === li.serviceId);
-    return (sv?.usesArtworkPricing || sv?.tracksFilm) && sv?.unit === 'sqm' && !(Number(li.artworkAreaSqm) > 0);
+    return sv?.usesArtworkPricing && sv?.unit === 'sqm' && !(Number(li.artworkAreaSqm) > 0);
   });
 
   const missingPressingFee = lineItems.some((li) => {
@@ -193,7 +155,6 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
       {lineItems.map((row, idx) => {
         const isMaterial = row.itemType === 'material';
         const rowService = services.find((sv) => sv.id === row.serviceId);
-        const tracksFilm = !isMaterial && !!rowService?.tracksFilm;
         const usesArtworkPricing = !isMaterial && !!rowService?.usesArtworkPricing && rowService?.unit === 'sqm';
         const chargesPressingFee = !isMaterial && !!rowService?.chargesPressingFee;
         const bandsForService = artworkSizeBands.filter((b) => b.serviceId === row.serviceId);
@@ -201,7 +162,7 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
           ? bandsForService.find((b) => Number(row.artworkAreaSqm) === b.areaSqm && Number(row.unitPrice) === b.price)
           : undefined;
         const baseCols = '1.3fr 1.3fr 0.7fr 0.9fr 0.7fr 0.7fr';
-        const extraCols = (usesArtworkPricing ? ' 0.9fr' : '') + (tracksFilm ? ' 0.8fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
+        const extraCols = (usesArtworkPricing ? ' 0.9fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
         const cols = baseCols + extraCols + ' auto';
         return (
         <div
@@ -299,18 +260,6 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
             <label>Disc Ksh</label>
             <input className="input" value={row.discountAmt} onChange={(e) => updateLine(idx, { discountAmt: e.target.value })} />
           </div>
-          {tracksFilm && (
-            <div className="field" style={{ margin: 0 }}>
-              <label>Film used (m)</label>
-              <input
-                className="input"
-                value={row.filmLengthM}
-                onChange={(e) => updateLine(idx, { filmLengthM: e.target.value })}
-                placeholder={row.itemType === 'per-metre' ? String(row.qty) : 'e.g. 2.5'}
-                readOnly={rowService?.unit === 'sqm'}
-              />
-            </div>
-          )}
           {chargesPressingFee && (
             <div className="field" style={{ margin: 0 }}>
               <label>Heat press fee (Ksh/pc)</label>
@@ -345,21 +294,14 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
         Selling and servicing the same item (e.g. printing a cap you're also selling) is two lines: a Material line
         for the cap, then a Service line for the print job. A Service line with no matching Material line above it
         means the client brought their own item. For an artwork-priced service (DTF Printing, Embroidery), enter one
-        artwork's size — unit price is computed for you (area × Ksh/sqm rate); services that also consume film (DTF
-        Printing) additionally compute film used from that same area × quantity. Small, common artwork sizes can
+        artwork's size — unit price is computed for you (area × Ksh/sqm rate). Small, common artwork sizes can
         instead use "Quick size", or the 📐 calculator, which auto-matches a predefined band from the length × width
         you enter (set up in Master Data → Artwork Size Bands, per service).
       </p>
       {missingArtworkArea && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
           <span className="tag tag-accent">Artwork size not entered</span> — fill in "Artwork size (sqm)" so price
-          {lineItems.some((li) => services.find((s) => s.id === li.serviceId)?.tracksFilm) ? ' and film usage compute' : ' computes'} correctly.
-        </p>
-      )}
-      {missingFilmLength && !missingArtworkArea && (
-        <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-          <span className="tag tag-accent">Film usage not entered</span> — fill in "Film used (m)" on the DTF line(s)
-          above so it logs against the active film roll.
+          computes correctly.
         </p>
       )}
       {missingPressingFee && (

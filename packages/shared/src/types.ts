@@ -16,7 +16,6 @@ export const PERMISSION_KEYS = [
   'canAccessFinance',
   'canAccessStock',
   'canApproveStock',
-  'canAccessFilm',
   'canAccessReports',
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -54,7 +53,6 @@ export interface LineItemInput {
   unitPrice: number;
   discountPct: number;
   discountAmt: number;
-  filmLengthM?: number | null;
   heatPressFee?: number | null;
 }
 

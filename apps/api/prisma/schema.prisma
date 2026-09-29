@@ -48,7 +48,6 @@ model Role {
   canAccessFinance  Boolean @default(false)
   canAccessStock    Boolean @default(false)
   canApproveStock   Boolean @default(false)
-  canAccessFilm     Boolean @default(false)
   canAccessReports  Boolean @default(false)
 }
 
@@ -57,18 +56,11 @@ model Service {
   name                String
   unit                String // 'piece' | 'metre' | 'sqm'
   price               Float
-  // DTF services consume transfer film — flagging a service here is what
-  // makes its line items show the film-length capture field and feed the
-  // Film roll inventory. Editable by Admin in Master Data.
-  tracksFilm          Boolean @default(false)
-  // An sqm-priced service billed off one artwork's area (length x width),
-  // independent of tracksFilm — DTF Printing happens to be both (its area
-  // also drives film consumption), but Embroidery is priced by artwork size
-  // with no film to track, so the two are separate flags rather than one
-  // conflated "sqm + film" mode. Governs whether order line items show the
-  // "Artwork size (sqm)"/size-band quick-pick UI and compute unit price as
-  // area x this service's Ksh/sqm rate (see LineItemsEditor.tsx). Editable
-  // by Admin in Master Data.
+  // An sqm-priced service billed off one artwork's area (length x width) —
+  // e.g. DTF Printing or Embroidery. Governs whether order line items show
+  // the "Artwork size (sqm)"/size-band quick-pick UI and compute unit price
+  // as area x this service's Ksh/sqm rate (see LineItemsEditor.tsx).
+  // Editable by Admin in Master Data.
   usesArtworkPricing  Boolean @default(false)
   // Jobs where GLM prints AND heat-presses (not a pure film sale) show a
   // staff-picked heat press fee (Ksh/piece) on the line item, added on top
@@ -83,18 +75,17 @@ model Service {
 // to the continuous area x Ksh/sqm formula on OrderLineItem. Small
 // jobs are dominated by fixed setup/press/stitch-out time, not material, so
 // a pure area-based rate underprices them — a preset flat fee per known size
-// fixes that while areaSqm still feeds film-length calc for services that
-// also track film. Scoped to one Service (serviceId) since two services
-// pricing the same physical size (e.g. a DTF print vs. an embroidered patch)
-// have very different flat fees for it. Editable by Admin in Master Data.
+// fixes that. Scoped to one Service (serviceId) since two services pricing
+// the same physical size (e.g. a DTF print vs. an embroidered patch) have
+// very different flat fees for it. Editable by Admin in Master Data.
 //
 // Stored as length x width (not just area) so a captured artwork's real
 // dimensions can be matched against a band as a bounding box — an artwork
 // only "fits" a band if it fits within both the band's length AND width,
 // since two shapes can share an area while one is too long/narrow to
 // actually sit in a given slot. areaSqm is still stored (derived from
-// lengthCm x widthCm server-side) since it's what feeds the film-length
-// calc and is cheaper to read than recomputing everywhere.
+// lengthCm x widthCm server-side) since it's cheaper to read than
+// recomputing everywhere.
 model ArtworkSizeBand {
   id        Int     @id @default(autoincrement())
   serviceId Int
@@ -122,8 +113,7 @@ model Material {
 // shelf, and the system's stockQty (drifted from requisitions, wastage,
 // miscounts) is corrected to match. systemQty/varianceQty are snapshotted
 // at count time so the discrepancy stays visible even after stockQty is
-// updated — same "log the physical-vs-system mismatch" pattern as
-// FilmRoll's waste-on-replacement.
+// updated.
 model StockTake {
   id             Int      @id @default(autoincrement())
   materialId     Int
@@ -179,15 +169,13 @@ model Expense {
   note            String   @default("")
   amount          Float
   // Invoice/receipt number — optional for expenses generally, but required
-  // for a "DTF Film Rolls" expense to be linkable to a FilmRoll (see
-  // FilmRoll.expenseId), or a "Printing Materials & Consumables" expense to
-  // a stock Purchase (see Purchase.expenseId): only an expense with an
+  // for a "Printing Materials & Consumables" expense to be linkable to a
+  // stock Purchase (see Purchase.expenseId): only an expense with an
   // invoice number on file can be picked as "already bought" when
-  // installing a roll or capturing a purchase.
+  // capturing a purchase.
   invoiceNumber   String?
   capturedByName  String   @default("")
   amendments      ExpenseAmendment[]
-  filmRoll        FilmRoll?
   purchase        Purchase?
 }
 
@@ -322,9 +310,9 @@ model Purchase {
   unitCost         Float
   totalCost        Float
   invoiceNumber    String?
-  // Same "new purchase creates the Expense" / "already logged, pick it from
-  // a dropdown" linkage as FilmRoll.expenseId — an Expense can back at most
-  // one purchase (enforced the same way, via this being @unique).
+  // "New purchase creates the Expense" / "already logged, pick it from a
+  // dropdown" linkage — an Expense can back at most one purchase (enforced
+  // via this being @unique).
   expenseId        Int?              @unique
   expense          Expense?          @relation(fields: [expenseId], references: [id])
   status           String            @default("Held") // Held | Accepted | Rejected
@@ -357,7 +345,6 @@ model Order {
 
   lineItems         OrderLineItem[]
   payments          Payment[]
-  filmUsages        FilmUsage[]
   mpesaTransactions MpesaTransaction[]
 }
 
@@ -381,78 +368,16 @@ model OrderLineItem {
   unitPrice   Float
   discountPct Float    @default(0)
   discountAmt Float    @default(0)
-  // Metres of DTF transfer film this line consumed — only meaningful when
-  // service.tracksFilm is true; feeds a FilmUsage row on capture/conversion.
-  filmLengthM Float?
   // Staff-picked heat press fee (Ksh/piece), added to unitPrice before qty
   // and discounts — only meaningful when service.chargesPressingFee is true.
   heatPressFee Float?
   // Single-artwork print area (sqm) — only meaningful when service.unit is
-  // 'sqm' and service.tracksFilm is true (e.g. DTF Printing priced per
-  // sqm/artwork rather than per running metre). qty × artworkAreaSqm gives
-  // both the per-piece price (area × service.price, the Ksh/sqm rate) and
-  // the total film consumed (÷ FILM_ROLL_WIDTH_M for linear metres) — both
-  // computed client-side into unitPrice/filmLengthM, stored here too for
-  // traceability.
+  // 'sqm' and service.usesArtworkPricing is true (e.g. DTF Printing,
+  // Embroidery — priced per sqm/artwork rather than per piece or running
+  // metre). qty × artworkAreaSqm gives the per-piece price (area ×
+  // service.price, the Ksh/sqm rate), computed client-side into unitPrice,
+  // stored here too for traceability.
   artworkAreaSqm Float?
-  // When this DTF artwork was actually run through the press — null means
-  // it's still sitting in the DTF Print Queue waiting to be gang-sheeted
-  // with other small jobs (possibly from other clients/orders) into one
-  // efficient print run. Only meaningful for sqm-priced, film-tracked
-  // service lines; other line items never get marked.
-  printedAt DateTime?
-}
-
-// DTF transfer-film roll inventory. One Active roll at a time; every metre
-// consumed (auto-logged from a film-tracked order line, or manually fed) is
-// a FilmUsage row that decrements it. Installing a new roll while the
-// current one still shows a positive remaining balance means the physical
-// roll ran out before the system's tally did — that shortfall is booked as
-// waste on the old roll (not silently carried over), and avgRatePerMeter is
-// snapshotted from its own usage history at that moment so the "did we
-// undercharge this roll" comparison stays fixed once the roll is retired.
-model FilmRoll {
-  id              Int         @id @default(autoincrement())
-  lengthM         Float
-  costTotal       Float
-  // Invoice/receipt number for the roll's purchase — either typed in when
-  // logging a brand-new purchase (which also creates the linked Expense
-  // below) or copied from an existing Expense picked at install time.
-  invoiceNumber   String?
-  // The Expense that funded this roll — set either by creating a new
-  // Expense at install time, or by linking an existing "DTF Film Rolls"
-  // expense (with an invoice number, not already linked elsewhere: @unique
-  // here is what enforces "no expense can back two rolls"). Nullable only
-  // for rolls installed before this linkage existed.
-  expenseId       Int?        @unique
-  expense         Expense?    @relation(fields: [expenseId], references: [id])
-  installedDate   String // 'YYYY-MM-DD'
-  installedByName String
-  status          String      @default("Active") // Active | Finished
-  finishedDate    String?
-  wasteM          Float       @default(0)
-  avgRatePerMeter Float? // snapshotted on finish — weighted avg revenue/metre this roll realized
-  usages          FilmUsage[]
-}
-
-// One row per length of film consumed off the active roll — either
-// auto-logged when a film-tracked order/quotation-conversion line goes to
-// production, or manually logged when film is fed into the machine outside
-// a captured order. ratePerMeter is the effective revenue/metre realized
-// for that usage (lineTotal / filmLengthM for order-linked rows); null for
-// usage with no associated sale (manual test feeds, waste corrections).
-model FilmUsage {
-  id             Int       @id @default(autoincrement())
-  filmRollId     Int?
-  filmRoll       FilmRoll? @relation(fields: [filmRollId], references: [id])
-  date           String // 'YYYY-MM-DD'
-  lengthM        Float
-  source         String // 'Order' | 'Manual'
-  orderId        Int?
-  order          Order?    @relation(fields: [orderId], references: [id])
-  ratePerMeter   Float?
-  note           String    @default("")
-  capturedByName String
 }
 
 model Payment {
@@ -502,9 +427,9 @@ model MpesaTransaction {
 // approval workflow — this is routine record-keeping, not a spend decision
 // (that already happened at purchase time; Value here is just what's on
 // record for book-value/insurance purposes, not linked to Expense the way
-// FilmRoll/Purchase are, since a capital asset purchase is typically a
-// one-off already captured under Finance → Expenses however the business
-// normally records it).
+// Purchase is, since a capital asset purchase is typically a one-off already
+// captured under Finance → Expenses however the business normally records
+// it).
 model Asset {
   id           Int       @id @default(autoincrement())
   tag          String    @unique

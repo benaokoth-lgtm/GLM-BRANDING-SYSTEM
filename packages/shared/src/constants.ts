@@ -22,7 +22,7 @@ const ALL_TRUE: Permissions = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, 
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
   Staff: { ...ALL_FALSE, canCaptureOrders: true },
-  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessFilm: true },
+  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true },
   'Finance Manager': {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -31,7 +31,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessFinance: true,
     canAccessStock: true,
     canApproveStock: true,
-    canAccessFilm: true,
     canAccessReports: true,
   },
   'General Manager': {
@@ -42,7 +41,6 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessFinance: true,
     canAccessStock: true,
     canApproveStock: true,
-    canAccessFilm: true,
     canAccessReports: true,
   },
   Admin: ALL_TRUE,
@@ -55,17 +53,12 @@ export const ITEM_TYPE_LABELS: Record<string, string> = {
 };
 
 // Matches GLM's own Petty Cash Tracker spreadsheet. Used by the P&L expense
-// ledger. "DTF Film Rolls" is its own category (not folded into Printing
-// Materials & Consumables) so the Film → Install roll flow can filter
-// cleanly for expenses eligible to link to a roll (see Expense.invoiceNumber
-// and FilmRoll.expenseId). "Salaries & wages" is deliberately NOT a pickable
-// category here — that cost is captured exactly once, in Finance →
-// Compliance → Payroll, and the P&L's "Salaries & wages" line is derived
-// from PayrollEntry.grossPay directly (see pnl.ts) rather than from this
-// Expense table, so there's no way to double-capture it via Expenses or
-// Petty Cash.
+// ledger. "Salaries & wages" is deliberately NOT a pickable category here —
+// that cost is captured exactly once, in Finance → Compliance → Payroll, and
+// the P&L's "Salaries & wages" line is derived from PayrollEntry.grossPay
+// directly (see pnl.ts) rather than from this Expense table, so there's no
+// way to double-capture it via Expenses or Petty Cash.
 export const EXPENSE_CATEGORIES = [
-  'DTF Film Rolls',
   'Printing Materials & Consumables',
   'Casual Labour',
   'Transport',
@@ -96,32 +89,14 @@ export type PayrollPaymentSource = (typeof PAYROLL_PAYMENT_SOURCES)[number];
 export const PETTY_CASH_SOURCES = ['Bank Withdrawal', 'Cash Sales Allocation'] as const;
 export type PettyCashSource = (typeof PETTY_CASH_SOURCES)[number];
 
-// Default DTF film-roll spec shown when installing a roll — a 60cm x 100m
-// roll at Ksh 7,000 (Ksh 70/linear metre, Ksh 116.67/sqm), GLM's real invoice
-// figure as of Sep 2026. Still just a starting point: cost varies by supplier
-// order, so staff should overwrite it with the actual figure off each invoice.
-export const FILM_ROLL_DEFAULT_LENGTH_M = 100;
-export const FILM_ROLL_DEFAULT_COST = 7000;
-export const FILM_ROLL_WIDTH_M = 0.6;
-
 // Heat press fee (Ksh, per piece) — a staff-picked value, not typed freely,
 // so pricing stays within GLM's approved band. Only applies to jobs where
 // GLM prints AND presses (e.g. DTF Printing) — never on a pure film sale.
 export const HEAT_PRESS_FEE_OPTIONS = [20, 25, 30, 35, 40, 45, 50] as const;
 
-// Default per-sqm rate for artwork-based DTF Printing — the midpoint of the
-// Ksh 667-833/sqm band implied by GLM's existing 400-500/linear-metre film
-// sale (400-500 ÷ FILM_ROLL_WIDTH_M), so the per-artwork service starts from
-// the same economics as the per-metre film sale. Editable in Master Data.
+// Default per-sqm rate for artwork-based DTF Printing. Editable in Master
+// Data.
 export const DTF_PRINT_DEFAULT_RATE_PER_SQM = 750;
-
-// Suggested minimum accumulated area (sqm) before running a batch of small
-// DTF artworks through the press — roughly half the roll's 60cm width run
-// out 50cm (60cm x 50cm), a starting point for machine-time efficiency, not
-// a pricing floor (each job is already priced to cover its own cost). This
-// is a guess pending GLM's real press cycle-time economics — adjust once
-// known.
-export const DTF_PRINT_QUEUE_BATCH_SQM = 0.3;
 
 // Finance > Asset Register — fixed-asset categories for a print/branding
 // business (machines, vehicles, computers, furniture), as opposed to

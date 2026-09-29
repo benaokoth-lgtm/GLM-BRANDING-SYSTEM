@@ -30,8 +30,7 @@ export function findMatchingBand(bands: ArtworkSizeBand[], lengthCm: number, wid
 // area, so doing the /10,000 conversion by hand is an easy place to slip.
 // If the dimensions strictly fit a predefined size band, that band's flat
 // price applies instead of the area-based formula (small prints are
-// dominated by fixed setup/press time, not material) — film usage still
-// deducts off the matched band's own area either way.
+// dominated by fixed setup/press time, not material).
 export default function ArtworkSizeDialog({ artworkSizeBands, onApply, onClose }: Props) {
   const [lengthCm, setLengthCm] = useState('');
   const [widthCm, setWidthCm] = useState('');

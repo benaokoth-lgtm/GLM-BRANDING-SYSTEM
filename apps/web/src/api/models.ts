@@ -11,7 +11,6 @@ export interface CatalogService {
   name: string;
   unit: ServiceUnit;
   price: number;
-  tracksFilm: boolean;
   usesArtworkPricing: boolean;
   chargesPressingFee: boolean;
 }
@@ -79,7 +78,6 @@ export interface OrderLineItemView {
   unitPrice: number;
   discountPct: number;
   discountAmt: number;
-  filmLengthM: number | null;
   heatPressFee: number | null;
   artworkAreaSqm: number | null;
   lineTotal: number;
@@ -265,68 +263,8 @@ export interface DraftLineItem {
   unitPrice: number | string;
   discountPct: number | string;
   discountAmt: number | string;
-  filmLengthM: number | string;
   heatPressFee: number | string;
   artworkAreaSqm: number | string;
-}
-
-export interface FilmRollRow {
-  id: number;
-  lengthM: number;
-  costTotal: number;
-  invoiceNumber: string | null;
-  costPerMeter: number;
-  installedDate: string;
-  installedByName: string;
-  status: 'Active' | 'Finished';
-  finishedDate: string | null;
-  usedM: number;
-  remainingM: number;
-  wasteM: number;
-  avgRatePerMeter: number | null;
-  marginPerMeter: number | null;
-  undercharged: boolean;
-}
-
-export interface FilmUsageRow {
-  id: number;
-  date: string;
-  lengthM: number;
-  source: 'Order' | 'Manual';
-  orderId: number | null;
-  orderNo: string | null;
-  ratePerMeter: number | null;
-  revenue: number | null;
-  note: string;
-  capturedByName: string;
-}
-
-export interface PrintQueueItem {
-  id: number;
-  orderId: number;
-  orderNo: string;
-  clientName: string;
-  date: string;
-  serviceName: string;
-  artworkAreaSqm: number;
-  qty: number;
-  totalAreaSqm: number;
-  heatPressFee: number | null;
-}
-
-export interface PrintQueueData {
-  items: PrintQueueItem[];
-  totalPendingSqm: number;
-  batchThresholdSqm: number;
-  readyToRun: boolean;
-}
-
-export interface FilmExpenseOption {
-  id: number;
-  date: string;
-  invoiceNumber: string | null;
-  amount: number;
-  note: string;
 }
 
 export interface StockTakeRow {

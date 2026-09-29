@@ -11,8 +11,7 @@ stockRouter.use(requireAuth, requirePermission('canAccessStock'));
 // Purchases draw from the same "Printing Materials & Consumables" category
 // as any other general supplies spend — stock materials (Caps, T-Shirts,
 // Polo Shirts, ...) fit that bucket already, so there's no need for a
-// dedicated category the way DTF Film Rolls got one (film has its own
-// module to filter against; stock purchases don't need that).
+// dedicated category for stock purchases.
 const PURCHASE_EXPENSE_CATEGORY = 'Printing Materials & Consumables';
 
 // Requisitions are visible to everyone with Stock access; only Finance roles
@@ -150,7 +149,7 @@ stockRouter.post('/takes', async (req, res) => {
 // it (requisitioned qty vs. what was actually purchased) and accepts it into
 // the store below. Mirrors the same "physical reality is checked before it
 // changes the system, and the check stays as an audit trail" pattern already
-// used for Film Roll waste-on-replacement and Stock Take.
+// used for Stock Take.
 stockRouter.get('/purchases', async (req, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
   const purchases = await prisma.purchase.findMany({
@@ -200,8 +199,7 @@ stockRouter.get('/requisitions/awaiting-purchase', async (_req, res) => {
 
 // Already-logged "Printing Materials & Consumables" expenses (with an
 // invoice number on file) not yet linked to a purchase — the "pick from a
-// dropdown" side of capturing a purchase, same shape as Film's
-// /available-expenses.
+// dropdown" side of capturing a purchase.
 stockRouter.get('/available-expenses-for-purchase', async (_req, res) => {
   const linked = await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } });
   const linkedIds = linked.map((p) => p.expenseId as number);

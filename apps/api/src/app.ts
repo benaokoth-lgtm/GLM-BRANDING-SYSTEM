@@ -15,6 +15,7 @@ import { reportsRouter } from './routes/reports';
 import { emailRouter } from './routes/email';
 import { mpesaRouter } from './routes/mpesa';
 import { assetsRouter } from './routes/assets';
+import { dtfRouter } from './routes/dtf';
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5174').split(',').map((o) => o.trim());
 
@@ -35,6 +36,7 @@ app.use('/api/reports', reportsRouter);
 app.use('/api/email', emailRouter);
 app.use('/api/mpesa', mpesaRouter);
 app.use('/api/assets', assetsRouter);
+app.use('/api/dtf', dtfRouter);
 
 // Catch-all — any error forwarded here (including async rejections, thanks
 // to express-async-errors above) gets a clean JSON 500 instead of Express's

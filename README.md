@@ -192,6 +192,33 @@ own roster.
     "Materials" bucket for plain product sales (Cap, T-Shirt, ...), since a material sale
     isn't a machine/service and mixing it in would distort the per-service ranking.
 
+## DTF Sales & Roll Tracker (DTF tab)
+
+Ported from the DTF workbook (`GLM_DTF_Printing_Tracker.xlsx`) into this codebase's own stack —
+Prisma models, an Express router and a React page — rather than as a separate app. It tracks each
+film roll from install to close, records **Printed Film** sales (by the metre) and **Artwork Jobs**
+(priced per piece), works out wastage when a roll is closed, and reports profit per roll.
+It is separate from the order/POS flow (an order is a customer sale; this is roll-level costing) and
+does not touch the artwork-size (sqm) pricing used by orders.
+
+- **Formulas** live in one place, `packages/shared/src/dtf.ts` (pure functions, used by the form
+  previews, the roll/dashboard roll-ups and the API's validation). `npm test -w packages/shared`
+  checks them against hand-worked numbers.
+- **Data**: `DtfSetting` (single row), `DtfRoll`, `DtfFilmSale`, `DtfArtworkJob` in `schema.prisma`.
+  Apply with `npm run db:push`. Sales/jobs snapshot the standard price, minimum price and multiplier
+  they were saved with, so changing Setup never re-prices history; a roll snapshots its length at install.
+- **API** `apps/api/src/routes/dtf.ts` (`/api/dtf/*`). The price band (min–standard), open-roll requirement and
+  amount-paid ≤ total are enforced server-side, not just in the form.
+- **Two permissions** (Master Data → Roles & Access): **DTF: record sales & jobs** (`canAccessDtf`) sees
+  only Film Sales and Artwork Jobs, and roll costs are never sent to them; **DTF: rolls, costs & profit**
+  (`canManageDtf`) also gets Dashboard, Rolls (install/edit costs/close/reopen) and Setup. Admin has both.
+  Seeded defaults: Supervisor = record; Finance Manager and General Manager = manage. **Existing databases:**
+  after `db:push` the new flags default to off, so an Admin needs to tick them for existing roles.
+- Deleting a sale or job is Admin-only. Closing a roll asks for confirmation.
+- Wastage tolerance defaults to 5% (an assumption — set your own in DTF → Setup). The workbook's film
+  (9,000) and ink/powder (6,000) costs were placeholders: enter real costs when installing a roll.
+- Not built yet: per-client debtors list, M-Pesa auto-fill of amount paid, CSV/Excel export, table search/date filters.
+
 ## Roles & access levels
 
 Roles are no longer a fixed union — Master Data → Roles & Access (Admin-only) manages a

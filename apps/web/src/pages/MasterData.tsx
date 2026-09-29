@@ -27,6 +27,8 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canAccessStock: 'Stock',
   canApproveStock: 'Approve stock',
   canAccessReports: 'Reports',
+  canAccessDtf: 'DTF: record sales & jobs',
+  canManageDtf: 'DTF: rolls, costs & profit',
 };
 
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;

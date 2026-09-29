@@ -49,6 +49,8 @@ model Role {
   canAccessStock    Boolean @default(false)
   canApproveStock   Boolean @default(false)
   canAccessReports  Boolean @default(false)
+  canAccessDtf      Boolean @default(false) // DTF tracker: record film sales & artwork jobs
+  canManageDtf      Boolean @default(false) // DTF tracker: roll costs, Setup, profit/wastage dashboard
 }
 
 model Service {
@@ -444,4 +446,67 @@ model Asset {
   createdByName String   @default("")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+}
+
+// ── DTF Sales & Roll Tracker ────────────────────────────────────────────
+// Ported from the DTF workbook (formulas live in packages/shared/src/dtf.ts).
+// Separate from the order/POS flow: this tracks physical film rolls and what
+// each one earned. Sales and jobs snapshot the price band/multiplier they were
+// saved with, so later Setup changes never re-price history.
+
+// Single row (id = 1), created on first read.
+model DtfSetting {
+  id                  Int   @id @default(1)
+  rollLengthM         Float @default(100)
+  rollWidthCm         Float @default(60)
+  stdPricePerM        Float @default(500) // also the ceiling for film price
+  minPricePerM        Float @default(400)
+  defaultMultiplier   Float @default(3)
+  wastageTolerancePct Float @default(5)
+}
+
+model DtfRoll {
+  id            String   @id // 'ROLL-001'
+  installedOn   String // 'YYYY-MM-DD' — a roll is "started" once it has this
+  finishedOn    String?
+  status        String   @default("open") // open | closed
+  filmCost      Float    @default(0)
+  inkPowderCost Float    @default(0)
+  rollLengthM   Float // snapshot of Setup at install
+  createdByName String   @default("")
+  createdAt     DateTime @default(now())
+
+  filmSales   DtfFilmSale[]
+  artworkJobs DtfArtworkJob[]
+}
+
+model DtfFilmSale {
+  id             Int      @id @default(autoincrement())
+  rollId         String
+  roll           DtfRoll  @relation(fields: [rollId], references: [id])
+  soldOn         String
+  client         String   @default("")
+  metres         Float
+  pricePerM      Float // resolved price charged (server-validated within min..std)
+  stdPriceAtSale Float // Setup snapshot
+  minPriceAtSale Float
+  amountPaid     Float    @default(0)
+  capturedByName String   @default("")
+  createdAt      DateTime @default(now())
+}
+
+model DtfArtworkJob {
+  id               Int      @id @default(autoincrement())
+  rollId           String
+  roll             DtfRoll  @relation(fields: [rollId], references: [id])
+  jobOn            String
+  client           String   @default("")
+  runningMetres    Float
+  artworks         Int
+  pieces           Int
+  multiplier       Float // resolved multiplier used
+  stdPriceAtJob    Float // Setup snapshot
+  discountPerPiece Float    @default(0) // negative = price up
+  capturedByName   String   @default("")
+  createdAt        DateTime @default(now())
 }

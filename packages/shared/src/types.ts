@@ -17,6 +17,8 @@ export const PERMISSION_KEYS = [
   'canAccessStock',
   'canApproveStock',
   'canAccessReports',
+  'canAccessDtf',
+  'canManageDtf',
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 export type Permissions = Record<PermissionKey, boolean>;

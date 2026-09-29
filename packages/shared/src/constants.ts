@@ -22,7 +22,7 @@ const ALL_TRUE: Permissions = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, 
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
   Staff: { ...ALL_FALSE, canCaptureOrders: true },
-  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true },
+  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessDtf: true },
   'Finance Manager': {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -32,6 +32,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessStock: true,
     canApproveStock: true,
     canAccessReports: true,
+    canAccessDtf: true,
+    canManageDtf: true,
   },
   'General Manager': {
     ...ALL_FALSE,
@@ -42,6 +44,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessStock: true,
     canApproveStock: true,
     canAccessReports: true,
+    canAccessDtf: true,
+    canManageDtf: true,
   },
   Admin: ALL_TRUE,
 };

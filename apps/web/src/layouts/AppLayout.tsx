@@ -29,6 +29,7 @@ function buildTabs(user: CurrentUser): [string, string][] {
   if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
   if (isAdmin || p.canAccessReports) tabs.push(['/reports', 'Reports']);
   if (isAdmin || p.canAccessStock) tabs.push(['/stock', 'Stock']);
+  if (isAdmin || p.canAccessDtf || p.canManageDtf) tabs.push(['/dtf', 'DTF']);
 
   return tabs;
 }

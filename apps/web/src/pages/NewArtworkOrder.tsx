@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { computeBillableMetres, computeFill, fmtKsh, fmtNum, jobCalc, todayStr } from '@glm/shared';
+import { fmtKsh, fmtNum, jobCalc, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import type { DtfData } from '../components/dtf/shared';
@@ -9,14 +9,18 @@ const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Numb
 const right = { textAlign: 'right' } as const;
 
 // Sibling to New Walk-in Order (General Order) / New Film Order — captures
-// an artwork print job priced off running metres × multiplier, same
-// Print-time order + roll-consumption creation as the film sale flow (see
-// DtfOrderDialog.tsx), just for DTF Printing instead of DTF Sheet.
+// an artwork print job. Price per piece = floor + a fixed per-running-metre
+// charge shared across however many pieces that metre covers (see jobCalc
+// in packages/shared/src/dtf.ts) — no separate artwork count or width
+// measurement, since a half-empty strip simply has fewer pieces to share
+// the charge with. Same Print-time order + roll-consumption creation as the
+// film sale flow (see DtfOrderDialog.tsx), just for DTF Printing instead of
+// DTF Sheet.
 export default function NewArtworkOrder() {
   const navigate = useNavigate();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [f, setF] = useState({ roll: '', client: '', run: '', widthCm: '', pieces: '', mult: '', disc: '' });
+  const [f, setF] = useState({ roll: '', client: '', run: '', pieces: '' });
   const [showOrderDialog, setShowOrderDialog] = useState(false);
 
   useEffect(() => {
@@ -33,33 +37,22 @@ export default function NewArtworkOrder() {
   const rollId = f.roll && open.some((r) => r.id === f.roll) ? f.roll : (open[0]?.id ?? '');
   const roll = open.find((r) => r.id === rollId);
   const run = num(f.run);
-  const widthCm = f.widthCm.trim() === '' ? settings.rollWidthCm : num(f.widthCm);
   const pcs = num(f.pieces);
-  const disc = num(f.disc);
-  // A DTF transfer is single-use — one physical print per piece pressed —
-  // so pieces and the film's cost-splitting "artworks" count are always the
-  // same number here. Only one is ever asked for; see routes/dtf.ts.
-  const fill = computeFill(widthCm, settings.rollWidthCm);
-  const billableMetres = computeBillableMetres(settings, run, widthCm);
-  const c = jobCalc(settings, billableMetres, pcs, pcs, f.mult.trim() === '' ? null : num(f.mult), disc);
+  const c = jobCalc(run, pcs, settings.fixedChargePerMetre, settings.minPricePerPiece);
   const used =
     data.sales.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.metres, 0) +
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
   const rollLen = roll?.rollLengthM || settings.rollLengthM;
   const overRoll = !!roll && used + run > rollLen;
-  const overWidth = widthCm > settings.rollWidthCm;
-  const canSave = !!rollId && run > 0 && widthCm > 0 && !overWidth && Number.isInteger(pcs) && pcs > 0 && c.multiplier > 0;
+  const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0;
 
   const lines: [string, string, string][] = [
-    ['Fill', `${fmtNum(widthCm, 1)} cm of ${fmtNum(settings.rollWidthCm)} cm`, `${Math.round(fill * 100)}%`],
-    ['Billable metres', `${fmtNum(run, 2)} m × (1 + ${settings.unfilledWidthPremium} × ${fmtNum(1 - fill, 2)})`, `${fmtNum(billableMetres, 2)} m`],
-    ['Base / piece', `${fmtNum(billableMetres, 2)} m × ${settings.stdPricePerM} ÷ ${fmtNum(pcs)}`, fmtKsh(c.basePerArtwork)],
-    ['Proposed', `× ${c.multiplier}`, fmtKsh(c.proposed)],
-    ['Final / piece', `MAX(proposed, ${fmtKsh(settings.minPricePerPiece)}) − ${fmtNum(disc, 2)}`, fmtKsh(c.finalPerPiece)],
+    ['Fixed charge', `${fmtKsh(settings.fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m ÷ ${fmtNum(pcs)} pcs`, pcs > 0 ? fmtKsh((c.finalPerPiece - settings.minPricePerPiece)) : '—'],
+    ['Price / piece', `${fmtKsh(settings.minPricePerPiece)} floor + fixed charge`, fmtKsh(c.finalPerPiece)],
   ];
 
   return (
-    <div className="card blueprint" style={{ maxWidth: 600 }}>
+    <div className="card blueprint" style={{ maxWidth: 560 }}>
       <i className="corner tl"></i>
       <i className="corner tr"></i>
       <i className="corner bl"></i>
@@ -97,23 +90,11 @@ export default function NewArtworkOrder() {
           </p>
         </div>
         <div className="field" style={{ margin: 0 }}>
-          <label>Width used (cm)</label>
-          <input className="input" inputMode="decimal" value={f.widthCm} onChange={(e) => setF({ ...f, widthCm: e.target.value })} placeholder={String(settings.rollWidthCm)} />
-          <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
-            Widest extent the artworks occupy across the {settings.rollWidthCm}cm roll — one eyeballed number, not per artwork.
-          </p>
-        </div>
-        <div className="field" style={{ margin: 0 }}>
           <label>Pieces</label>
-          <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} placeholder="e.g. 3" />
-        </div>
-        <div className="field" style={{ margin: 0 }}>
-          <label>Multiplier</label>
-          <input className="input" inputMode="decimal" placeholder={String(settings.defaultMultiplier)} value={f.mult} onChange={(e) => setF({ ...f, mult: e.target.value })} />
-        </div>
-        <div className="field" style={{ margin: 0, gridColumn: '1 / -1' }}>
-          <label>Discount / piece (negative = price up)</label>
-          <input className="input" inputMode="decimal" value={f.disc} onChange={(e) => setF({ ...f, disc: e.target.value })} />
+          <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} placeholder="e.g. 108" />
+          <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
+            More pieces sharing this run means a cheaper price each; fewer means a dearer one — it never drops below the floor.
+          </p>
         </div>
       </div>
 
@@ -129,16 +110,6 @@ export default function NewArtworkOrder() {
         ))}
       </div>
 
-      {overWidth && (
-        <p className="note" style={{ marginTop: 'var(--space-3)', borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
-          Blocked — width used can't exceed the roll's {settings.rollWidthCm}cm width.
-        </p>
-      )}
-      {c.belowBase && (
-        <p className="note" style={{ marginTop: 'var(--space-3)', borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
-          Below base cost — this job loses money on film.
-        </p>
-      )}
       {overRoll && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
           This would use more than the roll's {fmtNum(rollLen)} m ({fmtNum(used, 1)} m already used).
@@ -174,10 +145,7 @@ export default function NewArtworkOrder() {
             jobOn: todayStr(),
             client: f.client,
             runningMetres: run,
-            widthUsedCm: widthCm,
             pieces: pcs,
-            multiplier: f.mult.trim() === '' ? null : num(f.mult),
-            discountPerPiece: disc,
           }}
           qty={pcs}
           unitPrice={c.finalPerPiece}

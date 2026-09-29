@@ -457,17 +457,15 @@ model DtfSetting {
   id                  Int   @id @default(1)
   rollLengthM         Float @default(100)
   rollWidthCm         Float @default(60)
-  stdPricePerM        Float @default(500) // also the ceiling for film price
-  minPricePerM        Float @default(400)
-  defaultMultiplier   Float @default(3)
+  stdPricePerM        Float @default(500) // film sale ceiling — used by saleCalc only
+  minPricePerM        Float @default(400) // used by saleCalc only
   wastageTolerancePct Float @default(5)
-  // Artwork-job billing (see jobCalc in packages/shared/src/dtf.ts) — a job
-  // that only fills part of the roll's width still ties up the whole run
-  // length until the rest of the row fills with other work, so it's billed
-  // a premium proportional to how empty the row is.
-  unfilledWidthPremium Float @default(0.5) // 's' — +50% at zero fill, +0% at full width
-  minBillableMetres    Float @default(0.25)
-  minPricePerPiece     Float @default(30)
+  // Artwork-job billing (see jobCalc in packages/shared/src/dtf.ts): every
+  // piece pays this floor plus a share of a fixed per-running-metre charge,
+  // split across however many pieces that metre covers — billed against the
+  // metre regardless of how much of the roll's width it filled.
+  minPricePerPiece    Float @default(30)
+  fixedChargePerMetre Float @default(2160)
 }
 
 model DtfRoll {
@@ -515,22 +513,11 @@ model DtfArtworkJob {
   jobOn            String
   client           String   @default("")
   // Physical film consumed — what the roll's remaining balance is drawn
-  // down by. Independent of billableMetres below, which is what's actually
-  // charged for.
+  // down by, and what the fixed charge below is billed against.
   runningMetres    Float
-  // Widest extent the artworks occupy across the roll's width (cm) — one
-  // eyeballed number per job, not measured per artwork. Feeds computeFill.
-  widthUsedCm      Float    @default(60)
-  // Resolved MAX(runningMetres, minBillableMetres) × (1 + unfilledWidthPremium
-  // × (1 − Fill)) — snapshotted at capture (like stdPriceAtJob) so a later
-  // Setup change never re-prices history.
-  billableMetres   Float    @default(0)
-  artworks         Int
   pieces           Int
-  multiplier       Float // resolved multiplier used
-  stdPriceAtJob    Float // Setup snapshot
-  minPricePerPieceAtJob Float @default(0) // Setup snapshot, same reasoning as stdPriceAtJob
-  discountPerPiece Float    @default(0) // negative = price up
+  fixedChargePerMetreAtJob Float @default(2160) // Setup snapshot, so a later Setup change never re-prices history
+  minPricePerPieceAtJob    Float @default(30) // Setup snapshot, same reasoning
   capturedByName   String   @default("")
   createdAt        DateTime @default(now())
   // The Order this job's "Record job" popup generated — see POST /dtf/jobs.

@@ -6,19 +6,16 @@ import type { DtfTabProps } from './shared';
 const FIELDS: [string, string][] = [
   ['rollLengthM', 'Roll length (m)'],
   ['rollWidthCm', 'Roll width (cm)'],
-  ['stdPricePerM', 'Standard price / m'],
-  ['minPricePerM', 'Minimum price / m'],
-  ['defaultMultiplier', 'Default multiplier'],
+  ['stdPricePerM', 'Standard price / m (film sales)'],
+  ['minPricePerM', 'Minimum price / m (film sales)'],
   ['wastageTolerancePct', 'Wastage tolerance (%)'],
-  ['unfilledWidthPremium', 'Unfilled-width premium (s)'],
-  ['minBillableMetres', 'Minimum billable metres'],
-  ['minPricePerPiece', 'Minimum price / piece'],
+  ['minPricePerPiece', 'Minimum price / piece (artwork jobs)'],
+  ['fixedChargePerMetre', 'Fixed charge / metre (artwork jobs)'],
 ];
 
-// wastageTolerancePct and unfilledWidthPremium can legitimately be 0 (no
-// tolerance / no speed premium) — everything else must be a real positive
-// number, same "every value must be greater than zero" rule as before.
-const ALLOW_ZERO = new Set(['wastageTolerancePct', 'unfilledWidthPremium']);
+// wastageTolerancePct can legitimately be 0 (no tolerance) — everything else
+// must be a real positive number.
+const ALLOW_ZERO = new Set(['wastageTolerancePct']);
 
 export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
   const [f, setF] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(data.settings).map(([k, v]) => [k, String(v)])));
@@ -59,11 +56,11 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
         </div>
         {problem && <p className="note" style={{ marginTop: 'var(--space-3)' }}>{problem}</p>}
         <p className="note" style={{ marginTop: 'var(--space-3)' }}>
-          Sales and jobs keep every price/rate they were saved with (including the billable-metres figure the
-          unfilled-width premium resolved to), so changing these only affects new records. A roll's length is fixed
-          when it's installed. The 5% wastage tolerance is a starting assumption — set your own target. The
-          unfilled-width premium bills a part-width artwork job extra for tying up the whole roll length before the
-          row fills — 0 disables it entirely; 0.5 means up to +50% at zero fill.
+          Sales and jobs keep every price/rate they were saved with, so changing these only affects new records. A
+          roll's length is fixed when it's installed. The 5% wastage tolerance is a starting assumption — set your
+          own target. An artwork job's price per piece = the minimum price/piece + (fixed charge/metre × running
+          metres ÷ pieces) — more pieces sharing a run means a cheaper price each, falling toward but never below
+          the floor; fewer pieces means a dearer one, since a half-filled strip has fewer pieces to share the charge.
         </p>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginTop: 'var(--space-3)' }}>
           <button type="button" className="btn btn-primary blueprint" disabled={busy || !!problem} onClick={save}>

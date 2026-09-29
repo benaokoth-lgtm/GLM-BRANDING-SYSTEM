@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { computeBillableMetres, computeOrderTotals, jobCalc, nextRollId, saleCalc, todayStr } from '@glm/shared';
+import { computeOrderTotals, jobCalc, nextRollId, saleCalc, todayStr } from '@glm/shared';
 import type { LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -146,11 +146,9 @@ dtfRouter.get('/data', async (req, res) => {
       rollWidthCm: settings.rollWidthCm,
       stdPricePerM: settings.stdPricePerM,
       minPricePerM: settings.minPricePerM,
-      defaultMultiplier: settings.defaultMultiplier,
       wastageTolerancePct: settings.wastageTolerancePct,
-      unfilledWidthPremium: settings.unfilledWidthPremium,
-      minBillableMetres: settings.minBillableMetres,
       minPricePerPiece: settings.minPricePerPiece,
+      fixedChargePerMetre: settings.fixedChargePerMetre,
     },
     rolls: rolls.map((r) => ({
       id: r.id,
@@ -177,14 +175,9 @@ dtfRouter.get('/data', async (req, res) => {
       jobOn: j.jobOn,
       client: j.client,
       runningMetres: j.runningMetres,
-      widthUsedCm: j.widthUsedCm,
-      billableMetres: j.billableMetres,
-      artworks: j.artworks,
       pieces: j.pieces,
-      multiplier: j.multiplier,
-      stdPriceAtJob: j.stdPriceAtJob,
+      fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob,
       minPricePerPieceAtJob: j.minPricePerPieceAtJob,
-      discountPerPiece: j.discountPerPiece,
     })),
   });
 });
@@ -196,11 +189,9 @@ const settingsSchema = z
     rollWidthCm: z.number().positive(),
     stdPricePerM: z.number().positive(),
     minPricePerM: z.number().positive(),
-    defaultMultiplier: z.number().positive(),
     wastageTolerancePct: z.number().min(0).max(100),
-    unfilledWidthPremium: z.number().min(0),
-    minBillableMetres: z.number().positive(),
     minPricePerPiece: z.number().min(0),
+    fixedChargePerMetre: z.number().min(0),
   })
   .refine((s) => s.minPricePerM <= s.stdPricePerM, { message: 'Minimum price cannot be above the standard price' });
 
@@ -392,23 +383,19 @@ dtfRouter.delete('/sales/:id', requireRole('Admin'), async (req, res) => {
 });
 
 // ── Artwork jobs ─────────────────────────────────────────────────────────
-// One physical film print is consumed per piece pressed — a DTF transfer is
-// single-use, so there's no way to press the same printed design onto more
-// pieces than were actually printed on the film. "Artworks" (jobCalc's
-// cost-splitting divisor) and "pieces" (the revenue multiplier) are
-// therefore always the same number here: the client only enters pieces,
-// and the server uses it for both, so the two can never drift apart the
-// way they could when they were separate, independently-typed fields.
+// Price per piece = minPricePerPiece + fixedChargePerMetre × runningMetres ÷
+// pieces — see jobCalc in packages/shared/src/dtf.ts. One physical film
+// print is consumed per piece pressed (a DTF transfer is single-use), so
+// there's no way to press the same printed design onto more pieces than
+// were actually printed on the film — the client only enters pieces and
+// running metres; there's no separate "artworks" or width measurement.
 const jobSchema = z.object({
   rollId: z.string().min(1),
   jobOn: dateStr.optional(),
   client: z.string().max(200).default(''),
   phone: z.string().max(40).default(''),
   runningMetres: z.number().positive('Running metres must be greater than 0'),
-  widthUsedCm: z.number().positive('Width used must be greater than 0'),
   pieces: z.number().int().positive('Pieces must be at least 1'),
-  multiplier: z.number().positive().nullable().optional(), // blank ⇒ default multiplier
-  discountPerPiece: z.number().default(0), // negative ⇒ price above the proposal
   heatPressFee: z.number().positive().nullable().optional(), // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
   amountPaid: z.number().min(0).default(0),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
@@ -426,11 +413,7 @@ dtfRouter.post('/jobs', async (req, res) => {
   const found = await openRoll(d.rollId);
   if ('error' in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
-  if (d.widthUsedCm > settings.rollWidthCm) {
-    return res.status(400).json({ error: `Width used can't exceed the roll's width (${settings.rollWidthCm} cm)` });
-  }
-  const billableMetres = computeBillableMetres(settings, d.runningMetres, d.widthUsedCm);
-  const c = jobCalc(settings, billableMetres, d.pieces, d.pieces, d.multiplier ?? null, d.discountPerPiece);
+  const c = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
   if (d.amountPaid > jobTotal) return res.status(400).json({ error: 'Amount paid cannot exceed the job total' });
 
@@ -453,14 +436,9 @@ dtfRouter.post('/jobs', async (req, res) => {
           jobOn: d.jobOn ?? todayStr(),
           client: d.client.trim(),
           runningMetres: d.runningMetres,
-          widthUsedCm: d.widthUsedCm,
-          billableMetres,
-          artworks: d.pieces,
           pieces: d.pieces,
-          multiplier: c.multiplier,
-          stdPriceAtJob: settings.stdPricePerM,
+          fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
           minPricePerPieceAtJob: settings.minPricePerPiece,
-          discountPerPiece: d.discountPerPiece,
           capturedByName: req.user!.name,
           orderId: order.id,
         },

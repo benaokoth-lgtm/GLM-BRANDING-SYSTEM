@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_DTF_SETTINGS as S,
-  computeBillableMetres,
-  computeFill,
   dtfDashboard as dashboard,
   jobCalc,
   saleCalc,
@@ -22,39 +20,23 @@ test('film sale: blank price uses standard, band enforced', () => {
   assert.equal(saleCalc(S, 1, 501, 0).valid, false);
 });
 
-test('artwork job follows the billable-metres formula (jobCalc takes billableMetres directly)', () => {
-  // 2 m billable, 4 artworks: base = 2*500/4 = 250; proposed = 750; disc 50 -> 700; 10 pcs -> 7000
-  const j = jobCalc(S, 2, 4, 10, null, 50);
-  assert.equal(j.basePerArtwork, 250); assert.equal(j.proposed, 750);
-  assert.equal(j.finalPerPiece, 700); assert.equal(j.jobTotal, 7000); assert.equal(j.belowBase, false);
-  assert.equal(jobCalc(S, 2, 4, 10, 1, 50).belowBase, true); // 250-50 < 250
-  assert.equal(jobCalc(S, 2, 4, 10, null, -100).finalPerPiece, 850); // negative discount prices up
-  assert.equal(jobCalc(S, 2, 4, 10, null, 0, 500, 10000).finalPerPiece, 10000); // minPricePerPiece floor wins over a tiny proposed price
+test('artwork job: price per piece = floor + fixed charge per metre / pieces', () => {
+  // The pricing memo's own worked example: (50-30)*108/1 = 2160 fixed charge,
+  // so 1m running / 108 pieces should price back out at exactly 50/piece.
+  const j = jobCalc(1, 108, 2160, 30);
+  assert.equal(j.finalPerPiece, 50);
+  assert.equal(j.jobTotal, 5400);
 });
 
-test('fill and billable metres: unfilled-width premium, and the floor for tiny jobs', () => {
-  assert.equal(computeFill(30, 60), 0.5);
-  assert.equal(computeFill(60, 60), 1);
-  assert.equal(computeFill(90, 60), 1); // can't exceed the roll's width
-  assert.equal(computeBillableMetres(S, 1, 30), 1.25); // 1 * (1 + 0.5*(1-0.5))
-  assert.equal(computeBillableMetres(S, 1, 60), 1); // full width -> no premium
-  assert.equal(computeBillableMetres(S, 0.1, 60), 0.25); // floor: MAX(0.1, 0.25) * 1
-});
-
-test('worked examples from the pricing memo: 3 pieces at half fill vs. 24 pieces at full width', () => {
-  // Job A: 1m running, 3 pieces, ~30cm of 60 used -> fill 50%, billable 1.25m
-  const billableA = computeBillableMetres(S, 1, 30);
-  const a = jobCalc(S, billableA, 3, 3, null, 0);
-  assert.equal(a.billableMetres, 1.25);
-  assert.equal(a.finalPerPiece, 625);
-  assert.equal(a.jobTotal, 1875);
-
-  // Job B: 1m running, 24 pieces, full width -> fill 100%, billable 1m
-  const billableB = computeBillableMetres(S, 1, 60);
-  const b = jobCalc(S, billableB, 24, 24, null, 0);
-  assert.equal(b.billableMetres, 1);
-  assert.equal(b.finalPerPiece, 62.5);
-  assert.equal(b.jobTotal, 1500);
+test('artwork job: more pieces per metre is cheaper, fewer is dearer, floor never broken', () => {
+  const base = jobCalc(1, 108, 2160, 30).finalPerPiece; // 50
+  assert.equal(jobCalc(1, 216, 2160, 30).finalPerPiece < base, true); // double the pieces -> cheaper
+  assert.equal(jobCalc(1, 54, 2160, 30).finalPerPiece > base, true); // half the pieces -> dearer
+  // As pieces grows, price falls toward but never below the floor (at large
+  // enough pieces counts the per-piece premium rounds away to nothing at 2dp
+  // — 10,000 is chosen so it's still just above the floor after rounding).
+  assert.equal(jobCalc(1, 10_000, 2160, 30).finalPerPiece > 30, true);
+  assert.equal(jobCalc(1, 1, 0, 30).finalPerPiece, 30); // no fixed charge -> exactly the floor
 });
 
 const roll = (o: Partial<DtfRoll> = {}): DtfRoll => ({
@@ -64,9 +46,9 @@ const roll = (o: Partial<DtfRoll> = {}): DtfRoll => ({
 const sale = (rollId: string, metres: number, price = 500): DtfFilmSale => ({
   id: 's' + metres + rollId, rollId, soldOn: '2026-01-02', client: 'x', metres, pricePerM: price, stdPriceAtSale: 500, amountPaid: 0,
 });
-const job = (rollId: string, m: number): DtfArtworkJob => ({
-  id: 'j' + m + rollId, rollId, jobOn: '2026-01-02', client: 'x', runningMetres: m, widthUsedCm: S.rollWidthCm, billableMetres: m, artworks: 1, pieces: 1,
-  multiplier: 3, stdPriceAtJob: 500, minPricePerPieceAtJob: S.minPricePerPiece, discountPerPiece: 0,
+const job = (rollId: string, m: number, pieces = 10): DtfArtworkJob => ({
+  id: 'j' + m + rollId, rollId, jobOn: '2026-01-02', client: 'x', runningMetres: m, pieces,
+  fixedChargePerMetreAtJob: S.fixedChargePerMetre, minPricePerPieceAtJob: S.minPricePerPiece,
 });
 
 test('roll roll-up: wastage only on closed rolls, profit absorbs it', () => {
@@ -76,8 +58,8 @@ test('roll roll-up: wastage only on closed rolls, profit absorbs it', () => {
   const closed = summariseRoll(S, roll({ status: 'closed' }), sales, jobs);
   assert.equal(closed.wastageM, 10); assert.equal(closed.wastagePct, 10);
   assert.equal(closed.wastageKes, 1500); assert.equal(closed.overTolerance, true);
-  // revenue = 70*500 + 20*500*3 = 35000 + 30000; profit = 65000 - 15000
-  assert.equal(closed.revenue, 65000); assert.equal(closed.profit, 50000);
+  // sale revenue = 70*500 = 35000; job = 30 + 2160*20/10 = 4350/pc * 10 pcs = 43500
+  assert.equal(closed.revenue, 78500); assert.equal(closed.profit, 63500);
 });
 
 test('dashboard: orphans, cost per metre, per-closed-roll profit', () => {

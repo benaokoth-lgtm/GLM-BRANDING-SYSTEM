@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh } from '@glm/shared';
-import type { ArtworkSizeBand, CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
+import type { CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
 import ArtworkSizeDialog from './ArtworkSizeDialog';
 
 interface Props {
   lineItems: DraftLineItem[];
   services: CatalogService[];
   materials: CatalogMaterial[];
-  artworkSizeBands: ArtworkSizeBand[];
   onChange: (items: DraftLineItem[]) => void;
 }
 
@@ -49,7 +48,7 @@ function initialUnitPriceFor(sv: CatalogService | undefined): number {
   return sv?.price ?? 0;
 }
 
-export default function LineItemsEditor({ lineItems, services, materials, artworkSizeBands, onChange }: Props) {
+export default function LineItemsEditor({ lineItems, services, materials, onChange }: Props) {
   const [calcIdx, setCalcIdx] = useState<number | null>(null);
 
   function updateLine(idx: number, patch: Partial<DraftLineItem>) {
@@ -87,14 +86,6 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
   function handleServiceChange(idx: number, serviceId: number) {
     const sv = services.find((s) => s.id === serviceId);
     updateLine(idx, { serviceId, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '' });
-  }
-
-  // A size band sets area AND price together as a flat quick-pick, bypassing
-  // the area × Ksh/sqm formula — small artworks are dominated by fixed
-  // setup/press time, not material, so a pure area rate underprices them.
-  function handleSizeBand(idx: number, bandId: string) {
-    const band = artworkSizeBands.find((b) => String(b.id) === bandId);
-    if (band) updateLine(idx, { artworkAreaSqm: band.areaSqm, unitPrice: band.price });
   }
 
   function handleMaterialChange(idx: number, materialId: number) {
@@ -157,10 +148,6 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
         const rowService = services.find((sv) => sv.id === row.serviceId);
         const usesArtworkPricing = !isMaterial && !!rowService?.usesArtworkPricing && rowService?.unit === 'sqm';
         const chargesPressingFee = !isMaterial && !!rowService?.chargesPressingFee;
-        const bandsForService = artworkSizeBands.filter((b) => b.serviceId === row.serviceId);
-        const matchedBand = usesArtworkPricing
-          ? bandsForService.find((b) => Number(row.artworkAreaSqm) === b.areaSqm && Number(row.unitPrice) === b.price)
-          : undefined;
         const baseCols = '1.3fr 1.3fr 0.7fr 0.9fr 0.7fr 0.7fr';
         const extraCols = (usesArtworkPricing ? ' 0.9fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
         const cols = baseCols + extraCols + ' auto';
@@ -214,16 +201,6 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
           {usesArtworkPricing && (
             <div className="field" style={{ margin: 0 }}>
               <label>Artwork size (sqm)</label>
-              {bandsForService.length > 0 && (
-                <select className="input" style={{ marginBottom: 4 }} value="" onChange={(e) => handleSizeBand(idx, e.target.value)}>
-                  <option value="">Quick size…</option>
-                  {bandsForService.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.label} — Ksh {b.price}
-                    </option>
-                  ))}
-                </select>
-              )}
               <div style={{ display: 'flex', gap: 4 }}>
                 <input
                   className="input"
@@ -241,11 +218,6 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
                   📐
                 </button>
               </div>
-              {matchedBand && (
-                <span className="tag tag-neutral" style={{ fontSize: 10, marginTop: 2 }}>
-                  Matched: {matchedBand.label}
-                </span>
-              )}
             </div>
           )}
           <div className="field" style={{ margin: 0 }}>
@@ -294,9 +266,8 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
         Selling and servicing the same item (e.g. printing a cap you're also selling) is two lines: a Material line
         for the cap, then a Service line for the print job. A Service line with no matching Material line above it
         means the client brought their own item. For an artwork-priced service (DTF Printing, Embroidery), enter one
-        artwork's size — unit price is computed for you (area × Ksh/sqm rate). Small, common artwork sizes can
-        instead use "Quick size", or the 📐 calculator, which auto-matches a predefined band from the length × width
-        you enter (set up in Master Data → Artwork Size Bands, per service).
+        artwork's size — unit price is computed for you (area × Ksh/sqm rate). Use the 📐 calculator to work out
+        the area from a length × width.
       </p>
       {missingArtworkArea && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
@@ -312,18 +283,12 @@ export default function LineItemsEditor({ lineItems, services, materials, artwor
       )}
       {calcIdx !== null && (
         <ArtworkSizeDialog
-          artworkSizeBands={artworkSizeBands.filter((b) => b.serviceId === lineItems[calcIdx].serviceId)}
-          onApply={({ areaSqm, band }) => {
-            // Always set unitPrice explicitly here (never leave it to the
-            // auto-sync heuristic in updateLine) — the calculator is a
-            // fresh computation each time, so a previous band's flat price
-            // must never linger once the artwork no longer matches it.
-            if (band) {
-              updateLine(calcIdx, { artworkAreaSqm: band.areaSqm, unitPrice: band.price });
-            } else {
-              const sv = services.find((s) => s.id === lineItems[calcIdx].serviceId);
-              updateLine(calcIdx, { artworkAreaSqm: areaSqm, unitPrice: sv ? computedUnitPrice(sv.price, areaSqm) : 0 });
-            }
+          onApply={({ areaSqm }) => {
+            // Set unitPrice explicitly (never leave it to the auto-sync
+            // heuristic in updateLine) — the calculator is a fresh
+            // computation each time.
+            const sv = services.find((s) => s.id === lineItems[calcIdx].serviceId);
+            updateLine(calcIdx, { artworkAreaSqm: areaSqm, unitPrice: sv ? computedUnitPrice(sv.price, areaSqm) : 0 });
             setCalcIdx(null);
           }}
           onClose={() => setCalcIdx(null)}

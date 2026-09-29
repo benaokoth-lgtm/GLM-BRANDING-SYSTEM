@@ -18,7 +18,7 @@ interface Props {
 // the quotation step entirely rather than raising a quote just to convert
 // it moments later.
 export default function CorporateOrderForm({ kind, onCreated }: Props) {
-  const { services, materials, artworkSizeBands, staff, corporateClients, maxDiscountPct, loading } = useCatalog();
+  const { services, materials, staff, corporateClients, maxDiscountPct, loading } = useCatalog();
   const { user } = useAuth();
 
   const [corporateClientId, setCorporateClientId] = useState<number | null>(null);
@@ -112,7 +112,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
         </div>
       </div>
 
-      <LineItemsEditor lineItems={items} services={services} materials={materials} artworkSizeBands={artworkSizeBands} onChange={setLineItems} />
+      <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
         <div className="field">

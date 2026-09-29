@@ -60,7 +60,7 @@ model Service {
   price               Float
   // An sqm-priced service billed off one artwork's area (length x width) —
   // e.g. DTF Printing or Embroidery. Governs whether order line items show
-  // the "Artwork size (sqm)"/size-band quick-pick UI and compute unit price
+  // the "Artwork size (sqm)" field and compute unit price
   // as area x this service's Ksh/sqm rate (see LineItemsEditor.tsx).
   // Editable by Admin in Master Data.
   usesArtworkPricing  Boolean @default(false)
@@ -69,34 +69,6 @@ model Service {
   // of the base price. Editable by Admin in Master Data.
   chargesPressingFee  Boolean @default(false)
   lineItems           OrderLineItem[]
-  artworkSizeBands    ArtworkSizeBand[]
-}
-
-// A flat-fee "quick pick" for common small artwork sizes (e.g. 6cm x 6cm) on
-// an artwork-priced service (Service.usesArtworkPricing), as an alternative
-// to the continuous area x Ksh/sqm formula on OrderLineItem. Small
-// jobs are dominated by fixed setup/press/stitch-out time, not material, so
-// a pure area-based rate underprices them — a preset flat fee per known size
-// fixes that. Scoped to one Service (serviceId) since two services pricing
-// the same physical size (e.g. a DTF print vs. an embroidered patch) have
-// very different flat fees for it. Editable by Admin in Master Data.
-//
-// Stored as length x width (not just area) so a captured artwork's real
-// dimensions can be matched against a band as a bounding box — an artwork
-// only "fits" a band if it fits within both the band's length AND width,
-// since two shapes can share an area while one is too long/narrow to
-// actually sit in a given slot. areaSqm is still stored (derived from
-// lengthCm x widthCm server-side) since it's cheaper to read than
-// recomputing everywhere.
-model ArtworkSizeBand {
-  id        Int     @id @default(autoincrement())
-  serviceId Int
-  service   Service @relation(fields: [serviceId], references: [id])
-  label     String // e.g. "6cm x 6cm"
-  lengthCm  Float
-  widthCm   Float
-  areaSqm   Float
-  price     Float // flat Ksh per piece at this size
 }
 
 model Material {

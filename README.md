@@ -138,23 +138,10 @@ own roster.
   (`ArtworkSizeDialog.tsx`) — length × width in cm → sqm — for staff who know a print's
   dimensions but not its area; it only appears on artwork-priced services (DTF Printing,
   Embroidery).
-- **Master Data → Artwork Size Bands** are flat "quick pick" prices for common small
-  artwork sizes (e.g. "6cm x 6cm" → Ksh 50, seeded from GLM's confirmed real price) — an
-  alternative to the area × Ksh/sqm formula, which underprices tiny prints dominated by
-  fixed setup/press time rather than material. Bands store `lengthCm`/`widthCm` (not
-  just a derived `areaSqm`, recomputed server-side whenever either changes), since two
-  shapes can share an area while one is too long/narrow to actually fit a slot.
-- Two ways to apply a band on an order line: the **"Quick size" dropdown** (a manual
-  pick, above Artwork size (sqm)), or **auto-match via the 📐 calculator**
-  (`ArtworkSizeDialog.tsx`'s `findMatchingBand`) — staff enter the artwork's real
-  length × width and the smallest band it strictly fits within (both dimensions,
-  either orientation, no rounding) is applied automatically, with a live preview
-  before confirming; if it's bigger than every band in both orientations, the normal
-  area formula applies instead. Either path sets price *and* area together, and a
-  "Matched: <label>" tag on the line item confirms which band applied. Bands are scoped
-  per service (`ArtworkSizeBand.serviceId`), so DTF Printing and Embroidery each have
-  their own set. Only one band ships seeded per service — add more once GLM confirms
-  real prices, rather than guessing.
+- Artwork-priced lines are always priced by the area formula. There are no preset "size band" flat
+  prices any more (the Artwork Size Bands table, Master Data tab, "Quick size" dropdown and 📐
+  auto-match were removed along with the old film-roll module they were built for) — the 📐
+  calculator now only converts length × width to sqm.
 - **Dates display as dd/mm/yyyy everywhere** (tables, dialogs, printed documents) via
   `packages/shared/src/calc.ts`'s `fmtDate()` — this is a display-only conversion.
   Storage, filtering, and `<input type="date">` values are unchanged (still ISO
@@ -472,17 +459,7 @@ Embroidery is priced the same way DTF Printing is — by artwork size — via a 
   any service-specific special-casing. "Embroidery" is seeded as `unit: 'sqm',
   usesArtworkPricing: true` (rather than flat `piece` pricing) with a starter Ksh
   8,000/sqm formula rate for custom sizes — a placeholder pending GLM's real figures.
-- **Artwork Size Bands are scoped per service** (`ArtworkSizeBand.serviceId`, a
-  required FK) instead of one global list — a DTF print and an embroidered patch of the
-  same physical size price very differently, so a 6cm × 6cm band can no longer leak its
-  DTF price onto an Embroidery line. Master Data → Artwork Size Bands has a service
-  picker; `LineItemsEditor.tsx`'s quick-size dropdown and the 📐 calculator both filter to
-  the current line's own service. Seeded four starter bands for Embroidery (small logo
-  5×5cm/Ksh 300, medium logo 8×8cm/Ksh 450, large design 12×12cm/Ksh 700, jacket back
-  25×25cm/Ksh 1,800) — small embroidery jobs are dominated by machine setup/stitch-out
-  time even more than DTF prints are, so these flat tiers are the primary pricing path in
-  practice, with the per-sqm formula as a fallback for anything larger/custom. All are
-  placeholders — adjust to GLM's real pricing in Master Data.
+- Embroidery's per-sqm rate (Ksh 8,000/sqm) is a placeholder — adjust it in Master Data → Service Price List.
 
 **Reports → Embroidery Profitability** (`GET /reports/embroidery-profitability`,
 `apps/api/src/routes/reports.ts`) gives a gross-profit view: Embroidery service revenue in

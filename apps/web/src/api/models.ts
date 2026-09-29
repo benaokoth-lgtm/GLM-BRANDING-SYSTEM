@@ -23,16 +23,6 @@ export interface CatalogMaterial {
   reorderLevel: number;
 }
 
-export interface ArtworkSizeBand {
-  id: number;
-  serviceId: number;
-  label: string;
-  lengthCm: number;
-  widthCm: number;
-  areaSqm: number;
-  price: number;
-}
-
 export interface CorporateClient {
   id: number;
   name: string;

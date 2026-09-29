@@ -1,4 +1,4 @@
-import { fmtDate, fmtNum, jobTotals } from '@glm/shared';
+import { computeFill, fmtDate, fmtNum, jobTotals } from '@glm/shared';
 import { api } from '../../api/client';
 import { useAuth } from '../../state/AuthContext';
 import { Card, right } from './shared';
@@ -33,7 +33,7 @@ export default function DtfJobs({ data, reload, setError }: DtfTabProps) {
             <thead>
               <tr>
                 <th>Date</th><th>Roll</th><th>Client</th>
-                <th style={right}>Run m</th><th style={right}>Artworks</th><th style={right}>Pcs</th>
+                <th style={right}>Run m</th><th style={right}>Fill</th><th style={right}>Billable m</th><th style={right}>Pcs</th>
                 <th style={right}>Base</th><th style={right}>×</th><th style={right}>Final/pc</th><th style={right}>Total</th>
                 <th></th>
                 {isAdmin && <th className="no-print"></th>}
@@ -42,13 +42,15 @@ export default function DtfJobs({ data, reload, setError }: DtfTabProps) {
             <tbody>
               {data.jobs.map((x) => {
                 const t = jobTotals(data.settings, x);
+                const fill = computeFill(x.widthUsedCm, data.settings.rollWidthCm);
                 return (
                   <tr key={x.id}>
                     <td className="text-muted">{fmtDate(x.jobOn)}</td>
                     <td>{x.rollId}</td>
                     <td>{x.client || '—'}</td>
                     <td style={right}>{fmtNum(x.runningMetres, 2)}</td>
-                    <td style={right}>{x.artworks}</td>
+                    <td style={right}>{Math.round(fill * 100)}%</td>
+                    <td style={right}>{fmtNum(t.billableMetres, 2)}</td>
                     <td style={right}>{x.pieces}</td>
                     <td style={right}>{fmtNum(t.basePerArtwork)}</td>
                     <td style={right}>{t.multiplier}</td>

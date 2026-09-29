@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fmtKsh, fmtNum, jobCalc, todayStr } from '@glm/shared';
+import { computeBillableMetres, computeFill, fmtKsh, fmtNum, jobCalc, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import type { DtfData } from '../components/dtf/shared';
@@ -16,7 +16,7 @@ export default function NewArtworkOrder() {
   const navigate = useNavigate();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [f, setF] = useState({ roll: '', client: '', run: '', pieces: '', mult: '', disc: '' });
+  const [f, setF] = useState({ roll: '', client: '', run: '', widthCm: '', pieces: '', mult: '', disc: '' });
   const [showOrderDialog, setShowOrderDialog] = useState(false);
 
   useEffect(() => {
@@ -33,23 +33,29 @@ export default function NewArtworkOrder() {
   const rollId = f.roll && open.some((r) => r.id === f.roll) ? f.roll : (open[0]?.id ?? '');
   const roll = open.find((r) => r.id === rollId);
   const run = num(f.run);
+  const widthCm = f.widthCm.trim() === '' ? settings.rollWidthCm : num(f.widthCm);
   const pcs = num(f.pieces);
   const disc = num(f.disc);
   // A DTF transfer is single-use — one physical print per piece pressed —
   // so pieces and the film's cost-splitting "artworks" count are always the
   // same number here. Only one is ever asked for; see routes/dtf.ts.
-  const c = jobCalc(settings, run, pcs, pcs, f.mult.trim() === '' ? null : num(f.mult), disc);
+  const fill = computeFill(widthCm, settings.rollWidthCm);
+  const billableMetres = computeBillableMetres(settings, run, widthCm);
+  const c = jobCalc(settings, billableMetres, pcs, pcs, f.mult.trim() === '' ? null : num(f.mult), disc);
   const used =
     data.sales.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.metres, 0) +
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
   const rollLen = roll?.rollLengthM || settings.rollLengthM;
   const overRoll = !!roll && used + run > rollLen;
-  const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && c.multiplier > 0;
+  const overWidth = widthCm > settings.rollWidthCm;
+  const canSave = !!rollId && run > 0 && widthCm > 0 && !overWidth && Number.isInteger(pcs) && pcs > 0 && c.multiplier > 0;
 
   const lines: [string, string, string][] = [
-    ['Base / piece', `${fmtNum(run, 2)} m × ${settings.stdPricePerM} ÷ ${fmtNum(pcs)}`, fmtKsh(c.basePerArtwork)],
+    ['Fill', `${fmtNum(widthCm, 1)} cm of ${fmtNum(settings.rollWidthCm)} cm`, `${Math.round(fill * 100)}%`],
+    ['Billable metres', `${fmtNum(run, 2)} m × (1 + ${settings.unfilledWidthPremium} × ${fmtNum(1 - fill, 2)})`, `${fmtNum(billableMetres, 2)} m`],
+    ['Base / piece', `${fmtNum(billableMetres, 2)} m × ${settings.stdPricePerM} ÷ ${fmtNum(pcs)}`, fmtKsh(c.basePerArtwork)],
     ['Proposed', `× ${c.multiplier}`, fmtKsh(c.proposed)],
-    ['Final / piece', `− ${fmtNum(disc, 2)}`, fmtKsh(c.finalPerPiece)],
+    ['Final / piece', `MAX(proposed, ${fmtKsh(settings.minPricePerPiece)}) − ${fmtNum(disc, 2)}`, fmtKsh(c.finalPerPiece)],
   ];
 
   return (
@@ -91,6 +97,13 @@ export default function NewArtworkOrder() {
           </p>
         </div>
         <div className="field" style={{ margin: 0 }}>
+          <label>Width used (cm)</label>
+          <input className="input" inputMode="decimal" value={f.widthCm} onChange={(e) => setF({ ...f, widthCm: e.target.value })} placeholder={String(settings.rollWidthCm)} />
+          <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
+            Widest extent the artworks occupy across the {settings.rollWidthCm}cm roll — one eyeballed number, not per artwork.
+          </p>
+        </div>
+        <div className="field" style={{ margin: 0 }}>
           <label>Pieces</label>
           <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} placeholder="e.g. 3" />
         </div>
@@ -116,6 +129,11 @@ export default function NewArtworkOrder() {
         ))}
       </div>
 
+      {overWidth && (
+        <p className="note" style={{ marginTop: 'var(--space-3)', borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
+          Blocked — width used can't exceed the roll's {settings.rollWidthCm}cm width.
+        </p>
+      )}
       {c.belowBase && (
         <p className="note" style={{ marginTop: 'var(--space-3)', borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
           Below base cost — this job loses money on film.
@@ -156,6 +174,7 @@ export default function NewArtworkOrder() {
             jobOn: todayStr(),
             client: f.client,
             runningMetres: run,
+            widthUsedCm: widthCm,
             pieces: pcs,
             multiplier: f.mult.trim() === '' ? null : num(f.mult),
             discountPerPiece: disc,

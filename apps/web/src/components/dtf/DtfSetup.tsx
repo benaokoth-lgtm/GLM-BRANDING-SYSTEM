@@ -10,7 +10,15 @@ const FIELDS: [string, string][] = [
   ['minPricePerM', 'Minimum price / m'],
   ['defaultMultiplier', 'Default multiplier'],
   ['wastageTolerancePct', 'Wastage tolerance (%)'],
+  ['unfilledWidthPremium', 'Unfilled-width premium (s)'],
+  ['minBillableMetres', 'Minimum billable metres'],
+  ['minPricePerPiece', 'Minimum price / piece'],
 ];
+
+// wastageTolerancePct and unfilledWidthPremium can legitimately be 0 (no
+// tolerance / no speed premium) — everything else must be a real positive
+// number, same "every value must be greater than zero" rule as before.
+const ALLOW_ZERO = new Set(['wastageTolerancePct', 'unfilledWidthPremium']);
 
 export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
   const [f, setF] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(data.settings).map(([k, v]) => [k, String(v)])));
@@ -18,7 +26,7 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
   const [saved, setSaved] = useState(false);
   const v = Object.fromEntries(Object.entries(f).map(([k, x]) => [k, num(x)])) as Record<string, number>;
   const problem =
-    FIELDS.some(([k]) => (k === 'wastageTolerancePct' ? v[k] < 0 : !(v[k] > 0)))
+    FIELDS.some(([k]) => (ALLOW_ZERO.has(k) ? v[k] < 0 : !(v[k] > 0)))
       ? 'Every value must be greater than zero.'
       : v.minPricePerM > v.stdPricePerM
         ? 'Minimum price cannot be above the standard price.'
@@ -51,8 +59,11 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
         </div>
         {problem && <p className="note" style={{ marginTop: 'var(--space-3)' }}>{problem}</p>}
         <p className="note" style={{ marginTop: 'var(--space-3)' }}>
-          Sales and jobs keep the standard price, minimum and multiplier they were saved with, so changing these only affects new records.
-          A roll's length is fixed when it's installed. The 5% wastage tolerance is a starting assumption — set your own target.
+          Sales and jobs keep every price/rate they were saved with (including the billable-metres figure the
+          unfilled-width premium resolved to), so changing these only affects new records. A roll's length is fixed
+          when it's installed. The 5% wastage tolerance is a starting assumption — set your own target. The
+          unfilled-width premium bills a part-width artwork job extra for tying up the whole roll length before the
+          row fills — 0 disables it entirely; 0.5 means up to +50% at zero fill.
         </p>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginTop: 'var(--space-3)' }}>
           <button type="button" className="btn btn-primary blueprint" disabled={busy || !!problem} onClick={save}>

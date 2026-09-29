@@ -9,6 +9,13 @@ export interface DtfSettings {
   minPricePerM: number;
   defaultMultiplier: number;
   wastageTolerancePct: number;
+  // Artwork-job billing (see jobCalc) — a job that only fills part of the
+  // roll's width still ties up that whole run length until the rest of the
+  // row fills with other work, so it's billed a premium proportional to how
+  // empty the row is instead of at face-value running metres.
+  unfilledWidthPremium: number; // 's' — 0.5 = up to +50% at zero fill, +0% at full width
+  minBillableMetres: number; // billable metres is never less than this, however short the job
+  minPricePerPiece: number; // final per-piece price is never less than this, however small the job
 }
 
 export const DEFAULT_DTF_SETTINGS: DtfSettings = {
@@ -18,6 +25,9 @@ export const DEFAULT_DTF_SETTINGS: DtfSettings = {
   minPricePerM: 400,
   defaultMultiplier: 3,
   wastageTolerancePct: 5,
+  unfilledWidthPremium: 0.5,
+  minBillableMetres: 0.25,
+  minPricePerPiece: 30,
 };
 
 export interface DtfRoll {
@@ -47,11 +57,14 @@ export interface DtfArtworkJob {
   rollId: string;
   jobOn: string;
   client: string;
-  runningMetres: number;
+  runningMetres: number; // physical film consumed — what the roll's remaining balance is drawn down by
+  widthUsedCm: number; // widest extent the artworks occupy across the roll's width — one eyeballed number per job
+  billableMetres: number; // resolved MAX(runningMetres, minBillableMetres) × (1 + s × (1 − Fill)), snapshotted at capture
   artworks: number;
   pieces: number;
   multiplier: number; // resolved multiplier actually used
   stdPriceAtJob: number; // snapshot
+  minPricePerPieceAtJob: number; // snapshot, same reasoning as stdPriceAtJob
   discountPerPiece: number; // negative = price up
 }
 
@@ -96,7 +109,24 @@ export function saleTotals(sale: DtfFilmSale) {
 
 // ---------- Artwork job ----------
 
+// How much of the roll's width this job actually occupies — 1 at full width
+// (60cm used of 60cm), less as the row gets emptier. Never above 1: a job
+// can't use more width than the roll has.
+export function computeFill(widthUsedCm: number, rollWidthCm: number): number {
+  return rollWidthCm > 0 ? Math.min(1, widthUsedCm / rollWidthCm) : 1;
+}
+
+// A part-width job still ties up its whole run length until the rest of the
+// row fills with other work — billed a premium proportional to how empty
+// the row is (zero at full width, up to +unfilledWidthPremium at zero fill),
+// on top of a floor so a tiny job never bills near-zero metres.
+export function computeBillableMetres(s: DtfSettings, runningMetres: number, widthUsedCm: number): number {
+  const fill = computeFill(widthUsedCm, s.rollWidthCm);
+  return Math.max(runningMetres, s.minBillableMetres) * (1 + s.unfilledWidthPremium * (1 - fill));
+}
+
 export interface JobCalc {
+  billableMetres: number;
   basePerArtwork: number;
   multiplier: number;
   proposed: number;
@@ -107,18 +137,20 @@ export interface JobCalc {
 
 export function jobCalc(
   s: DtfSettings,
-  runningMetres: number,
+  billableMetres: number,
   artworks: number,
   pieces: number,
   multiplier: number | null | undefined,
   discountPerPiece: number,
   stdPrice: number = s.stdPricePerM,
+  minPricePerPiece: number = s.minPricePerPiece,
 ): JobCalc {
   const mult = multiplier == null || Number.isNaN(multiplier) ? s.defaultMultiplier : multiplier;
-  const basePerArtwork = div(runningMetres * stdPrice, artworks);
+  const basePerArtwork = div(billableMetres * stdPrice, artworks);
   const proposed = basePerArtwork * mult;
-  const finalPerPiece = proposed - discountPerPiece;
+  const finalPerPiece = Math.max(proposed, minPricePerPiece) - discountPerPiece;
   return {
+    billableMetres: r2(billableMetres),
     basePerArtwork: r2(basePerArtwork),
     multiplier: mult,
     proposed: r2(proposed),
@@ -129,7 +161,7 @@ export function jobCalc(
 }
 
 export function jobTotals(s: DtfSettings, j: DtfArtworkJob): JobCalc {
-  return jobCalc(s, j.runningMetres, j.artworks, j.pieces, j.multiplier, j.discountPerPiece, j.stdPriceAtJob);
+  return jobCalc(s, j.billableMetres, j.artworks, j.pieces, j.multiplier, j.discountPerPiece, j.stdPriceAtJob, j.minPricePerPieceAtJob);
 }
 
 // ---------- Roll roll-up (the workbook's Rolls sheet / roll_summary view) ----------

@@ -22,6 +22,16 @@ async function getSettings() {
   return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
 }
 
+// Translates a raw Prisma foreign-key failure (e.g. a stale reference left
+// over from a reseed) into something a staff member can actually act on,
+// instead of the query/stack-trace text Prisma throws by default.
+function orderCreationErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') {
+    return 'Something referenced by this order (staff, roll, or a catalog item) no longer exists — please log out and log back in, then try again.';
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
 // Optional merchandise sold alongside a film sale or artwork job (e.g. a
 // blank cap the client also wants printed on) — becomes ordinary 'material'
 // order line items, same shape New Walk-in Order captures. unitPrice
@@ -67,6 +77,15 @@ async function createDtfOrder(
     paymentMethod: PaymentMethod;
   },
 ) {
+  // The order's staffId comes straight from the caller's JWT — if the dev
+  // database was reseeded (or this user's row was otherwise removed) since
+  // that token was issued, it no longer matches any User row and the
+  // eventual order.create() fails with an opaque foreign-key error. Caught
+  // here so the real cause ("log out and back in") surfaces instead of a
+  // raw Prisma stack trace in the popup.
+  const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
+  if (!staffExists) throw new Error('Your session is out of date (the underlying user record no longer exists) — please log out and log back in, then try again.');
+
   const materialItems = await materialLineItems(tx, opts.materialLines);
   const lineItemInputs: LineItemInput[] = [
     { itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
@@ -309,7 +328,7 @@ dtfRouter.post('/sales', async (req, res) => {
     });
     res.status(201).json({ sale, order: serializeDetail(order) });
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to record sale' });
+    res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record sale') });
   }
 });
 
@@ -427,7 +446,7 @@ dtfRouter.post('/jobs', async (req, res) => {
     });
     res.status(201).json({ job, order: serializeDetail(order) });
   } catch (err) {
-    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to record job' });
+    res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record job') });
   }
 });
 

@@ -13,6 +13,7 @@ export interface CatalogService {
   price: number;
   usesArtworkPricing: boolean;
   chargesPressingFee: boolean;
+  soldViaDtfModule: boolean;
 }
 
 export interface CatalogMaterial {
@@ -45,6 +46,7 @@ export interface OrderSummary {
   id: number;
   orderNo: string;
   kind: 'walkin' | 'corporate';
+  channel: 'general' | 'dtf';
   customerName: string | null;
   phone: string | null;
   corporateClient: { id: number; name: string; email: string; phone: string } | null;
@@ -341,6 +343,34 @@ export interface EmbroideryConsumableBreakdownRow {
   materialName: string;
   qty: number;
   totalCost: number;
+}
+
+export interface AccountsReceivableRow {
+  id: number;
+  orderNo: string;
+  kind: 'walkin' | 'corporate';
+  channel: 'general' | 'dtf';
+  client: string;
+  staffName: string;
+  createdDate: string;
+  dueDate: string | null;
+  grandTotal: number;
+  paidTotal: number;
+  balanceDue: number;
+  daysOverdue: number;
+}
+
+export interface AccountsReceivableData {
+  asOf: string;
+  totalOutstanding: number;
+  buckets: {
+    current: number;
+    days1to30: number;
+    days31to60: number;
+    days61to90: number;
+    days90plus: number;
+  };
+  rows: AccountsReceivableRow[];
 }
 
 export interface EmbroideryProfitabilityData {

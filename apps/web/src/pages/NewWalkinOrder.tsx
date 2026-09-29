@@ -10,7 +10,11 @@ import { printWalkinReceipt } from '../utils/printTicket';
 import MpesaStkButton from '../components/MpesaStkButton';
 
 export default function NewWalkinOrder() {
-  const { services, materials, staff, maxDiscountPct, loading } = useCatalog();
+  const { services: allServices, materials, staff, maxDiscountPct, loading } = useCatalog();
+  // DTF Printing / DTF Sheet are sold exclusively through the DTF Sales &
+  // Roll Tracker's own "Record sale"/"Record job" order popup (see
+  // components/dtf/DtfOrderDialog.tsx) — not picked as a line item here.
+  const services = allServices.filter((s) => !s.soldViaDtfModule);
   const { user } = useAuth();
   const navigate = useNavigate();
 

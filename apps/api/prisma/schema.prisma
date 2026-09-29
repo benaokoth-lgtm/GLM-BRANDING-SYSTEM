@@ -68,6 +68,15 @@ model Service {
   // staff-picked heat press fee (Ksh/piece) on the line item, added on top
   // of the base price. Editable by Admin in Master Data.
   chargesPressingFee  Boolean @default(false)
+  // True only for "DTF Printing" / "DTF Sheet (per metre)" — these are sold
+  // exclusively through the DTF Sales & Roll Tracker's own order-capture
+  // flow (see routes/dtf.ts), not picked as a line item in New Walk-in
+  // Order (LineItemsEditor filters them out there). The Service row itself
+  // still exists and is still referenced by OrderLineItem.serviceId on the
+  // orders that flow creates, purely so revenue reports (Sales by Category)
+  // keep grouping by service name correctly. Not exposed as a Master Data
+  // toggle — set once via seed, since there are exactly two such rows.
+  soldViaDtfModule    Boolean @default(false)
   lineItems           OrderLineItem[]
 }
 
@@ -118,6 +127,11 @@ model Setting {
   maxDiscountPct Float   @default(15)
   nextWalkinNo   Int     @default(1001)
   nextCorpNo     Int     @default(2001)
+  // Order numbering for the DTF Sales & Roll Tracker's own order-capture
+  // flow ('F-' prefix, for "Film") — kept separate from nextWalkinNo so
+  // Film/Artwork orders are visually distinct in order lists even though
+  // they're still kind: 'walkin' under the hood.
+  nextDtfNo      Int     @default(3001)
 
   // Company profile — used on printed invoices, quotations, and receipts.
   companyName    String  @default("GLM Branding")
@@ -303,6 +317,11 @@ model Order {
   id                Int      @id @default(autoincrement())
   orderNo           String   @unique
   kind              String // 'walkin' | 'corporate'
+  // 'general' (New Walk-in Order / corporate quote-invoice flow) vs 'dtf'
+  // (captured via the DTF Sales & Roll Tracker's Film Sale / Artwork Job
+  // order popup — see routes/dtf.ts). Lets "My Orders" filter the two apart
+  // without joining to DtfFilmSale/DtfArtworkJob.
+  channel           String   @default("general")
   customerName      String?
   phone             String?
   corporateClientId Int?
@@ -312,7 +331,12 @@ model Order {
   createdDate       String // 'YYYY-MM-DD'
   status            String // 'Quote' | 'Invoice' | 'Order'
   stage             String // production stage, see shared STAGES
-  dueDate           String? // corporate invoices only
+  // Corporate invoices: due date from the client's credit terms. Walk-in/DTF
+  // orders left with a balance at capture also get one now (see
+  // WALKIN_INVOICE_DUE_DAYS), so status can move to 'Invoice' there too —
+  // see convertQuoteToInvoice's sibling logic in routes/orders.ts and
+  // routes/dtf.ts's order-creation blocks.
+  dueDate           String?
   paymentTiming     String? // 'onAcceptance' | 'onCompletion' — walk-in only
   orderDiscountPct  Float    @default(0)
   orderDiscountAmt  Float    @default(0)
@@ -320,6 +344,8 @@ model Order {
   lineItems         OrderLineItem[]
   payments          Payment[]
   mpesaTransactions MpesaTransaction[]
+  dtfFilmSale       DtfFilmSale?
+  dtfArtworkJob     DtfArtworkJob?
 }
 
 // A line item is either a standalone material sale (Cap, Polo Shirt, canvas,
@@ -465,6 +491,14 @@ model DtfFilmSale {
   amountPaid     Float    @default(0)
   capturedByName String   @default("")
   createdAt      DateTime @default(now())
+  // The Order this sale's "Record sale" popup generated (line items, payment,
+  // receipt/invoice) — see POST /dtf/sales. Optional only because it's a
+  // later addition; every sale created going forward always has one.
+  // onDelete: SetNull since nothing in this app actually deletes an Order
+  // outside the dev seed script's full-table wipe — the sale record itself
+  // should survive that, just with its order link cleared.
+  orderId        Int?     @unique
+  order          Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
 }
 
 model DtfArtworkJob {
@@ -481,4 +515,9 @@ model DtfArtworkJob {
   discountPerPiece Float    @default(0) // negative = price up
   capturedByName   String   @default("")
   createdAt        DateTime @default(now())
+  // The Order this job's "Record job" popup generated — see POST /dtf/jobs.
+  // Optional for the same reason, and onDelete: SetNull for the same reason,
+  // as DtfFilmSale.orderId above.
+  orderId          Int?     @unique
+  order            Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
 }

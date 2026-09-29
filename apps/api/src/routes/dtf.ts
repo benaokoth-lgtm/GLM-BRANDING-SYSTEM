@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { jobCalc, nextRollId, saleCalc, todayStr } from '@glm/shared';
+import { Prisma } from '@prisma/client';
+import { computeOrderTotals, jobCalc, nextRollId, saleCalc, todayStr } from '@glm/shared';
+import type { LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
+import { orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
 
 // DTF Sales & Roll Tracker. Two access levels (see Role model):
 //   canAccessDtf — record film sales / artwork jobs (roll costs are never sent)
@@ -17,6 +20,92 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD
 
 async function getSettings() {
   return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+}
+
+// Optional merchandise sold alongside a film sale or artwork job (e.g. a
+// blank cap the client also wants printed on) — becomes ordinary 'material'
+// order line items, same shape New Walk-in Order captures. unitPrice
+// defaults to the material's own catalog price server-side when omitted,
+// but can be overridden the same way New Walk-in Order allows.
+const materialLineSchema = z.object({
+  materialId: z.number().int(),
+  qty: z.number().positive(),
+  unitPrice: z.number().nonnegative().optional(),
+});
+
+async function materialLineItems(
+  tx: Prisma.TransactionClient,
+  lines: { materialId: number; qty: number; unitPrice?: number }[],
+) {
+  const items: { itemType: string; materialId: number; qty: number; unitPrice: number; discountPct: number; discountAmt: number }[] = [];
+  for (const line of lines) {
+    let unitPrice = line.unitPrice;
+    if (unitPrice == null) {
+      const material = await tx.material.findUnique({ where: { id: line.materialId } });
+      if (!material) throw new Error('Material not found');
+      unitPrice = material.price;
+    }
+    items.push({ itemType: 'material', materialId: line.materialId, qty: line.qty, unitPrice, discountPct: 0, discountAmt: 0 });
+  }
+  return items;
+}
+
+// Builds the Order + line items + optional Payment for a DTF Film Sale or
+// Artwork Job's "Record sale"/"Record job" popup, inside the caller's own
+// transaction — shared by both POST /sales and POST /jobs below so the
+// receipt/invoice-vs-receipt logic (resolveWalkinStatus) and order
+// numbering stay in exactly one place.
+async function createDtfOrder(
+  tx: Prisma.TransactionClient,
+  opts: {
+    customerName: string;
+    phone: string;
+    staffId: number;
+    serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null };
+    materialLines: { materialId: number; qty: number; unitPrice?: number }[];
+    amountPaid: number;
+    paymentMethod: PaymentMethod;
+  },
+) {
+  const materialItems = await materialLineItems(tx, opts.materialLines);
+  const lineItemInputs: LineItemInput[] = [
+    { itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
+    ...materialItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: null, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: 0, discountAmt: 0 })),
+  ];
+  const totals = computeOrderTotals(
+    { lineItems: lineItemInputs, orderDiscountPct: 0, orderDiscountAmt: 0 },
+    opts.amountPaid > 0 ? [{ date: todayStr(), amount: opts.amountPaid, method: opts.paymentMethod }] : [],
+  );
+  const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
+
+  const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  const orderNo = 'F-' + settings.nextDtfNo;
+  await tx.setting.update({ where: { id: 1 }, data: { nextDtfNo: settings.nextDtfNo + 1 } });
+
+  const order = await tx.order.create({
+    data: {
+      orderNo,
+      kind: 'walkin',
+      channel: 'dtf',
+      customerName: opts.customerName || null,
+      phone: opts.phone || null,
+      staffId: opts.staffId,
+      createdDate: todayStr(),
+      status,
+      dueDate,
+      stage: 'Order Received',
+      lineItems: {
+        create: [
+          { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null },
+          ...materialItems,
+        ],
+      },
+      payments: opts.amountPaid > 0 ? { create: [{ date: todayStr(), amount: opts.amountPaid, method: opts.paymentMethod, staffId: opts.staffId }] } : undefined,
+    },
+    include: orderInclude,
+  });
+
+  return order;
 }
 
 // The full data set the tracker's calculations run on. Users without
@@ -162,11 +251,19 @@ const saleSchema = z.object({
   rollId: z.string().min(1),
   soldOn: dateStr.optional(),
   client: z.string().max(200).default(''),
+  phone: z.string().max(40).default(''),
   metres: z.number().positive('Metres must be greater than 0'),
   pricePerM: z.number().nullable().optional(), // blank ⇒ standard price
   amountPaid: z.number().min(0).default(0),
+  paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
+  materialLines: z.array(materialLineSchema).default([]),
 });
 
+// "Record sale" — the popup's Print button. Builds the DtfFilmSale (roll
+// consumption/revenue ledger, unchanged pricing rules) AND the Order it
+// prints as a receipt/invoice (line items, any merchandise sold alongside
+// the film, the payment taken), linked via DtfFilmSale.orderId, in one
+// transaction — either both are created or neither is.
 dtfRouter.post('/sales', async (req, res) => {
   const parsed = saleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
@@ -180,21 +277,70 @@ dtfRouter.post('/sales', async (req, res) => {
     return res.status(400).json({ error: `Price must be between ${settings.minPricePerM} and ${settings.stdPricePerM} KES/m` });
   }
   if (d.amountPaid > c.total) return res.status(400).json({ error: 'Amount paid cannot exceed the sale total' });
-  const sale = await prisma.dtfFilmSale.create({
-    data: {
-      rollId: d.rollId,
-      soldOn: d.soldOn ?? todayStr(),
-      client: d.client.trim(),
-      metres: d.metres,
-      pricePerM: c.price,
-      stdPriceAtSale: settings.stdPricePerM,
-      minPriceAtSale: settings.minPricePerM,
-      amountPaid: d.amountPaid,
-      capturedByName: req.user!.name,
-    },
-  });
-  res.status(201).json(sale);
+
+  try {
+    const { sale, order } = await prisma.$transaction(async (tx) => {
+      const service = await tx.service.findFirst({ where: { name: 'DTF Sheet (per metre)' } });
+      if (!service) throw new Error('The "DTF Sheet (per metre)" service is missing from Master Data — cannot generate an order for this sale.');
+      const order = await createDtfOrder(tx, {
+        customerName: d.client.trim(),
+        phone: d.phone.trim(),
+        staffId: req.user!.id,
+        serviceLine: { itemType: 'per-metre', serviceId: service.id, qty: d.metres, unitPrice: c.price },
+        materialLines: d.materialLines,
+        amountPaid: d.amountPaid,
+        paymentMethod: d.paymentMethod,
+      });
+      const sale = await tx.dtfFilmSale.create({
+        data: {
+          rollId: d.rollId,
+          soldOn: d.soldOn ?? todayStr(),
+          client: d.client.trim(),
+          metres: d.metres,
+          pricePerM: c.price,
+          stdPriceAtSale: settings.stdPricePerM,
+          minPriceAtSale: settings.minPricePerM,
+          amountPaid: d.amountPaid,
+          capturedByName: req.user!.name,
+          orderId: order.id,
+        },
+      });
+      return { sale, order };
+    });
+    res.status(201).json({ sale, order: serializeDetail(order) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to record sale' });
+  }
 });
+
+// Keeps the linked Order's Payment/status in sync when a sale's amountPaid
+// is topped up here — otherwise "Mark paid" would settle the sale for roll
+// revenue purposes while its printed invoice (and Accounts Receivable) kept
+// showing it as still owed. Only handles a top-up (the only way this route
+// is actually used — the "Mark paid" button always sets amountPaid to the
+// full total); a decrease just adjusts the sale's own record, since there's
+// no matching "un-pay" for an already-recorded Order Payment.
+async function syncOrderPayment(tx: Prisma.TransactionClient, orderId: number | null, topUp: number) {
+  if (!orderId || topUp <= 0) return;
+  const order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
+  if (!order) return;
+  await tx.payment.create({ data: { orderId, date: todayStr(), amount: topUp, method: 'Cash' } });
+  const lineItems: LineItemInput[] = order.lineItems.map((li) => ({
+    itemType: li.itemType as LineItemInput['itemType'],
+    serviceId: li.serviceId,
+    materialId: li.materialId,
+    qty: li.qty,
+    unitPrice: li.unitPrice,
+    discountPct: li.discountPct,
+    discountAmt: li.discountAmt,
+    heatPressFee: li.heatPressFee,
+  }));
+  const payments = [...order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentMethod })), { date: todayStr(), amount: topUp, method: 'Cash' as PaymentMethod }];
+  const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
+  if (totals.balanceDue <= 0 && order.status === 'Invoice') {
+    await tx.order.update({ where: { id: orderId }, data: { status: 'Order', dueDate: null } });
+  }
+}
 
 dtfRouter.patch('/sales/:id/paid', manageOnly, async (req, res) => {
   const amountPaid = Number((req.body as { amountPaid?: number }).amountPaid);
@@ -204,7 +350,12 @@ dtfRouter.patch('/sales/:id/paid', manageOnly, async (req, res) => {
   if (!Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > total) {
     return res.status(400).json({ error: `Amount paid must be between 0 and ${total}` });
   }
-  res.json(await prisma.dtfFilmSale.update({ where: { id: sale.id }, data: { amountPaid } }));
+  const topUp = amountPaid - sale.amountPaid;
+  const updated = await prisma.$transaction(async (tx) => {
+    await syncOrderPayment(tx, sale.orderId, topUp);
+    return tx.dtfFilmSale.update({ where: { id: sale.id }, data: { amountPaid } });
+  });
+  res.json(updated);
 });
 
 dtfRouter.delete('/sales/:id', requireRole('Admin'), async (req, res) => {
@@ -217,13 +368,22 @@ const jobSchema = z.object({
   rollId: z.string().min(1),
   jobOn: dateStr.optional(),
   client: z.string().max(200).default(''),
+  phone: z.string().max(40).default(''),
   runningMetres: z.number().positive('Running metres must be greater than 0'),
   artworks: z.number().int().positive('Number of artworks must be at least 1'),
   pieces: z.number().int().positive('Pieces must be at least 1'),
   multiplier: z.number().positive().nullable().optional(), // blank ⇒ default multiplier
   discountPerPiece: z.number().default(0), // negative ⇒ price above the proposal
+  heatPressFee: z.number().positive().nullable().optional(), // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
+  amountPaid: z.number().min(0).default(0),
+  paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
+  materialLines: z.array(materialLineSchema).default([]),
 });
 
+// "Record job" — same Print-time order generation as /sales above, but for
+// an artwork job: the per-piece line item optionally carries a heat press
+// fee (jobs are print-and-press; a pure film sale never is), and the linked
+// service is "DTF Printing" rather than "DTF Sheet (per metre)".
 dtfRouter.post('/jobs', async (req, res) => {
   const parsed = jobSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
@@ -232,21 +392,43 @@ dtfRouter.post('/jobs', async (req, res) => {
   if ('error' in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
   const c = jobCalc(settings, d.runningMetres, d.artworks, d.pieces, d.multiplier ?? null, d.discountPerPiece);
-  const job = await prisma.dtfArtworkJob.create({
-    data: {
-      rollId: d.rollId,
-      jobOn: d.jobOn ?? todayStr(),
-      client: d.client.trim(),
-      runningMetres: d.runningMetres,
-      artworks: d.artworks,
-      pieces: d.pieces,
-      multiplier: c.multiplier,
-      stdPriceAtJob: settings.stdPricePerM,
-      discountPerPiece: d.discountPerPiece,
-      capturedByName: req.user!.name,
-    },
-  });
-  res.status(201).json(job);
+  const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
+  if (d.amountPaid > jobTotal) return res.status(400).json({ error: 'Amount paid cannot exceed the job total' });
+
+  try {
+    const { job, order } = await prisma.$transaction(async (tx) => {
+      const service = await tx.service.findFirst({ where: { name: 'DTF Printing' } });
+      if (!service) throw new Error('The "DTF Printing" service is missing from Master Data — cannot generate an order for this job.');
+      const order = await createDtfOrder(tx, {
+        customerName: d.client.trim(),
+        phone: d.phone.trim(),
+        staffId: req.user!.id,
+        serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
+        materialLines: d.materialLines,
+        amountPaid: d.amountPaid,
+        paymentMethod: d.paymentMethod,
+      });
+      const job = await tx.dtfArtworkJob.create({
+        data: {
+          rollId: d.rollId,
+          jobOn: d.jobOn ?? todayStr(),
+          client: d.client.trim(),
+          runningMetres: d.runningMetres,
+          artworks: d.artworks,
+          pieces: d.pieces,
+          multiplier: c.multiplier,
+          stdPriceAtJob: settings.stdPricePerM,
+          discountPerPiece: d.discountPerPiece,
+          capturedByName: req.user!.name,
+          orderId: order.id,
+        },
+      });
+      return { job, order };
+    });
+    res.status(201).json({ job, order: serializeDetail(order) });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : 'Failed to record job' });
+  }
 });
 
 dtfRouter.delete('/jobs/:id', requireRole('Admin'), async (req, res) => {

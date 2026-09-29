@@ -1,0 +1,203 @@
+import { useState } from 'react';
+import { HEAT_PRESS_FEE_OPTIONS, PAYMENT_METHODS, fmtKsh } from '@glm/shared';
+import type { PaymentMethod } from '@glm/shared';
+import { api } from '../../api/client';
+import { useCatalog } from '../../hooks/useCatalog';
+import { printWalkinReceipt } from '../../utils/printTicket';
+import type { CompanySettings, OrderDetail } from '../../api/models';
+import { Corners, Field } from './shared';
+
+interface MaterialLine {
+  materialId: number;
+  qty: string;
+}
+
+interface Props {
+  mode: 'sale' | 'job';
+  postUrl: '/dtf/sales' | '/dtf/jobs';
+  basePayload: Record<string, unknown>;
+  // qty × unitPrice is the film/artwork line's own total, before any
+  // merchandise or (job-only) heat press fee is added on top.
+  qty: number;
+  unitPrice: number;
+  client: string;
+  onClose: () => void;
+  onDone: () => void;
+}
+
+// The "Record sale"/"Record job" popup — completes the order the calculator
+// on the left already priced: optional merchandise sold alongside it,
+// (artwork jobs only) a heat press fee, and how it's being paid. Pressing
+// Print is what actually creates the order (and, server-side, the linked
+// DtfFilmSale/DtfArtworkJob roll-consumption row) and prints two thermal
+// receipts — nothing is saved before that.
+export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPrice, client, onClose, onDone }: Props) {
+  const { materials } = useCatalog();
+  const [phone, setPhone] = useState('');
+  const [materialLines, setMaterialLines] = useState<MaterialLine[]>([]);
+  const [heatPressFee, setHeatPressFee] = useState('');
+  const [amountPaid, setAmountPaid] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const heatPress = mode === 'job' ? Number(heatPressFee) || 0 : 0;
+  const serviceLineTotal = qty * (unitPrice + heatPress);
+  const materialsTotal = materialLines.reduce((a, ml) => {
+    const mt = materials.find((m) => m.id === ml.materialId);
+    const q = Number(ml.qty) || 0;
+    return a + (mt ? mt.price * q : 0);
+  }, 0);
+  const grandTotal = Math.round((serviceLineTotal + materialsTotal) * 100) / 100;
+  const paid = Number(amountPaid) || 0;
+  const overPaid = paid > grandTotal;
+
+  function addMaterialLine() {
+    const first = materials[0];
+    if (!first) return;
+    setMaterialLines((lines) => [...lines, { materialId: first.id, qty: '1' }]);
+  }
+  function updateMaterialLine(idx: number, patch: Partial<MaterialLine>) {
+    setMaterialLines((lines) => lines.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
+  }
+  function removeMaterialLine(idx: number) {
+    setMaterialLines((lines) => lines.filter((_, i) => i !== idx));
+  }
+
+  async function print() {
+    setBusy(true);
+    setError(null);
+    // Both popups must open synchronously in this click handler, before any
+    // await, so popup blockers treat them as user-initiated.
+    const customerWin = window.open('', '_blank');
+    const shopWin = window.open('', '_blank');
+    try {
+      const payload = {
+        ...basePayload,
+        phone,
+        amountPaid: paid,
+        paymentMethod,
+        materialLines: materialLines
+          .filter((l) => Number(l.qty) > 0)
+          .map((l) => ({ materialId: l.materialId, qty: Number(l.qty) })),
+        ...(mode === 'job' ? { heatPressFee: heatPress > 0 ? heatPress : null } : {}),
+      };
+      const [{ order }, company] = await Promise.all([
+        api.post<{ order: OrderDetail }>(postUrl, payload),
+        api.get<CompanySettings>('/master-data/settings'),
+      ]);
+      printWalkinReceipt(customerWin, order, company);
+      printWalkinReceipt(shopWin, order, company, 'Duplicate copy');
+      onDone();
+    } catch (err) {
+      customerWin?.close();
+      shopWin?.close();
+      setError(err instanceof Error ? err.message : `Failed to record ${mode === 'sale' ? 'sale' : 'job'}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="dialog-backdrop" onClick={onClose}>
+      <div className="dialog blueprint" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+        <Corners />
+        <div className="dialog-title">Complete {mode === 'sale' ? 'film sale' : 'artwork job'} order</div>
+        <div className="dialog-body">
+        <p className="note" style={{ marginTop: 0 }}>
+          {client ? `Client: ${client}` : 'Walk-in client'} — {mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
+          <Field label="Phone (optional)">
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
+          </Field>
+
+          {mode === 'job' && (
+            <Field label="Heat press fee (Ksh/pc) — optional">
+              <select className="input" value={heatPressFee} onChange={(e) => setHeatPressFee(e.target.value)}>
+                <option value="">None</option>
+                {HEAT_PRESS_FEE_OPTIONS.map((fee) => (
+                  <option key={fee} value={fee}>
+                    Ksh {fee}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          <div>
+            <label style={{ display: 'block', marginBottom: 'var(--space-1)' }}>
+              Merchandise sold with this {mode === 'sale' ? 'sale' : 'job'} (optional)
+            </label>
+            {materialLines.map((ml, idx) => (
+              <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                <select className="input" value={ml.materialId} onChange={(e) => updateMaterialLine(idx, { materialId: Number(e.target.value) })}>
+                  {materials.map((mt) => (
+                    <option key={mt.id} value={mt.id}>
+                      {mt.name} ({fmtKsh(mt.price)})
+                    </option>
+                  ))}
+                </select>
+                <input className="input" value={ml.qty} onChange={(e) => updateMaterialLine(idx, { qty: e.target.value })} placeholder="Qty" />
+                <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeMaterialLine(idx)}>
+                  ✕
+                </button>
+              </div>
+            ))}
+            <button type="button" className="btn btn-secondary btn-sm" onClick={addMaterialLine} disabled={materials.length === 0}>
+              + Add merchandise item
+            </button>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-heading)', fontSize: 18, marginBottom: 'var(--space-2)' }}>
+              <span>Grand total</span>
+              <span>{fmtKsh(grandTotal)}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmountPaid(String(grandTotal))}>
+                Pay in full
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmountPaid('')}>
+                Deposit / pay later
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+              <Field label="Amount received now (Ksh)">
+                <input className="input" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="Full or partial" />
+              </Field>
+              <Field label="Method">
+                <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
+                  {PAYMENT_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            {overPaid && <p className="note">Amount paid can't exceed the order total ({fmtKsh(grandTotal)}).</p>}
+          </div>
+
+          {error && (
+            <p className="note" style={{ color: '#a33' }}>
+              {error}
+            </p>
+          )}
+        </div>
+        </div>
+        <div className="dialog-actions">
+          <button type="button" className="btn btn-secondary blueprint" onClick={onClose} disabled={busy}>
+            <Corners />
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || overPaid}>
+            <Corners />
+            Print
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

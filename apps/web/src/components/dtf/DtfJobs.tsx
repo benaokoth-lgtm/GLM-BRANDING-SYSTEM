@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { useAuth } from '../../state/AuthContext';
 import { Card, Corners, Field, num, right } from './shared';
 import type { DtfTabProps } from './shared';
+import DtfOrderDialog from './DtfOrderDialog';
 
 export default function DtfJobs({ data, reload, setError }: DtfTabProps) {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ export default function DtfJobs({ data, reload, setError }: DtfTabProps) {
   const open = data.rolls.filter((r) => r.status === 'open' && r.installedOn);
   const [f, setF] = useState({ roll: '', client: '', run: '', artworks: '', pieces: '', mult: '', disc: '' });
   const [busy, setBusy] = useState(false);
+  const [showOrderDialog, setShowOrderDialog] = useState(false);
 
   const rollId = f.roll && open.some((r) => r.id === f.roll) ? f.roll : (open[0]?.id ?? '');
   const roll = open.find((r) => r.id === rollId);
@@ -107,32 +109,39 @@ export default function DtfJobs({ data, reload, setError }: DtfTabProps) {
                 This would use more than the roll's {fmtNum(rollLen)} m ({fmtNum(used, 1)} m already used).
               </div>
             )}
-            <button
-              type="button"
-              className="btn btn-primary blueprint"
-              disabled={!canSave}
-              onClick={() =>
-                act(async () => {
-                  await api.post('/dtf/jobs', {
-                    rollId,
-                    jobOn: todayStr(),
-                    client: f.client,
-                    runningMetres: run,
-                    artworks: art,
-                    pieces: pcs,
-                    multiplier: f.mult.trim() === '' ? null : num(f.mult),
-                    discountPerPiece: disc,
-                  });
-                  setF({ roll: rollId, client: '', run: '', artworks: '', pieces: '', mult: '', disc: '' });
-                })
-              }
-            >
+            <button type="button" className="btn btn-primary blueprint" disabled={!canSave} onClick={() => setShowOrderDialog(true)}>
               <Corners />
               Record job
             </button>
           </div>
         </Card>
       </div>
+
+      {showOrderDialog && (
+        <DtfOrderDialog
+          mode="job"
+          postUrl="/dtf/jobs"
+          basePayload={{
+            rollId,
+            jobOn: todayStr(),
+            client: f.client,
+            runningMetres: run,
+            artworks: art,
+            pieces: pcs,
+            multiplier: f.mult.trim() === '' ? null : num(f.mult),
+            discountPerPiece: disc,
+          }}
+          qty={pcs}
+          unitPrice={c.finalPerPiece}
+          client={f.client}
+          onClose={() => setShowOrderDialog(false)}
+          onDone={() => {
+            setShowOrderDialog(false);
+            setF({ roll: rollId, client: '', run: '', artworks: '', pieces: '', mult: '', disc: '' });
+            reload();
+          }}
+        />
+      )}
 
       <div style={{ flex: '3 1 520px', minWidth: 0 }}>
         <Card title="Artwork jobs">

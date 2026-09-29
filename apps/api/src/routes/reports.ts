@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { buildLineTotal, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES } from '@glm/shared';
-import type { LineItemInput } from '@glm/shared';
+import { buildLineTotal, computeOrderTotals, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, todayStr } from '@glm/shared';
+import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth, requirePermission('canAccessReports'));
@@ -157,5 +157,64 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
     marginPerPiece,
     underpriced: marginPerPiece != null && marginPerPiece < 0,
     consumableBreakdown,
+  });
+});
+
+// Accounts Receivable — every order (corporate or walk-in/DTF) currently
+// sitting at status 'Invoice' with money still owed, aged off its due date.
+// A live snapshot ("as of today"), not a date-range report like the others
+// above: an invoice doesn't stop being owed just because it falls outside a
+// chosen range, so there's no from/to filter here.
+reportsRouter.get('/accounts-receivable', async (req, res) => {
+  const today = todayStr();
+  const orders = await prisma.order.findMany({
+    where: { status: 'Invoice' },
+    include: { corporateClient: true, lineItems: true, payments: true, staff: true },
+    orderBy: { dueDate: 'asc' },
+  });
+
+  const rows = orders
+    .map((o) => {
+      const lineItems: LineItemInput[] = o.lineItems.map((li) => ({
+        itemType: li.itemType as LineItemInput['itemType'],
+        serviceId: li.serviceId,
+        materialId: li.materialId,
+        qty: li.qty,
+        unitPrice: li.unitPrice,
+        discountPct: li.discountPct,
+        discountAmt: li.discountAmt,
+        heatPressFee: li.heatPressFee,
+      }));
+      const payments: PaymentRecord[] = o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
+      const totals = computeOrderTotals({ lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }, payments);
+      const daysOverdue = o.dueDate && o.dueDate < today ? Math.round((Date.parse(today) - Date.parse(o.dueDate)) / 86400000) : 0;
+      return {
+        id: o.id,
+        orderNo: o.orderNo,
+        kind: o.kind,
+        channel: o.channel,
+        client: o.kind === 'corporate' ? o.corporateClient?.name ?? '—' : o.customerName ?? '—',
+        staffName: o.staff.name,
+        createdDate: o.createdDate,
+        dueDate: o.dueDate,
+        grandTotal: totals.grandTotal,
+        paidTotal: totals.paidTotal,
+        balanceDue: totals.balanceDue,
+        daysOverdue,
+      };
+    })
+    .filter((r) => r.balanceDue > 0)
+    .sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  const bucket = (r: (typeof rows)[number]) =>
+    r.daysOverdue <= 0 ? 'current' : r.daysOverdue <= 30 ? 'days1to30' : r.daysOverdue <= 60 ? 'days31to60' : r.daysOverdue <= 90 ? 'days61to90' : 'days90plus';
+  const buckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days90plus: 0 };
+  for (const r of rows) buckets[bucket(r)] += r.balanceDue;
+
+  res.json({
+    asOf: today,
+    totalOutstanding: rows.reduce((a, r) => a + r.balanceDue, 0),
+    buckets,
+    rows,
   });
 });

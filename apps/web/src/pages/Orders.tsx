@@ -15,11 +15,13 @@ export default function Orders({ scope }: Props) {
   const [loading, setLoading] = useState(true);
   const [staffFilter, setStaffFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [channelFilter, setChannelFilter] = useState<'all' | 'general' | 'dtf'>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
 
   function load() {
     setLoading(true);
     const params = new URLSearchParams();
+    if (channelFilter !== 'all') params.set('channel', channelFilter);
     if (scope === 'all') {
       if (staffFilter !== 'all') params.set('staffId', staffFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -30,7 +32,7 @@ export default function Orders({ scope }: Props) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [scope, staffFilter, statusFilter]);
+  useEffect(load, [scope, staffFilter, statusFilter, channelFilter]);
 
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
 
@@ -46,6 +48,21 @@ export default function Orders({ scope }: Props) {
 
   return (
     <div>
+      <div className="seg" role="radiogroup" style={{ marginBottom: 'var(--space-4)', maxWidth: 360 }}>
+        <label className={'seg-opt' + (channelFilter === 'all' ? ' checked' : '')}>
+          <input type="radio" name="ordchan" checked={channelFilter === 'all'} onChange={() => setChannelFilter('all')} />
+          All orders
+        </label>
+        <label className={'seg-opt' + (channelFilter === 'general' ? ' checked' : '')}>
+          <input type="radio" name="ordchan" checked={channelFilter === 'general'} onChange={() => setChannelFilter('general')} />
+          General
+        </label>
+        <label className={'seg-opt' + (channelFilter === 'dtf' ? ' checked' : '')}>
+          <input type="radio" name="ordchan" checked={channelFilter === 'dtf'} onChange={() => setChannelFilter('dtf')} />
+          Film &amp; Artwork
+        </label>
+      </div>
+
       {scope === 'all' && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
@@ -102,7 +119,7 @@ export default function Orders({ scope }: Props) {
               <tr key={row.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(row.id)}>
                 <td>{row.orderNo}</td>
                 <td className="text-muted">{fmtDate(row.createdDate)}</td>
-                <td>{row.kind === 'corporate' ? 'Corporate' : 'Walk-in'}</td>
+                <td>{row.kind === 'corporate' ? 'Corporate' : row.channel === 'dtf' ? 'Film/Artwork' : 'Walk-in'}</td>
                 <td>{row.kind === 'corporate' ? row.corporateClient?.name ?? '—' : row.customerName ?? '—'}</td>
                 <td>{row.staff.name}</td>
                 <td>

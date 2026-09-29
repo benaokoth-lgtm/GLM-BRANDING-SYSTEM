@@ -41,7 +41,7 @@ function ticketItemsHtml(order: OrderDetail): string {
  * had (till/terminal/card-authorisation numbers) that this system doesn't
  * actually track.
  */
-export function printWalkinReceipt(w: Window | null, order: OrderDetail, company: CompanySettings) {
+export function printWalkinReceipt(w: Window | null, order: OrderDetail, company: CompanySettings, copyLabel?: string) {
   if (!w) return;
 
   const companyName = esc((company.companyName || 'GLM Branding').toUpperCase());
@@ -98,6 +98,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   </div>
   ${contactLine ? `<div class="center meta">${contactLine}</div>` : ''}
   <div class="center meta">${order.totals.balanceDue <= 0 ? 'RECEIPT — PAID IN FULL' : 'RECEIPT — BALANCE DUE'}</div>
+  ${copyLabel ? `<div class="center meta">${esc(copyLabel.toUpperCase())}</div>` : ''}
   <hr />
   <div class="row"><span>ORDER NO.</span><span>${esc(order.orderNo)}</span></div>
   <div class="row"><span>DATE</span><span>${fmtDate(order.createdDate)}</span></div>

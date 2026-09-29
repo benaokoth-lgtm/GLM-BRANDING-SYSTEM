@@ -102,6 +102,13 @@ export const HEAT_PRESS_FEE_OPTIONS = [20, 25, 30, 35, 40, 45, 50] as const;
 // Data.
 export const DTF_PRINT_DEFAULT_RATE_PER_SQM = 750;
 
+// A walk-in/DTF-channel order left with a balance at capture (vs. paid in
+// full, which prints as a settled sales receipt) has no corporate client
+// with its own creditDays to borrow a due date from — this is the flat term
+// used instead so it can still move to status 'Invoice' and be aged in
+// Accounts Receivable the same way a corporate invoice is.
+export const WALKIN_INVOICE_DUE_DAYS = 7;
+
 // Finance > Asset Register — fixed-asset categories for a print/branding
 // business (machines, vehicles, computers, furniture), as opposed to
 // Material's consumable stock sold to customers.

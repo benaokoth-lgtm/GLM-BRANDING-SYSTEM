@@ -37,8 +37,13 @@ export function computeOrderTotals(order: OrderTotalsInput, payments: PaymentRec
   return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
 }
 
+// Corporate invoices get a dueDate from the client's credit terms; walk-in/DTF
+// orders left with a balance at capture now get one too (see
+// WALKIN_INVOICE_DUE_DAYS), so this applies uniformly regardless of kind —
+// any order sitting at status 'Invoice' past its due date, still owing
+// money, is overdue.
 export function isOverdue(kind: 'walkin' | 'corporate', status: string, dueDate: string | null | undefined, balanceDue: number, today: string): boolean {
-  return kind === 'corporate' && status === 'Invoice' && !!dueDate && dueDate < today && balanceDue > 0;
+  return status === 'Invoice' && !!dueDate && dueDate < today && balanceDue > 0;
 }
 
 export function addDays(dateStr: string, days: number): string {

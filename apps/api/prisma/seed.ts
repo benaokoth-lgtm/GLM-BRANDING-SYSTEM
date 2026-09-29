@@ -48,11 +48,11 @@ async function main() {
 
   const [embroidery, dtf, uv, largeFormat, digital, dtfSheet] = await Promise.all([
     prisma.service.create({ data: { name: 'Embroidery', unit: 'piece', price: 350 } }),
-    prisma.service.create({ data: { name: 'DTF Printing', unit: 'sqm', price: DTF_PRINT_DEFAULT_RATE_PER_SQM, chargesPressingFee: true } }),
+    prisma.service.create({ data: { name: 'DTF Printing', unit: 'sqm', price: DTF_PRINT_DEFAULT_RATE_PER_SQM, chargesPressingFee: true, soldViaDtfModule: true } }),
     prisma.service.create({ data: { name: 'UV Printing', unit: 'piece', price: 400 } }),
     prisma.service.create({ data: { name: 'Large Format Printing', unit: 'sqm', price: 600 } }),
     prisma.service.create({ data: { name: 'Digital Printing', unit: 'piece', price: 200 } }),
-    prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 800 } }),
+    prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 800, soldViaDtfModule: true } }),
   ]);
 
   const [polo, tshirt, cap, hoodie] = await Promise.all([

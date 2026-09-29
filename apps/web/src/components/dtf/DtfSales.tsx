@@ -4,27 +4,27 @@ import { api } from '../../api/client';
 import { useAuth } from '../../state/AuthContext';
 import { Card, Corners, Field, Spec, num, right } from './shared';
 import type { DtfTabProps } from './shared';
+import DtfOrderDialog from './DtfOrderDialog';
 
 export default function DtfSales({ data, reload, setError }: DtfTabProps) {
   const { user } = useAuth();
   const { settings } = data;
   const isAdmin = user?.role === 'Admin';
   const open = data.rolls.filter((r) => r.status === 'open' && r.installedOn);
-  const [f, setF] = useState({ roll: '', client: '', metres: '', price: '', paid: '' });
+  const [f, setF] = useState({ roll: '', client: '', metres: '', price: '' });
   const [busy, setBusy] = useState(false);
+  const [showOrderDialog, setShowOrderDialog] = useState(false);
 
   const rollId = f.roll && open.some((r) => r.id === f.roll) ? f.roll : (open[0]?.id ?? '');
   const roll = open.find((r) => r.id === rollId);
   const metres = num(f.metres);
-  const paid = num(f.paid);
-  const c = saleCalc(settings, metres, f.price.trim() === '' ? null : num(f.price), paid);
+  const c = saleCalc(settings, metres, f.price.trim() === '' ? null : num(f.price), 0);
   const used =
     data.sales.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.metres, 0) +
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
   const rollLen = roll?.rollLengthM || settings.rollLengthM;
   const overRoll = !!roll && used + metres > rollLen;
-  const overPaid = paid > c.total;
-  const canSave = !busy && metres > 0 && !!rollId && c.valid && !overPaid;
+  const canSave = !busy && metres > 0 && !!rollId && c.valid;
 
   async function act(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -63,15 +63,11 @@ export default function DtfSales({ data, reload, setError }: DtfTabProps) {
                 <input className="input" inputMode="decimal" placeholder={String(settings.stdPricePerM)} value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} />
               </Field>
             </div>
-            <Field label="Amount paid">
-              <input className="input" inputMode="decimal" value={f.paid} onChange={(e) => setF({ ...f, paid: e.target.value })} />
-            </Field>
             {!c.valid && (
               <div className="note" style={{ borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
                 Blocked — price must be {settings.minPricePerM}–{settings.stdPricePerM} Ksh/m.
               </div>
             )}
-            {overPaid && <div className="note">Amount paid can't exceed the sale total ({fmtKsh(c.total)}).</div>}
             {overRoll && (
               <div className="note">
                 This would use more than the roll's {fmtNum(rollLen)} m ({fmtNum(used, 1)} m already used).
@@ -81,32 +77,31 @@ export default function DtfSales({ data, reload, setError }: DtfTabProps) {
               <Spec label="Price used" value={fmtKsh(c.price)} />
               <Spec label="Discount / m" value={fmtKsh(c.discountPerM)} />
               <Spec label="Sale total" value={fmtKsh(c.total)} />
-              <Spec label="Balance" value={fmtKsh(c.balance)} />
             </div>
-            <button
-              type="button"
-              className="btn btn-primary blueprint"
-              disabled={!canSave}
-              onClick={() =>
-                act(async () => {
-                  await api.post('/dtf/sales', {
-                    rollId,
-                    soldOn: todayStr(),
-                    client: f.client,
-                    metres,
-                    pricePerM: f.price.trim() === '' ? null : num(f.price),
-                    amountPaid: paid,
-                  });
-                  setF({ roll: rollId, client: '', metres: '', price: '', paid: '' });
-                })
-              }
-            >
+            <button type="button" className="btn btn-primary blueprint" disabled={!canSave} onClick={() => setShowOrderDialog(true)}>
               <Corners />
               Record sale
             </button>
           </div>
         </Card>
       </div>
+
+      {showOrderDialog && (
+        <DtfOrderDialog
+          mode="sale"
+          postUrl="/dtf/sales"
+          basePayload={{ rollId, soldOn: todayStr(), client: f.client, metres, pricePerM: f.price.trim() === '' ? null : num(f.price) }}
+          qty={metres}
+          unitPrice={c.price}
+          client={f.client}
+          onClose={() => setShowOrderDialog(false)}
+          onDone={() => {
+            setShowOrderDialog(false);
+            setF({ roll: rollId, client: '', metres: '', price: '' });
+            reload();
+          }}
+        />
+      )}
 
       <div style={{ flex: '3 1 520px', minWidth: 0 }}>
         <Card title="Film sales">

@@ -3,20 +3,20 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { addDays, buildLineTotal, computeOrderTotals, isOverdue, todayStr } from '@glm/shared';
+import { addDays, buildLineTotal, computeOrderTotals, isOverdue, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth);
 
-const orderInclude = Prisma.validator<Prisma.OrderInclude>()({
+export const orderInclude = Prisma.validator<Prisma.OrderInclude>()({
   staff: true,
   corporateClient: true,
   lineItems: { include: { service: true, material: true } },
   payments: { orderBy: { id: 'asc' } },
 });
 
-type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
+export type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
 function toLineItemInput(li: {
   itemType: string;
@@ -40,7 +40,7 @@ function toLineItemInput(li: {
   };
 }
 
-function serializeSummary(order: FullOrder) {
+export function serializeSummary(order: FullOrder) {
   const lineItems = order.lineItems.map(toLineItemInput);
   const payments: PaymentRecord[] = order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
   const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
@@ -49,6 +49,7 @@ function serializeSummary(order: FullOrder) {
     id: order.id,
     orderNo: order.orderNo,
     kind: order.kind,
+    channel: order.channel,
     customerName: order.customerName,
     phone: order.phone,
     corporateClient: order.corporateClient
@@ -64,7 +65,7 @@ function serializeSummary(order: FullOrder) {
   };
 }
 
-function serializeDetail(order: FullOrder) {
+export function serializeDetail(order: FullOrder) {
   const summary = serializeSummary(order);
   return {
     ...summary,
@@ -95,6 +96,17 @@ function canAccessOrder(userRole: string, userId: number, order: { staffId: numb
   return true;
 }
 
+// A walk-in/DTF-channel order settles into one of two documents at capture,
+// same rule wherever it's created (New Walk-in Order, DTF Film Sale/Artwork
+// Job): paid in full right there -> a closed 'Order' the receipt prints
+// against; left with any balance -> 'Invoice' with a due date (there's no
+// corporate creditDays to borrow one from here), so it shows up in Accounts
+// Receivable and can be aged like any other unpaid invoice.
+export function resolveWalkinStatus(balanceDue: number): { status: string; dueDate: string | null } {
+  if (balanceDue > 0) return { status: 'Invoice', dueDate: addDays(todayStr(), WALKIN_INVOICE_DUE_DAYS) };
+  return { status: 'Order', dueDate: null };
+}
+
 // Shared by the explicit "Convert quotation to invoice" action and by
 // receiving a deposit payment against a quote (see POST /:id/payments) —
 // either is the moment a client has actually accepted the quote and
@@ -110,7 +122,7 @@ async function convertQuoteToInvoice(
 
 // ── List ─────────────────────────────────────────────────────────────────
 ordersRouter.get('/', async (req, res) => {
-  const { staffId, status } = req.query as { staffId?: string; status?: string };
+  const { staffId, status, channel } = req.query as { staffId?: string; status?: string; channel?: string };
   const where: Record<string, unknown> = {};
 
   if (req.user!.role === 'Staff') {
@@ -119,6 +131,7 @@ ordersRouter.get('/', async (req, res) => {
     where.staffId = Number(staffId);
   }
   if (status && status !== 'all') where.status = status;
+  if (channel && channel !== 'all') where.channel = channel;
 
   const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: 'desc' } });
   res.json(orders.map(serializeSummary));
@@ -169,6 +182,13 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
 
+  const paymentAmount = form.paymentTiming === 'onAcceptance' ? form.paymentAmount ?? 0 : 0;
+  const totals = computeOrderTotals(
+    { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
+    paymentAmount > 0 ? [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? 'Cash' }] : [],
+  );
+  const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
+
   const order = await prisma.$transaction(async (tx) => {
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = 'W-' + settings.nextWalkinNo;
@@ -182,16 +202,14 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
         phone: form.phone,
         staffId: form.staffId,
         createdDate: todayStr(),
-        status: 'Order',
+        status,
+        dueDate,
         stage: 'Order Received',
         paymentTiming: form.paymentTiming,
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
         lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
-        payments:
-          form.paymentTiming === 'onAcceptance' && form.paymentAmount && form.paymentAmount > 0
-            ? { create: [{ date: todayStr(), amount: form.paymentAmount, method: form.paymentMethod ?? 'Cash', staffId: form.staffId }] }
-            : undefined,
+        payments: paymentAmount > 0 ? { create: [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? 'Cash', staffId: form.staffId }] } : undefined,
       },
       include: orderInclude,
     });
@@ -306,6 +324,20 @@ ordersRouter.post('/:id/payments', async (req, res) => {
     // quote accepted with no money down still uses that manual button.
     if (order.status === 'Quote') {
       await convertQuoteToInvoice(tx, order);
+    } else if (order.kind !== 'corporate' && order.status === 'Invoice') {
+      // Same idea for a walk-in/DTF order sitting at 'Invoice' with a
+      // balance (see resolveWalkinStatus): once this payment clears it,
+      // settle it back to 'Order' — the receipt state — same as if it had
+      // been paid in full at capture. A payment that only reduces, but
+      // doesn't clear, the balance leaves it as 'Invoice' for Accounts
+      // Receivable to keep tracking.
+      const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
+      const lineItems = full!.lineItems.map(toLineItemInput);
+      const payments: PaymentRecord[] = full!.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
+      const totals = computeOrderTotals({ lineItems, orderDiscountPct: full!.orderDiscountPct, orderDiscountAmt: full!.orderDiscountAmt }, payments);
+      if (totals.balanceDue <= 0) {
+        await tx.order.update({ where: { id: order.id }, data: { status: 'Order', dueDate: null } });
+      }
     }
   });
 

@@ -21,7 +21,10 @@ const ALL_FALSE: Permissions = Object.fromEntries(PERMISSION_KEYS.map((k) => [k,
 const ALL_TRUE: Permissions = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true])) as Permissions;
 
 export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
-  Staff: { ...ALL_FALSE, canCaptureOrders: true },
+  // canAccessDtf lets Staff reach Film Order/Artwork Order (next to General
+  // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
+  // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true },
   Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessDtf: true },
   'Finance Manager': {
     ...ALL_FALSE,

@@ -9,16 +9,17 @@ import type { DtfData } from '../components/dtf/shared';
 
 type Tab = 'dashboard' | 'rolls' | 'sales' | 'jobs' | 'setup';
 
+// Recording a new sale/job now happens on its own page next to New Walk-in
+// Order (see pages/NewFilmOrder.tsx / NewArtworkOrder.tsx) — this page is
+// manager-only (canManageDtf, see App.tsx's route guard) for the roll
+// dashboard, roll install/close, sales/jobs history + reconciliation, and
+// pricing Setup.
 const MANAGER_TABS: [Tab, string][] = [
   ['dashboard', 'Dashboard'],
   ['rolls', 'Rolls'],
   ['sales', 'Film Sales'],
   ['jobs', 'Artwork Jobs'],
   ['setup', 'Setup'],
-];
-const RECORDER_TABS: [Tab, string][] = [
-  ['sales', 'Film Sales'],
-  ['jobs', 'Artwork Jobs'],
 ];
 
 export default function Dtf() {
@@ -40,7 +41,7 @@ export default function Dtf() {
 
   if (!data) return <p className="note">{error ?? 'Loading…'}</p>;
 
-  const tabs = data.canManage ? MANAGER_TABS : RECORDER_TABS;
+  const tabs = MANAGER_TABS;
   const active = tab && tabs.some(([t]) => t === tab) ? tab : tabs[0][0];
   const props = { data, reload: load, setError };
 

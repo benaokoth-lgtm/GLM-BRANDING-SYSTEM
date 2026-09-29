@@ -20,7 +20,13 @@ function buildTabs(user: CurrentUser): [string, string][] {
   const hasFinance = isAdmin || p.canAccessFinance;
 
   if (isAdmin || p.canCaptureOrders) {
-    tabs.push(['/orders/new/walkin', 'New Walk-in Order'], ['/orders/mine', 'My Orders']);
+    tabs.push(['/orders/new/walkin', 'General Order']);
+  }
+  if (isAdmin || p.canAccessDtf || p.canManageDtf) {
+    tabs.push(['/orders/new/film', 'Film Order'], ['/orders/new/artwork', 'Artwork Order']);
+  }
+  if (isAdmin || p.canCaptureOrders) {
+    tabs.push(['/orders/mine', 'My Orders']);
   }
   if (!hasFinance && (isAdmin || p.canViewAllOrders)) tabs.push(['/orders/all', 'All Orders']);
   if (!hasFinance && (isAdmin || p.canManagePayments)) tabs.push(['/payments', 'Payments']);
@@ -29,7 +35,7 @@ function buildTabs(user: CurrentUser): [string, string][] {
   if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
   if (isAdmin || p.canAccessReports) tabs.push(['/reports', 'Reports']);
   if (isAdmin || p.canAccessStock) tabs.push(['/stock', 'Stock']);
-  if (isAdmin || p.canAccessDtf || p.canManageDtf) tabs.push(['/dtf', 'DTF']);
+  if (isAdmin || p.canManageDtf) tabs.push(['/dtf', 'DTF']);
 
   return tabs;
 }

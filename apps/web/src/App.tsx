@@ -5,6 +5,8 @@ import RequireRole from './components/RequireRole';
 import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
 import NewWalkinOrder from './pages/NewWalkinOrder';
+import NewFilmOrder from './pages/NewFilmOrder';
+import NewArtworkOrder from './pages/NewArtworkOrder';
 import Orders from './pages/Orders';
 import Payments from './pages/Payments';
 import MasterData from './pages/MasterData';
@@ -34,6 +36,22 @@ export default function App() {
           element={
             <RequirePermission keys={['canCaptureOrders']}>
               <NewWalkinOrder />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/orders/new/film"
+          element={
+            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
+              <NewFilmOrder />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/orders/new/artwork"
+          element={
+            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
+              <NewArtworkOrder />
             </RequirePermission>
           }
         />
@@ -112,7 +130,7 @@ export default function App() {
         <Route
           path="/dtf"
           element={
-            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
+            <RequirePermission keys={['canManageDtf']}>
               <Dtf />
             </RequirePermission>
           }

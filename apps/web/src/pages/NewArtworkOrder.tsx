@@ -16,7 +16,7 @@ export default function NewArtworkOrder() {
   const navigate = useNavigate();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [f, setF] = useState({ roll: '', client: '', run: '', artworks: '', pieces: '', mult: '', disc: '' });
+  const [f, setF] = useState({ roll: '', client: '', run: '', pieces: '', mult: '', disc: '' });
   const [showOrderDialog, setShowOrderDialog] = useState(false);
 
   useEffect(() => {
@@ -33,22 +33,23 @@ export default function NewArtworkOrder() {
   const rollId = f.roll && open.some((r) => r.id === f.roll) ? f.roll : (open[0]?.id ?? '');
   const roll = open.find((r) => r.id === rollId);
   const run = num(f.run);
-  const art = num(f.artworks);
   const pcs = num(f.pieces);
   const disc = num(f.disc);
-  const c = jobCalc(settings, run, art, pcs, f.mult.trim() === '' ? null : num(f.mult), disc);
+  // A DTF transfer is single-use — one physical print per piece pressed —
+  // so pieces and the film's cost-splitting "artworks" count are always the
+  // same number here. Only one is ever asked for; see routes/dtf.ts.
+  const c = jobCalc(settings, run, pcs, pcs, f.mult.trim() === '' ? null : num(f.mult), disc);
   const used =
     data.sales.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.metres, 0) +
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
   const rollLen = roll?.rollLengthM || settings.rollLengthM;
   const overRoll = !!roll && used + run > rollLen;
-  const canSave = !!rollId && run > 0 && Number.isInteger(art) && art > 0 && Number.isInteger(pcs) && pcs > 0 && c.multiplier > 0;
+  const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && c.multiplier > 0;
 
   const lines: [string, string, string][] = [
-    ['Base / artwork', `${fmtNum(run, 2)} m × ${settings.stdPricePerM} ÷ ${fmtNum(art)}`, fmtKsh(c.basePerArtwork)],
+    ['Base / piece', `${fmtNum(run, 2)} m × ${settings.stdPricePerM} ÷ ${fmtNum(pcs)}`, fmtKsh(c.basePerArtwork)],
     ['Proposed', `× ${c.multiplier}`, fmtKsh(c.proposed)],
     ['Final / piece', `− ${fmtNum(disc, 2)}`, fmtKsh(c.finalPerPiece)],
-    ['Pieces', '', fmtNum(pcs)],
   ];
 
   return (
@@ -85,14 +86,13 @@ export default function NewArtworkOrder() {
         <div className="field" style={{ margin: 0 }}>
           <label>Running metres</label>
           <input className="input" inputMode="decimal" value={f.run} onChange={(e) => setF({ ...f, run: e.target.value })} />
-        </div>
-        <div className="field" style={{ margin: 0 }}>
-          <label>No. of artworks</label>
-          <input className="input" inputMode="numeric" value={f.artworks} onChange={(e) => setF({ ...f, artworks: e.target.value })} />
+          <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
+            The actual length printed on film — must already cover every piece below (a transfer is single-use).
+          </p>
         </div>
         <div className="field" style={{ margin: 0 }}>
           <label>Pieces</label>
-          <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} />
+          <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} placeholder="e.g. 3" />
         </div>
         <div className="field" style={{ margin: 0 }}>
           <label>Multiplier</label>
@@ -156,7 +156,6 @@ export default function NewArtworkOrder() {
             jobOn: todayStr(),
             client: f.client,
             runningMetres: run,
-            artworks: art,
             pieces: pcs,
             multiplier: f.mult.trim() === '' ? null : num(f.mult),
             discountPerPiece: disc,

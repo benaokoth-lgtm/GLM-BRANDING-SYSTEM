@@ -383,13 +383,19 @@ dtfRouter.delete('/sales/:id', requireRole('Admin'), async (req, res) => {
 });
 
 // ── Artwork jobs ─────────────────────────────────────────────────────────
+// One physical film print is consumed per piece pressed — a DTF transfer is
+// single-use, so there's no way to press the same printed design onto more
+// pieces than were actually printed on the film. "Artworks" (jobCalc's
+// cost-splitting divisor) and "pieces" (the revenue multiplier) are
+// therefore always the same number here: the client only enters pieces,
+// and the server uses it for both, so the two can never drift apart the
+// way they could when they were separate, independently-typed fields.
 const jobSchema = z.object({
   rollId: z.string().min(1),
   jobOn: dateStr.optional(),
   client: z.string().max(200).default(''),
   phone: z.string().max(40).default(''),
   runningMetres: z.number().positive('Running metres must be greater than 0'),
-  artworks: z.number().int().positive('Number of artworks must be at least 1'),
   pieces: z.number().int().positive('Pieces must be at least 1'),
   multiplier: z.number().positive().nullable().optional(), // blank ⇒ default multiplier
   discountPerPiece: z.number().default(0), // negative ⇒ price above the proposal
@@ -410,7 +416,7 @@ dtfRouter.post('/jobs', async (req, res) => {
   const found = await openRoll(d.rollId);
   if ('error' in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
-  const c = jobCalc(settings, d.runningMetres, d.artworks, d.pieces, d.multiplier ?? null, d.discountPerPiece);
+  const c = jobCalc(settings, d.runningMetres, d.pieces, d.pieces, d.multiplier ?? null, d.discountPerPiece);
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
   if (d.amountPaid > jobTotal) return res.status(400).json({ error: 'Amount paid cannot exceed the job total' });
 
@@ -433,7 +439,7 @@ dtfRouter.post('/jobs', async (req, res) => {
           jobOn: d.jobOn ?? todayStr(),
           client: d.client.trim(),
           runningMetres: d.runningMetres,
-          artworks: d.artworks,
+          artworks: d.pieces,
           pieces: d.pieces,
           multiplier: c.multiplier,
           stdPriceAtJob: settings.stdPricePerM,

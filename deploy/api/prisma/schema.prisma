@@ -5,19 +5,12 @@
 // schema with the provider already flipped to postgresql into deploy/api — keep
 // this line as sqlite in what you commit.
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client-js"
-  // Pinned explicitly so `prisma generate`/`db push` always writes here
-  // regardless of which prisma CLI actually runs it (or where node/npx
-  // resolves that CLI from) — without this, some hosting environments
-  // (e.g. cPanel's nodevenv) generate the client into a global package
-  // folder outside the project instead, which apps/api/src/db.ts's plain
-  // `from '@prisma/client'` import can never resolve.
-  output = "../node_modules/@prisma/client"
 }
 
 model User {

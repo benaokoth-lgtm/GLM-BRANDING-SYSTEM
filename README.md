@@ -151,7 +151,7 @@ own roster.
   DB error) is forwarded to a catch-all error middleware and returned as a clean JSON 500
   — without it, Express 4 lets that rejection crash the whole process, taking the API
   down for every user over a single bad request.
-- No production deployment config yet (cPanel/Vercel) — add when ready to ship.
+- **Production (cPanel)**: see DEPLOYMENT.md. The hosted pieces are prebuilt into the committed deploy/ folder with npm run build:cpanel — rebuild and commit it after changing app code.
 - **Finance was split into Finance (Expenses, Petty Cash) and Compliance (VAT, NSSF,
   SHIF, Payroll)** — both gated by the same `canAccessFinance` permission (see "Roles &
   access levels" below), seeded true for Finance Manager, General Manager, Admin.

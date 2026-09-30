@@ -61,7 +61,15 @@ npm run db:push
 node seed-admin.js "Your Name"
 ```
 
-`seed-admin.js` prints one random Admin PIN, once — keep it. Do **not** run the dev seed (`apps/api/prisma/seed.ts`) in production: it wipes every table and creates demo users with hard-coded PINs. There is no PIN-reset feature yet. Log in, then set up Company Info, Staff, Services and Materials under Master Data.
+`seed-admin.js` prints one random Admin PIN, once — keep it. Do **not** run the dev seed (`apps/api/prisma/seed.ts`) in production: it wipes every table and creates demo users with hard-coded PINs. Log in, then set up Company Info, Staff, Services and Materials under Master Data.
+
+**Forgot a PIN, or a correct PIN "doesn't work"?** Five wrong attempts lock a user for 15 minutes. From the same folder and environment as above:
+
+```bash
+node reset-pin.js --list                 # who exists, and who is locked
+node reset-pin.js "Your Name"            # new random 4-digit PIN (also clears any lockout)
+node reset-pin.js "Your Name" 4821       # or choose the PIN yourself
+```
 
 > Terminal tips for this host: paste one command at a time; if pasted text shows `^[[200~`, run `bind 'set enable-bracketed-paste off'` first; a new Terminal tab starts with no environment, so redo the `source …/activate` and `export` lines.
 

@@ -27,8 +27,8 @@ async function main() {
 
   console.log(`Created Admin user "${admin.name}" (id ${admin.id}) — PIN: ${pin}`);
   console.log(
-    'There is no PIN-reset or staff-removal feature yet, so keep this PIN somewhere safe — ' +
-      'log in with it, then add whoever should really hold Admin access under Master Data → Staff & Users.',
+    'Keep this PIN somewhere safe — log in with it, then add whoever should really hold Admin access under Master Data → Staff & Users. ' +
+      `To enable "Forgot PIN?" by email: node reset-pin.js "${admin.name}" --email you@example.com`,
   );
 }
 

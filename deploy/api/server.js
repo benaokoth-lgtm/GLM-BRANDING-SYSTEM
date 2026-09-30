@@ -107,7 +107,7 @@ var require_main = __commonJS({
     var fs4 = require("fs");
     var path3 = require("path");
     var os3 = require("os");
-    var crypto8 = require("crypto");
+    var crypto9 = require("crypto");
     var packageJson = require_package();
     var version2 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -326,7 +326,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto8.createDecipheriv("aes-256-gcm", key, nonce);
+        const aesgcm = crypto9.createDecipheriv("aes-256-gcm", key, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error2) {
@@ -21440,14 +21440,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto8 = require("crypto");
+    var crypto9 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto8.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto9.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -24340,11 +24340,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports2) {
-    var crypto8 = require("crypto");
+    var crypto9 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto8.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto9.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -24353,7 +24353,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto8.createHash("sha1").update(str).digest("hex");
+      return crypto9.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -27667,14 +27667,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports2, module2) {
     var Buffer3 = require_safe_buffer().Buffer;
-    var crypto8 = require("crypto");
+    var crypto9 = require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util4 = require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto8.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto9.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -27764,17 +27764,17 @@ var require_jwa = __commonJS({
       return function sign2(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac = crypto8.createHmac("sha" + bits, secret);
+        var hmac = crypto9.createHmac("sha" + bits, secret);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
     }
     var bufferEqual;
-    var timingSafeEqual = "timingSafeEqual" in crypto8 ? function timingSafeEqual2(a, b) {
+    var timingSafeEqual = "timingSafeEqual" in crypto9 ? function timingSafeEqual2(a, b) {
       if (a.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto8.timingSafeEqual(a, b);
+      return crypto9.timingSafeEqual(a, b);
     } : function timingSafeEqual2(a, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -27791,7 +27791,7 @@ var require_jwa = __commonJS({
       return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto8.createSign("RSA-SHA" + bits);
+        var signer = crypto9.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig);
       };
@@ -27801,7 +27801,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto8.createVerify("RSA-SHA" + bits);
+        var verifier = crypto9.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -27810,11 +27810,11 @@ var require_jwa = __commonJS({
       return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto8.createSign("RSA-SHA" + bits);
+        var signer = crypto9.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto8.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto8.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto9.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto9.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig);
       };
@@ -27824,12 +27824,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto8.createVerify("RSA-SHA" + bits);
+        var verifier = crypto9.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto8.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto8.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto9.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto9.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -31233,6 +31233,7 @@ patchRouterParam();
 // apps/api/src/routes/auth.ts
 var import_express = __toESM(require_express2());
 var import_bcryptjs = __toESM(require_bcryptjs());
+var import_crypto = __toESM(require("crypto"));
 
 // node_modules/express-rate-limit/dist/index.mjs
 var import_node_buffer = require("node:buffer");
@@ -32007,5816 +32008,6 @@ var lib_default = rateLimit;
 // apps/api/src/db.ts
 var import_client = require("@prisma/client");
 var prisma = new import_client.PrismaClient();
-
-// apps/api/src/middleware/auth.ts
-var import_jsonwebtoken = __toESM(require_jsonwebtoken());
-var JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
-if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET must be set in production");
-}
-function signToken(user) {
-  return import_jsonwebtoken.default.sign(user, JWT_SECRET, { expiresIn: "12h" });
-}
-function requireAuth(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Not authenticated" });
-  }
-  try {
-    const payload = import_jsonwebtoken.default.verify(header.slice(7), JWT_SECRET);
-    req.user = payload;
-    next();
-  } catch {
-    return res.status(401).json({ error: "Invalid or expired session" });
-  }
-}
-function requireRole(...roles) {
-  return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ error: "Not permitted for your role" });
-    }
-    next();
-  };
-}
-function requirePermission(...keys) {
-  return async (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
-    if (req.user.role === "Admin") return next();
-    const role = await prisma.role.findUnique({ where: { name: req.user.role } });
-    if (!role || !keys.some((k) => role[k])) {
-      return res.status(403).json({ error: "Not permitted for your role" });
-    }
-    next();
-  };
-}
-
-// packages/shared/src/types.ts
-var PERMISSION_KEYS = [
-  "canCaptureOrders",
-  "canViewAllOrders",
-  "canManagePayments",
-  "canAccessPnl",
-  "canAccessFinance",
-  "canAccessStock",
-  "canApproveStock",
-  "canAccessReports",
-  "canAccessDtf",
-  "canManageDtf"
-];
-
-// packages/shared/src/calc.ts
-function buildLineTotal(li) {
-  const qty = Number(li.qty) || 0;
-  const price = Number(li.unitPrice) || 0;
-  const heatPressFee = Number(li.heatPressFee) || 0;
-  const pct = Number(li.discountPct) || 0;
-  const amt = Number(li.discountAmt) || 0;
-  return Math.max(0, qty * (price + heatPressFee) * (1 - pct / 100) - amt);
-}
-function computeOrderTotals(order, payments = []) {
-  const subtotal = order.lineItems.reduce((a, li) => a + buildLineTotal(li), 0);
-  const opct = Number(order.orderDiscountPct) || 0;
-  const oamt = Number(order.orderDiscountAmt) || 0;
-  const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
-  const paidTotal = payments.reduce((a, p) => a + (Number(p.amount) || 0), 0);
-  const balanceDue = Math.max(0, grandTotal - paidTotal);
-  const paidPct = grandTotal > 0 ? Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
-  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
-}
-function isOverdue(kind, status, dueDate, balanceDue, today) {
-  return status === "Invoice" && !!dueDate && dueDate < today && balanceDue > 0;
-}
-function addDays(dateStr2, days) {
-  const d = /* @__PURE__ */ new Date(dateStr2 + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-function todayStr() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-}
-
-// packages/shared/src/constants.ts
-var ALL_FALSE = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
-var ALL_TRUE = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
-var DEFAULT_ROLE_PERMISSIONS = {
-  // canAccessDtf lets Staff reach Film Order/Artwork Order (next to General
-  // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
-  // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true },
-  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessDtf: true },
-  "Finance Manager": {
-    ...ALL_FALSE,
-    canViewAllOrders: true,
-    canManagePayments: true,
-    canAccessPnl: true,
-    canAccessFinance: true,
-    canAccessStock: true,
-    canApproveStock: true,
-    canAccessReports: true,
-    canAccessDtf: true,
-    canManageDtf: true
-  },
-  "General Manager": {
-    ...ALL_FALSE,
-    canViewAllOrders: true,
-    canManagePayments: true,
-    canAccessPnl: true,
-    canAccessFinance: true,
-    canAccessStock: true,
-    canApproveStock: true,
-    canAccessReports: true,
-    canAccessDtf: true,
-    canManageDtf: true
-  },
-  Admin: ALL_TRUE
-};
-var EXPENSE_CATEGORIES = [
-  "Printing Materials & Consumables",
-  "Casual Labour",
-  "Transport",
-  "Utilities",
-  "Equipment Maintenance",
-  "Office Supplies",
-  "Courier/Delivery",
-  "Refreshments",
-  "Miscellaneous",
-  "Airtime/Data",
-  "Cleaning",
-  "Bank Charges"
-];
-var PAYROLL_PAYMENT_SOURCES = ["Petty Cash", "Bank/Cheque"];
-var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation"];
-var WALKIN_INVOICE_DUE_DAYS = 7;
-var ASSET_CATEGORIES = [
-  "Printing Equipment",
-  "Embroidery Machines",
-  "Heat Press & Curing",
-  "Computers & IT Equipment",
-  "Furniture & Fixtures",
-  "Vehicles",
-  "Office Equipment",
-  "Other"
-];
-var ASSET_CONDITIONS = ["Active", "Under Repair", "Retired"];
-var EMBROIDERY_CONSUMABLE_MATERIAL_NAMES = ["Embroidery Thread", "Embroidery Needles"];
-
-// packages/shared/src/tax.ts
-var VAT_RATE = 0.16;
-var NSSF_RATE = 0.12;
-var SHIF_RATE = 0.0275;
-var HOUSING_LEVY_RATE = 0.03;
-var PAYE_MONTHLY_RELIEF = 2400;
-var PAYE_BANDS = [
-  [24e3, 0.1],
-  [8333, 0.25],
-  [467667, 0.3],
-  [3e5, 0.325],
-  [Infinity, 0.35]
-];
-function payeBand(monthlyPay) {
-  let tax = 0;
-  let remaining = monthlyPay;
-  for (const [width, rate] of PAYE_BANDS) {
-    if (remaining <= 0) break;
-    const x = Math.min(remaining, width);
-    tax += x * rate;
-    remaining -= x;
-  }
-  return tax;
-}
-function payeNet(monthlyPay) {
-  return Math.max(0, payeBand(monthlyPay) - PAYE_MONTHLY_RELIEF);
-}
-function nssfContribution(grossPay) {
-  return grossPay * NSSF_RATE;
-}
-function shifContribution(grossPay) {
-  return Math.max(grossPay * SHIF_RATE, 300);
-}
-function housingLevy(grossPay) {
-  return grossPay * HOUSING_LEVY_RATE;
-}
-function splitVatInclusive(inclusiveAmount) {
-  const net8 = inclusiveAmount / (1 + VAT_RATE);
-  return { net: net8, vat: inclusiveAmount - net8 };
-}
-function computePay(grossPay, employeeType) {
-  if (employeeType === "Casual") {
-    return { grossPay, paye: 0, nssf: 0, shif: 0, housingLevy: 0, totalDeductions: 0, netPay: grossPay };
-  }
-  const paye = payeNet(grossPay);
-  const nssf = nssfContribution(grossPay);
-  const shif = shifContribution(grossPay);
-  const housing = housingLevy(grossPay);
-  const totalDeductions = paye + nssf + shif + housing;
-  return { grossPay, paye, nssf, shif, housingLevy: housing, totalDeductions, netPay: grossPay - totalDeductions };
-}
-
-// packages/shared/src/dtf.ts
-var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-var div = (a, b) => b > 0 ? a / b : 0;
-function saleCalc(s, metres, pricePerM, amountPaid) {
-  const price = pricePerM == null || Number.isNaN(pricePerM) ? s.stdPricePerM : pricePerM;
-  const total = r2(metres * price);
-  return {
-    price,
-    valid: price >= s.minPricePerM && price <= s.stdPricePerM,
-    discountPerM: r2(s.stdPricePerM - price),
-    total,
-    balance: r2(total - amountPaid)
-  };
-}
-function jobCalc(runningMetres, pieces, fixedChargePerMetre, minPricePerPiece) {
-  const finalPerPiece = minPricePerPiece + div(fixedChargePerMetre * runningMetres, pieces);
-  return {
-    finalPerPiece: r2(finalPerPiece),
-    jobTotal: r2(finalPerPiece * pieces)
-  };
-}
-function nextRollId(rolls) {
-  const max = rolls.reduce((m, r) => Math.max(m, Number(/(\d+)$/.exec(r.id)?.[1] ?? 0)), 0);
-  return `ROLL-${String(max + 1).padStart(3, "0")}`;
-}
-
-// apps/api/src/permissions.ts
-var ALL_TRUE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
-var ALL_FALSE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
-async function permissionsForRole(roleName) {
-  if (roleName === "Admin") return ALL_TRUE2;
-  const role = await prisma.role.findUnique({ where: { name: roleName } });
-  if (!role) return ALL_FALSE2;
-  return Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]]));
-}
-
-// apps/api/src/routes/auth.ts
-var authRouter = (0, import_express.Router)();
-var loginLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 30, standardHeaders: true, legacyHeaders: false });
-var LOCK_MINUTES = 15;
-var MAX_ATTEMPTS = 5;
-function initials(name2) {
-  return name2.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("");
-}
-authRouter.get("/users", async (_req, res) => {
-  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
-  res.json(
-    users.map((u) => ({ id: u.id, name: u.name, role: u.role, initials: initials(u.name) }))
-  );
-});
-authRouter.post("/login", loginLimiter, async (req, res) => {
-  const { userId, pin } = req.body;
-  if (!userId || !pin) return res.status(400).json({ error: "userId and pin are required" });
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
-  if (!user) return res.status(401).json({ error: "Invalid PIN" });
-  if (user.lockedUntil && user.lockedUntil > /* @__PURE__ */ new Date()) {
-    return res.status(423).json({ error: "Account locked, try again shortly" });
-  }
-  const ok = await import_bcryptjs.default.compare(pin, user.pinHash);
-  if (!ok) {
-    const failedLoginCount = user.failedLoginCount + 1;
-    const lockedUntil = failedLoginCount >= MAX_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60 * 1e3) : null;
-    await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount, lockedUntil } });
-    return res.status(401).json({ error: "Invalid PIN" });
-  }
-  await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
-  const authedUser = { id: user.id, name: user.name, role: user.role };
-  const token = signToken(authedUser);
-  const permissions = await permissionsForRole(user.role);
-  res.json({ token, user: { ...authedUser, permissions } });
-});
-authRouter.post("/change-pin", requireAuth, async (req, res) => {
-  const { currentPin, newPin } = req.body;
-  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ error: "New PIN must be 4 digits" });
-  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-  if (!user) return res.status(404).json({ error: "User not found" });
-  const ok = await import_bcryptjs.default.compare(currentPin || "", user.pinHash);
-  if (!ok) return res.status(401).json({ error: "Current PIN is incorrect" });
-  const pinHash = await import_bcryptjs.default.hash(newPin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
-  res.json({ ok: true });
-});
-
-// apps/api/src/routes/masterdata.ts
-var import_express2 = __toESM(require_express2());
-var import_bcryptjs2 = __toESM(require_bcryptjs());
-
-// node_modules/zod/v3/external.js
-var external_exports = {};
-__export(external_exports, {
-  BRAND: () => BRAND,
-  DIRTY: () => DIRTY,
-  EMPTY_PATH: () => EMPTY_PATH,
-  INVALID: () => INVALID,
-  NEVER: () => NEVER,
-  OK: () => OK,
-  ParseStatus: () => ParseStatus,
-  Schema: () => ZodType,
-  ZodAny: () => ZodAny,
-  ZodArray: () => ZodArray,
-  ZodBigInt: () => ZodBigInt,
-  ZodBoolean: () => ZodBoolean,
-  ZodBranded: () => ZodBranded,
-  ZodCatch: () => ZodCatch,
-  ZodDate: () => ZodDate,
-  ZodDefault: () => ZodDefault,
-  ZodDiscriminatedUnion: () => ZodDiscriminatedUnion,
-  ZodEffects: () => ZodEffects,
-  ZodEnum: () => ZodEnum,
-  ZodError: () => ZodError,
-  ZodFirstPartyTypeKind: () => ZodFirstPartyTypeKind,
-  ZodFunction: () => ZodFunction,
-  ZodIntersection: () => ZodIntersection,
-  ZodIssueCode: () => ZodIssueCode,
-  ZodLazy: () => ZodLazy,
-  ZodLiteral: () => ZodLiteral,
-  ZodMap: () => ZodMap,
-  ZodNaN: () => ZodNaN,
-  ZodNativeEnum: () => ZodNativeEnum,
-  ZodNever: () => ZodNever,
-  ZodNull: () => ZodNull,
-  ZodNullable: () => ZodNullable,
-  ZodNumber: () => ZodNumber,
-  ZodObject: () => ZodObject,
-  ZodOptional: () => ZodOptional,
-  ZodParsedType: () => ZodParsedType,
-  ZodPipeline: () => ZodPipeline,
-  ZodPromise: () => ZodPromise,
-  ZodReadonly: () => ZodReadonly,
-  ZodRecord: () => ZodRecord,
-  ZodSchema: () => ZodType,
-  ZodSet: () => ZodSet,
-  ZodString: () => ZodString,
-  ZodSymbol: () => ZodSymbol,
-  ZodTransformer: () => ZodEffects,
-  ZodTuple: () => ZodTuple,
-  ZodType: () => ZodType,
-  ZodUndefined: () => ZodUndefined,
-  ZodUnion: () => ZodUnion,
-  ZodUnknown: () => ZodUnknown,
-  ZodVoid: () => ZodVoid,
-  addIssueToContext: () => addIssueToContext,
-  any: () => anyType,
-  array: () => arrayType,
-  bigint: () => bigIntType,
-  boolean: () => booleanType,
-  coerce: () => coerce,
-  custom: () => custom,
-  date: () => dateType,
-  datetimeRegex: () => datetimeRegex,
-  defaultErrorMap: () => en_default,
-  discriminatedUnion: () => discriminatedUnionType,
-  effect: () => effectsType,
-  enum: () => enumType,
-  function: () => functionType,
-  getErrorMap: () => getErrorMap,
-  getParsedType: () => getParsedType,
-  instanceof: () => instanceOfType,
-  intersection: () => intersectionType,
-  isAborted: () => isAborted,
-  isAsync: () => isAsync,
-  isDirty: () => isDirty,
-  isValid: () => isValid,
-  late: () => late,
-  lazy: () => lazyType,
-  literal: () => literalType,
-  makeIssue: () => makeIssue,
-  map: () => mapType,
-  nan: () => nanType,
-  nativeEnum: () => nativeEnumType,
-  never: () => neverType,
-  null: () => nullType,
-  nullable: () => nullableType,
-  number: () => numberType,
-  object: () => objectType,
-  objectUtil: () => objectUtil,
-  oboolean: () => oboolean,
-  onumber: () => onumber,
-  optional: () => optionalType,
-  ostring: () => ostring,
-  pipeline: () => pipelineType,
-  preprocess: () => preprocessType,
-  promise: () => promiseType,
-  quotelessJson: () => quotelessJson,
-  record: () => recordType,
-  set: () => setType,
-  setErrorMap: () => setErrorMap,
-  strictObject: () => strictObjectType,
-  string: () => stringType,
-  symbol: () => symbolType,
-  transformer: () => effectsType,
-  tuple: () => tupleType,
-  undefined: () => undefinedType,
-  union: () => unionType,
-  unknown: () => unknownType,
-  util: () => util,
-  void: () => voidType
-});
-
-// node_modules/zod/v3/helpers/util.js
-var util;
-(function(util4) {
-  util4.assertEqual = (_) => {
-  };
-  function assertIs(_arg) {
-  }
-  util4.assertIs = assertIs;
-  function assertNever(_x) {
-    throw new Error();
-  }
-  util4.assertNever = assertNever;
-  util4.arrayToEnum = (items) => {
-    const obj = {};
-    for (const item of items) {
-      obj[item] = item;
-    }
-    return obj;
-  };
-  util4.getValidEnumValues = (obj) => {
-    const validKeys = util4.objectKeys(obj).filter((k) => typeof obj[obj[k]] !== "number");
-    const filtered = {};
-    for (const k of validKeys) {
-      filtered[k] = obj[k];
-    }
-    return util4.objectValues(filtered);
-  };
-  util4.objectValues = (obj) => {
-    return util4.objectKeys(obj).map(function(e) {
-      return obj[e];
-    });
-  };
-  util4.objectKeys = typeof Object.keys === "function" ? (obj) => Object.keys(obj) : (object) => {
-    const keys = [];
-    for (const key in object) {
-      if (Object.prototype.hasOwnProperty.call(object, key)) {
-        keys.push(key);
-      }
-    }
-    return keys;
-  };
-  util4.find = (arr, checker) => {
-    for (const item of arr) {
-      if (checker(item))
-        return item;
-    }
-    return void 0;
-  };
-  util4.isInteger = typeof Number.isInteger === "function" ? (val) => Number.isInteger(val) : (val) => typeof val === "number" && Number.isFinite(val) && Math.floor(val) === val;
-  function joinValues(array, separator = " | ") {
-    return array.map((val) => typeof val === "string" ? `'${val}'` : val).join(separator);
-  }
-  util4.joinValues = joinValues;
-  util4.jsonStringifyReplacer = (_, value) => {
-    if (typeof value === "bigint") {
-      return value.toString();
-    }
-    return value;
-  };
-})(util || (util = {}));
-var objectUtil;
-(function(objectUtil2) {
-  objectUtil2.mergeShapes = (first, second) => {
-    return {
-      ...first,
-      ...second
-      // second overwrites first
-    };
-  };
-})(objectUtil || (objectUtil = {}));
-var ZodParsedType = util.arrayToEnum([
-  "string",
-  "nan",
-  "number",
-  "integer",
-  "float",
-  "boolean",
-  "date",
-  "bigint",
-  "symbol",
-  "function",
-  "undefined",
-  "null",
-  "array",
-  "object",
-  "unknown",
-  "promise",
-  "void",
-  "never",
-  "map",
-  "set"
-]);
-var getParsedType = (data) => {
-  const t = typeof data;
-  switch (t) {
-    case "undefined":
-      return ZodParsedType.undefined;
-    case "string":
-      return ZodParsedType.string;
-    case "number":
-      return Number.isNaN(data) ? ZodParsedType.nan : ZodParsedType.number;
-    case "boolean":
-      return ZodParsedType.boolean;
-    case "function":
-      return ZodParsedType.function;
-    case "bigint":
-      return ZodParsedType.bigint;
-    case "symbol":
-      return ZodParsedType.symbol;
-    case "object":
-      if (Array.isArray(data)) {
-        return ZodParsedType.array;
-      }
-      if (data === null) {
-        return ZodParsedType.null;
-      }
-      if (data.then && typeof data.then === "function" && data.catch && typeof data.catch === "function") {
-        return ZodParsedType.promise;
-      }
-      if (typeof Map !== "undefined" && data instanceof Map) {
-        return ZodParsedType.map;
-      }
-      if (typeof Set !== "undefined" && data instanceof Set) {
-        return ZodParsedType.set;
-      }
-      if (typeof Date !== "undefined" && data instanceof Date) {
-        return ZodParsedType.date;
-      }
-      return ZodParsedType.object;
-    default:
-      return ZodParsedType.unknown;
-  }
-};
-
-// node_modules/zod/v3/ZodError.js
-var ZodIssueCode = util.arrayToEnum([
-  "invalid_type",
-  "invalid_literal",
-  "custom",
-  "invalid_union",
-  "invalid_union_discriminator",
-  "invalid_enum_value",
-  "unrecognized_keys",
-  "invalid_arguments",
-  "invalid_return_type",
-  "invalid_date",
-  "invalid_string",
-  "too_small",
-  "too_big",
-  "invalid_intersection_types",
-  "not_multiple_of",
-  "not_finite"
-]);
-var quotelessJson = (obj) => {
-  const json = JSON.stringify(obj, null, 2);
-  return json.replace(/"([^"]+)":/g, "$1:");
-};
-var ZodError = class _ZodError extends Error {
-  get errors() {
-    return this.issues;
-  }
-  constructor(issues) {
-    super();
-    this.issues = [];
-    this.addIssue = (sub) => {
-      this.issues = [...this.issues, sub];
-    };
-    this.addIssues = (subs = []) => {
-      this.issues = [...this.issues, ...subs];
-    };
-    const actualProto = new.target.prototype;
-    if (Object.setPrototypeOf) {
-      Object.setPrototypeOf(this, actualProto);
-    } else {
-      this.__proto__ = actualProto;
-    }
-    this.name = "ZodError";
-    this.issues = issues;
-  }
-  format(_mapper) {
-    const mapper = _mapper || function(issue) {
-      return issue.message;
-    };
-    const fieldErrors = { _errors: [] };
-    const processError = (error2) => {
-      for (const issue of error2.issues) {
-        if (issue.code === "invalid_union") {
-          issue.unionErrors.map(processError);
-        } else if (issue.code === "invalid_return_type") {
-          processError(issue.returnTypeError);
-        } else if (issue.code === "invalid_arguments") {
-          processError(issue.argumentsError);
-        } else if (issue.path.length === 0) {
-          fieldErrors._errors.push(mapper(issue));
-        } else {
-          let curr = fieldErrors;
-          let i = 0;
-          while (i < issue.path.length) {
-            const el = issue.path[i];
-            const terminal = i === issue.path.length - 1;
-            if (!terminal) {
-              curr[el] = curr[el] || { _errors: [] };
-            } else {
-              curr[el] = curr[el] || { _errors: [] };
-              curr[el]._errors.push(mapper(issue));
-            }
-            curr = curr[el];
-            i++;
-          }
-        }
-      }
-    };
-    processError(this);
-    return fieldErrors;
-  }
-  static assert(value) {
-    if (!(value instanceof _ZodError)) {
-      throw new Error(`Not a ZodError: ${value}`);
-    }
-  }
-  toString() {
-    return this.message;
-  }
-  get message() {
-    return JSON.stringify(this.issues, util.jsonStringifyReplacer, 2);
-  }
-  get isEmpty() {
-    return this.issues.length === 0;
-  }
-  flatten(mapper = (issue) => issue.message) {
-    const fieldErrors = {};
-    const formErrors = [];
-    for (const sub of this.issues) {
-      if (sub.path.length > 0) {
-        const firstEl = sub.path[0];
-        fieldErrors[firstEl] = fieldErrors[firstEl] || [];
-        fieldErrors[firstEl].push(mapper(sub));
-      } else {
-        formErrors.push(mapper(sub));
-      }
-    }
-    return { formErrors, fieldErrors };
-  }
-  get formErrors() {
-    return this.flatten();
-  }
-};
-ZodError.create = (issues) => {
-  const error2 = new ZodError(issues);
-  return error2;
-};
-
-// node_modules/zod/v3/locales/en.js
-var errorMap = (issue, _ctx) => {
-  let message;
-  switch (issue.code) {
-    case ZodIssueCode.invalid_type:
-      if (issue.received === ZodParsedType.undefined) {
-        message = "Required";
-      } else {
-        message = `Expected ${issue.expected}, received ${issue.received}`;
-      }
-      break;
-    case ZodIssueCode.invalid_literal:
-      message = `Invalid literal value, expected ${JSON.stringify(issue.expected, util.jsonStringifyReplacer)}`;
-      break;
-    case ZodIssueCode.unrecognized_keys:
-      message = `Unrecognized key(s) in object: ${util.joinValues(issue.keys, ", ")}`;
-      break;
-    case ZodIssueCode.invalid_union:
-      message = `Invalid input`;
-      break;
-    case ZodIssueCode.invalid_union_discriminator:
-      message = `Invalid discriminator value. Expected ${util.joinValues(issue.options)}`;
-      break;
-    case ZodIssueCode.invalid_enum_value:
-      message = `Invalid enum value. Expected ${util.joinValues(issue.options)}, received '${issue.received}'`;
-      break;
-    case ZodIssueCode.invalid_arguments:
-      message = `Invalid function arguments`;
-      break;
-    case ZodIssueCode.invalid_return_type:
-      message = `Invalid function return type`;
-      break;
-    case ZodIssueCode.invalid_date:
-      message = `Invalid date`;
-      break;
-    case ZodIssueCode.invalid_string:
-      if (typeof issue.validation === "object") {
-        if ("includes" in issue.validation) {
-          message = `Invalid input: must include "${issue.validation.includes}"`;
-          if (typeof issue.validation.position === "number") {
-            message = `${message} at one or more positions greater than or equal to ${issue.validation.position}`;
-          }
-        } else if ("startsWith" in issue.validation) {
-          message = `Invalid input: must start with "${issue.validation.startsWith}"`;
-        } else if ("endsWith" in issue.validation) {
-          message = `Invalid input: must end with "${issue.validation.endsWith}"`;
-        } else {
-          util.assertNever(issue.validation);
-        }
-      } else if (issue.validation !== "regex") {
-        message = `Invalid ${issue.validation}`;
-      } else {
-        message = "Invalid";
-      }
-      break;
-    case ZodIssueCode.too_small:
-      if (issue.type === "array")
-        message = `Array must contain ${issue.exact ? "exactly" : issue.inclusive ? `at least` : `more than`} ${issue.minimum} element(s)`;
-      else if (issue.type === "string")
-        message = `String must contain ${issue.exact ? "exactly" : issue.inclusive ? `at least` : `over`} ${issue.minimum} character(s)`;
-      else if (issue.type === "number")
-        message = `Number must be ${issue.exact ? `exactly equal to ` : issue.inclusive ? `greater than or equal to ` : `greater than `}${issue.minimum}`;
-      else if (issue.type === "bigint")
-        message = `Number must be ${issue.exact ? `exactly equal to ` : issue.inclusive ? `greater than or equal to ` : `greater than `}${issue.minimum}`;
-      else if (issue.type === "date")
-        message = `Date must be ${issue.exact ? `exactly equal to ` : issue.inclusive ? `greater than or equal to ` : `greater than `}${new Date(Number(issue.minimum))}`;
-      else
-        message = "Invalid input";
-      break;
-    case ZodIssueCode.too_big:
-      if (issue.type === "array")
-        message = `Array must contain ${issue.exact ? `exactly` : issue.inclusive ? `at most` : `less than`} ${issue.maximum} element(s)`;
-      else if (issue.type === "string")
-        message = `String must contain ${issue.exact ? `exactly` : issue.inclusive ? `at most` : `under`} ${issue.maximum} character(s)`;
-      else if (issue.type === "number")
-        message = `Number must be ${issue.exact ? `exactly` : issue.inclusive ? `less than or equal to` : `less than`} ${issue.maximum}`;
-      else if (issue.type === "bigint")
-        message = `BigInt must be ${issue.exact ? `exactly` : issue.inclusive ? `less than or equal to` : `less than`} ${issue.maximum}`;
-      else if (issue.type === "date")
-        message = `Date must be ${issue.exact ? `exactly` : issue.inclusive ? `smaller than or equal to` : `smaller than`} ${new Date(Number(issue.maximum))}`;
-      else
-        message = "Invalid input";
-      break;
-    case ZodIssueCode.custom:
-      message = `Invalid input`;
-      break;
-    case ZodIssueCode.invalid_intersection_types:
-      message = `Intersection results could not be merged`;
-      break;
-    case ZodIssueCode.not_multiple_of:
-      message = `Number must be a multiple of ${issue.multipleOf}`;
-      break;
-    case ZodIssueCode.not_finite:
-      message = "Number must be finite";
-      break;
-    default:
-      message = _ctx.defaultError;
-      util.assertNever(issue);
-  }
-  return { message };
-};
-var en_default = errorMap;
-
-// node_modules/zod/v3/errors.js
-var overrideErrorMap = en_default;
-function setErrorMap(map2) {
-  overrideErrorMap = map2;
-}
-function getErrorMap() {
-  return overrideErrorMap;
-}
-
-// node_modules/zod/v3/helpers/parseUtil.js
-var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
-  const fullIssue = {
-    ...issueData,
-    path: fullPath
-  };
-  if (issueData.message !== void 0) {
-    return {
-      ...issueData,
-      path: fullPath,
-      message: issueData.message
-    };
-  }
-  let errorMessage = "";
-  const maps = errorMaps.filter((m) => !!m).slice().reverse();
-  for (const map2 of maps) {
-    errorMessage = map2(fullIssue, { data, defaultError: errorMessage }).message;
-  }
-  return {
-    ...issueData,
-    path: fullPath,
-    message: errorMessage
-  };
-};
-var EMPTY_PATH = [];
-function addIssueToContext(ctx, issueData) {
-  const overrideMap = getErrorMap();
-  const issue = makeIssue({
-    issueData,
-    data: ctx.data,
-    path: ctx.path,
-    errorMaps: [
-      ctx.common.contextualErrorMap,
-      // contextual error map is first priority
-      ctx.schemaErrorMap,
-      // then schema-bound map if available
-      overrideMap,
-      // then global override map
-      overrideMap === en_default ? void 0 : en_default
-      // then global default map
-    ].filter((x) => !!x)
-  });
-  ctx.common.issues.push(issue);
-}
-var ParseStatus = class _ParseStatus {
-  constructor() {
-    this.value = "valid";
-  }
-  dirty() {
-    if (this.value === "valid")
-      this.value = "dirty";
-  }
-  abort() {
-    if (this.value !== "aborted")
-      this.value = "aborted";
-  }
-  static mergeArray(status, results) {
-    const arrayValue = [];
-    for (const s of results) {
-      if (s.status === "aborted")
-        return INVALID;
-      if (s.status === "dirty")
-        status.dirty();
-      arrayValue.push(s.value);
-    }
-    return { status: status.value, value: arrayValue };
-  }
-  static async mergeObjectAsync(status, pairs) {
-    const syncPairs = [];
-    for (const pair of pairs) {
-      const key = await pair.key;
-      const value = await pair.value;
-      syncPairs.push({
-        key,
-        value
-      });
-    }
-    return _ParseStatus.mergeObjectSync(status, syncPairs);
-  }
-  static mergeObjectSync(status, pairs) {
-    const finalObject = {};
-    for (const pair of pairs) {
-      const { key, value } = pair;
-      if (key.status === "aborted")
-        return INVALID;
-      if (value.status === "aborted")
-        return INVALID;
-      if (key.status === "dirty")
-        status.dirty();
-      if (value.status === "dirty")
-        status.dirty();
-      if (key.value !== "__proto__" && (typeof value.value !== "undefined" || pair.alwaysSet)) {
-        finalObject[key.value] = value.value;
-      }
-    }
-    return { status: status.value, value: finalObject };
-  }
-};
-var INVALID = Object.freeze({
-  status: "aborted"
-});
-var DIRTY = (value) => ({ status: "dirty", value });
-var OK = (value) => ({ status: "valid", value });
-var isAborted = (x) => x.status === "aborted";
-var isDirty = (x) => x.status === "dirty";
-var isValid = (x) => x.status === "valid";
-var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
-
-// node_modules/zod/v3/helpers/errorUtil.js
-var errorUtil;
-(function(errorUtil2) {
-  errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
-  errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
-})(errorUtil || (errorUtil = {}));
-
-// node_modules/zod/v3/types.js
-var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
-    this._cachedPath = [];
-    this.parent = parent;
-    this.data = value;
-    this._path = path3;
-    this._key = key;
-  }
-  get path() {
-    if (!this._cachedPath.length) {
-      if (Array.isArray(this._key)) {
-        this._cachedPath.push(...this._path, ...this._key);
-      } else {
-        this._cachedPath.push(...this._path, this._key);
-      }
-    }
-    return this._cachedPath;
-  }
-};
-var handleResult = (ctx, result) => {
-  if (isValid(result)) {
-    return { success: true, data: result.value };
-  } else {
-    if (!ctx.common.issues.length) {
-      throw new Error("Validation failed but no issues detected.");
-    }
-    return {
-      success: false,
-      get error() {
-        if (this._error)
-          return this._error;
-        const error2 = new ZodError(ctx.common.issues);
-        this._error = error2;
-        return this._error;
-      }
-    };
-  }
-};
-function processCreateParams(params) {
-  if (!params)
-    return {};
-  const { errorMap: errorMap2, invalid_type_error, required_error, description } = params;
-  if (errorMap2 && (invalid_type_error || required_error)) {
-    throw new Error(`Can't use "invalid_type_error" or "required_error" in conjunction with custom error map.`);
-  }
-  if (errorMap2)
-    return { errorMap: errorMap2, description };
-  const customMap = (iss, ctx) => {
-    const { message } = params;
-    if (iss.code === "invalid_enum_value") {
-      return { message: message ?? ctx.defaultError };
-    }
-    if (typeof ctx.data === "undefined") {
-      return { message: message ?? required_error ?? ctx.defaultError };
-    }
-    if (iss.code !== "invalid_type")
-      return { message: ctx.defaultError };
-    return { message: message ?? invalid_type_error ?? ctx.defaultError };
-  };
-  return { errorMap: customMap, description };
-}
-var ZodType = class {
-  get description() {
-    return this._def.description;
-  }
-  _getType(input) {
-    return getParsedType(input.data);
-  }
-  _getOrReturnCtx(input, ctx) {
-    return ctx || {
-      common: input.parent.common,
-      data: input.data,
-      parsedType: getParsedType(input.data),
-      schemaErrorMap: this._def.errorMap,
-      path: input.path,
-      parent: input.parent
-    };
-  }
-  _processInputParams(input) {
-    return {
-      status: new ParseStatus(),
-      ctx: {
-        common: input.parent.common,
-        data: input.data,
-        parsedType: getParsedType(input.data),
-        schemaErrorMap: this._def.errorMap,
-        path: input.path,
-        parent: input.parent
-      }
-    };
-  }
-  _parseSync(input) {
-    const result = this._parse(input);
-    if (isAsync(result)) {
-      throw new Error("Synchronous parse encountered promise.");
-    }
-    return result;
-  }
-  _parseAsync(input) {
-    const result = this._parse(input);
-    return Promise.resolve(result);
-  }
-  parse(data, params) {
-    const result = this.safeParse(data, params);
-    if (result.success)
-      return result.data;
-    throw result.error;
-  }
-  safeParse(data, params) {
-    const ctx = {
-      common: {
-        issues: [],
-        async: params?.async ?? false,
-        contextualErrorMap: params?.errorMap
-      },
-      path: params?.path || [],
-      schemaErrorMap: this._def.errorMap,
-      parent: null,
-      data,
-      parsedType: getParsedType(data)
-    };
-    const result = this._parseSync({ data, path: ctx.path, parent: ctx });
-    return handleResult(ctx, result);
-  }
-  "~validate"(data) {
-    const ctx = {
-      common: {
-        issues: [],
-        async: !!this["~standard"].async
-      },
-      path: [],
-      schemaErrorMap: this._def.errorMap,
-      parent: null,
-      data,
-      parsedType: getParsedType(data)
-    };
-    if (!this["~standard"].async) {
-      try {
-        const result = this._parseSync({ data, path: [], parent: ctx });
-        return isValid(result) ? {
-          value: result.value
-        } : {
-          issues: ctx.common.issues
-        };
-      } catch (err) {
-        if (err?.message?.toLowerCase()?.includes("encountered")) {
-          this["~standard"].async = true;
-        }
-        ctx.common = {
-          issues: [],
-          async: true
-        };
-      }
-    }
-    return this._parseAsync({ data, path: [], parent: ctx }).then((result) => isValid(result) ? {
-      value: result.value
-    } : {
-      issues: ctx.common.issues
-    });
-  }
-  async parseAsync(data, params) {
-    const result = await this.safeParseAsync(data, params);
-    if (result.success)
-      return result.data;
-    throw result.error;
-  }
-  async safeParseAsync(data, params) {
-    const ctx = {
-      common: {
-        issues: [],
-        contextualErrorMap: params?.errorMap,
-        async: true
-      },
-      path: params?.path || [],
-      schemaErrorMap: this._def.errorMap,
-      parent: null,
-      data,
-      parsedType: getParsedType(data)
-    };
-    const maybeAsyncResult = this._parse({ data, path: ctx.path, parent: ctx });
-    const result = await (isAsync(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
-    return handleResult(ctx, result);
-  }
-  refine(check, message) {
-    const getIssueProperties = (val) => {
-      if (typeof message === "string" || typeof message === "undefined") {
-        return { message };
-      } else if (typeof message === "function") {
-        return message(val);
-      } else {
-        return message;
-      }
-    };
-    return this._refinement((val, ctx) => {
-      const result = check(val);
-      const setError = () => ctx.addIssue({
-        code: ZodIssueCode.custom,
-        ...getIssueProperties(val)
-      });
-      if (typeof Promise !== "undefined" && result instanceof Promise) {
-        return result.then((data) => {
-          if (!data) {
-            setError();
-            return false;
-          } else {
-            return true;
-          }
-        });
-      }
-      if (!result) {
-        setError();
-        return false;
-      } else {
-        return true;
-      }
-    });
-  }
-  refinement(check, refinementData) {
-    return this._refinement((val, ctx) => {
-      if (!check(val)) {
-        ctx.addIssue(typeof refinementData === "function" ? refinementData(val, ctx) : refinementData);
-        return false;
-      } else {
-        return true;
-      }
-    });
-  }
-  _refinement(refinement) {
-    return new ZodEffects({
-      schema: this,
-      typeName: ZodFirstPartyTypeKind.ZodEffects,
-      effect: { type: "refinement", refinement }
-    });
-  }
-  superRefine(refinement) {
-    return this._refinement(refinement);
-  }
-  constructor(def) {
-    this.spa = this.safeParseAsync;
-    this._def = def;
-    this.parse = this.parse.bind(this);
-    this.safeParse = this.safeParse.bind(this);
-    this.parseAsync = this.parseAsync.bind(this);
-    this.safeParseAsync = this.safeParseAsync.bind(this);
-    this.spa = this.spa.bind(this);
-    this.refine = this.refine.bind(this);
-    this.refinement = this.refinement.bind(this);
-    this.superRefine = this.superRefine.bind(this);
-    this.optional = this.optional.bind(this);
-    this.nullable = this.nullable.bind(this);
-    this.nullish = this.nullish.bind(this);
-    this.array = this.array.bind(this);
-    this.promise = this.promise.bind(this);
-    this.or = this.or.bind(this);
-    this.and = this.and.bind(this);
-    this.transform = this.transform.bind(this);
-    this.brand = this.brand.bind(this);
-    this.default = this.default.bind(this);
-    this.catch = this.catch.bind(this);
-    this.describe = this.describe.bind(this);
-    this.pipe = this.pipe.bind(this);
-    this.readonly = this.readonly.bind(this);
-    this.isNullable = this.isNullable.bind(this);
-    this.isOptional = this.isOptional.bind(this);
-    this["~standard"] = {
-      version: 1,
-      vendor: "zod",
-      validate: (data) => this["~validate"](data)
-    };
-  }
-  optional() {
-    return ZodOptional.create(this, this._def);
-  }
-  nullable() {
-    return ZodNullable.create(this, this._def);
-  }
-  nullish() {
-    return this.nullable().optional();
-  }
-  array() {
-    return ZodArray.create(this);
-  }
-  promise() {
-    return ZodPromise.create(this, this._def);
-  }
-  or(option) {
-    return ZodUnion.create([this, option], this._def);
-  }
-  and(incoming) {
-    return ZodIntersection.create(this, incoming, this._def);
-  }
-  transform(transform) {
-    return new ZodEffects({
-      ...processCreateParams(this._def),
-      schema: this,
-      typeName: ZodFirstPartyTypeKind.ZodEffects,
-      effect: { type: "transform", transform }
-    });
-  }
-  default(def) {
-    const defaultValueFunc = typeof def === "function" ? def : () => def;
-    return new ZodDefault({
-      ...processCreateParams(this._def),
-      innerType: this,
-      defaultValue: defaultValueFunc,
-      typeName: ZodFirstPartyTypeKind.ZodDefault
-    });
-  }
-  brand() {
-    return new ZodBranded({
-      typeName: ZodFirstPartyTypeKind.ZodBranded,
-      type: this,
-      ...processCreateParams(this._def)
-    });
-  }
-  catch(def) {
-    const catchValueFunc = typeof def === "function" ? def : () => def;
-    return new ZodCatch({
-      ...processCreateParams(this._def),
-      innerType: this,
-      catchValue: catchValueFunc,
-      typeName: ZodFirstPartyTypeKind.ZodCatch
-    });
-  }
-  describe(description) {
-    const This = this.constructor;
-    return new This({
-      ...this._def,
-      description
-    });
-  }
-  pipe(target) {
-    return ZodPipeline.create(this, target);
-  }
-  readonly() {
-    return ZodReadonly.create(this);
-  }
-  isOptional() {
-    return this.safeParse(void 0).success;
-  }
-  isNullable() {
-    return this.safeParse(null).success;
-  }
-};
-var cuidRegex = /^c[^\s-]{8,}$/i;
-var cuid2Regex = /^[0-9a-z]+$/;
-var ulidRegex = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
-var uuidRegex = /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/i;
-var nanoidRegex = /^[a-z0-9_-]{21}$/i;
-var jwtRegex = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/;
-var durationRegex = /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/;
-var emailRegex = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i;
-var _emojiRegex = `^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$`;
-var emojiRegex;
-var ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
-var ipv4CidrRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/(3[0-2]|[12]?[0-9])$/;
-var ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
-var ipv6CidrRegex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
-var base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
-var base64urlRegex = /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/;
-var dateRegexSource = `((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))`;
-var dateRegex = new RegExp(`^${dateRegexSource}$`);
-function timeRegexSource(args) {
-  let secondsRegexSource = `[0-5]\\d`;
-  if (args.precision) {
-    secondsRegexSource = `${secondsRegexSource}\\.\\d{${args.precision}}`;
-  } else if (args.precision == null) {
-    secondsRegexSource = `${secondsRegexSource}(\\.\\d+)?`;
-  }
-  const secondsQuantifier = args.precision ? "+" : "?";
-  return `([01]\\d|2[0-3]):[0-5]\\d(:${secondsRegexSource})${secondsQuantifier}`;
-}
-function timeRegex(args) {
-  return new RegExp(`^${timeRegexSource(args)}$`);
-}
-function datetimeRegex(args) {
-  let regex = `${dateRegexSource}T${timeRegexSource(args)}`;
-  const opts = [];
-  opts.push(args.local ? `Z?` : `Z`);
-  if (args.offset)
-    opts.push(`([+-]\\d{2}:?\\d{2})`);
-  regex = `${regex}(${opts.join("|")})`;
-  return new RegExp(`^${regex}$`);
-}
-function isValidIP(ip, version2) {
-  if ((version2 === "v4" || !version2) && ipv4Regex.test(ip)) {
-    return true;
-  }
-  if ((version2 === "v6" || !version2) && ipv6Regex.test(ip)) {
-    return true;
-  }
-  return false;
-}
-function isValidJWT(jwt2, alg) {
-  if (!jwtRegex.test(jwt2))
-    return false;
-  try {
-    const [header] = jwt2.split(".");
-    if (!header)
-      return false;
-    const base64 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
-    const decoded = JSON.parse(atob(base64));
-    if (typeof decoded !== "object" || decoded === null)
-      return false;
-    if ("typ" in decoded && decoded?.typ !== "JWT")
-      return false;
-    if (!decoded.alg)
-      return false;
-    if (alg && decoded.alg !== alg)
-      return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-function isValidCidr(ip, version2) {
-  if ((version2 === "v4" || !version2) && ipv4CidrRegex.test(ip)) {
-    return true;
-  }
-  if ((version2 === "v6" || !version2) && ipv6CidrRegex.test(ip)) {
-    return true;
-  }
-  return false;
-}
-var ZodString = class _ZodString extends ZodType {
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = String(input.data);
-    }
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.string) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.string,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    const status = new ParseStatus();
-    let ctx = void 0;
-    for (const check of this._def.checks) {
-      if (check.kind === "min") {
-        if (input.data.length < check.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            minimum: check.value,
-            type: "string",
-            inclusive: true,
-            exact: false,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "max") {
-        if (input.data.length > check.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            maximum: check.value,
-            type: "string",
-            inclusive: true,
-            exact: false,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "length") {
-        const tooBig = input.data.length > check.value;
-        const tooSmall = input.data.length < check.value;
-        if (tooBig || tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          if (tooBig) {
-            addIssueToContext(ctx, {
-              code: ZodIssueCode.too_big,
-              maximum: check.value,
-              type: "string",
-              inclusive: true,
-              exact: true,
-              message: check.message
-            });
-          } else if (tooSmall) {
-            addIssueToContext(ctx, {
-              code: ZodIssueCode.too_small,
-              minimum: check.value,
-              type: "string",
-              inclusive: true,
-              exact: true,
-              message: check.message
-            });
-          }
-          status.dirty();
-        }
-      } else if (check.kind === "email") {
-        if (!emailRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "email",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "emoji") {
-        if (!emojiRegex) {
-          emojiRegex = new RegExp(_emojiRegex, "u");
-        }
-        if (!emojiRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "emoji",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "uuid") {
-        if (!uuidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "uuid",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "nanoid") {
-        if (!nanoidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "nanoid",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "cuid") {
-        if (!cuidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "cuid",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "cuid2") {
-        if (!cuid2Regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "cuid2",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "ulid") {
-        if (!ulidRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "ulid",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "url") {
-        try {
-          new URL(input.data);
-        } catch {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "url",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "regex") {
-        check.regex.lastIndex = 0;
-        const testResult = check.regex.test(input.data);
-        if (!testResult) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "regex",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "trim") {
-        input.data = input.data.trim();
-      } else if (check.kind === "includes") {
-        if (!input.data.includes(check.value, check.position)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: { includes: check.value, position: check.position },
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "toLowerCase") {
-        input.data = input.data.toLowerCase();
-      } else if (check.kind === "toUpperCase") {
-        input.data = input.data.toUpperCase();
-      } else if (check.kind === "startsWith") {
-        if (!input.data.startsWith(check.value)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: { startsWith: check.value },
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "endsWith") {
-        if (!input.data.endsWith(check.value)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: { endsWith: check.value },
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "datetime") {
-        const regex = datetimeRegex(check);
-        if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: "datetime",
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "date") {
-        const regex = dateRegex;
-        if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: "date",
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "time") {
-        const regex = timeRegex(check);
-        if (!regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_string,
-            validation: "time",
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "duration") {
-        if (!durationRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "duration",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "ip") {
-        if (!isValidIP(input.data, check.version)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "ip",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "jwt") {
-        if (!isValidJWT(input.data, check.alg)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "jwt",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "cidr") {
-        if (!isValidCidr(input.data, check.version)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "cidr",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "base64") {
-        if (!base64Regex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "base64",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "base64url") {
-        if (!base64urlRegex.test(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            validation: "base64url",
-            code: ZodIssueCode.invalid_string,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check);
-      }
-    }
-    return { status: status.value, value: input.data };
-  }
-  _regex(regex, validation, message) {
-    return this.refinement((data) => regex.test(data), {
-      validation,
-      code: ZodIssueCode.invalid_string,
-      ...errorUtil.errToObj(message)
-    });
-  }
-  _addCheck(check) {
-    return new _ZodString({
-      ...this._def,
-      checks: [...this._def.checks, check]
-    });
-  }
-  email(message) {
-    return this._addCheck({ kind: "email", ...errorUtil.errToObj(message) });
-  }
-  url(message) {
-    return this._addCheck({ kind: "url", ...errorUtil.errToObj(message) });
-  }
-  emoji(message) {
-    return this._addCheck({ kind: "emoji", ...errorUtil.errToObj(message) });
-  }
-  uuid(message) {
-    return this._addCheck({ kind: "uuid", ...errorUtil.errToObj(message) });
-  }
-  nanoid(message) {
-    return this._addCheck({ kind: "nanoid", ...errorUtil.errToObj(message) });
-  }
-  cuid(message) {
-    return this._addCheck({ kind: "cuid", ...errorUtil.errToObj(message) });
-  }
-  cuid2(message) {
-    return this._addCheck({ kind: "cuid2", ...errorUtil.errToObj(message) });
-  }
-  ulid(message) {
-    return this._addCheck({ kind: "ulid", ...errorUtil.errToObj(message) });
-  }
-  base64(message) {
-    return this._addCheck({ kind: "base64", ...errorUtil.errToObj(message) });
-  }
-  base64url(message) {
-    return this._addCheck({
-      kind: "base64url",
-      ...errorUtil.errToObj(message)
-    });
-  }
-  jwt(options) {
-    return this._addCheck({ kind: "jwt", ...errorUtil.errToObj(options) });
-  }
-  ip(options) {
-    return this._addCheck({ kind: "ip", ...errorUtil.errToObj(options) });
-  }
-  cidr(options) {
-    return this._addCheck({ kind: "cidr", ...errorUtil.errToObj(options) });
-  }
-  datetime(options) {
-    if (typeof options === "string") {
-      return this._addCheck({
-        kind: "datetime",
-        precision: null,
-        offset: false,
-        local: false,
-        message: options
-      });
-    }
-    return this._addCheck({
-      kind: "datetime",
-      precision: typeof options?.precision === "undefined" ? null : options?.precision,
-      offset: options?.offset ?? false,
-      local: options?.local ?? false,
-      ...errorUtil.errToObj(options?.message)
-    });
-  }
-  date(message) {
-    return this._addCheck({ kind: "date", message });
-  }
-  time(options) {
-    if (typeof options === "string") {
-      return this._addCheck({
-        kind: "time",
-        precision: null,
-        message: options
-      });
-    }
-    return this._addCheck({
-      kind: "time",
-      precision: typeof options?.precision === "undefined" ? null : options?.precision,
-      ...errorUtil.errToObj(options?.message)
-    });
-  }
-  duration(message) {
-    return this._addCheck({ kind: "duration", ...errorUtil.errToObj(message) });
-  }
-  regex(regex, message) {
-    return this._addCheck({
-      kind: "regex",
-      regex,
-      ...errorUtil.errToObj(message)
-    });
-  }
-  includes(value, options) {
-    return this._addCheck({
-      kind: "includes",
-      value,
-      position: options?.position,
-      ...errorUtil.errToObj(options?.message)
-    });
-  }
-  startsWith(value, message) {
-    return this._addCheck({
-      kind: "startsWith",
-      value,
-      ...errorUtil.errToObj(message)
-    });
-  }
-  endsWith(value, message) {
-    return this._addCheck({
-      kind: "endsWith",
-      value,
-      ...errorUtil.errToObj(message)
-    });
-  }
-  min(minLength, message) {
-    return this._addCheck({
-      kind: "min",
-      value: minLength,
-      ...errorUtil.errToObj(message)
-    });
-  }
-  max(maxLength, message) {
-    return this._addCheck({
-      kind: "max",
-      value: maxLength,
-      ...errorUtil.errToObj(message)
-    });
-  }
-  length(len, message) {
-    return this._addCheck({
-      kind: "length",
-      value: len,
-      ...errorUtil.errToObj(message)
-    });
-  }
-  /**
-   * Equivalent to `.min(1)`
-   */
-  nonempty(message) {
-    return this.min(1, errorUtil.errToObj(message));
-  }
-  trim() {
-    return new _ZodString({
-      ...this._def,
-      checks: [...this._def.checks, { kind: "trim" }]
-    });
-  }
-  toLowerCase() {
-    return new _ZodString({
-      ...this._def,
-      checks: [...this._def.checks, { kind: "toLowerCase" }]
-    });
-  }
-  toUpperCase() {
-    return new _ZodString({
-      ...this._def,
-      checks: [...this._def.checks, { kind: "toUpperCase" }]
-    });
-  }
-  get isDatetime() {
-    return !!this._def.checks.find((ch) => ch.kind === "datetime");
-  }
-  get isDate() {
-    return !!this._def.checks.find((ch) => ch.kind === "date");
-  }
-  get isTime() {
-    return !!this._def.checks.find((ch) => ch.kind === "time");
-  }
-  get isDuration() {
-    return !!this._def.checks.find((ch) => ch.kind === "duration");
-  }
-  get isEmail() {
-    return !!this._def.checks.find((ch) => ch.kind === "email");
-  }
-  get isURL() {
-    return !!this._def.checks.find((ch) => ch.kind === "url");
-  }
-  get isEmoji() {
-    return !!this._def.checks.find((ch) => ch.kind === "emoji");
-  }
-  get isUUID() {
-    return !!this._def.checks.find((ch) => ch.kind === "uuid");
-  }
-  get isNANOID() {
-    return !!this._def.checks.find((ch) => ch.kind === "nanoid");
-  }
-  get isCUID() {
-    return !!this._def.checks.find((ch) => ch.kind === "cuid");
-  }
-  get isCUID2() {
-    return !!this._def.checks.find((ch) => ch.kind === "cuid2");
-  }
-  get isULID() {
-    return !!this._def.checks.find((ch) => ch.kind === "ulid");
-  }
-  get isIP() {
-    return !!this._def.checks.find((ch) => ch.kind === "ip");
-  }
-  get isCIDR() {
-    return !!this._def.checks.find((ch) => ch.kind === "cidr");
-  }
-  get isBase64() {
-    return !!this._def.checks.find((ch) => ch.kind === "base64");
-  }
-  get isBase64url() {
-    return !!this._def.checks.find((ch) => ch.kind === "base64url");
-  }
-  get minLength() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min;
-  }
-  get maxLength() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max;
-  }
-};
-ZodString.create = (params) => {
-  return new ZodString({
-    checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodString,
-    coerce: params?.coerce ?? false,
-    ...processCreateParams(params)
-  });
-};
-function floatSafeRemainder(val, step) {
-  const valDecCount = (val.toString().split(".")[1] || "").length;
-  const stepDecCount = (step.toString().split(".")[1] || "").length;
-  const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount;
-  const valInt = Number.parseInt(val.toFixed(decCount).replace(".", ""));
-  const stepInt = Number.parseInt(step.toFixed(decCount).replace(".", ""));
-  return valInt % stepInt / 10 ** decCount;
-}
-var ZodNumber = class _ZodNumber extends ZodType {
-  constructor() {
-    super(...arguments);
-    this.min = this.gte;
-    this.max = this.lte;
-    this.step = this.multipleOf;
-  }
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = Number(input.data);
-    }
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.number) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.number,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    let ctx = void 0;
-    const status = new ParseStatus();
-    for (const check of this._def.checks) {
-      if (check.kind === "int") {
-        if (!util.isInteger(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.invalid_type,
-            expected: "integer",
-            received: "float",
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "min") {
-        const tooSmall = check.inclusive ? input.data < check.value : input.data <= check.value;
-        if (tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            minimum: check.value,
-            type: "number",
-            inclusive: check.inclusive,
-            exact: false,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "max") {
-        const tooBig = check.inclusive ? input.data > check.value : input.data >= check.value;
-        if (tooBig) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            maximum: check.value,
-            type: "number",
-            inclusive: check.inclusive,
-            exact: false,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "multipleOf") {
-        if (floatSafeRemainder(input.data, check.value) !== 0) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.not_multiple_of,
-            multipleOf: check.value,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "finite") {
-        if (!Number.isFinite(input.data)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.not_finite,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check);
-      }
-    }
-    return { status: status.value, value: input.data };
-  }
-  gte(value, message) {
-    return this.setLimit("min", value, true, errorUtil.toString(message));
-  }
-  gt(value, message) {
-    return this.setLimit("min", value, false, errorUtil.toString(message));
-  }
-  lte(value, message) {
-    return this.setLimit("max", value, true, errorUtil.toString(message));
-  }
-  lt(value, message) {
-    return this.setLimit("max", value, false, errorUtil.toString(message));
-  }
-  setLimit(kind, value, inclusive, message) {
-    return new _ZodNumber({
-      ...this._def,
-      checks: [
-        ...this._def.checks,
-        {
-          kind,
-          value,
-          inclusive,
-          message: errorUtil.toString(message)
-        }
-      ]
-    });
-  }
-  _addCheck(check) {
-    return new _ZodNumber({
-      ...this._def,
-      checks: [...this._def.checks, check]
-    });
-  }
-  int(message) {
-    return this._addCheck({
-      kind: "int",
-      message: errorUtil.toString(message)
-    });
-  }
-  positive(message) {
-    return this._addCheck({
-      kind: "min",
-      value: 0,
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  negative(message) {
-    return this._addCheck({
-      kind: "max",
-      value: 0,
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonpositive(message) {
-    return this._addCheck({
-      kind: "max",
-      value: 0,
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonnegative(message) {
-    return this._addCheck({
-      kind: "min",
-      value: 0,
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  multipleOf(value, message) {
-    return this._addCheck({
-      kind: "multipleOf",
-      value,
-      message: errorUtil.toString(message)
-    });
-  }
-  finite(message) {
-    return this._addCheck({
-      kind: "finite",
-      message: errorUtil.toString(message)
-    });
-  }
-  safe(message) {
-    return this._addCheck({
-      kind: "min",
-      inclusive: true,
-      value: Number.MIN_SAFE_INTEGER,
-      message: errorUtil.toString(message)
-    })._addCheck({
-      kind: "max",
-      inclusive: true,
-      value: Number.MAX_SAFE_INTEGER,
-      message: errorUtil.toString(message)
-    });
-  }
-  get minValue() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min;
-  }
-  get maxValue() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max;
-  }
-  get isInt() {
-    return !!this._def.checks.find((ch) => ch.kind === "int" || ch.kind === "multipleOf" && util.isInteger(ch.value));
-  }
-  get isFinite() {
-    let max = null;
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "finite" || ch.kind === "int" || ch.kind === "multipleOf") {
-        return true;
-      } else if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      } else if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return Number.isFinite(min) && Number.isFinite(max);
-  }
-};
-ZodNumber.create = (params) => {
-  return new ZodNumber({
-    checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodNumber,
-    coerce: params?.coerce || false,
-    ...processCreateParams(params)
-  });
-};
-var ZodBigInt = class _ZodBigInt extends ZodType {
-  constructor() {
-    super(...arguments);
-    this.min = this.gte;
-    this.max = this.lte;
-  }
-  _parse(input) {
-    if (this._def.coerce) {
-      try {
-        input.data = BigInt(input.data);
-      } catch {
-        return this._getInvalidInput(input);
-      }
-    }
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.bigint) {
-      return this._getInvalidInput(input);
-    }
-    let ctx = void 0;
-    const status = new ParseStatus();
-    for (const check of this._def.checks) {
-      if (check.kind === "min") {
-        const tooSmall = check.inclusive ? input.data < check.value : input.data <= check.value;
-        if (tooSmall) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            type: "bigint",
-            minimum: check.value,
-            inclusive: check.inclusive,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "max") {
-        const tooBig = check.inclusive ? input.data > check.value : input.data >= check.value;
-        if (tooBig) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            type: "bigint",
-            maximum: check.value,
-            inclusive: check.inclusive,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "multipleOf") {
-        if (input.data % check.value !== BigInt(0)) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.not_multiple_of,
-            multipleOf: check.value,
-            message: check.message
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check);
-      }
-    }
-    return { status: status.value, value: input.data };
-  }
-  _getInvalidInput(input) {
-    const ctx = this._getOrReturnCtx(input);
-    addIssueToContext(ctx, {
-      code: ZodIssueCode.invalid_type,
-      expected: ZodParsedType.bigint,
-      received: ctx.parsedType
-    });
-    return INVALID;
-  }
-  gte(value, message) {
-    return this.setLimit("min", value, true, errorUtil.toString(message));
-  }
-  gt(value, message) {
-    return this.setLimit("min", value, false, errorUtil.toString(message));
-  }
-  lte(value, message) {
-    return this.setLimit("max", value, true, errorUtil.toString(message));
-  }
-  lt(value, message) {
-    return this.setLimit("max", value, false, errorUtil.toString(message));
-  }
-  setLimit(kind, value, inclusive, message) {
-    return new _ZodBigInt({
-      ...this._def,
-      checks: [
-        ...this._def.checks,
-        {
-          kind,
-          value,
-          inclusive,
-          message: errorUtil.toString(message)
-        }
-      ]
-    });
-  }
-  _addCheck(check) {
-    return new _ZodBigInt({
-      ...this._def,
-      checks: [...this._def.checks, check]
-    });
-  }
-  positive(message) {
-    return this._addCheck({
-      kind: "min",
-      value: BigInt(0),
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  negative(message) {
-    return this._addCheck({
-      kind: "max",
-      value: BigInt(0),
-      inclusive: false,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonpositive(message) {
-    return this._addCheck({
-      kind: "max",
-      value: BigInt(0),
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  nonnegative(message) {
-    return this._addCheck({
-      kind: "min",
-      value: BigInt(0),
-      inclusive: true,
-      message: errorUtil.toString(message)
-    });
-  }
-  multipleOf(value, message) {
-    return this._addCheck({
-      kind: "multipleOf",
-      value,
-      message: errorUtil.toString(message)
-    });
-  }
-  get minValue() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min;
-  }
-  get maxValue() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max;
-  }
-};
-ZodBigInt.create = (params) => {
-  return new ZodBigInt({
-    checks: [],
-    typeName: ZodFirstPartyTypeKind.ZodBigInt,
-    coerce: params?.coerce ?? false,
-    ...processCreateParams(params)
-  });
-};
-var ZodBoolean = class extends ZodType {
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = Boolean(input.data);
-    }
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.boolean) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.boolean,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodBoolean.create = (params) => {
-  return new ZodBoolean({
-    typeName: ZodFirstPartyTypeKind.ZodBoolean,
-    coerce: params?.coerce || false,
-    ...processCreateParams(params)
-  });
-};
-var ZodDate = class _ZodDate extends ZodType {
-  _parse(input) {
-    if (this._def.coerce) {
-      input.data = new Date(input.data);
-    }
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.date) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.date,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    if (Number.isNaN(input.data.getTime())) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_date
-      });
-      return INVALID;
-    }
-    const status = new ParseStatus();
-    let ctx = void 0;
-    for (const check of this._def.checks) {
-      if (check.kind === "min") {
-        if (input.data.getTime() < check.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_small,
-            message: check.message,
-            inclusive: true,
-            exact: false,
-            minimum: check.value,
-            type: "date"
-          });
-          status.dirty();
-        }
-      } else if (check.kind === "max") {
-        if (input.data.getTime() > check.value) {
-          ctx = this._getOrReturnCtx(input, ctx);
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.too_big,
-            message: check.message,
-            inclusive: true,
-            exact: false,
-            maximum: check.value,
-            type: "date"
-          });
-          status.dirty();
-        }
-      } else {
-        util.assertNever(check);
-      }
-    }
-    return {
-      status: status.value,
-      value: new Date(input.data.getTime())
-    };
-  }
-  _addCheck(check) {
-    return new _ZodDate({
-      ...this._def,
-      checks: [...this._def.checks, check]
-    });
-  }
-  min(minDate, message) {
-    return this._addCheck({
-      kind: "min",
-      value: minDate.getTime(),
-      message: errorUtil.toString(message)
-    });
-  }
-  max(maxDate, message) {
-    return this._addCheck({
-      kind: "max",
-      value: maxDate.getTime(),
-      message: errorUtil.toString(message)
-    });
-  }
-  get minDate() {
-    let min = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "min") {
-        if (min === null || ch.value > min)
-          min = ch.value;
-      }
-    }
-    return min != null ? new Date(min) : null;
-  }
-  get maxDate() {
-    let max = null;
-    for (const ch of this._def.checks) {
-      if (ch.kind === "max") {
-        if (max === null || ch.value < max)
-          max = ch.value;
-      }
-    }
-    return max != null ? new Date(max) : null;
-  }
-};
-ZodDate.create = (params) => {
-  return new ZodDate({
-    checks: [],
-    coerce: params?.coerce || false,
-    typeName: ZodFirstPartyTypeKind.ZodDate,
-    ...processCreateParams(params)
-  });
-};
-var ZodSymbol = class extends ZodType {
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.symbol) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.symbol,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodSymbol.create = (params) => {
-  return new ZodSymbol({
-    typeName: ZodFirstPartyTypeKind.ZodSymbol,
-    ...processCreateParams(params)
-  });
-};
-var ZodUndefined = class extends ZodType {
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.undefined) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.undefined,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodUndefined.create = (params) => {
-  return new ZodUndefined({
-    typeName: ZodFirstPartyTypeKind.ZodUndefined,
-    ...processCreateParams(params)
-  });
-};
-var ZodNull = class extends ZodType {
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.null) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.null,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodNull.create = (params) => {
-  return new ZodNull({
-    typeName: ZodFirstPartyTypeKind.ZodNull,
-    ...processCreateParams(params)
-  });
-};
-var ZodAny = class extends ZodType {
-  constructor() {
-    super(...arguments);
-    this._any = true;
-  }
-  _parse(input) {
-    return OK(input.data);
-  }
-};
-ZodAny.create = (params) => {
-  return new ZodAny({
-    typeName: ZodFirstPartyTypeKind.ZodAny,
-    ...processCreateParams(params)
-  });
-};
-var ZodUnknown = class extends ZodType {
-  constructor() {
-    super(...arguments);
-    this._unknown = true;
-  }
-  _parse(input) {
-    return OK(input.data);
-  }
-};
-ZodUnknown.create = (params) => {
-  return new ZodUnknown({
-    typeName: ZodFirstPartyTypeKind.ZodUnknown,
-    ...processCreateParams(params)
-  });
-};
-var ZodNever = class extends ZodType {
-  _parse(input) {
-    const ctx = this._getOrReturnCtx(input);
-    addIssueToContext(ctx, {
-      code: ZodIssueCode.invalid_type,
-      expected: ZodParsedType.never,
-      received: ctx.parsedType
-    });
-    return INVALID;
-  }
-};
-ZodNever.create = (params) => {
-  return new ZodNever({
-    typeName: ZodFirstPartyTypeKind.ZodNever,
-    ...processCreateParams(params)
-  });
-};
-var ZodVoid = class extends ZodType {
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.undefined) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.void,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-};
-ZodVoid.create = (params) => {
-  return new ZodVoid({
-    typeName: ZodFirstPartyTypeKind.ZodVoid,
-    ...processCreateParams(params)
-  });
-};
-var ZodArray = class _ZodArray extends ZodType {
-  _parse(input) {
-    const { ctx, status } = this._processInputParams(input);
-    const def = this._def;
-    if (ctx.parsedType !== ZodParsedType.array) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.array,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    if (def.exactLength !== null) {
-      const tooBig = ctx.data.length > def.exactLength.value;
-      const tooSmall = ctx.data.length < def.exactLength.value;
-      if (tooBig || tooSmall) {
-        addIssueToContext(ctx, {
-          code: tooBig ? ZodIssueCode.too_big : ZodIssueCode.too_small,
-          minimum: tooSmall ? def.exactLength.value : void 0,
-          maximum: tooBig ? def.exactLength.value : void 0,
-          type: "array",
-          inclusive: true,
-          exact: true,
-          message: def.exactLength.message
-        });
-        status.dirty();
-      }
-    }
-    if (def.minLength !== null) {
-      if (ctx.data.length < def.minLength.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_small,
-          minimum: def.minLength.value,
-          type: "array",
-          inclusive: true,
-          exact: false,
-          message: def.minLength.message
-        });
-        status.dirty();
-      }
-    }
-    if (def.maxLength !== null) {
-      if (ctx.data.length > def.maxLength.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_big,
-          maximum: def.maxLength.value,
-          type: "array",
-          inclusive: true,
-          exact: false,
-          message: def.maxLength.message
-        });
-        status.dirty();
-      }
-    }
-    if (ctx.common.async) {
-      return Promise.all([...ctx.data].map((item, i) => {
-        return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
-      })).then((result2) => {
-        return ParseStatus.mergeArray(status, result2);
-      });
-    }
-    const result = [...ctx.data].map((item, i) => {
-      return def.type._parseSync(new ParseInputLazyPath(ctx, item, ctx.path, i));
-    });
-    return ParseStatus.mergeArray(status, result);
-  }
-  get element() {
-    return this._def.type;
-  }
-  min(minLength, message) {
-    return new _ZodArray({
-      ...this._def,
-      minLength: { value: minLength, message: errorUtil.toString(message) }
-    });
-  }
-  max(maxLength, message) {
-    return new _ZodArray({
-      ...this._def,
-      maxLength: { value: maxLength, message: errorUtil.toString(message) }
-    });
-  }
-  length(len, message) {
-    return new _ZodArray({
-      ...this._def,
-      exactLength: { value: len, message: errorUtil.toString(message) }
-    });
-  }
-  nonempty(message) {
-    return this.min(1, message);
-  }
-};
-ZodArray.create = (schema, params) => {
-  return new ZodArray({
-    type: schema,
-    minLength: null,
-    maxLength: null,
-    exactLength: null,
-    typeName: ZodFirstPartyTypeKind.ZodArray,
-    ...processCreateParams(params)
-  });
-};
-function deepPartialify(schema) {
-  if (schema instanceof ZodObject) {
-    const newShape = {};
-    for (const key in schema.shape) {
-      const fieldSchema = schema.shape[key];
-      newShape[key] = ZodOptional.create(deepPartialify(fieldSchema));
-    }
-    return new ZodObject({
-      ...schema._def,
-      shape: () => newShape
-    });
-  } else if (schema instanceof ZodArray) {
-    return new ZodArray({
-      ...schema._def,
-      type: deepPartialify(schema.element)
-    });
-  } else if (schema instanceof ZodOptional) {
-    return ZodOptional.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodNullable) {
-    return ZodNullable.create(deepPartialify(schema.unwrap()));
-  } else if (schema instanceof ZodTuple) {
-    return ZodTuple.create(schema.items.map((item) => deepPartialify(item)));
-  } else {
-    return schema;
-  }
-}
-var ZodObject = class _ZodObject extends ZodType {
-  constructor() {
-    super(...arguments);
-    this._cached = null;
-    this.nonstrict = this.passthrough;
-    this.augment = this.extend;
-  }
-  _getCached() {
-    if (this._cached !== null)
-      return this._cached;
-    const shape = this._def.shape();
-    const keys = util.objectKeys(shape);
-    this._cached = { shape, keys };
-    return this._cached;
-  }
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.object) {
-      const ctx2 = this._getOrReturnCtx(input);
-      addIssueToContext(ctx2, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.object,
-        received: ctx2.parsedType
-      });
-      return INVALID;
-    }
-    const { status, ctx } = this._processInputParams(input);
-    const { shape, keys: shapeKeys } = this._getCached();
-    const extraKeys = [];
-    if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
-      for (const key in ctx.data) {
-        if (!shapeKeys.includes(key)) {
-          extraKeys.push(key);
-        }
-      }
-    }
-    const pairs = [];
-    for (const key of shapeKeys) {
-      const keyValidator = shape[key];
-      const value = ctx.data[key];
-      pairs.push({
-        key: { status: "valid", value: key },
-        value: keyValidator._parse(new ParseInputLazyPath(ctx, value, ctx.path, key)),
-        alwaysSet: key in ctx.data
-      });
-    }
-    if (this._def.catchall instanceof ZodNever) {
-      const unknownKeys = this._def.unknownKeys;
-      if (unknownKeys === "passthrough") {
-        for (const key of extraKeys) {
-          pairs.push({
-            key: { status: "valid", value: key },
-            value: { status: "valid", value: ctx.data[key] }
-          });
-        }
-      } else if (unknownKeys === "strict") {
-        if (extraKeys.length > 0) {
-          addIssueToContext(ctx, {
-            code: ZodIssueCode.unrecognized_keys,
-            keys: extraKeys
-          });
-          status.dirty();
-        }
-      } else if (unknownKeys === "strip") {
-      } else {
-        throw new Error(`Internal ZodObject error: invalid unknownKeys value.`);
-      }
-    } else {
-      const catchall = this._def.catchall;
-      for (const key of extraKeys) {
-        const value = ctx.data[key];
-        pairs.push({
-          key: { status: "valid", value: key },
-          value: catchall._parse(
-            new ParseInputLazyPath(ctx, value, ctx.path, key)
-            //, ctx.child(key), value, getParsedType(value)
-          ),
-          alwaysSet: key in ctx.data
-        });
-      }
-    }
-    if (ctx.common.async) {
-      return Promise.resolve().then(async () => {
-        const syncPairs = [];
-        for (const pair of pairs) {
-          const key = await pair.key;
-          const value = await pair.value;
-          syncPairs.push({
-            key,
-            value,
-            alwaysSet: pair.alwaysSet
-          });
-        }
-        return syncPairs;
-      }).then((syncPairs) => {
-        return ParseStatus.mergeObjectSync(status, syncPairs);
-      });
-    } else {
-      return ParseStatus.mergeObjectSync(status, pairs);
-    }
-  }
-  get shape() {
-    return this._def.shape();
-  }
-  strict(message) {
-    errorUtil.errToObj;
-    return new _ZodObject({
-      ...this._def,
-      unknownKeys: "strict",
-      ...message !== void 0 ? {
-        errorMap: (issue, ctx) => {
-          const defaultError = this._def.errorMap?.(issue, ctx).message ?? ctx.defaultError;
-          if (issue.code === "unrecognized_keys")
-            return {
-              message: errorUtil.errToObj(message).message ?? defaultError
-            };
-          return {
-            message: defaultError
-          };
-        }
-      } : {}
-    });
-  }
-  strip() {
-    return new _ZodObject({
-      ...this._def,
-      unknownKeys: "strip"
-    });
-  }
-  passthrough() {
-    return new _ZodObject({
-      ...this._def,
-      unknownKeys: "passthrough"
-    });
-  }
-  // const AugmentFactory =
-  //   <Def extends ZodObjectDef>(def: Def) =>
-  //   <Augmentation extends ZodRawShape>(
-  //     augmentation: Augmentation
-  //   ): ZodObject<
-  //     extendShape<ReturnType<Def["shape"]>, Augmentation>,
-  //     Def["unknownKeys"],
-  //     Def["catchall"]
-  //   > => {
-  //     return new ZodObject({
-  //       ...def,
-  //       shape: () => ({
-  //         ...def.shape(),
-  //         ...augmentation,
-  //       }),
-  //     }) as any;
-  //   };
-  extend(augmentation) {
-    return new _ZodObject({
-      ...this._def,
-      shape: () => ({
-        ...this._def.shape(),
-        ...augmentation
-      })
-    });
-  }
-  /**
-   * Prior to zod@1.0.12 there was a bug in the
-   * inferred type of merged objects. Please
-   * upgrade if you are experiencing issues.
-   */
-  merge(merging) {
-    const merged = new _ZodObject({
-      unknownKeys: merging._def.unknownKeys,
-      catchall: merging._def.catchall,
-      shape: () => ({
-        ...this._def.shape(),
-        ...merging._def.shape()
-      }),
-      typeName: ZodFirstPartyTypeKind.ZodObject
-    });
-    return merged;
-  }
-  // merge<
-  //   Incoming extends AnyZodObject,
-  //   Augmentation extends Incoming["shape"],
-  //   NewOutput extends {
-  //     [k in keyof Augmentation | keyof Output]: k extends keyof Augmentation
-  //       ? Augmentation[k]["_output"]
-  //       : k extends keyof Output
-  //       ? Output[k]
-  //       : never;
-  //   },
-  //   NewInput extends {
-  //     [k in keyof Augmentation | keyof Input]: k extends keyof Augmentation
-  //       ? Augmentation[k]["_input"]
-  //       : k extends keyof Input
-  //       ? Input[k]
-  //       : never;
-  //   }
-  // >(
-  //   merging: Incoming
-  // ): ZodObject<
-  //   extendShape<T, ReturnType<Incoming["_def"]["shape"]>>,
-  //   Incoming["_def"]["unknownKeys"],
-  //   Incoming["_def"]["catchall"],
-  //   NewOutput,
-  //   NewInput
-  // > {
-  //   const merged: any = new ZodObject({
-  //     unknownKeys: merging._def.unknownKeys,
-  //     catchall: merging._def.catchall,
-  //     shape: () =>
-  //       objectUtil.mergeShapes(this._def.shape(), merging._def.shape()),
-  //     typeName: ZodFirstPartyTypeKind.ZodObject,
-  //   }) as any;
-  //   return merged;
-  // }
-  setKey(key, schema) {
-    return this.augment({ [key]: schema });
-  }
-  // merge<Incoming extends AnyZodObject>(
-  //   merging: Incoming
-  // ): //ZodObject<T & Incoming["_shape"], UnknownKeys, Catchall> = (merging) => {
-  // ZodObject<
-  //   extendShape<T, ReturnType<Incoming["_def"]["shape"]>>,
-  //   Incoming["_def"]["unknownKeys"],
-  //   Incoming["_def"]["catchall"]
-  // > {
-  //   // const mergedShape = objectUtil.mergeShapes(
-  //   //   this._def.shape(),
-  //   //   merging._def.shape()
-  //   // );
-  //   const merged: any = new ZodObject({
-  //     unknownKeys: merging._def.unknownKeys,
-  //     catchall: merging._def.catchall,
-  //     shape: () =>
-  //       objectUtil.mergeShapes(this._def.shape(), merging._def.shape()),
-  //     typeName: ZodFirstPartyTypeKind.ZodObject,
-  //   }) as any;
-  //   return merged;
-  // }
-  catchall(index) {
-    return new _ZodObject({
-      ...this._def,
-      catchall: index
-    });
-  }
-  pick(mask) {
-    const shape = {};
-    for (const key of util.objectKeys(mask)) {
-      if (mask[key] && this.shape[key]) {
-        shape[key] = this.shape[key];
-      }
-    }
-    return new _ZodObject({
-      ...this._def,
-      shape: () => shape
-    });
-  }
-  omit(mask) {
-    const shape = {};
-    for (const key of util.objectKeys(this.shape)) {
-      if (!mask[key]) {
-        shape[key] = this.shape[key];
-      }
-    }
-    return new _ZodObject({
-      ...this._def,
-      shape: () => shape
-    });
-  }
-  /**
-   * @deprecated
-   */
-  deepPartial() {
-    return deepPartialify(this);
-  }
-  partial(mask) {
-    const newShape = {};
-    for (const key of util.objectKeys(this.shape)) {
-      const fieldSchema = this.shape[key];
-      if (mask && !mask[key]) {
-        newShape[key] = fieldSchema;
-      } else {
-        newShape[key] = fieldSchema.optional();
-      }
-    }
-    return new _ZodObject({
-      ...this._def,
-      shape: () => newShape
-    });
-  }
-  required(mask) {
-    const newShape = {};
-    for (const key of util.objectKeys(this.shape)) {
-      if (mask && !mask[key]) {
-        newShape[key] = this.shape[key];
-      } else {
-        const fieldSchema = this.shape[key];
-        let newField = fieldSchema;
-        while (newField instanceof ZodOptional) {
-          newField = newField._def.innerType;
-        }
-        newShape[key] = newField;
-      }
-    }
-    return new _ZodObject({
-      ...this._def,
-      shape: () => newShape
-    });
-  }
-  keyof() {
-    return createZodEnum(util.objectKeys(this.shape));
-  }
-};
-ZodObject.create = (shape, params) => {
-  return new ZodObject({
-    shape: () => shape,
-    unknownKeys: "strip",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject,
-    ...processCreateParams(params)
-  });
-};
-ZodObject.strictCreate = (shape, params) => {
-  return new ZodObject({
-    shape: () => shape,
-    unknownKeys: "strict",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject,
-    ...processCreateParams(params)
-  });
-};
-ZodObject.lazycreate = (shape, params) => {
-  return new ZodObject({
-    shape,
-    unknownKeys: "strip",
-    catchall: ZodNever.create(),
-    typeName: ZodFirstPartyTypeKind.ZodObject,
-    ...processCreateParams(params)
-  });
-};
-var ZodUnion = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const options = this._def.options;
-    function handleResults(results) {
-      for (const result of results) {
-        if (result.result.status === "valid") {
-          return result.result;
-        }
-      }
-      for (const result of results) {
-        if (result.result.status === "dirty") {
-          ctx.common.issues.push(...result.ctx.common.issues);
-          return result.result;
-        }
-      }
-      const unionErrors = results.map((result) => new ZodError(result.ctx.common.issues));
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union,
-        unionErrors
-      });
-      return INVALID;
-    }
-    if (ctx.common.async) {
-      return Promise.all(options.map(async (option) => {
-        const childCtx = {
-          ...ctx,
-          common: {
-            ...ctx.common,
-            issues: []
-          },
-          parent: null
-        };
-        return {
-          result: await option._parseAsync({
-            data: ctx.data,
-            path: ctx.path,
-            parent: childCtx
-          }),
-          ctx: childCtx
-        };
-      })).then(handleResults);
-    } else {
-      let dirty = void 0;
-      const issues = [];
-      for (const option of options) {
-        const childCtx = {
-          ...ctx,
-          common: {
-            ...ctx.common,
-            issues: []
-          },
-          parent: null
-        };
-        const result = option._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: childCtx
-        });
-        if (result.status === "valid") {
-          return result;
-        } else if (result.status === "dirty" && !dirty) {
-          dirty = { result, ctx: childCtx };
-        }
-        if (childCtx.common.issues.length) {
-          issues.push(childCtx.common.issues);
-        }
-      }
-      if (dirty) {
-        ctx.common.issues.push(...dirty.ctx.common.issues);
-        return dirty.result;
-      }
-      const unionErrors = issues.map((issues2) => new ZodError(issues2));
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union,
-        unionErrors
-      });
-      return INVALID;
-    }
-  }
-  get options() {
-    return this._def.options;
-  }
-};
-ZodUnion.create = (types, params) => {
-  return new ZodUnion({
-    options: types,
-    typeName: ZodFirstPartyTypeKind.ZodUnion,
-    ...processCreateParams(params)
-  });
-};
-var getDiscriminator = (type) => {
-  if (type instanceof ZodLazy) {
-    return getDiscriminator(type.schema);
-  } else if (type instanceof ZodEffects) {
-    return getDiscriminator(type.innerType());
-  } else if (type instanceof ZodLiteral) {
-    return [type.value];
-  } else if (type instanceof ZodEnum) {
-    return type.options;
-  } else if (type instanceof ZodNativeEnum) {
-    return util.objectValues(type.enum);
-  } else if (type instanceof ZodDefault) {
-    return getDiscriminator(type._def.innerType);
-  } else if (type instanceof ZodUndefined) {
-    return [void 0];
-  } else if (type instanceof ZodNull) {
-    return [null];
-  } else if (type instanceof ZodOptional) {
-    return [void 0, ...getDiscriminator(type.unwrap())];
-  } else if (type instanceof ZodNullable) {
-    return [null, ...getDiscriminator(type.unwrap())];
-  } else if (type instanceof ZodBranded) {
-    return getDiscriminator(type.unwrap());
-  } else if (type instanceof ZodReadonly) {
-    return getDiscriminator(type.unwrap());
-  } else if (type instanceof ZodCatch) {
-    return getDiscriminator(type._def.innerType);
-  } else {
-    return [];
-  }
-};
-var ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.object) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.object,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const discriminator = this.discriminator;
-    const discriminatorValue = ctx.data[discriminator];
-    const option = this.optionsMap.get(discriminatorValue);
-    if (!option) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_union_discriminator,
-        options: Array.from(this.optionsMap.keys()),
-        path: [discriminator]
-      });
-      return INVALID;
-    }
-    if (ctx.common.async) {
-      return option._parseAsync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      });
-    } else {
-      return option._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      });
-    }
-  }
-  get discriminator() {
-    return this._def.discriminator;
-  }
-  get options() {
-    return this._def.options;
-  }
-  get optionsMap() {
-    return this._def.optionsMap;
-  }
-  /**
-   * The constructor of the discriminated union schema. Its behaviour is very similar to that of the normal z.union() constructor.
-   * However, it only allows a union of objects, all of which need to share a discriminator property. This property must
-   * have a different value for each object in the union.
-   * @param discriminator the name of the discriminator property
-   * @param types an array of object schemas
-   * @param params
-   */
-  static create(discriminator, options, params) {
-    const optionsMap = /* @__PURE__ */ new Map();
-    for (const type of options) {
-      const discriminatorValues = getDiscriminator(type.shape[discriminator]);
-      if (!discriminatorValues.length) {
-        throw new Error(`A discriminator value for key \`${discriminator}\` could not be extracted from all schema options`);
-      }
-      for (const value of discriminatorValues) {
-        if (optionsMap.has(value)) {
-          throw new Error(`Discriminator property ${String(discriminator)} has duplicate value ${String(value)}`);
-        }
-        optionsMap.set(value, type);
-      }
-    }
-    return new _ZodDiscriminatedUnion({
-      typeName: ZodFirstPartyTypeKind.ZodDiscriminatedUnion,
-      discriminator,
-      options,
-      optionsMap,
-      ...processCreateParams(params)
-    });
-  }
-};
-function mergeValues(a, b) {
-  const aType = getParsedType(a);
-  const bType = getParsedType(b);
-  if (a === b) {
-    return { valid: true, data: a };
-  } else if (aType === ZodParsedType.object && bType === ZodParsedType.object) {
-    const bKeys = util.objectKeys(b);
-    const sharedKeys = util.objectKeys(a).filter((key) => bKeys.indexOf(key) !== -1);
-    const newObj = { ...a, ...b };
-    for (const key of sharedKeys) {
-      const sharedValue = mergeValues(a[key], b[key]);
-      if (!sharedValue.valid) {
-        return { valid: false };
-      }
-      newObj[key] = sharedValue.data;
-    }
-    return { valid: true, data: newObj };
-  } else if (aType === ZodParsedType.array && bType === ZodParsedType.array) {
-    if (a.length !== b.length) {
-      return { valid: false };
-    }
-    const newArray = [];
-    for (let index = 0; index < a.length; index++) {
-      const itemA = a[index];
-      const itemB = b[index];
-      const sharedValue = mergeValues(itemA, itemB);
-      if (!sharedValue.valid) {
-        return { valid: false };
-      }
-      newArray.push(sharedValue.data);
-    }
-    return { valid: true, data: newArray };
-  } else if (aType === ZodParsedType.date && bType === ZodParsedType.date && +a === +b) {
-    return { valid: true, data: a };
-  } else {
-    return { valid: false };
-  }
-}
-var ZodIntersection = class extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    const handleParsed = (parsedLeft, parsedRight) => {
-      if (isAborted(parsedLeft) || isAborted(parsedRight)) {
-        return INVALID;
-      }
-      const merged = mergeValues(parsedLeft.value, parsedRight.value);
-      if (!merged.valid) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.invalid_intersection_types
-        });
-        return INVALID;
-      }
-      if (isDirty(parsedLeft) || isDirty(parsedRight)) {
-        status.dirty();
-      }
-      return { status: status.value, value: merged.data };
-    };
-    if (ctx.common.async) {
-      return Promise.all([
-        this._def.left._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        }),
-        this._def.right._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        })
-      ]).then(([left, right]) => handleParsed(left, right));
-    } else {
-      return handleParsed(this._def.left._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      }), this._def.right._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      }));
-    }
-  }
-};
-ZodIntersection.create = (left, right, params) => {
-  return new ZodIntersection({
-    left,
-    right,
-    typeName: ZodFirstPartyTypeKind.ZodIntersection,
-    ...processCreateParams(params)
-  });
-};
-var ZodTuple = class _ZodTuple extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.array) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.array,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    if (ctx.data.length < this._def.items.length) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.too_small,
-        minimum: this._def.items.length,
-        inclusive: true,
-        exact: false,
-        type: "array"
-      });
-      return INVALID;
-    }
-    const rest = this._def.rest;
-    if (!rest && ctx.data.length > this._def.items.length) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.too_big,
-        maximum: this._def.items.length,
-        inclusive: true,
-        exact: false,
-        type: "array"
-      });
-      status.dirty();
-    }
-    const items = [...ctx.data].map((item, itemIndex) => {
-      const schema = this._def.items[itemIndex] || this._def.rest;
-      if (!schema)
-        return null;
-      return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
-    }).filter((x) => !!x);
-    if (ctx.common.async) {
-      return Promise.all(items).then((results) => {
-        return ParseStatus.mergeArray(status, results);
-      });
-    } else {
-      return ParseStatus.mergeArray(status, items);
-    }
-  }
-  get items() {
-    return this._def.items;
-  }
-  rest(rest) {
-    return new _ZodTuple({
-      ...this._def,
-      rest
-    });
-  }
-};
-ZodTuple.create = (schemas, params) => {
-  if (!Array.isArray(schemas)) {
-    throw new Error("You must pass an array of schemas to z.tuple([ ... ])");
-  }
-  return new ZodTuple({
-    items: schemas,
-    typeName: ZodFirstPartyTypeKind.ZodTuple,
-    rest: null,
-    ...processCreateParams(params)
-  });
-};
-var ZodRecord = class _ZodRecord extends ZodType {
-  get keySchema() {
-    return this._def.keyType;
-  }
-  get valueSchema() {
-    return this._def.valueType;
-  }
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.object) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.object,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const pairs = [];
-    const keyType = this._def.keyType;
-    const valueType = this._def.valueType;
-    for (const key in ctx.data) {
-      pairs.push({
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, key)),
-        value: valueType._parse(new ParseInputLazyPath(ctx, ctx.data[key], ctx.path, key)),
-        alwaysSet: key in ctx.data
-      });
-    }
-    if (ctx.common.async) {
-      return ParseStatus.mergeObjectAsync(status, pairs);
-    } else {
-      return ParseStatus.mergeObjectSync(status, pairs);
-    }
-  }
-  get element() {
-    return this._def.valueType;
-  }
-  static create(first, second, third) {
-    if (second instanceof ZodType) {
-      return new _ZodRecord({
-        keyType: first,
-        valueType: second,
-        typeName: ZodFirstPartyTypeKind.ZodRecord,
-        ...processCreateParams(third)
-      });
-    }
-    return new _ZodRecord({
-      keyType: ZodString.create(),
-      valueType: first,
-      typeName: ZodFirstPartyTypeKind.ZodRecord,
-      ...processCreateParams(second)
-    });
-  }
-};
-var ZodMap = class extends ZodType {
-  get keySchema() {
-    return this._def.keyType;
-  }
-  get valueSchema() {
-    return this._def.valueType;
-  }
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.map) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.map,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const keyType = this._def.keyType;
-    const valueType = this._def.valueType;
-    const pairs = [...ctx.data.entries()].map(([key, value], index) => {
-      return {
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index, "key"])),
-        value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index, "value"]))
-      };
-    });
-    if (ctx.common.async) {
-      const finalMap = /* @__PURE__ */ new Map();
-      return Promise.resolve().then(async () => {
-        for (const pair of pairs) {
-          const key = await pair.key;
-          const value = await pair.value;
-          if (key.status === "aborted" || value.status === "aborted") {
-            return INVALID;
-          }
-          if (key.status === "dirty" || value.status === "dirty") {
-            status.dirty();
-          }
-          finalMap.set(key.value, value.value);
-        }
-        return { status: status.value, value: finalMap };
-      });
-    } else {
-      const finalMap = /* @__PURE__ */ new Map();
-      for (const pair of pairs) {
-        const key = pair.key;
-        const value = pair.value;
-        if (key.status === "aborted" || value.status === "aborted") {
-          return INVALID;
-        }
-        if (key.status === "dirty" || value.status === "dirty") {
-          status.dirty();
-        }
-        finalMap.set(key.value, value.value);
-      }
-      return { status: status.value, value: finalMap };
-    }
-  }
-};
-ZodMap.create = (keyType, valueType, params) => {
-  return new ZodMap({
-    valueType,
-    keyType,
-    typeName: ZodFirstPartyTypeKind.ZodMap,
-    ...processCreateParams(params)
-  });
-};
-var ZodSet = class _ZodSet extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.set) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.set,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const def = this._def;
-    if (def.minSize !== null) {
-      if (ctx.data.size < def.minSize.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_small,
-          minimum: def.minSize.value,
-          type: "set",
-          inclusive: true,
-          exact: false,
-          message: def.minSize.message
-        });
-        status.dirty();
-      }
-    }
-    if (def.maxSize !== null) {
-      if (ctx.data.size > def.maxSize.value) {
-        addIssueToContext(ctx, {
-          code: ZodIssueCode.too_big,
-          maximum: def.maxSize.value,
-          type: "set",
-          inclusive: true,
-          exact: false,
-          message: def.maxSize.message
-        });
-        status.dirty();
-      }
-    }
-    const valueType = this._def.valueType;
-    function finalizeSet(elements2) {
-      const parsedSet = /* @__PURE__ */ new Set();
-      for (const element of elements2) {
-        if (element.status === "aborted")
-          return INVALID;
-        if (element.status === "dirty")
-          status.dirty();
-        parsedSet.add(element.value);
-      }
-      return { status: status.value, value: parsedSet };
-    }
-    const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
-    if (ctx.common.async) {
-      return Promise.all(elements).then((elements2) => finalizeSet(elements2));
-    } else {
-      return finalizeSet(elements);
-    }
-  }
-  min(minSize, message) {
-    return new _ZodSet({
-      ...this._def,
-      minSize: { value: minSize, message: errorUtil.toString(message) }
-    });
-  }
-  max(maxSize, message) {
-    return new _ZodSet({
-      ...this._def,
-      maxSize: { value: maxSize, message: errorUtil.toString(message) }
-    });
-  }
-  size(size, message) {
-    return this.min(size, message).max(size, message);
-  }
-  nonempty(message) {
-    return this.min(1, message);
-  }
-};
-ZodSet.create = (valueType, params) => {
-  return new ZodSet({
-    valueType,
-    minSize: null,
-    maxSize: null,
-    typeName: ZodFirstPartyTypeKind.ZodSet,
-    ...processCreateParams(params)
-  });
-};
-var ZodFunction = class _ZodFunction extends ZodType {
-  constructor() {
-    super(...arguments);
-    this.validate = this.implement;
-  }
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.function) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.function,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    function makeArgsIssue(args, error2) {
-      return makeIssue({
-        data: args,
-        path: ctx.path,
-        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
-        issueData: {
-          code: ZodIssueCode.invalid_arguments,
-          argumentsError: error2
-        }
-      });
-    }
-    function makeReturnsIssue(returns, error2) {
-      return makeIssue({
-        data: returns,
-        path: ctx.path,
-        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
-        issueData: {
-          code: ZodIssueCode.invalid_return_type,
-          returnTypeError: error2
-        }
-      });
-    }
-    const params = { errorMap: ctx.common.contextualErrorMap };
-    const fn = ctx.data;
-    if (this._def.returns instanceof ZodPromise) {
-      const me = this;
-      return OK(async function(...args) {
-        const error2 = new ZodError([]);
-        const parsedArgs = await me._def.args.parseAsync(args, params).catch((e) => {
-          error2.addIssue(makeArgsIssue(args, e));
-          throw error2;
-        });
-        const result = await Reflect.apply(fn, this, parsedArgs);
-        const parsedReturns = await me._def.returns._def.type.parseAsync(result, params).catch((e) => {
-          error2.addIssue(makeReturnsIssue(result, e));
-          throw error2;
-        });
-        return parsedReturns;
-      });
-    } else {
-      const me = this;
-      return OK(function(...args) {
-        const parsedArgs = me._def.args.safeParse(args, params);
-        if (!parsedArgs.success) {
-          throw new ZodError([makeArgsIssue(args, parsedArgs.error)]);
-        }
-        const result = Reflect.apply(fn, this, parsedArgs.data);
-        const parsedReturns = me._def.returns.safeParse(result, params);
-        if (!parsedReturns.success) {
-          throw new ZodError([makeReturnsIssue(result, parsedReturns.error)]);
-        }
-        return parsedReturns.data;
-      });
-    }
-  }
-  parameters() {
-    return this._def.args;
-  }
-  returnType() {
-    return this._def.returns;
-  }
-  args(...items) {
-    return new _ZodFunction({
-      ...this._def,
-      args: ZodTuple.create(items).rest(ZodUnknown.create())
-    });
-  }
-  returns(returnType) {
-    return new _ZodFunction({
-      ...this._def,
-      returns: returnType
-    });
-  }
-  implement(func) {
-    const validatedFunc = this.parse(func);
-    return validatedFunc;
-  }
-  strictImplement(func) {
-    const validatedFunc = this.parse(func);
-    return validatedFunc;
-  }
-  static create(args, returns, params) {
-    return new _ZodFunction({
-      args: args ? args : ZodTuple.create([]).rest(ZodUnknown.create()),
-      returns: returns || ZodUnknown.create(),
-      typeName: ZodFirstPartyTypeKind.ZodFunction,
-      ...processCreateParams(params)
-    });
-  }
-};
-var ZodLazy = class extends ZodType {
-  get schema() {
-    return this._def.getter();
-  }
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const lazySchema = this._def.getter();
-    return lazySchema._parse({ data: ctx.data, path: ctx.path, parent: ctx });
-  }
-};
-ZodLazy.create = (getter, params) => {
-  return new ZodLazy({
-    getter,
-    typeName: ZodFirstPartyTypeKind.ZodLazy,
-    ...processCreateParams(params)
-  });
-};
-var ZodLiteral = class extends ZodType {
-  _parse(input) {
-    if (input.data !== this._def.value) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        received: ctx.data,
-        code: ZodIssueCode.invalid_literal,
-        expected: this._def.value
-      });
-      return INVALID;
-    }
-    return { status: "valid", value: input.data };
-  }
-  get value() {
-    return this._def.value;
-  }
-};
-ZodLiteral.create = (value, params) => {
-  return new ZodLiteral({
-    value,
-    typeName: ZodFirstPartyTypeKind.ZodLiteral,
-    ...processCreateParams(params)
-  });
-};
-function createZodEnum(values, params) {
-  return new ZodEnum({
-    values,
-    typeName: ZodFirstPartyTypeKind.ZodEnum,
-    ...processCreateParams(params)
-  });
-}
-var ZodEnum = class _ZodEnum extends ZodType {
-  _parse(input) {
-    if (typeof input.data !== "string") {
-      const ctx = this._getOrReturnCtx(input);
-      const expectedValues = this._def.values;
-      addIssueToContext(ctx, {
-        expected: util.joinValues(expectedValues),
-        received: ctx.parsedType,
-        code: ZodIssueCode.invalid_type
-      });
-      return INVALID;
-    }
-    if (!this._cache) {
-      this._cache = new Set(this._def.values);
-    }
-    if (!this._cache.has(input.data)) {
-      const ctx = this._getOrReturnCtx(input);
-      const expectedValues = this._def.values;
-      addIssueToContext(ctx, {
-        received: ctx.data,
-        code: ZodIssueCode.invalid_enum_value,
-        options: expectedValues
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-  get options() {
-    return this._def.values;
-  }
-  get enum() {
-    const enumValues = {};
-    for (const val of this._def.values) {
-      enumValues[val] = val;
-    }
-    return enumValues;
-  }
-  get Values() {
-    const enumValues = {};
-    for (const val of this._def.values) {
-      enumValues[val] = val;
-    }
-    return enumValues;
-  }
-  get Enum() {
-    const enumValues = {};
-    for (const val of this._def.values) {
-      enumValues[val] = val;
-    }
-    return enumValues;
-  }
-  extract(values, newDef = this._def) {
-    return _ZodEnum.create(values, {
-      ...this._def,
-      ...newDef
-    });
-  }
-  exclude(values, newDef = this._def) {
-    return _ZodEnum.create(this.options.filter((opt) => !values.includes(opt)), {
-      ...this._def,
-      ...newDef
-    });
-  }
-};
-ZodEnum.create = createZodEnum;
-var ZodNativeEnum = class extends ZodType {
-  _parse(input) {
-    const nativeEnumValues = util.getValidEnumValues(this._def.values);
-    const ctx = this._getOrReturnCtx(input);
-    if (ctx.parsedType !== ZodParsedType.string && ctx.parsedType !== ZodParsedType.number) {
-      const expectedValues = util.objectValues(nativeEnumValues);
-      addIssueToContext(ctx, {
-        expected: util.joinValues(expectedValues),
-        received: ctx.parsedType,
-        code: ZodIssueCode.invalid_type
-      });
-      return INVALID;
-    }
-    if (!this._cache) {
-      this._cache = new Set(util.getValidEnumValues(this._def.values));
-    }
-    if (!this._cache.has(input.data)) {
-      const expectedValues = util.objectValues(nativeEnumValues);
-      addIssueToContext(ctx, {
-        received: ctx.data,
-        code: ZodIssueCode.invalid_enum_value,
-        options: expectedValues
-      });
-      return INVALID;
-    }
-    return OK(input.data);
-  }
-  get enum() {
-    return this._def.values;
-  }
-};
-ZodNativeEnum.create = (values, params) => {
-  return new ZodNativeEnum({
-    values,
-    typeName: ZodFirstPartyTypeKind.ZodNativeEnum,
-    ...processCreateParams(params)
-  });
-};
-var ZodPromise = class extends ZodType {
-  unwrap() {
-    return this._def.type;
-  }
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    if (ctx.parsedType !== ZodParsedType.promise && ctx.common.async === false) {
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.promise,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    const promisified = ctx.parsedType === ZodParsedType.promise ? ctx.data : Promise.resolve(ctx.data);
-    return OK(promisified.then((data) => {
-      return this._def.type.parseAsync(data, {
-        path: ctx.path,
-        errorMap: ctx.common.contextualErrorMap
-      });
-    }));
-  }
-};
-ZodPromise.create = (schema, params) => {
-  return new ZodPromise({
-    type: schema,
-    typeName: ZodFirstPartyTypeKind.ZodPromise,
-    ...processCreateParams(params)
-  });
-};
-var ZodEffects = class extends ZodType {
-  innerType() {
-    return this._def.schema;
-  }
-  sourceType() {
-    return this._def.schema._def.typeName === ZodFirstPartyTypeKind.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
-  }
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    const effect = this._def.effect || null;
-    const checkCtx = {
-      addIssue: (arg) => {
-        addIssueToContext(ctx, arg);
-        if (arg.fatal) {
-          status.abort();
-        } else {
-          status.dirty();
-        }
-      },
-      get path() {
-        return ctx.path;
-      }
-    };
-    checkCtx.addIssue = checkCtx.addIssue.bind(checkCtx);
-    if (effect.type === "preprocess") {
-      const processed = effect.transform(ctx.data, checkCtx);
-      if (ctx.common.async) {
-        return Promise.resolve(processed).then(async (processed2) => {
-          if (status.value === "aborted")
-            return INVALID;
-          const result = await this._def.schema._parseAsync({
-            data: processed2,
-            path: ctx.path,
-            parent: ctx
-          });
-          if (result.status === "aborted")
-            return INVALID;
-          if (result.status === "dirty")
-            return DIRTY(result.value);
-          if (status.value === "dirty")
-            return DIRTY(result.value);
-          return result;
-        });
-      } else {
-        if (status.value === "aborted")
-          return INVALID;
-        const result = this._def.schema._parseSync({
-          data: processed,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (result.status === "aborted")
-          return INVALID;
-        if (result.status === "dirty")
-          return DIRTY(result.value);
-        if (status.value === "dirty")
-          return DIRTY(result.value);
-        return result;
-      }
-    }
-    if (effect.type === "refinement") {
-      const executeRefinement = (acc) => {
-        const result = effect.refinement(acc, checkCtx);
-        if (ctx.common.async) {
-          return Promise.resolve(result);
-        }
-        if (result instanceof Promise) {
-          throw new Error("Async refinement encountered during synchronous parse operation. Use .parseAsync instead.");
-        }
-        return acc;
-      };
-      if (ctx.common.async === false) {
-        const inner = this._def.schema._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (inner.status === "aborted")
-          return INVALID;
-        if (inner.status === "dirty")
-          status.dirty();
-        executeRefinement(inner.value);
-        return { status: status.value, value: inner.value };
-      } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((inner) => {
-          if (inner.status === "aborted")
-            return INVALID;
-          if (inner.status === "dirty")
-            status.dirty();
-          return executeRefinement(inner.value).then(() => {
-            return { status: status.value, value: inner.value };
-          });
-        });
-      }
-    }
-    if (effect.type === "transform") {
-      if (ctx.common.async === false) {
-        const base2 = this._def.schema._parseSync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (!isValid(base2))
-          return INVALID;
-        const result = effect.transform(base2.value, checkCtx);
-        if (result instanceof Promise) {
-          throw new Error(`Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.`);
-        }
-        return { status: status.value, value: result };
-      } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base2) => {
-          if (!isValid(base2))
-            return INVALID;
-          return Promise.resolve(effect.transform(base2.value, checkCtx)).then((result) => ({
-            status: status.value,
-            value: result
-          }));
-        });
-      }
-    }
-    util.assertNever(effect);
-  }
-};
-ZodEffects.create = (schema, effect, params) => {
-  return new ZodEffects({
-    schema,
-    typeName: ZodFirstPartyTypeKind.ZodEffects,
-    effect,
-    ...processCreateParams(params)
-  });
-};
-ZodEffects.createWithPreprocess = (preprocess, schema, params) => {
-  return new ZodEffects({
-    schema,
-    effect: { type: "preprocess", transform: preprocess },
-    typeName: ZodFirstPartyTypeKind.ZodEffects,
-    ...processCreateParams(params)
-  });
-};
-var ZodOptional = class extends ZodType {
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType === ZodParsedType.undefined) {
-      return OK(void 0);
-    }
-    return this._def.innerType._parse(input);
-  }
-  unwrap() {
-    return this._def.innerType;
-  }
-};
-ZodOptional.create = (type, params) => {
-  return new ZodOptional({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodOptional,
-    ...processCreateParams(params)
-  });
-};
-var ZodNullable = class extends ZodType {
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType === ZodParsedType.null) {
-      return OK(null);
-    }
-    return this._def.innerType._parse(input);
-  }
-  unwrap() {
-    return this._def.innerType;
-  }
-};
-ZodNullable.create = (type, params) => {
-  return new ZodNullable({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodNullable,
-    ...processCreateParams(params)
-  });
-};
-var ZodDefault = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    let data = ctx.data;
-    if (ctx.parsedType === ZodParsedType.undefined) {
-      data = this._def.defaultValue();
-    }
-    return this._def.innerType._parse({
-      data,
-      path: ctx.path,
-      parent: ctx
-    });
-  }
-  removeDefault() {
-    return this._def.innerType;
-  }
-};
-ZodDefault.create = (type, params) => {
-  return new ZodDefault({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodDefault,
-    defaultValue: typeof params.default === "function" ? params.default : () => params.default,
-    ...processCreateParams(params)
-  });
-};
-var ZodCatch = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const newCtx = {
-      ...ctx,
-      common: {
-        ...ctx.common,
-        issues: []
-      }
-    };
-    const result = this._def.innerType._parse({
-      data: newCtx.data,
-      path: newCtx.path,
-      parent: {
-        ...newCtx
-      }
-    });
-    if (isAsync(result)) {
-      return result.then((result2) => {
-        return {
-          status: "valid",
-          value: result2.status === "valid" ? result2.value : this._def.catchValue({
-            get error() {
-              return new ZodError(newCtx.common.issues);
-            },
-            input: newCtx.data
-          })
-        };
-      });
-    } else {
-      return {
-        status: "valid",
-        value: result.status === "valid" ? result.value : this._def.catchValue({
-          get error() {
-            return new ZodError(newCtx.common.issues);
-          },
-          input: newCtx.data
-        })
-      };
-    }
-  }
-  removeCatch() {
-    return this._def.innerType;
-  }
-};
-ZodCatch.create = (type, params) => {
-  return new ZodCatch({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodCatch,
-    catchValue: typeof params.catch === "function" ? params.catch : () => params.catch,
-    ...processCreateParams(params)
-  });
-};
-var ZodNaN = class extends ZodType {
-  _parse(input) {
-    const parsedType = this._getType(input);
-    if (parsedType !== ZodParsedType.nan) {
-      const ctx = this._getOrReturnCtx(input);
-      addIssueToContext(ctx, {
-        code: ZodIssueCode.invalid_type,
-        expected: ZodParsedType.nan,
-        received: ctx.parsedType
-      });
-      return INVALID;
-    }
-    return { status: "valid", value: input.data };
-  }
-};
-ZodNaN.create = (params) => {
-  return new ZodNaN({
-    typeName: ZodFirstPartyTypeKind.ZodNaN,
-    ...processCreateParams(params)
-  });
-};
-var BRAND = /* @__PURE__ */ Symbol("zod_brand");
-var ZodBranded = class extends ZodType {
-  _parse(input) {
-    const { ctx } = this._processInputParams(input);
-    const data = ctx.data;
-    return this._def.type._parse({
-      data,
-      path: ctx.path,
-      parent: ctx
-    });
-  }
-  unwrap() {
-    return this._def.type;
-  }
-};
-var ZodPipeline = class _ZodPipeline extends ZodType {
-  _parse(input) {
-    const { status, ctx } = this._processInputParams(input);
-    if (ctx.common.async) {
-      const handleAsync = async () => {
-        const inResult = await this._def.in._parseAsync({
-          data: ctx.data,
-          path: ctx.path,
-          parent: ctx
-        });
-        if (inResult.status === "aborted")
-          return INVALID;
-        if (inResult.status === "dirty") {
-          status.dirty();
-          return DIRTY(inResult.value);
-        } else {
-          return this._def.out._parseAsync({
-            data: inResult.value,
-            path: ctx.path,
-            parent: ctx
-          });
-        }
-      };
-      return handleAsync();
-    } else {
-      const inResult = this._def.in._parseSync({
-        data: ctx.data,
-        path: ctx.path,
-        parent: ctx
-      });
-      if (inResult.status === "aborted")
-        return INVALID;
-      if (inResult.status === "dirty") {
-        status.dirty();
-        return {
-          status: "dirty",
-          value: inResult.value
-        };
-      } else {
-        return this._def.out._parseSync({
-          data: inResult.value,
-          path: ctx.path,
-          parent: ctx
-        });
-      }
-    }
-  }
-  static create(a, b) {
-    return new _ZodPipeline({
-      in: a,
-      out: b,
-      typeName: ZodFirstPartyTypeKind.ZodPipeline
-    });
-  }
-};
-var ZodReadonly = class extends ZodType {
-  _parse(input) {
-    const result = this._def.innerType._parse(input);
-    const freeze = (data) => {
-      if (isValid(data)) {
-        data.value = Object.freeze(data.value);
-      }
-      return data;
-    };
-    return isAsync(result) ? result.then((data) => freeze(data)) : freeze(result);
-  }
-  unwrap() {
-    return this._def.innerType;
-  }
-};
-ZodReadonly.create = (type, params) => {
-  return new ZodReadonly({
-    innerType: type,
-    typeName: ZodFirstPartyTypeKind.ZodReadonly,
-    ...processCreateParams(params)
-  });
-};
-function cleanParams(params, data) {
-  const p = typeof params === "function" ? params(data) : typeof params === "string" ? { message: params } : params;
-  const p2 = typeof p === "string" ? { message: p } : p;
-  return p2;
-}
-function custom(check, _params = {}, fatal) {
-  if (check)
-    return ZodAny.create().superRefine((data, ctx) => {
-      const r = check(data);
-      if (r instanceof Promise) {
-        return r.then((r3) => {
-          if (!r3) {
-            const params = cleanParams(_params, data);
-            const _fatal = params.fatal ?? fatal ?? true;
-            ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
-          }
-        });
-      }
-      if (!r) {
-        const params = cleanParams(_params, data);
-        const _fatal = params.fatal ?? fatal ?? true;
-        ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
-      }
-      return;
-    });
-  return ZodAny.create();
-}
-var late = {
-  object: ZodObject.lazycreate
-};
-var ZodFirstPartyTypeKind;
-(function(ZodFirstPartyTypeKind2) {
-  ZodFirstPartyTypeKind2["ZodString"] = "ZodString";
-  ZodFirstPartyTypeKind2["ZodNumber"] = "ZodNumber";
-  ZodFirstPartyTypeKind2["ZodNaN"] = "ZodNaN";
-  ZodFirstPartyTypeKind2["ZodBigInt"] = "ZodBigInt";
-  ZodFirstPartyTypeKind2["ZodBoolean"] = "ZodBoolean";
-  ZodFirstPartyTypeKind2["ZodDate"] = "ZodDate";
-  ZodFirstPartyTypeKind2["ZodSymbol"] = "ZodSymbol";
-  ZodFirstPartyTypeKind2["ZodUndefined"] = "ZodUndefined";
-  ZodFirstPartyTypeKind2["ZodNull"] = "ZodNull";
-  ZodFirstPartyTypeKind2["ZodAny"] = "ZodAny";
-  ZodFirstPartyTypeKind2["ZodUnknown"] = "ZodUnknown";
-  ZodFirstPartyTypeKind2["ZodNever"] = "ZodNever";
-  ZodFirstPartyTypeKind2["ZodVoid"] = "ZodVoid";
-  ZodFirstPartyTypeKind2["ZodArray"] = "ZodArray";
-  ZodFirstPartyTypeKind2["ZodObject"] = "ZodObject";
-  ZodFirstPartyTypeKind2["ZodUnion"] = "ZodUnion";
-  ZodFirstPartyTypeKind2["ZodDiscriminatedUnion"] = "ZodDiscriminatedUnion";
-  ZodFirstPartyTypeKind2["ZodIntersection"] = "ZodIntersection";
-  ZodFirstPartyTypeKind2["ZodTuple"] = "ZodTuple";
-  ZodFirstPartyTypeKind2["ZodRecord"] = "ZodRecord";
-  ZodFirstPartyTypeKind2["ZodMap"] = "ZodMap";
-  ZodFirstPartyTypeKind2["ZodSet"] = "ZodSet";
-  ZodFirstPartyTypeKind2["ZodFunction"] = "ZodFunction";
-  ZodFirstPartyTypeKind2["ZodLazy"] = "ZodLazy";
-  ZodFirstPartyTypeKind2["ZodLiteral"] = "ZodLiteral";
-  ZodFirstPartyTypeKind2["ZodEnum"] = "ZodEnum";
-  ZodFirstPartyTypeKind2["ZodEffects"] = "ZodEffects";
-  ZodFirstPartyTypeKind2["ZodNativeEnum"] = "ZodNativeEnum";
-  ZodFirstPartyTypeKind2["ZodOptional"] = "ZodOptional";
-  ZodFirstPartyTypeKind2["ZodNullable"] = "ZodNullable";
-  ZodFirstPartyTypeKind2["ZodDefault"] = "ZodDefault";
-  ZodFirstPartyTypeKind2["ZodCatch"] = "ZodCatch";
-  ZodFirstPartyTypeKind2["ZodPromise"] = "ZodPromise";
-  ZodFirstPartyTypeKind2["ZodBranded"] = "ZodBranded";
-  ZodFirstPartyTypeKind2["ZodPipeline"] = "ZodPipeline";
-  ZodFirstPartyTypeKind2["ZodReadonly"] = "ZodReadonly";
-})(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
-var instanceOfType = (cls, params = {
-  message: `Input not instance of ${cls.name}`
-}) => custom((data) => data instanceof cls, params);
-var stringType = ZodString.create;
-var numberType = ZodNumber.create;
-var nanType = ZodNaN.create;
-var bigIntType = ZodBigInt.create;
-var booleanType = ZodBoolean.create;
-var dateType = ZodDate.create;
-var symbolType = ZodSymbol.create;
-var undefinedType = ZodUndefined.create;
-var nullType = ZodNull.create;
-var anyType = ZodAny.create;
-var unknownType = ZodUnknown.create;
-var neverType = ZodNever.create;
-var voidType = ZodVoid.create;
-var arrayType = ZodArray.create;
-var objectType = ZodObject.create;
-var strictObjectType = ZodObject.strictCreate;
-var unionType = ZodUnion.create;
-var discriminatedUnionType = ZodDiscriminatedUnion.create;
-var intersectionType = ZodIntersection.create;
-var tupleType = ZodTuple.create;
-var recordType = ZodRecord.create;
-var mapType = ZodMap.create;
-var setType = ZodSet.create;
-var functionType = ZodFunction.create;
-var lazyType = ZodLazy.create;
-var literalType = ZodLiteral.create;
-var enumType = ZodEnum.create;
-var nativeEnumType = ZodNativeEnum.create;
-var promiseType = ZodPromise.create;
-var effectsType = ZodEffects.create;
-var optionalType = ZodOptional.create;
-var nullableType = ZodNullable.create;
-var preprocessType = ZodEffects.createWithPreprocess;
-var pipelineType = ZodPipeline.create;
-var ostring = () => stringType().optional();
-var onumber = () => numberType().optional();
-var oboolean = () => booleanType().optional();
-var coerce = {
-  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
-  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
-  boolean: ((arg) => ZodBoolean.create({
-    ...arg,
-    coerce: true
-  })),
-  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
-  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
-};
-var NEVER = INVALID;
-
-// apps/api/src/routes/masterdata.ts
-var masterDataRouter = (0, import_express2.Router)();
-masterDataRouter.use(requireAuth);
-masterDataRouter.get("/staff", async (_req, res) => {
-  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role })));
-});
-var staffSchema = external_exports.object({
-  name: external_exports.string().min(1),
-  role: external_exports.string().min(1),
-  pin: external_exports.string().regex(/^\d{4}$/)
-});
-masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
-  const parsed = staffSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const { name: name2, role, pin } = parsed.data;
-  if (role !== "Admin") {
-    const roleExists = await prisma.role.findUnique({ where: { name: role } });
-    if (!roleExists) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
-  }
-  const pinHash = await import_bcryptjs2.default.hash(pin, 10);
-  const user = await prisma.user.create({ data: { name: name2, role, pinHash } });
-  res.status(201).json({ id: user.id, name: user.name, role: user.role });
-});
-masterDataRouter.get("/roles", requireRole("Admin"), async (_req, res) => {
-  const roles = await prisma.role.findMany({ orderBy: { name: "asc" } });
-  res.json(
-    roles.map((r) => ({
-      id: r.id,
-      name: r.name,
-      permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, r[k]]))
-    }))
-  );
-});
-var roleSchema = external_exports.object({
-  name: external_exports.string().min(1).max(60),
-  permissions: external_exports.record(external_exports.string(), external_exports.boolean()).optional()
-});
-function permissionFields(permissions) {
-  const out = {};
-  for (const k of PERMISSION_KEYS) out[k] = permissions?.[k] ?? false;
-  return out;
-}
-masterDataRouter.post("/roles", requireRole("Admin"), async (req, res) => {
-  const parsed = roleSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  if (parsed.data.name === "Admin") return res.status(400).json({ error: '"Admin" is reserved and always has full access' });
-  const role = await prisma.role.create({ data: { name: parsed.data.name, ...permissionFields(parsed.data.permissions ?? DEFAULT_ROLE_PERMISSIONS.Staff) } }).catch(() => null);
-  if (!role) return res.status(400).json({ error: "A role with that name already exists" });
-  res.status(201).json({ id: role.id, name: role.name, permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]])) });
-});
-var roleUpdateSchema = external_exports.object({
-  name: external_exports.string().min(1).max(60).optional(),
-  permissions: external_exports.record(external_exports.string(), external_exports.boolean()).optional()
-});
-masterDataRouter.put("/roles/:id", requireRole("Admin"), async (req, res) => {
-  const parsed = roleUpdateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const existing = await prisma.role.findUnique({ where: { id: Number(req.params.id) } });
-  if (!existing) return res.status(404).json({ error: "Role not found" });
-  if (parsed.data.name === "Admin") return res.status(400).json({ error: '"Admin" is reserved and always has full access' });
-  const data = {};
-  if (parsed.data.name) data.name = parsed.data.name;
-  if (parsed.data.permissions) Object.assign(data, permissionFields({ ...Object.fromEntries(PERMISSION_KEYS.map((k) => [k, existing[k]])), ...parsed.data.permissions }));
-  const role = await prisma.role.update({ where: { id: existing.id }, data }).catch(() => null);
-  if (!role) return res.status(400).json({ error: "A role with that name already exists" });
-  res.json({ id: role.id, name: role.name, permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]])) });
-});
-masterDataRouter.delete("/roles/:id", requireRole("Admin"), async (req, res) => {
-  const existing = await prisma.role.findUnique({ where: { id: Number(req.params.id) } });
-  if (!existing) return res.status(404).json({ error: "Role not found" });
-  const inUse = await prisma.user.findFirst({ where: { role: existing.name } });
-  if (inUse) return res.status(400).json({ error: "Reassign every staff member off this role before deleting it" });
-  await prisma.role.delete({ where: { id: existing.id } });
-  res.status(204).end();
-});
-masterDataRouter.get("/services", async (_req, res) => {
-  res.json(await prisma.service.findMany({ orderBy: { name: "asc" } }));
-});
-var serviceSchema = external_exports.object({
-  name: external_exports.string().min(1),
-  unit: external_exports.enum(["piece", "metre", "sqm"]),
-  price: external_exports.number().positive(),
-  usesArtworkPricing: external_exports.boolean().optional()
-});
-masterDataRouter.post("/services", requireRole("Admin"), async (req, res) => {
-  const parsed = serviceSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  res.status(201).json(await prisma.service.create({ data: parsed.data }));
-});
-var serviceUpdateSchema = external_exports.object({
-  price: external_exports.number().positive().optional(),
-  unit: external_exports.enum(["piece", "metre", "sqm"]).optional(),
-  usesArtworkPricing: external_exports.boolean().optional(),
-  chargesPressingFee: external_exports.boolean().optional()
-}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
-masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => {
-  const parsed = serviceUpdateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const service = await prisma.service.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
-  if (!service) return res.status(404).json({ error: "Service not found" });
-  res.json(service);
-});
-masterDataRouter.get("/materials", async (_req, res) => {
-  res.json(await prisma.material.findMany({ orderBy: { name: "asc" } }));
-});
-var materialSchema = external_exports.object({ name: external_exports.string().min(1), price: external_exports.number().positive() });
-masterDataRouter.post("/materials", requireRole("Admin"), async (req, res) => {
-  const parsed = materialSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  res.status(201).json(await prisma.material.create({ data: parsed.data }));
-});
-var materialUpdateSchema = external_exports.object({
-  price: external_exports.number().positive().optional(),
-  reorderLevel: external_exports.number().min(0).optional()
-}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
-masterDataRouter.put("/materials/:id", requirePermission("canApproveStock"), async (req, res) => {
-  const parsed = materialUpdateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const material = await prisma.material.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
-  if (!material) return res.status(404).json({ error: "Material not found" });
-  res.json(material);
-});
-masterDataRouter.get("/corporate-clients", async (_req, res) => {
-  res.json(await prisma.corporateClient.findMany({ orderBy: { name: "asc" } }));
-});
-var clientSchema = external_exports.object({
-  name: external_exports.string().min(1),
-  creditDays: external_exports.number().int().positive(),
-  email: external_exports.string().max(200).optional(),
-  phone: external_exports.string().max(50).optional()
-});
-masterDataRouter.post("/corporate-clients", requireRole("Admin"), async (req, res) => {
-  const parsed = clientSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? "", phone: parsed.data.phone ?? "" } }));
-});
-var clientUpdateSchema = external_exports.object({
-  creditDays: external_exports.number().int().positive().optional(),
-  email: external_exports.string().max(200).optional(),
-  phone: external_exports.string().max(50).optional()
-}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
-masterDataRouter.put("/corporate-clients/:id", requireRole("Admin"), async (req, res) => {
-  const parsed = clientUpdateSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const client = await prisma.corporateClient.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
-  if (!client) return res.status(404).json({ error: "Corporate client not found" });
-  res.json(client);
-});
-function serializeSettings(settings) {
-  return {
-    maxDiscountPct: settings.maxDiscountPct,
-    companyName: settings.companyName,
-    legalName: settings.legalName,
-    companyAddress: settings.companyAddress,
-    companyPhone: settings.companyPhone,
-    companyEmail: settings.companyEmail,
-    logoDataUrl: settings.logoDataUrl
-  };
-}
-masterDataRouter.get("/settings", async (_req, res) => {
-  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-  res.json(serializeSettings(settings));
-});
-var settingsSchema = external_exports.object({
-  maxDiscountPct: external_exports.number().min(0).optional(),
-  companyName: external_exports.string().min(1).max(200).optional(),
-  // The registered company the "companyName" trading name operates under —
-  // shown as a small "trading name of ..." line under the brand name on
-  // printed invoices/quotations (see printInvoice.ts). Blank hides it.
-  legalName: external_exports.string().max(200).optional(),
-  companyAddress: external_exports.string().max(500).optional(),
-  companyPhone: external_exports.string().max(50).optional(),
-  companyEmail: external_exports.string().max(200).optional(),
-  // A data: URL logo image, capped well under the 5mb JSON body limit; null clears it.
-  logoDataUrl: external_exports.string().max(2e6).nullable().optional()
-}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
-masterDataRouter.put("/settings", requireRole("Admin"), async (req, res) => {
-  const parsed = settingsSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1, ...parsed.data }, update: parsed.data });
-  res.json(serializeSettings(settings));
-});
-
-// apps/api/src/routes/orders.ts
-var import_express3 = __toESM(require_express2());
-var import_client2 = require("@prisma/client");
-var ordersRouter = (0, import_express3.Router)();
-ordersRouter.use(requireAuth);
-var orderInclude = import_client2.Prisma.validator()({
-  staff: true,
-  corporateClient: true,
-  lineItems: { include: { service: true, material: true } },
-  payments: { orderBy: { id: "asc" } }
-});
-function toLineItemInput(li) {
-  return {
-    itemType: li.itemType,
-    serviceId: li.serviceId,
-    materialId: li.materialId,
-    qty: li.qty,
-    unitPrice: li.unitPrice,
-    discountPct: li.discountPct,
-    discountAmt: li.discountAmt,
-    heatPressFee: li.heatPressFee ?? null
-  };
-}
-function serializeSummary(order) {
-  const lineItems = order.lineItems.map(toLineItemInput);
-  const payments = order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-  const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
-  const overdue = isOverdue(order.kind, order.status, order.dueDate, totals.balanceDue, todayStr());
-  return {
-    id: order.id,
-    orderNo: order.orderNo,
-    kind: order.kind,
-    channel: order.channel,
-    customerName: order.customerName,
-    phone: order.phone,
-    corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone } : null,
-    staff: { id: order.staff.id, name: order.staff.name },
-    createdDate: order.createdDate,
-    status: order.status,
-    stage: order.stage,
-    dueDate: order.dueDate,
-    totals,
-    overdue
-  };
-}
-function serializeDetail(order) {
-  const summary = serializeSummary(order);
-  return {
-    ...summary,
-    paymentTiming: order.paymentTiming,
-    orderDiscountPct: order.orderDiscountPct,
-    orderDiscountAmt: order.orderDiscountAmt,
-    lineItems: order.lineItems.map((li) => ({
-      id: li.id,
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      serviceName: li.service?.name ?? null,
-      materialId: li.materialId,
-      materialName: li.material?.name ?? null,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee,
-      artworkAreaSqm: li.artworkAreaSqm,
-      lineTotal: buildLineTotal(toLineItemInput(li))
-    })),
-    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method }))
-  };
-}
-function canAccessOrder(userRole, userId, order) {
-  if (userRole === "Staff") return order.staffId === userId;
-  return true;
-}
-function resolveWalkinStatus(balanceDue) {
-  if (balanceDue > 0) return { status: "Invoice", dueDate: addDays(todayStr(), WALKIN_INVOICE_DUE_DAYS) };
-  return { status: "Order", dueDate: null };
-}
-async function convertQuoteToInvoice(tx, order) {
-  const days = order.corporateClient?.creditDays ?? 30;
-  const dueDate = addDays(todayStr(), days);
-  await tx.order.update({ where: { id: order.id }, data: { status: "Invoice", dueDate } });
-}
-ordersRouter.get("/", async (req, res) => {
-  const { staffId, status, channel } = req.query;
-  const where = {};
-  if (req.user.role === "Staff") {
-    where.staffId = req.user.id;
-  } else if (staffId && staffId !== "all") {
-    where.staffId = Number(staffId);
-  }
-  if (status && status !== "all") where.status = status;
-  if (channel && channel !== "all") where.channel = channel;
-  const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: "desc" } });
-  res.json(orders.map(serializeSummary));
-});
-ordersRouter.get("/:id", async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  res.json(serializeDetail(order));
-});
-var lineItemSchema = external_exports.object({
-  itemType: external_exports.enum(["material", "service", "per-metre"]),
-  serviceId: external_exports.number().int().nullable().optional(),
-  materialId: external_exports.number().int().nullable().optional(),
-  qty: external_exports.number().positive(),
-  unitPrice: external_exports.number().nonnegative(),
-  discountPct: external_exports.number().min(0).max(100).default(0),
-  discountAmt: external_exports.number().min(0).default(0),
-  heatPressFee: external_exports.number().nonnegative().nullable().optional(),
-  artworkAreaSqm: external_exports.number().positive().nullable().optional()
-}).refine((li) => li.itemType === "material" ? !!li.materialId : !!li.serviceId, {
-  message: "A material line needs a material, a service line needs a service"
-});
-var walkinSchema = external_exports.object({
-  customerName: external_exports.string().min(1),
-  phone: external_exports.string().optional(),
-  staffId: external_exports.number().int(),
-  paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
-  paymentAmount: external_exports.number().min(0).optional(),
-  paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
-  lineItems: external_exports.array(lineItemSchema).min(1),
-  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
-  orderDiscountAmt: external_exports.number().min(0).default(0)
-});
-ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, res) => {
-  const parsed = walkinSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const form = parsed.data;
-  const paymentAmount = form.paymentTiming === "onAcceptance" ? form.paymentAmount ?? 0 : 0;
-  const totals = computeOrderTotals(
-    { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
-    paymentAmount > 0 ? [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? "Cash" }] : []
-  );
-  const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
-  const order = await prisma.$transaction(async (tx) => {
-    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = "W-" + settings.nextWalkinNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
-    const created = await tx.order.create({
-      data: {
-        orderNo,
-        kind: "walkin",
-        customerName: form.customerName,
-        phone: form.phone,
-        staffId: form.staffId,
-        createdDate: todayStr(),
-        status,
-        dueDate,
-        stage: "Order Received",
-        paymentTiming: form.paymentTiming,
-        orderDiscountPct: form.orderDiscountPct,
-        orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
-        payments: paymentAmount > 0 ? { create: [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? "Cash", staffId: form.staffId }] } : void 0
-      },
-      include: orderInclude
-    });
-    return created;
-  });
-  res.status(201).json(serializeDetail(order));
-});
-var quoteSchema = external_exports.object({
-  corporateClientId: external_exports.number().int(),
-  staffId: external_exports.number().int(),
-  lineItems: external_exports.array(lineItemSchema).min(1),
-  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
-  orderDiscountAmt: external_exports.number().min(0).default(0)
-});
-ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, res) => {
-  const parsed = quoteSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const form = parsed.data;
-  const order = await prisma.$transaction(async (tx) => {
-    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = "C-" + settings.nextCorpNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
-    return tx.order.create({
-      data: {
-        orderNo,
-        kind: "corporate",
-        corporateClientId: form.corporateClientId,
-        staffId: form.staffId,
-        createdDate: todayStr(),
-        status: "Quote",
-        stage: "Order Received",
-        orderDiscountPct: form.orderDiscountPct,
-        orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
-      },
-      include: orderInclude
-    });
-  });
-  res.status(201).json(serializeDetail(order));
-});
-ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req, res) => {
-  const parsed = quoteSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const form = parsed.data;
-  const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
-  if (!client) return res.status(400).json({ error: "Corporate client not found" });
-  const dueDate = addDays(todayStr(), client.creditDays);
-  const order = await prisma.$transaction(async (tx) => {
-    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = "C-" + settings.nextCorpNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
-    const created = await tx.order.create({
-      data: {
-        orderNo,
-        kind: "corporate",
-        corporateClientId: form.corporateClientId,
-        staffId: form.staffId,
-        createdDate: todayStr(),
-        status: "Invoice",
-        stage: "Order Received",
-        dueDate,
-        orderDiscountPct: form.orderDiscountPct,
-        orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
-      },
-      include: orderInclude
-    });
-    return created;
-  });
-  res.status(201).json(serializeDetail(order));
-});
-var paymentSchema = external_exports.object({ amount: external_exports.number().positive(), method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]) });
-ordersRouter.post("/:id/payments", async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  const parsed = paymentSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.create({
-      data: { orderId: order.id, date: todayStr(), amount: parsed.data.amount, method: parsed.data.method, staffId: req.user.id }
-    });
-    if (order.status === "Quote") {
-      await convertQuoteToInvoice(tx, order);
-    } else if (order.kind !== "corporate" && order.status === "Invoice") {
-      const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
-      const lineItems = full.lineItems.map(toLineItemInput);
-      const payments = full.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-      const totals = computeOrderTotals({ lineItems, orderDiscountPct: full.orderDiscountPct, orderDiscountAmt: full.orderDiscountAmt }, payments);
-      if (totals.balanceDue <= 0) {
-        await tx.order.update({ where: { id: order.id }, data: { status: "Order", dueDate: null } });
-      }
-    }
-  });
-  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  res.json(serializeDetail(updated));
-});
-var STAGE_VALUES = ["Order Received", "In Production", "Quality Check", "Ready for Pickup/Delivery", "Completed"];
-var stageSchema = external_exports.object({ stage: external_exports.enum(STAGE_VALUES) });
-ordersRouter.patch("/:id/stage", async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  const parsed = stageSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const updated = await prisma.order.update({ where: { id: order.id }, data: { stage: parsed.data.stage }, include: orderInclude });
-  res.json(serializeDetail(updated));
-});
-ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canViewAllOrders"), async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  if (order.status !== "Quote") return res.status(400).json({ error: "Only quotes can be converted" });
-  await prisma.$transaction((tx) => convertQuoteToInvoice(tx, order));
-  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  res.json(serializeDetail(updated));
-});
-
-// apps/api/src/routes/pnl.ts
-var import_express4 = __toESM(require_express2());
-var pnlRouter = (0, import_express4.Router)();
-pnlRouter.use(requireAuth, requirePermission("canAccessPnl"));
-async function loadOrdersForPnl() {
-  const orders = await prisma.order.findMany({ include: { lineItems: true, payments: true } });
-  return orders.map((o) => ({
-    kind: o.kind,
-    status: o.status,
-    createdDate: o.createdDate,
-    orderDiscountPct: o.orderDiscountPct,
-    orderDiscountAmt: o.orderDiscountAmt,
-    lineItems: o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    })),
-    payments: o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }))
-  }));
-}
-function inRange(d, from, to) {
-  return d >= from && d <= to;
-}
-var SALARIES_CATEGORY = "Salaries & wages";
-function computeAgg(orders, expenses, payroll, cogsPct, from, to) {
-  let revAccrualWalkin = 0;
-  let revAccrualCorp = 0;
-  let revCash = 0;
-  for (const o of orders) {
-    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
-    if (isRevenueOrder && inRange(o.createdDate, from, to)) {
-      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      if (o.kind === "walkin") revAccrualWalkin += totals.grandTotal;
-      else revAccrualCorp += totals.grandTotal;
-    }
-    for (const p of o.payments) {
-      if (inRange(p.date, from, to)) revCash += p.amount;
-    }
-  }
-  const revAccrual = revAccrualWalkin + revAccrualCorp;
-  const cogs = revAccrual * (cogsPct / 100);
-  const grossProfit = revAccrual - cogs;
-  const expensesInRange = expenses.filter((e) => inRange(e.date, from, to));
-  const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
-  const salariesTotal = payrollInRange.reduce((a, p) => a + p.grossPay, 0);
-  const totalExpenses = expensesInRange.reduce((a, e) => a + e.amount, 0) + salariesTotal;
-  const netProfit = grossProfit - totalExpenses;
-  const byCategory = {};
-  for (const e of expensesInRange) byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
-  if (salariesTotal > 0) byCategory[SALARIES_CATEGORY] = (byCategory[SALARIES_CATEGORY] || 0) + salariesTotal;
-  return { revAccrualWalkin, revAccrualCorp, revAccrual, revCash, cogs, grossProfit, totalExpenses, netProfit, byCategory };
-}
-function priorRange(from, to) {
-  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00");
-  const toD = /* @__PURE__ */ new Date(to + "T00:00:00");
-  const lengthMs = toD.getTime() - fromD.getTime();
-  const priorTo = new Date(fromD);
-  priorTo.setDate(priorTo.getDate() - 1);
-  const priorFrom = new Date(priorTo.getTime() - lengthMs);
-  const fmtD = (d) => d.toISOString().slice(0, 10);
-  return { from: fmtD(priorFrom), to: fmtD(priorTo) };
-}
-function pctChange(cur, prev) {
-  return prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
-}
-pnlRouter.get("/", async (req, res) => {
-  const from = String(req.query.from || "");
-  const to = String(req.query.to || "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  }
-  const [orders, allExpenses, allPayroll, settings] = await Promise.all([
-    loadOrdersForPnl(),
-    prisma.expense.findMany({ orderBy: { date: "desc" } }),
-    prisma.payrollEntry.findMany({ select: { date: true, grossPay: true } }),
-    prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} })
-  ]);
-  const cogsPct = settings.cogsPct;
-  const agg = computeAgg(orders, allExpenses, allPayroll, cogsPct, from, to);
-  const prior = priorRange(from, to);
-  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, prior.from, prior.to);
-  const toDateObj = /* @__PURE__ */ new Date(to + "T00:00:00");
-  const trend = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(toDateObj.getFullYear(), toDateObj.getMonth() - i, 1);
-    const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const mTo = monthEnd.toISOString().slice(0, 10);
-    const mAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, mFrom, mTo);
-    trend.push({ label: `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
-  }
-  res.json({
-    fromDate: from,
-    toDate: to,
-    cogsPct,
-    revAccrualWalkin: agg.revAccrualWalkin,
-    revAccrualCorp: agg.revAccrualCorp,
-    revAccrual: agg.revAccrual,
-    revCash: agg.revCash,
-    cogs: agg.cogs,
-    grossProfit: agg.grossProfit,
-    byCategory: agg.byCategory,
-    totalExpenses: agg.totalExpenses,
-    netProfit: agg.netProfit,
-    netMarginPct: agg.revAccrual > 0 ? Math.round(agg.netProfit / agg.revAccrual * 1e3) / 10 : 0,
-    revChangePct: pctChange(agg.revAccrual, priorAgg.revAccrual),
-    profitChangePct: pctChange(agg.netProfit, priorAgg.netProfit),
-    priorFrom: prior.from,
-    priorTo: prior.to,
-    trend,
-    expenseCategories: [SALARIES_CATEGORY, ...EXPENSE_CATEGORIES]
-  });
-});
-var cogsSchema = external_exports.object({ cogsPct: external_exports.number().min(0).max(100) });
-pnlRouter.put("/cogs-pct", async (req, res) => {
-  const parsed = cogsSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const settings = await prisma.setting.upsert({
-    where: { id: 1 },
-    create: { id: 1, cogsPct: parsed.data.cogsPct },
-    update: { cogsPct: parsed.data.cogsPct }
-  });
-  res.json({ cogsPct: settings.cogsPct });
-});
-
-// apps/api/src/routes/finance.ts
-var import_express5 = __toESM(require_express2());
-var financeRouter = (0, import_express5.Router)();
-financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
-function inRange2(d, from, to) {
-  return d >= from && d <= to;
-}
-function parseRange(req) {
-  const from = String(req.query.from || "");
-  const to = String(req.query.to || "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
-  return { from, to };
-}
-async function computePettyCashBalance(asOfDate) {
-  const [topUps, expenses, pettyPayroll] = await Promise.all([
-    prisma.pettyCashTopUp.findMany(),
-    prisma.expense.findMany(),
-    prisma.payrollEntry.findMany({ where: { paymentSource: "Petty Cash" } })
-  ]);
-  const cutoff = asOfDate ?? "9999-12-31";
-  const topUpsTotal = topUps.filter((t) => t.date <= cutoff).reduce((a, t) => a + t.amount, 0);
-  const expensesTotal = expenses.filter((e) => e.date <= cutoff).reduce((a, e) => a + e.amount, 0);
-  const payrollTotal = pettyPayroll.filter((p) => p.date <= cutoff).reduce((a, p) => a + computePay(p.grossPay, p.employeeType).netPay, 0);
-  return topUpsTotal - expensesTotal - payrollTotal;
-}
-financeRouter.get("/payroll", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const entries = await prisma.payrollEntry.findMany({
-    where: { date: { gte: range.from, lte: range.to } },
-    include: { staff: true },
-    orderBy: { date: "desc" }
-  });
-  const rows = entries.map((e) => {
-    const pay = computePay(e.grossPay, e.employeeType);
-    return {
-      id: e.id,
-      date: e.date,
-      staffId: e.staffId,
-      name: e.staff.name,
-      employeeType: e.employeeType,
-      department: e.department,
-      daysWorked: e.daysWorked,
-      rate: e.rate,
-      paymentSource: e.paymentSource,
-      capturedByName: e.capturedByName,
-      ...pay
-    };
-  });
-  const totals = rows.reduce(
-    (a, r) => ({
-      grossPayroll: a.grossPayroll + r.grossPay,
-      totalStatutory: a.totalStatutory + r.totalDeductions,
-      netPayroll: a.netPayroll + r.netPay,
-      totalPaye: a.totalPaye + r.paye,
-      totalNssf: a.totalNssf + r.nssf,
-      totalShif: a.totalShif + r.shif,
-      totalHousingLevy: a.totalHousingLevy + r.housingLevy
-    }),
-    { grossPayroll: 0, totalStatutory: 0, netPayroll: 0, totalPaye: 0, totalNssf: 0, totalShif: 0, totalHousingLevy: 0 }
-  );
-  res.json({ fromDate: range.from, toDate: range.to, rows, ...totals });
-});
-var payrollSchema = external_exports.discriminatedUnion("employeeType", [
-  external_exports.object({
-    employeeType: external_exports.literal("Employee"),
-    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    staffId: external_exports.number().int(),
-    department: external_exports.string().max(100).optional(),
-    grossPay: external_exports.number().positive(),
-    paymentSource: external_exports.enum(PAYROLL_PAYMENT_SOURCES)
-  }),
-  external_exports.object({
-    employeeType: external_exports.literal("Casual"),
-    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    staffId: external_exports.number().int(),
-    department: external_exports.string().max(100).optional(),
-    daysWorked: external_exports.number().positive(),
-    rate: external_exports.number().positive(),
-    paymentSource: external_exports.enum(PAYROLL_PAYMENT_SOURCES)
-  })
-]);
-financeRouter.post("/payroll", async (req, res) => {
-  const parsed = payrollSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const data = parsed.data;
-  const staff = await prisma.user.findUnique({ where: { id: data.staffId } });
-  if (!staff) return res.status(400).json({ error: "Selected staff member not found" });
-  const grossPay = data.employeeType === "Employee" ? data.grossPay : data.daysWorked * data.rate;
-  if (data.paymentSource === "Petty Cash") {
-    const netPay = computePay(grossPay, data.employeeType).netPay;
-    const balance = await computePettyCashBalance();
-    if (netPay > balance) {
-      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(netPay).toLocaleString("en-KE")} needed)` });
-    }
-  }
-  const entry = await prisma.payrollEntry.create({
-    data: {
-      date: data.date,
-      staffId: data.staffId,
-      employeeType: data.employeeType,
-      department: data.department ?? "",
-      daysWorked: data.employeeType === "Casual" ? data.daysWorked : null,
-      rate: data.employeeType === "Casual" ? data.rate : null,
-      grossPay,
-      paymentSource: data.paymentSource,
-      capturedByName: req.user.name
-    }
-  });
-  res.status(201).json({ ...entry, name: staff.name });
-});
-financeRouter.get("/vat", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const orders = await prisma.order.findMany({ include: { lineItems: true } });
-  const forVat = orders.map((o) => ({
-    kind: o.kind,
-    status: o.status,
-    createdDate: o.createdDate,
-    orderDiscountPct: o.orderDiscountPct,
-    orderDiscountAmt: o.orderDiscountAmt,
-    lineItems: o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    }))
-  }));
-  let walkinSales = 0;
-  let corporateSales = 0;
-  for (const o of forVat) {
-    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
-    if (isRevenueOrder && inRange2(o.createdDate, range.from, range.to)) {
-      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      if (o.kind === "walkin") walkinSales += totals.grandTotal;
-      else corporateSales += totals.grandTotal;
-    }
-  }
-  const totalSales = walkinSales + corporateSales;
-  const { net: netSales, vat: outputVat } = splitVatInclusive(totalSales);
-  res.json({ fromDate: range.from, toDate: range.to, walkinSales, corporateSales, totalSales, netSales, outputVat });
-});
-financeRouter.get("/expenses", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const rows = await prisma.expense.findMany({
-    where: { date: { gte: range.from, lte: range.to } },
-    orderBy: { date: "desc" }
-  });
-  const totalExpenses = rows.reduce((a, e) => a + e.amount, 0);
-  res.json({ fromDate: range.from, toDate: range.to, rows, totalExpenses, expenseCategories: EXPENSE_CATEGORIES });
-});
-var expenseSchema = external_exports.object({
-  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  category: external_exports.enum(EXPENSE_CATEGORIES),
-  note: external_exports.string().max(200).optional(),
-  amount: external_exports.number().positive(),
-  // Optional generally, but a "Printing Materials & Consumables" expense
-  // needs one on file to later be linked to a Stock purchase (see
-  // routes/stock.ts).
-  invoiceNumber: external_exports.string().max(100).optional()
-});
-financeRouter.post("/expenses", async (req, res) => {
-  const parsed = expenseSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const balance = await computePettyCashBalance();
-  if (parsed.data.amount > balance) {
-    return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(parsed.data.amount).toLocaleString("en-KE")} needed)` });
-  }
-  const expense = await prisma.expense.create({
-    data: { ...parsed.data, note: parsed.data.note ?? "", capturedByName: req.user.name }
-  });
-  res.status(201).json(expense);
-});
-financeRouter.get("/expenses/amendments", async (req, res) => {
-  const status = typeof req.query.status === "string" ? req.query.status : void 0;
-  const amendments = await prisma.expenseAmendment.findMany({
-    where: status ? { status } : void 0,
-    include: { expense: true },
-    orderBy: { requestedAt: "desc" }
-  });
-  res.json(
-    amendments.map((a) => ({
-      id: a.id,
-      expenseId: a.expenseId,
-      currentDate: a.expense.date,
-      currentCategory: a.expense.category,
-      currentNote: a.expense.note,
-      currentAmount: a.expense.amount,
-      proposedDate: a.proposedDate,
-      proposedCategory: a.proposedCategory,
-      proposedNote: a.proposedNote,
-      proposedAmount: a.proposedAmount,
-      reason: a.reason,
-      status: a.status,
-      requestedByName: a.requestedByName,
-      requestedAt: a.requestedAt,
-      decidedByName: a.decidedByName,
-      decidedAt: a.decidedAt
-    }))
-  );
-});
-var amendSchema = external_exports.object({
-  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  category: external_exports.enum(EXPENSE_CATEGORIES),
-  note: external_exports.string().max(200).optional(),
-  amount: external_exports.number().positive(),
-  reason: external_exports.string().min(1, "A reason for the amendment is required")
-});
-financeRouter.post("/expenses/:id/amend", async (req, res) => {
-  const parsed = amendSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
-  if (!expense) return res.status(404).json({ error: "Expense not found" });
-  const amendment = await prisma.expenseAmendment.create({
-    data: {
-      expenseId: expense.id,
-      proposedDate: parsed.data.date,
-      proposedCategory: parsed.data.category,
-      proposedNote: parsed.data.note ?? "",
-      proposedAmount: parsed.data.amount,
-      reason: parsed.data.reason,
-      requestedByName: req.user.name
-    }
-  });
-  res.status(201).json(amendment);
-});
-async function decideAmendment(req, res, approve) {
-  const amendment = await prisma.expenseAmendment.findUnique({ where: { id: Number(req.params.id) } });
-  if (!amendment) return res.status(404).json({ error: "Amendment not found" });
-  if (amendment.status !== "Pending") return res.status(400).json({ error: "Amendment has already been decided" });
-  if (amendment.requestedByName === req.user.name) {
-    return res.status(400).json({ error: "You cannot approve or reject your own amendment request" });
-  }
-  if (approve) {
-    await prisma.expense.update({
-      where: { id: amendment.expenseId },
-      data: { date: amendment.proposedDate, category: amendment.proposedCategory, note: amendment.proposedNote, amount: amendment.proposedAmount }
-    });
-  }
-  const updated = await prisma.expenseAmendment.update({
-    where: { id: amendment.id },
-    data: { status: approve ? "Approved" : "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() }
-  });
-  res.json(updated);
-}
-financeRouter.post("/expenses/amendments/:id/approve", (req, res) => decideAmendment(req, res, true));
-financeRouter.post("/expenses/amendments/:id/reject", (req, res) => decideAmendment(req, res, false));
-financeRouter.get("/petty-cash", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const [allTopUps, allExpenses, allPettyPayroll, cashPayments] = await Promise.all([
-    prisma.pettyCashTopUp.findMany(),
-    prisma.expense.findMany(),
-    prisma.payrollEntry.findMany({ where: { paymentSource: "Petty Cash" }, include: { staff: true } }),
-    prisma.payment.findMany({ where: { method: "Cash", date: { gte: range.from, lte: range.to } } })
-  ]);
-  const pettyPayrollNet = allPettyPayroll.map((p) => ({ ...p, netPay: computePay(p.grossPay, p.employeeType).netPay }));
-  const balance = await computePettyCashBalance(range.to);
-  const periodTopUps = allTopUps.filter((t) => inRange2(t.date, range.from, range.to));
-  const periodExpenses = allExpenses.filter((e) => inRange2(e.date, range.from, range.to));
-  const periodPayroll = pettyPayrollNet.filter((p) => inRange2(p.date, range.from, range.to));
-  const periodTopUpsTotal = periodTopUps.reduce((a, t) => a + t.amount, 0);
-  const periodExpensesTotal = periodExpenses.reduce((a, e) => a + e.amount, 0) + periodPayroll.reduce((a, p) => a + p.netPay, 0);
-  const cashSalesInPeriod = cashPayments.reduce((a, p) => a + p.amount, 0);
-  const ledger = [
-    ...periodTopUps.map((t) => ({
-      id: "t" + t.id,
-      date: t.date,
-      type: "topup",
-      description: t.source + (t.note ? ": " + t.note : "") + ` (by ${t.authorizedByName})`,
-      amountIn: t.amount,
-      amountOut: 0,
-      topUpId: t.id
-    })),
-    ...periodExpenses.map((e) => ({
-      id: "e" + e.id,
-      date: e.date,
-      type: "expense",
-      description: e.category + (e.note ? ": " + e.note : "") + (e.capturedByName ? ` (by ${e.capturedByName})` : ""),
-      amountIn: 0,
-      amountOut: e.amount,
-      topUpId: null
-    })),
-    ...periodPayroll.map((p) => ({
-      id: "p" + p.id,
-      date: p.date,
-      type: "expense",
-      description: `Payroll: ${p.staff.name} (net pay)`,
-      amountIn: 0,
-      amountOut: p.netPay,
-      topUpId: null
-    }))
-  ].sort((a, b) => a.date < b.date ? 1 : -1);
-  res.json({
-    fromDate: range.from,
-    toDate: range.to,
-    balance,
-    periodTopUpsTotal,
-    periodExpensesTotal,
-    cashSalesInPeriod,
-    ledger,
-    pettyCashSources: PETTY_CASH_SOURCES
-  });
-});
-var pettyCashSchema = external_exports.object({
-  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  source: external_exports.enum(PETTY_CASH_SOURCES),
-  amount: external_exports.number().positive(),
-  note: external_exports.string().max(200).optional()
-});
-financeRouter.post("/petty-cash/topups", async (req, res) => {
-  const parsed = pettyCashSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const topUp = await prisma.pettyCashTopUp.create({
-    data: { ...parsed.data, note: parsed.data.note ?? "", authorizedByName: req.user.name }
-  });
-  res.status(201).json(topUp);
-});
-var DELETABLE_TYPES = ["Expense", "PayrollEntry", "PettyCashTopUp"];
-async function buildDeletionSummary(recordType2, recordId) {
-  if (recordType2 === "Expense") {
-    const e = await prisma.expense.findUnique({ where: { id: recordId } });
-    if (!e) return null;
-    return `Expense: ${e.category} \u2014 Ksh ${Math.round(e.amount).toLocaleString("en-KE")} (${e.date})`;
-  }
-  if (recordType2 === "PayrollEntry") {
-    const p = await prisma.payrollEntry.findUnique({ where: { id: recordId }, include: { staff: true } });
-    if (!p) return null;
-    return `Payroll: ${p.staff.name} \u2014 Ksh ${Math.round(p.grossPay).toLocaleString("en-KE")} (${p.date})`;
-  }
-  const t = await prisma.pettyCashTopUp.findUnique({ where: { id: recordId } });
-  if (!t) return null;
-  return `Petty cash top-up: ${t.source} \u2014 Ksh ${Math.round(t.amount).toLocaleString("en-KE")} (${t.date})`;
-}
-financeRouter.get("/deletion-requests", async (req, res) => {
-  const status = typeof req.query.status === "string" ? req.query.status : void 0;
-  const requests = await prisma.deletionRequest.findMany({
-    where: status ? { status } : void 0,
-    orderBy: { requestedAt: "desc" }
-  });
-  res.json(requests);
-});
-var deletionRequestSchema = external_exports.object({
-  recordType: external_exports.enum(DELETABLE_TYPES),
-  recordId: external_exports.number().int(),
-  reason: external_exports.string().min(1, "A reason for the deletion is required")
-});
-financeRouter.post("/deletion-requests", async (req, res) => {
-  const parsed = deletionRequestSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const summary = await buildDeletionSummary(parsed.data.recordType, parsed.data.recordId);
-  if (!summary) return res.status(404).json({ error: "Record not found" });
-  const request = await prisma.deletionRequest.create({
-    data: { ...parsed.data, summary, requestedByName: req.user.name }
-  });
-  res.status(201).json(request);
-});
-async function decideDeletionRequest(req, res, approve) {
-  const request = await prisma.deletionRequest.findUnique({ where: { id: Number(req.params.id) } });
-  if (!request) return res.status(404).json({ error: "Deletion request not found" });
-  if (request.status !== "Pending") return res.status(400).json({ error: "Deletion request has already been decided" });
-  if (request.requestedByName === req.user.name) {
-    return res.status(400).json({ error: "You cannot approve or reject your own deletion request" });
-  }
-  if (approve) {
-    const recordType2 = request.recordType;
-    if (recordType2 === "Expense") await prisma.expense.delete({ where: { id: request.recordId } }).catch(() => null);
-    else if (recordType2 === "PayrollEntry") await prisma.payrollEntry.delete({ where: { id: request.recordId } }).catch(() => null);
-    else await prisma.pettyCashTopUp.delete({ where: { id: request.recordId } }).catch(() => null);
-  }
-  const updated = await prisma.deletionRequest.update({
-    where: { id: request.id },
-    data: { status: approve ? "Approved" : "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() }
-  });
-  res.json(updated);
-}
-financeRouter.post("/deletion-requests/:id/approve", (req, res) => decideDeletionRequest(req, res, true));
-financeRouter.post("/deletion-requests/:id/reject", (req, res) => decideDeletionRequest(req, res, false));
-
-// apps/api/src/routes/stock.ts
-var import_express6 = __toESM(require_express2());
-var stockRouter = (0, import_express6.Router)();
-stockRouter.use(requireAuth, requirePermission("canAccessStock"));
-var PURCHASE_EXPENSE_CATEGORY = "Printing Materials & Consumables";
-stockRouter.get("/requisitions", async (req, res) => {
-  const status = typeof req.query.status === "string" ? req.query.status : void 0;
-  const requisitions = await prisma.stockRequisition.findMany({
-    where: status ? { status } : void 0,
-    include: { material: true },
-    orderBy: { requestedAt: "desc" }
-  });
-  res.json(
-    requisitions.map((r) => ({
-      id: r.id,
-      materialId: r.materialId,
-      materialName: r.material.name,
-      qty: r.qty,
-      note: r.note,
-      status: r.status,
-      requestedByName: r.requestedByName,
-      requestedAt: r.requestedAt,
-      decidedByName: r.decidedByName,
-      decidedAt: r.decidedAt
-    }))
-  );
-});
-var requisitionSchema = external_exports.object({
-  materialId: external_exports.number().int(),
-  qty: external_exports.number().positive(),
-  note: external_exports.string().max(200).optional()
-});
-stockRouter.post("/requisitions", async (req, res) => {
-  const parsed = requisitionSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const material = await prisma.material.findUnique({ where: { id: parsed.data.materialId } });
-  if (!material) return res.status(400).json({ error: "Material not found" });
-  const requisition = await prisma.stockRequisition.create({
-    data: { ...parsed.data, note: parsed.data.note ?? "", requestedByName: req.user.name }
-  });
-  res.status(201).json({ ...requisition, materialName: material.name });
-});
-async function decideRequisition(id, approve, deciderName, res) {
-  const requisition = await prisma.stockRequisition.findUnique({ where: { id } });
-  if (!requisition) return res.status(404).json({ error: "Requisition not found" });
-  if (requisition.status !== "Pending") return res.status(400).json({ error: "Requisition has already been decided" });
-  if (requisition.requestedByName === deciderName) {
-    return res.status(400).json({ error: "You cannot approve or reject your own requisition" });
-  }
-  const updated = await prisma.stockRequisition.update({
-    where: { id },
-    data: { status: approve ? "Approved" : "Rejected", decidedByName: deciderName, decidedAt: /* @__PURE__ */ new Date() }
-  });
-  res.json(updated);
-}
-stockRouter.post("/requisitions/:id/approve", requirePermission("canApproveStock"), async (req, res) => {
-  await decideRequisition(Number(req.params.id), true, req.user.name, res);
-});
-stockRouter.post("/requisitions/:id/reject", requirePermission("canApproveStock"), async (req, res) => {
-  await decideRequisition(Number(req.params.id), false, req.user.name, res);
-});
-stockRouter.get("/takes", async (_req, res) => {
-  const takes = await prisma.stockTake.findMany({ include: { material: true }, orderBy: { countedAt: "desc" }, take: 200 });
-  res.json(
-    takes.map((t) => ({
-      id: t.id,
-      materialId: t.materialId,
-      materialName: t.material.name,
-      date: t.date,
-      systemQty: t.systemQty,
-      countedQty: t.countedQty,
-      varianceQty: t.varianceQty,
-      note: t.note,
-      countedByName: t.countedByName,
-      countedAt: t.countedAt
-    }))
-  );
-});
-var stockTakeSchema = external_exports.object({
-  materialId: external_exports.number().int(),
-  countedQty: external_exports.number().min(0),
-  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  note: external_exports.string().max(200).optional()
-});
-stockRouter.post("/takes", async (req, res) => {
-  const parsed = stockTakeSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const material = await prisma.material.findUnique({ where: { id: parsed.data.materialId } });
-  if (!material) return res.status(400).json({ error: "Material not found" });
-  const systemQty = material.stockQty;
-  const varianceQty = parsed.data.countedQty - systemQty;
-  const [take] = await prisma.$transaction([
-    prisma.stockTake.create({
-      data: {
-        materialId: material.id,
-        date: parsed.data.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
-        systemQty,
-        countedQty: parsed.data.countedQty,
-        varianceQty,
-        note: parsed.data.note ?? "",
-        countedByName: req.user.name
-      }
-    }),
-    prisma.material.update({ where: { id: material.id }, data: { stockQty: parsed.data.countedQty } })
-  ]);
-  res.status(201).json({ ...take, materialName: material.name });
-});
-stockRouter.get("/purchases", async (req, res) => {
-  const status = typeof req.query.status === "string" ? req.query.status : void 0;
-  const purchases = await prisma.purchase.findMany({
-    where: status ? { status } : void 0,
-    include: { material: true, requisition: true },
-    orderBy: { createdAt: "desc" },
-    take: 300
-  });
-  res.json(
-    purchases.map((p) => ({
-      id: p.id,
-      requisitionId: p.requisitionId,
-      materialId: p.materialId,
-      materialName: p.material.name,
-      date: p.date,
-      supplier: p.supplier,
-      qty: p.qty,
-      unitCost: p.unitCost,
-      totalCost: p.totalCost,
-      invoiceNumber: p.invoiceNumber,
-      status: p.status,
-      requisitionedQty: p.requisitionedQty,
-      varianceQty: p.varianceQty,
-      acceptedByName: p.acceptedByName,
-      acceptedAt: p.acceptedAt,
-      rejectReason: p.rejectReason,
-      capturedByName: p.capturedByName,
-      createdAt: p.createdAt
-    }))
-  );
-});
-stockRouter.get("/requisitions/awaiting-purchase", async (_req, res) => {
-  const requisitions = await prisma.stockRequisition.findMany({
-    where: { status: "Approved", purchases: { none: { status: { in: ["Held", "Accepted"] } } } },
-    include: { material: true },
-    orderBy: { requestedAt: "desc" }
-  });
-  res.json(
-    requisitions.map((r) => ({ id: r.id, materialId: r.materialId, materialName: r.material.name, qty: r.qty, note: r.note, requestedByName: r.requestedByName }))
-  );
-});
-stockRouter.get("/available-expenses-for-purchase", async (_req, res) => {
-  const linked = await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } });
-  const linkedIds = linked.map((p) => p.expenseId);
-  const expenses = await prisma.expense.findMany({
-    where: { category: PURCHASE_EXPENSE_CATEGORY, invoiceNumber: { not: null }, id: { notIn: linkedIds } },
-    orderBy: { date: "desc" }
-  });
-  res.json(expenses.map((e) => ({ id: e.id, date: e.date, invoiceNumber: e.invoiceNumber, amount: e.amount, note: e.note })));
-});
-var purchaseSchema = external_exports.discriminatedUnion("mode", [
-  external_exports.object({
-    mode: external_exports.literal("new"),
-    requisitionId: external_exports.number().int().optional(),
-    materialId: external_exports.number().int(),
-    supplier: external_exports.string().max(200).optional(),
-    qty: external_exports.number().positive(),
-    unitCost: external_exports.number().positive(),
-    invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"),
-    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
-  }),
-  external_exports.object({
-    mode: external_exports.literal("existing"),
-    requisitionId: external_exports.number().int().optional(),
-    materialId: external_exports.number().int(),
-    supplier: external_exports.string().max(200).optional(),
-    qty: external_exports.number().positive(),
-    expenseId: external_exports.number().int(),
-    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
-  })
-]);
-stockRouter.post("/purchases", async (req, res) => {
-  const parsed = purchaseSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const data = parsed.data;
-  const material = await prisma.material.findUnique({ where: { id: data.materialId } });
-  if (!material) return res.status(400).json({ error: "Material not found" });
-  let requisitionedQty = null;
-  if (data.requisitionId) {
-    const requisition = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: true } });
-    if (!requisition) return res.status(404).json({ error: "Requisition not found" });
-    if (requisition.status !== "Approved") return res.status(400).json({ error: "Only an approved requisition can be purchased against" });
-    if (requisition.purchases.some((p) => p.status === "Held" || p.status === "Accepted")) {
-      return res.status(400).json({ error: "This requisition already has a purchase in progress or accepted" });
-    }
-    requisitionedQty = requisition.qty;
-  }
-  const date = data.date ?? todayStr();
-  let unitCost;
-  let totalCost;
-  let invoiceNumber;
-  let expenseIdToLink = null;
-  let expenseToCreate = null;
-  if (data.mode === "new") {
-    const balance = await computePettyCashBalance();
-    const cost = data.qty * data.unitCost;
-    if (cost > balance) {
-      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(cost).toLocaleString("en-KE")} needed)` });
-    }
-    unitCost = data.unitCost;
-    totalCost = cost;
-    invoiceNumber = data.invoiceNumber;
-    expenseToCreate = { note: `Stock purchase \u2014 ${material.name} \u2014 invoice/receipt ${data.invoiceNumber}`, amount: cost, invoiceNumber: data.invoiceNumber };
-  } else {
-    const expense = await prisma.expense.findUnique({ where: { id: data.expenseId } });
-    if (!expense) return res.status(404).json({ error: "Expense not found" });
-    if (expense.category !== PURCHASE_EXPENSE_CATEGORY) return res.status(400).json({ error: "That expense is not a stock purchase" });
-    if (!expense.invoiceNumber) return res.status(400).json({ error: "That expense has no invoice/receipt number recorded" });
-    const alreadyLinked = await prisma.purchase.findFirst({ where: { expenseId: expense.id } });
-    if (alreadyLinked) return res.status(400).json({ error: "That expense has already been used for a purchase" });
-    totalCost = expense.amount;
-    unitCost = totalCost / data.qty;
-    invoiceNumber = expense.invoiceNumber;
-    expenseIdToLink = expense.id;
-  }
-  const purchase = await prisma.$transaction(async (tx) => {
-    let finalExpenseId = expenseIdToLink;
-    if (expenseToCreate) {
-      const created = await tx.expense.create({
-        data: { date, category: PURCHASE_EXPENSE_CATEGORY, note: expenseToCreate.note, amount: expenseToCreate.amount, invoiceNumber: expenseToCreate.invoiceNumber, capturedByName: req.user.name }
-      });
-      finalExpenseId = created.id;
-    }
-    return tx.purchase.create({
-      data: {
-        requisitionId: data.requisitionId ?? null,
-        materialId: data.materialId,
-        date,
-        supplier: data.supplier ?? "",
-        qty: data.qty,
-        unitCost,
-        totalCost,
-        invoiceNumber,
-        expenseId: finalExpenseId,
-        requisitionedQty,
-        capturedByName: req.user.name
-      },
-      include: { material: true }
-    });
-  });
-  res.status(201).json({ ...purchase, materialName: purchase.material.name });
-});
-stockRouter.post("/purchases/:id/accept", requirePermission("canApproveStock"), async (req, res) => {
-  const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
-  if (!purchase) return res.status(404).json({ error: "Purchase not found" });
-  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting acceptance" });
-  if (purchase.capturedByName === req.user.name) {
-    return res.status(400).json({ error: "You cannot accept a purchase you captured yourself" });
-  }
-  const varianceQty = purchase.requisitionedQty != null ? purchase.qty - purchase.requisitionedQty : null;
-  const [updated] = await prisma.$transaction([
-    prisma.purchase.update({
-      where: { id: purchase.id },
-      data: { status: "Accepted", varianceQty, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() },
-      include: { material: true }
-    }),
-    prisma.material.update({ where: { id: purchase.materialId }, data: { stockQty: { increment: purchase.qty } } })
-  ]);
-  res.json({ ...updated, materialName: updated.material.name });
-});
-var rejectPurchaseSchema = external_exports.object({ reason: external_exports.string().min(1, "A reason for rejecting is required") });
-stockRouter.post("/purchases/:id/reject", requirePermission("canApproveStock"), async (req, res) => {
-  const parsed = rejectPurchaseSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
-  if (!purchase) return res.status(404).json({ error: "Purchase not found" });
-  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting acceptance" });
-  if (purchase.capturedByName === req.user.name) {
-    return res.status(400).json({ error: "You cannot reject a purchase you captured yourself" });
-  }
-  const updated = await prisma.purchase.update({
-    where: { id: purchase.id },
-    data: { status: "Rejected", rejectReason: parsed.data.reason, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() },
-    include: { material: true }
-  });
-  res.json({ ...updated, materialName: updated.material.name });
-});
-var importLineSchema = external_exports.object({
-  description: external_exports.string().min(1),
-  qty: external_exports.number().positive(),
-  unitCost: external_exports.number().positive(),
-  totalCost: external_exports.number().positive()
-});
-var importBatchSchema = external_exports.object({
-  model: external_exports.enum(["kra", "consolidator"]),
-  reference: external_exports.string().max(200).optional(),
-  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  lines: external_exports.array(importLineSchema).min(1)
-});
-stockRouter.post("/imports", async (req, res) => {
-  const parsed = importBatchSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const { model, lines } = parsed.data;
-  const date = parsed.data.date ?? todayStr();
-  const reference = parsed.data.reference?.trim() || "";
-  const supplier = `China Import (${model === "kra" ? "KRA Full Tax" : "Consolidator"})${reference ? " \u2014 " + reference : ""}`;
-  const existingMaterials = await prisma.material.findMany();
-  const byLowerName = new Map(existingMaterials.map((m) => [m.name.toLowerCase(), m]));
-  const created = await prisma.$transaction(async (tx) => {
-    const rows = [];
-    for (const line of lines) {
-      const name2 = line.description.trim();
-      let material = byLowerName.get(name2.toLowerCase());
-      if (!material) {
-        material = await tx.material.create({ data: { name: name2, price: Math.round(line.unitCost) } });
-        byLowerName.set(name2.toLowerCase(), material);
-      }
-      const purchase = await tx.purchase.create({
-        data: {
-          materialId: material.id,
-          date,
-          supplier,
-          qty: line.qty,
-          unitCost: line.unitCost,
-          totalCost: line.totalCost,
-          invoiceNumber: reference || null,
-          capturedByName: req.user.name
-        }
-      });
-      rows.push({ ...purchase, materialName: material.name });
-    }
-    return rows;
-  });
-  res.status(201).json(created);
-});
-
-// apps/api/src/routes/reports.ts
-var import_express7 = __toESM(require_express2());
-var reportsRouter = (0, import_express7.Router)();
-reportsRouter.use(requireAuth, requirePermission("canAccessReports"));
-function inRange3(d, from, to) {
-  return d >= from && d <= to;
-}
-function parseRange2(req) {
-  const from = String(req.query.from || "");
-  const to = String(req.query.to || "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
-  return { from, to };
-}
-reportsRouter.get("/sales-by-category", async (req, res) => {
-  const range = parseRange2(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const orders = await prisma.order.findMany({
-    where: { OR: [{ kind: "walkin" }, { status: "Invoice" }] },
-    include: { lineItems: { include: { service: true } } }
-  });
-  const byService = /* @__PURE__ */ new Map();
-  let materialsQty = 0;
-  let materialsRevenue = 0;
-  for (const o of orders) {
-    if (!inRange3(o.createdDate, range.from, range.to)) continue;
-    for (const li of o.lineItems) {
-      const input = {
-        itemType: li.itemType,
-        serviceId: li.serviceId,
-        materialId: li.materialId,
-        qty: li.qty,
-        unitPrice: li.unitPrice,
-        discountPct: li.discountPct,
-        discountAmt: li.discountAmt,
-        heatPressFee: li.heatPressFee
-      };
-      const lineTotal = buildLineTotal(input);
-      if (li.itemType === "material" || !li.service) {
-        materialsQty += li.qty;
-        materialsRevenue += lineTotal;
-      } else {
-        const name2 = li.service.name;
-        const bucket = byService.get(name2) ?? { qty: 0, revenue: 0 };
-        bucket.qty += li.qty;
-        bucket.revenue += lineTotal;
-        byService.set(name2, bucket);
-      }
-    }
-  }
-  const categories = Array.from(byService.entries()).map(([name2, v]) => ({ name: name2, qty: v.qty, revenue: v.revenue })).sort((a, b) => b.revenue - a.revenue);
-  res.json({
-    fromDate: range.from,
-    toDate: range.to,
-    categories,
-    materials: { qty: materialsQty, revenue: materialsRevenue }
-  });
-});
-reportsRouter.get("/embroidery-profitability", async (req, res) => {
-  const range = parseRange2(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const embroideryService = await prisma.service.findFirst({ where: { name: "Embroidery" } });
-  let revenue = 0;
-  let qtyPieces = 0;
-  if (embroideryService) {
-    const orders = await prisma.order.findMany({
-      where: { OR: [{ kind: "walkin" }, { status: "Invoice" }] },
-      include: { lineItems: { where: { serviceId: embroideryService.id } } }
-    });
-    for (const o of orders) {
-      if (!inRange3(o.createdDate, range.from, range.to)) continue;
-      for (const li of o.lineItems) {
-        const lineTotal = buildLineTotal({
-          itemType: li.itemType,
-          serviceId: li.serviceId,
-          materialId: li.materialId,
-          qty: li.qty,
-          unitPrice: li.unitPrice,
-          discountPct: li.discountPct,
-          discountAmt: li.discountAmt,
-          heatPressFee: li.heatPressFee
-        });
-        revenue += lineTotal;
-        qtyPieces += li.qty;
-      }
-    }
-  }
-  const consumableMaterials = await prisma.material.findMany({
-    where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } }
-  });
-  const materialIds = consumableMaterials.map((m) => m.id);
-  const purchases = materialIds.length ? await prisma.purchase.findMany({ where: { materialId: { in: materialIds }, status: "Accepted" }, include: { material: true } }) : [];
-  const breakdownMap = /* @__PURE__ */ new Map();
-  let consumablesCost = 0;
-  for (const p of purchases) {
-    if (!inRange3(p.date, range.from, range.to)) continue;
-    consumablesCost += p.totalCost;
-    const b = breakdownMap.get(p.material.name) ?? { qty: 0, totalCost: 0 };
-    b.qty += p.qty;
-    b.totalCost += p.totalCost;
-    breakdownMap.set(p.material.name, b);
-  }
-  const consumableBreakdown = Array.from(breakdownMap.entries()).map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: v.totalCost })).sort((a, b) => b.totalCost - a.totalCost);
-  const grossProfit = revenue - consumablesCost;
-  const marginPct = revenue > 0 ? grossProfit / revenue * 100 : null;
-  const avgRevenuePerPiece = qtyPieces > 0 ? revenue / qtyPieces : null;
-  const avgCostPerPiece = qtyPieces > 0 ? consumablesCost / qtyPieces : null;
-  const marginPerPiece = avgRevenuePerPiece != null && avgCostPerPiece != null ? avgRevenuePerPiece - avgCostPerPiece : null;
-  res.json({
-    fromDate: range.from,
-    toDate: range.to,
-    serviceFound: !!embroideryService,
-    revenue,
-    qtyPieces,
-    consumablesCost,
-    grossProfit,
-    marginPct,
-    avgRevenuePerPiece,
-    avgCostPerPiece,
-    marginPerPiece,
-    underpriced: marginPerPiece != null && marginPerPiece < 0,
-    consumableBreakdown
-  });
-});
-reportsRouter.get("/accounts-receivable", async (req, res) => {
-  const today = todayStr();
-  const orders = await prisma.order.findMany({
-    where: { status: "Invoice" },
-    include: { corporateClient: true, lineItems: true, payments: true, staff: true },
-    orderBy: { dueDate: "asc" }
-  });
-  const rows = orders.map((o) => {
-    const lineItems = o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    }));
-    const payments = o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-    const totals = computeOrderTotals({ lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }, payments);
-    const daysOverdue = o.dueDate && o.dueDate < today ? Math.round((Date.parse(today) - Date.parse(o.dueDate)) / 864e5) : 0;
-    return {
-      id: o.id,
-      orderNo: o.orderNo,
-      kind: o.kind,
-      channel: o.channel,
-      client: o.kind === "corporate" ? o.corporateClient?.name ?? "\u2014" : o.customerName ?? "\u2014",
-      staffName: o.staff.name,
-      createdDate: o.createdDate,
-      dueDate: o.dueDate,
-      grandTotal: totals.grandTotal,
-      paidTotal: totals.paidTotal,
-      balanceDue: totals.balanceDue,
-      daysOverdue
-    };
-  }).filter((r) => r.balanceDue > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
-  const bucket = (r) => r.daysOverdue <= 0 ? "current" : r.daysOverdue <= 30 ? "days1to30" : r.daysOverdue <= 60 ? "days31to60" : r.daysOverdue <= 90 ? "days61to90" : "days90plus";
-  const buckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days90plus: 0 };
-  for (const r of rows) buckets[bucket(r)] += r.balanceDue;
-  res.json({
-    asOf: today,
-    totalOutstanding: rows.reduce((a, r) => a + r.balanceDue, 0),
-    buckets,
-    rows
-  });
-});
-
-// apps/api/src/routes/email.ts
-var import_express8 = __toESM(require_express2());
 
 // node_modules/nodemailer/dist/esm/mailer/index.js
 var import_node_events = require("node:events");
@@ -49439,9 +43630,7 @@ var nodemailer = {
 };
 var nodemailer_default = nodemailer;
 
-// apps/api/src/routes/email.ts
-var emailRouter = (0, import_express8.Router)();
-emailRouter.use(requireAuth);
+// apps/api/src/mailer.ts
 function buildTransport() {
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
@@ -49452,6 +43641,5892 @@ function buildTransport() {
     auth: { user: SMTP_USER, pass: SMTP_PASS }
   });
 }
+function mailFrom() {
+  return process.env.SMTP_FROM || process.env.SMTP_USER;
+}
+
+// apps/api/src/middleware/auth.ts
+var import_jsonwebtoken = __toESM(require_jsonwebtoken());
+var JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET must be set in production");
+}
+function signToken(user) {
+  return import_jsonwebtoken.default.sign(user, JWT_SECRET, { expiresIn: "12h" });
+}
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  try {
+    const payload = import_jsonwebtoken.default.verify(header.slice(7), JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired session" });
+  }
+}
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({ error: "Not permitted for your role" });
+    }
+    next();
+  };
+}
+function requirePermission(...keys) {
+  return async (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    if (req.user.role === "Admin") return next();
+    const role = await prisma.role.findUnique({ where: { name: req.user.role } });
+    if (!role || !keys.some((k) => role[k])) {
+      return res.status(403).json({ error: "Not permitted for your role" });
+    }
+    next();
+  };
+}
+
+// packages/shared/src/types.ts
+var PERMISSION_KEYS = [
+  "canCaptureOrders",
+  "canViewAllOrders",
+  "canManagePayments",
+  "canAccessPnl",
+  "canAccessFinance",
+  "canAccessStock",
+  "canApproveStock",
+  "canAccessReports",
+  "canAccessDtf",
+  "canManageDtf"
+];
+
+// packages/shared/src/calc.ts
+function buildLineTotal(li) {
+  const qty = Number(li.qty) || 0;
+  const price = Number(li.unitPrice) || 0;
+  const heatPressFee = Number(li.heatPressFee) || 0;
+  const pct = Number(li.discountPct) || 0;
+  const amt = Number(li.discountAmt) || 0;
+  return Math.max(0, qty * (price + heatPressFee) * (1 - pct / 100) - amt);
+}
+function computeOrderTotals(order, payments = []) {
+  const subtotal = order.lineItems.reduce((a, li) => a + buildLineTotal(li), 0);
+  const opct = Number(order.orderDiscountPct) || 0;
+  const oamt = Number(order.orderDiscountAmt) || 0;
+  const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
+  const paidTotal = payments.reduce((a, p) => a + (Number(p.amount) || 0), 0);
+  const balanceDue = Math.max(0, grandTotal - paidTotal);
+  const paidPct = grandTotal > 0 ? Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
+  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
+}
+function isOverdue(kind, status, dueDate, balanceDue, today) {
+  return status === "Invoice" && !!dueDate && dueDate < today && balanceDue > 0;
+}
+function addDays(dateStr2, days) {
+  const d = /* @__PURE__ */ new Date(dateStr2 + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function todayStr() {
+  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+}
+
+// packages/shared/src/constants.ts
+var ALL_FALSE = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
+var ALL_TRUE = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
+var DEFAULT_ROLE_PERMISSIONS = {
+  // canAccessDtf lets Staff reach Film Order/Artwork Order (next to General
+  // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
+  // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true },
+  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessDtf: true },
+  "Finance Manager": {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessPnl: true,
+    canAccessFinance: true,
+    canAccessStock: true,
+    canApproveStock: true,
+    canAccessReports: true,
+    canAccessDtf: true,
+    canManageDtf: true
+  },
+  "General Manager": {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessPnl: true,
+    canAccessFinance: true,
+    canAccessStock: true,
+    canApproveStock: true,
+    canAccessReports: true,
+    canAccessDtf: true,
+    canManageDtf: true
+  },
+  Admin: ALL_TRUE
+};
+var EXPENSE_CATEGORIES = [
+  "Printing Materials & Consumables",
+  "Casual Labour",
+  "Transport",
+  "Utilities",
+  "Equipment Maintenance",
+  "Office Supplies",
+  "Courier/Delivery",
+  "Refreshments",
+  "Miscellaneous",
+  "Airtime/Data",
+  "Cleaning",
+  "Bank Charges"
+];
+var PAYROLL_PAYMENT_SOURCES = ["Petty Cash", "Bank/Cheque"];
+var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation"];
+var WALKIN_INVOICE_DUE_DAYS = 7;
+var ASSET_CATEGORIES = [
+  "Printing Equipment",
+  "Embroidery Machines",
+  "Heat Press & Curing",
+  "Computers & IT Equipment",
+  "Furniture & Fixtures",
+  "Vehicles",
+  "Office Equipment",
+  "Other"
+];
+var ASSET_CONDITIONS = ["Active", "Under Repair", "Retired"];
+var EMBROIDERY_CONSUMABLE_MATERIAL_NAMES = ["Embroidery Thread", "Embroidery Needles"];
+
+// packages/shared/src/tax.ts
+var VAT_RATE = 0.16;
+var NSSF_RATE = 0.12;
+var SHIF_RATE = 0.0275;
+var HOUSING_LEVY_RATE = 0.03;
+var PAYE_MONTHLY_RELIEF = 2400;
+var PAYE_BANDS = [
+  [24e3, 0.1],
+  [8333, 0.25],
+  [467667, 0.3],
+  [3e5, 0.325],
+  [Infinity, 0.35]
+];
+function payeBand(monthlyPay) {
+  let tax = 0;
+  let remaining = monthlyPay;
+  for (const [width, rate] of PAYE_BANDS) {
+    if (remaining <= 0) break;
+    const x = Math.min(remaining, width);
+    tax += x * rate;
+    remaining -= x;
+  }
+  return tax;
+}
+function payeNet(monthlyPay) {
+  return Math.max(0, payeBand(monthlyPay) - PAYE_MONTHLY_RELIEF);
+}
+function nssfContribution(grossPay) {
+  return grossPay * NSSF_RATE;
+}
+function shifContribution(grossPay) {
+  return Math.max(grossPay * SHIF_RATE, 300);
+}
+function housingLevy(grossPay) {
+  return grossPay * HOUSING_LEVY_RATE;
+}
+function splitVatInclusive(inclusiveAmount) {
+  const net8 = inclusiveAmount / (1 + VAT_RATE);
+  return { net: net8, vat: inclusiveAmount - net8 };
+}
+function computePay(grossPay, employeeType) {
+  if (employeeType === "Casual") {
+    return { grossPay, paye: 0, nssf: 0, shif: 0, housingLevy: 0, totalDeductions: 0, netPay: grossPay };
+  }
+  const paye = payeNet(grossPay);
+  const nssf = nssfContribution(grossPay);
+  const shif = shifContribution(grossPay);
+  const housing = housingLevy(grossPay);
+  const totalDeductions = paye + nssf + shif + housing;
+  return { grossPay, paye, nssf, shif, housingLevy: housing, totalDeductions, netPay: grossPay - totalDeductions };
+}
+
+// packages/shared/src/dtf.ts
+var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var div = (a, b) => b > 0 ? a / b : 0;
+function saleCalc(s, metres, pricePerM, amountPaid) {
+  const price = pricePerM == null || Number.isNaN(pricePerM) ? s.stdPricePerM : pricePerM;
+  const total = r2(metres * price);
+  return {
+    price,
+    valid: price >= s.minPricePerM && price <= s.stdPricePerM,
+    discountPerM: r2(s.stdPricePerM - price),
+    total,
+    balance: r2(total - amountPaid)
+  };
+}
+function jobCalc(runningMetres, pieces, fixedChargePerMetre, minPricePerPiece) {
+  const finalPerPiece = minPricePerPiece + div(fixedChargePerMetre * runningMetres, pieces);
+  return {
+    finalPerPiece: r2(finalPerPiece),
+    jobTotal: r2(finalPerPiece * pieces)
+  };
+}
+function nextRollId(rolls) {
+  const max = rolls.reduce((m, r) => Math.max(m, Number(/(\d+)$/.exec(r.id)?.[1] ?? 0)), 0);
+  return `ROLL-${String(max + 1).padStart(3, "0")}`;
+}
+
+// apps/api/src/permissions.ts
+var ALL_TRUE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
+var ALL_FALSE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
+async function permissionsForRole(roleName) {
+  if (roleName === "Admin") return ALL_TRUE2;
+  const role = await prisma.role.findUnique({ where: { name: roleName } });
+  if (!role) return ALL_FALSE2;
+  return Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]]));
+}
+
+// apps/api/src/routes/auth.ts
+var authRouter = (0, import_express.Router)();
+var loginLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 30, standardHeaders: true, legacyHeaders: false });
+var LOCK_MINUTES = 15;
+var MAX_ATTEMPTS = 5;
+function initials(name2) {
+  return name2.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("");
+}
+authRouter.get("/users", async (_req, res) => {
+  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
+  res.json(
+    users.map((u) => ({ id: u.id, name: u.name, role: u.role, initials: initials(u.name) }))
+  );
+});
+authRouter.post("/login", loginLimiter, async (req, res) => {
+  const { userId, pin } = req.body;
+  if (!userId || !pin) return res.status(400).json({ error: "userId and pin are required" });
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
+  if (!user) return res.status(401).json({ error: "Invalid PIN" });
+  if (user.lockedUntil && user.lockedUntil > /* @__PURE__ */ new Date()) {
+    return res.status(423).json({ error: "Account locked, try again shortly" });
+  }
+  const ok = await import_bcryptjs.default.compare(pin, user.pinHash);
+  if (!ok) {
+    const failedLoginCount = user.failedLoginCount + 1;
+    const lockedUntil = failedLoginCount >= MAX_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60 * 1e3) : null;
+    await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount, lockedUntil } });
+    return res.status(401).json({ error: "Invalid PIN" });
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
+  const authedUser = { id: user.id, name: user.name, role: user.role };
+  const token = signToken(authedUser);
+  const permissions = await permissionsForRole(user.role);
+  res.json({ token, user: { ...authedUser, permissions } });
+});
+var RESET_CODE_MINUTES = 15;
+var RESET_MAX_ATTEMPTS = 5;
+var resetLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 10, standardHeaders: true, legacyHeaders: false });
+var GENERIC_FORGOT_REPLY = { ok: true, message: "If that email belongs to an Admin, a reset code has been sent." };
+function normalizeEmail(v) {
+  return typeof v === "string" ? v.trim().toLowerCase() : "";
+}
+authRouter.post("/forgot-pin", resetLimiter, async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  if (!email) return res.status(400).json({ error: "Email is required" });
+  const transport = buildTransport();
+  if (!transport) {
+    return res.status(501).json({ error: "Email isn't configured on the server yet (SMTP settings). Ask whoever manages the hosting, or use reset-pin.js on the server." });
+  }
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || user.role !== "Admin") return res.json(GENERIC_FORGOT_REPLY);
+  const code = String(import_crypto.default.randomInt(0, 1e6)).padStart(6, "0");
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      resetCodeHash: await import_bcryptjs.default.hash(code, 10),
+      resetCodeExpires: new Date(Date.now() + RESET_CODE_MINUTES * 60 * 1e3),
+      resetAttempts: 0
+    }
+  });
+  try {
+    await transport.sendMail({
+      from: mailFrom(),
+      to: email,
+      subject: "GLM Branding POS \u2014 PIN reset code",
+      text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.
+
+If you didn't ask for this, ignore this email \u2014 your PIN has not changed.`
+    });
+  } catch {
+    return res.status(502).json({ error: "The reset email could not be sent. Check the server's SMTP settings." });
+  }
+  res.json(GENERIC_FORGOT_REPLY);
+});
+authRouter.post("/reset-pin", resetLimiter, async (req, res) => {
+  const { code, newPin } = req.body;
+  const email = normalizeEmail(req.body.email);
+  if (!email || !code) return res.status(400).json({ error: "Email and code are required" });
+  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ error: "New PIN must be 4 digits" });
+  const invalid = { error: "That code is invalid or has expired. Request a new one." };
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || user.role !== "Admin" || !user.resetCodeHash || !user.resetCodeExpires || user.resetCodeExpires < /* @__PURE__ */ new Date()) {
+    return res.status(400).json(invalid);
+  }
+  if (user.resetAttempts >= RESET_MAX_ATTEMPTS) {
+    await prisma.user.update({ where: { id: user.id }, data: { resetCodeHash: null, resetCodeExpires: null } });
+    return res.status(400).json(invalid);
+  }
+  const ok = await import_bcryptjs.default.compare(String(code).trim(), user.resetCodeHash);
+  if (!ok) {
+    await prisma.user.update({ where: { id: user.id }, data: { resetAttempts: user.resetAttempts + 1 } });
+    return res.status(400).json(invalid);
+  }
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      pinHash: await import_bcryptjs.default.hash(newPin, 10),
+      failedLoginCount: 0,
+      lockedUntil: null,
+      resetCodeHash: null,
+      resetCodeExpires: null,
+      resetAttempts: 0
+    }
+  });
+  res.json({ ok: true });
+});
+authRouter.post("/change-pin", requireAuth, async (req, res) => {
+  const { currentPin, newPin } = req.body;
+  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ error: "New PIN must be 4 digits" });
+  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  if (!user) return res.status(404).json({ error: "User not found" });
+  const ok = await import_bcryptjs.default.compare(currentPin || "", user.pinHash);
+  if (!ok) return res.status(401).json({ error: "Current PIN is incorrect" });
+  const pinHash = await import_bcryptjs.default.hash(newPin, 10);
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
+  res.json({ ok: true });
+});
+
+// apps/api/src/routes/masterdata.ts
+var import_express2 = __toESM(require_express2());
+var import_bcryptjs2 = __toESM(require_bcryptjs());
+
+// node_modules/zod/v3/external.js
+var external_exports = {};
+__export(external_exports, {
+  BRAND: () => BRAND,
+  DIRTY: () => DIRTY,
+  EMPTY_PATH: () => EMPTY_PATH,
+  INVALID: () => INVALID,
+  NEVER: () => NEVER,
+  OK: () => OK,
+  ParseStatus: () => ParseStatus,
+  Schema: () => ZodType,
+  ZodAny: () => ZodAny,
+  ZodArray: () => ZodArray,
+  ZodBigInt: () => ZodBigInt,
+  ZodBoolean: () => ZodBoolean,
+  ZodBranded: () => ZodBranded,
+  ZodCatch: () => ZodCatch,
+  ZodDate: () => ZodDate,
+  ZodDefault: () => ZodDefault,
+  ZodDiscriminatedUnion: () => ZodDiscriminatedUnion,
+  ZodEffects: () => ZodEffects,
+  ZodEnum: () => ZodEnum,
+  ZodError: () => ZodError,
+  ZodFirstPartyTypeKind: () => ZodFirstPartyTypeKind,
+  ZodFunction: () => ZodFunction,
+  ZodIntersection: () => ZodIntersection,
+  ZodIssueCode: () => ZodIssueCode,
+  ZodLazy: () => ZodLazy,
+  ZodLiteral: () => ZodLiteral,
+  ZodMap: () => ZodMap,
+  ZodNaN: () => ZodNaN,
+  ZodNativeEnum: () => ZodNativeEnum,
+  ZodNever: () => ZodNever,
+  ZodNull: () => ZodNull,
+  ZodNullable: () => ZodNullable,
+  ZodNumber: () => ZodNumber,
+  ZodObject: () => ZodObject,
+  ZodOptional: () => ZodOptional,
+  ZodParsedType: () => ZodParsedType,
+  ZodPipeline: () => ZodPipeline,
+  ZodPromise: () => ZodPromise,
+  ZodReadonly: () => ZodReadonly,
+  ZodRecord: () => ZodRecord,
+  ZodSchema: () => ZodType,
+  ZodSet: () => ZodSet,
+  ZodString: () => ZodString,
+  ZodSymbol: () => ZodSymbol,
+  ZodTransformer: () => ZodEffects,
+  ZodTuple: () => ZodTuple,
+  ZodType: () => ZodType,
+  ZodUndefined: () => ZodUndefined,
+  ZodUnion: () => ZodUnion,
+  ZodUnknown: () => ZodUnknown,
+  ZodVoid: () => ZodVoid,
+  addIssueToContext: () => addIssueToContext,
+  any: () => anyType,
+  array: () => arrayType,
+  bigint: () => bigIntType,
+  boolean: () => booleanType,
+  coerce: () => coerce,
+  custom: () => custom,
+  date: () => dateType,
+  datetimeRegex: () => datetimeRegex,
+  defaultErrorMap: () => en_default,
+  discriminatedUnion: () => discriminatedUnionType,
+  effect: () => effectsType,
+  enum: () => enumType,
+  function: () => functionType,
+  getErrorMap: () => getErrorMap,
+  getParsedType: () => getParsedType,
+  instanceof: () => instanceOfType,
+  intersection: () => intersectionType,
+  isAborted: () => isAborted,
+  isAsync: () => isAsync,
+  isDirty: () => isDirty,
+  isValid: () => isValid,
+  late: () => late,
+  lazy: () => lazyType,
+  literal: () => literalType,
+  makeIssue: () => makeIssue,
+  map: () => mapType,
+  nan: () => nanType,
+  nativeEnum: () => nativeEnumType,
+  never: () => neverType,
+  null: () => nullType,
+  nullable: () => nullableType,
+  number: () => numberType,
+  object: () => objectType,
+  objectUtil: () => objectUtil,
+  oboolean: () => oboolean,
+  onumber: () => onumber,
+  optional: () => optionalType,
+  ostring: () => ostring,
+  pipeline: () => pipelineType,
+  preprocess: () => preprocessType,
+  promise: () => promiseType,
+  quotelessJson: () => quotelessJson,
+  record: () => recordType,
+  set: () => setType,
+  setErrorMap: () => setErrorMap,
+  strictObject: () => strictObjectType,
+  string: () => stringType,
+  symbol: () => symbolType,
+  transformer: () => effectsType,
+  tuple: () => tupleType,
+  undefined: () => undefinedType,
+  union: () => unionType,
+  unknown: () => unknownType,
+  util: () => util3,
+  void: () => voidType
+});
+
+// node_modules/zod/v3/helpers/util.js
+var util3;
+(function(util4) {
+  util4.assertEqual = (_) => {
+  };
+  function assertIs(_arg) {
+  }
+  util4.assertIs = assertIs;
+  function assertNever(_x) {
+    throw new Error();
+  }
+  util4.assertNever = assertNever;
+  util4.arrayToEnum = (items) => {
+    const obj = {};
+    for (const item of items) {
+      obj[item] = item;
+    }
+    return obj;
+  };
+  util4.getValidEnumValues = (obj) => {
+    const validKeys = util4.objectKeys(obj).filter((k) => typeof obj[obj[k]] !== "number");
+    const filtered = {};
+    for (const k of validKeys) {
+      filtered[k] = obj[k];
+    }
+    return util4.objectValues(filtered);
+  };
+  util4.objectValues = (obj) => {
+    return util4.objectKeys(obj).map(function(e) {
+      return obj[e];
+    });
+  };
+  util4.objectKeys = typeof Object.keys === "function" ? (obj) => Object.keys(obj) : (object) => {
+    const keys = [];
+    for (const key in object) {
+      if (Object.prototype.hasOwnProperty.call(object, key)) {
+        keys.push(key);
+      }
+    }
+    return keys;
+  };
+  util4.find = (arr, checker) => {
+    for (const item of arr) {
+      if (checker(item))
+        return item;
+    }
+    return void 0;
+  };
+  util4.isInteger = typeof Number.isInteger === "function" ? (val) => Number.isInteger(val) : (val) => typeof val === "number" && Number.isFinite(val) && Math.floor(val) === val;
+  function joinValues(array, separator = " | ") {
+    return array.map((val) => typeof val === "string" ? `'${val}'` : val).join(separator);
+  }
+  util4.joinValues = joinValues;
+  util4.jsonStringifyReplacer = (_, value) => {
+    if (typeof value === "bigint") {
+      return value.toString();
+    }
+    return value;
+  };
+})(util3 || (util3 = {}));
+var objectUtil;
+(function(objectUtil2) {
+  objectUtil2.mergeShapes = (first, second) => {
+    return {
+      ...first,
+      ...second
+      // second overwrites first
+    };
+  };
+})(objectUtil || (objectUtil = {}));
+var ZodParsedType = util3.arrayToEnum([
+  "string",
+  "nan",
+  "number",
+  "integer",
+  "float",
+  "boolean",
+  "date",
+  "bigint",
+  "symbol",
+  "function",
+  "undefined",
+  "null",
+  "array",
+  "object",
+  "unknown",
+  "promise",
+  "void",
+  "never",
+  "map",
+  "set"
+]);
+var getParsedType = (data) => {
+  const t = typeof data;
+  switch (t) {
+    case "undefined":
+      return ZodParsedType.undefined;
+    case "string":
+      return ZodParsedType.string;
+    case "number":
+      return Number.isNaN(data) ? ZodParsedType.nan : ZodParsedType.number;
+    case "boolean":
+      return ZodParsedType.boolean;
+    case "function":
+      return ZodParsedType.function;
+    case "bigint":
+      return ZodParsedType.bigint;
+    case "symbol":
+      return ZodParsedType.symbol;
+    case "object":
+      if (Array.isArray(data)) {
+        return ZodParsedType.array;
+      }
+      if (data === null) {
+        return ZodParsedType.null;
+      }
+      if (data.then && typeof data.then === "function" && data.catch && typeof data.catch === "function") {
+        return ZodParsedType.promise;
+      }
+      if (typeof Map !== "undefined" && data instanceof Map) {
+        return ZodParsedType.map;
+      }
+      if (typeof Set !== "undefined" && data instanceof Set) {
+        return ZodParsedType.set;
+      }
+      if (typeof Date !== "undefined" && data instanceof Date) {
+        return ZodParsedType.date;
+      }
+      return ZodParsedType.object;
+    default:
+      return ZodParsedType.unknown;
+  }
+};
+
+// node_modules/zod/v3/ZodError.js
+var ZodIssueCode = util3.arrayToEnum([
+  "invalid_type",
+  "invalid_literal",
+  "custom",
+  "invalid_union",
+  "invalid_union_discriminator",
+  "invalid_enum_value",
+  "unrecognized_keys",
+  "invalid_arguments",
+  "invalid_return_type",
+  "invalid_date",
+  "invalid_string",
+  "too_small",
+  "too_big",
+  "invalid_intersection_types",
+  "not_multiple_of",
+  "not_finite"
+]);
+var quotelessJson = (obj) => {
+  const json = JSON.stringify(obj, null, 2);
+  return json.replace(/"([^"]+)":/g, "$1:");
+};
+var ZodError = class _ZodError extends Error {
+  get errors() {
+    return this.issues;
+  }
+  constructor(issues) {
+    super();
+    this.issues = [];
+    this.addIssue = (sub) => {
+      this.issues = [...this.issues, sub];
+    };
+    this.addIssues = (subs = []) => {
+      this.issues = [...this.issues, ...subs];
+    };
+    const actualProto = new.target.prototype;
+    if (Object.setPrototypeOf) {
+      Object.setPrototypeOf(this, actualProto);
+    } else {
+      this.__proto__ = actualProto;
+    }
+    this.name = "ZodError";
+    this.issues = issues;
+  }
+  format(_mapper) {
+    const mapper = _mapper || function(issue) {
+      return issue.message;
+    };
+    const fieldErrors = { _errors: [] };
+    const processError = (error2) => {
+      for (const issue of error2.issues) {
+        if (issue.code === "invalid_union") {
+          issue.unionErrors.map(processError);
+        } else if (issue.code === "invalid_return_type") {
+          processError(issue.returnTypeError);
+        } else if (issue.code === "invalid_arguments") {
+          processError(issue.argumentsError);
+        } else if (issue.path.length === 0) {
+          fieldErrors._errors.push(mapper(issue));
+        } else {
+          let curr = fieldErrors;
+          let i = 0;
+          while (i < issue.path.length) {
+            const el = issue.path[i];
+            const terminal = i === issue.path.length - 1;
+            if (!terminal) {
+              curr[el] = curr[el] || { _errors: [] };
+            } else {
+              curr[el] = curr[el] || { _errors: [] };
+              curr[el]._errors.push(mapper(issue));
+            }
+            curr = curr[el];
+            i++;
+          }
+        }
+      }
+    };
+    processError(this);
+    return fieldErrors;
+  }
+  static assert(value) {
+    if (!(value instanceof _ZodError)) {
+      throw new Error(`Not a ZodError: ${value}`);
+    }
+  }
+  toString() {
+    return this.message;
+  }
+  get message() {
+    return JSON.stringify(this.issues, util3.jsonStringifyReplacer, 2);
+  }
+  get isEmpty() {
+    return this.issues.length === 0;
+  }
+  flatten(mapper = (issue) => issue.message) {
+    const fieldErrors = {};
+    const formErrors = [];
+    for (const sub of this.issues) {
+      if (sub.path.length > 0) {
+        const firstEl = sub.path[0];
+        fieldErrors[firstEl] = fieldErrors[firstEl] || [];
+        fieldErrors[firstEl].push(mapper(sub));
+      } else {
+        formErrors.push(mapper(sub));
+      }
+    }
+    return { formErrors, fieldErrors };
+  }
+  get formErrors() {
+    return this.flatten();
+  }
+};
+ZodError.create = (issues) => {
+  const error2 = new ZodError(issues);
+  return error2;
+};
+
+// node_modules/zod/v3/locales/en.js
+var errorMap = (issue, _ctx) => {
+  let message;
+  switch (issue.code) {
+    case ZodIssueCode.invalid_type:
+      if (issue.received === ZodParsedType.undefined) {
+        message = "Required";
+      } else {
+        message = `Expected ${issue.expected}, received ${issue.received}`;
+      }
+      break;
+    case ZodIssueCode.invalid_literal:
+      message = `Invalid literal value, expected ${JSON.stringify(issue.expected, util3.jsonStringifyReplacer)}`;
+      break;
+    case ZodIssueCode.unrecognized_keys:
+      message = `Unrecognized key(s) in object: ${util3.joinValues(issue.keys, ", ")}`;
+      break;
+    case ZodIssueCode.invalid_union:
+      message = `Invalid input`;
+      break;
+    case ZodIssueCode.invalid_union_discriminator:
+      message = `Invalid discriminator value. Expected ${util3.joinValues(issue.options)}`;
+      break;
+    case ZodIssueCode.invalid_enum_value:
+      message = `Invalid enum value. Expected ${util3.joinValues(issue.options)}, received '${issue.received}'`;
+      break;
+    case ZodIssueCode.invalid_arguments:
+      message = `Invalid function arguments`;
+      break;
+    case ZodIssueCode.invalid_return_type:
+      message = `Invalid function return type`;
+      break;
+    case ZodIssueCode.invalid_date:
+      message = `Invalid date`;
+      break;
+    case ZodIssueCode.invalid_string:
+      if (typeof issue.validation === "object") {
+        if ("includes" in issue.validation) {
+          message = `Invalid input: must include "${issue.validation.includes}"`;
+          if (typeof issue.validation.position === "number") {
+            message = `${message} at one or more positions greater than or equal to ${issue.validation.position}`;
+          }
+        } else if ("startsWith" in issue.validation) {
+          message = `Invalid input: must start with "${issue.validation.startsWith}"`;
+        } else if ("endsWith" in issue.validation) {
+          message = `Invalid input: must end with "${issue.validation.endsWith}"`;
+        } else {
+          util3.assertNever(issue.validation);
+        }
+      } else if (issue.validation !== "regex") {
+        message = `Invalid ${issue.validation}`;
+      } else {
+        message = "Invalid";
+      }
+      break;
+    case ZodIssueCode.too_small:
+      if (issue.type === "array")
+        message = `Array must contain ${issue.exact ? "exactly" : issue.inclusive ? `at least` : `more than`} ${issue.minimum} element(s)`;
+      else if (issue.type === "string")
+        message = `String must contain ${issue.exact ? "exactly" : issue.inclusive ? `at least` : `over`} ${issue.minimum} character(s)`;
+      else if (issue.type === "number")
+        message = `Number must be ${issue.exact ? `exactly equal to ` : issue.inclusive ? `greater than or equal to ` : `greater than `}${issue.minimum}`;
+      else if (issue.type === "bigint")
+        message = `Number must be ${issue.exact ? `exactly equal to ` : issue.inclusive ? `greater than or equal to ` : `greater than `}${issue.minimum}`;
+      else if (issue.type === "date")
+        message = `Date must be ${issue.exact ? `exactly equal to ` : issue.inclusive ? `greater than or equal to ` : `greater than `}${new Date(Number(issue.minimum))}`;
+      else
+        message = "Invalid input";
+      break;
+    case ZodIssueCode.too_big:
+      if (issue.type === "array")
+        message = `Array must contain ${issue.exact ? `exactly` : issue.inclusive ? `at most` : `less than`} ${issue.maximum} element(s)`;
+      else if (issue.type === "string")
+        message = `String must contain ${issue.exact ? `exactly` : issue.inclusive ? `at most` : `under`} ${issue.maximum} character(s)`;
+      else if (issue.type === "number")
+        message = `Number must be ${issue.exact ? `exactly` : issue.inclusive ? `less than or equal to` : `less than`} ${issue.maximum}`;
+      else if (issue.type === "bigint")
+        message = `BigInt must be ${issue.exact ? `exactly` : issue.inclusive ? `less than or equal to` : `less than`} ${issue.maximum}`;
+      else if (issue.type === "date")
+        message = `Date must be ${issue.exact ? `exactly` : issue.inclusive ? `smaller than or equal to` : `smaller than`} ${new Date(Number(issue.maximum))}`;
+      else
+        message = "Invalid input";
+      break;
+    case ZodIssueCode.custom:
+      message = `Invalid input`;
+      break;
+    case ZodIssueCode.invalid_intersection_types:
+      message = `Intersection results could not be merged`;
+      break;
+    case ZodIssueCode.not_multiple_of:
+      message = `Number must be a multiple of ${issue.multipleOf}`;
+      break;
+    case ZodIssueCode.not_finite:
+      message = "Number must be finite";
+      break;
+    default:
+      message = _ctx.defaultError;
+      util3.assertNever(issue);
+  }
+  return { message };
+};
+var en_default = errorMap;
+
+// node_modules/zod/v3/errors.js
+var overrideErrorMap = en_default;
+function setErrorMap(map2) {
+  overrideErrorMap = map2;
+}
+function getErrorMap() {
+  return overrideErrorMap;
+}
+
+// node_modules/zod/v3/helpers/parseUtil.js
+var makeIssue = (params) => {
+  const { data, path: path3, errorMaps, issueData } = params;
+  const fullPath = [...path3, ...issueData.path || []];
+  const fullIssue = {
+    ...issueData,
+    path: fullPath
+  };
+  if (issueData.message !== void 0) {
+    return {
+      ...issueData,
+      path: fullPath,
+      message: issueData.message
+    };
+  }
+  let errorMessage = "";
+  const maps = errorMaps.filter((m) => !!m).slice().reverse();
+  for (const map2 of maps) {
+    errorMessage = map2(fullIssue, { data, defaultError: errorMessage }).message;
+  }
+  return {
+    ...issueData,
+    path: fullPath,
+    message: errorMessage
+  };
+};
+var EMPTY_PATH = [];
+function addIssueToContext(ctx, issueData) {
+  const overrideMap = getErrorMap();
+  const issue = makeIssue({
+    issueData,
+    data: ctx.data,
+    path: ctx.path,
+    errorMaps: [
+      ctx.common.contextualErrorMap,
+      // contextual error map is first priority
+      ctx.schemaErrorMap,
+      // then schema-bound map if available
+      overrideMap,
+      // then global override map
+      overrideMap === en_default ? void 0 : en_default
+      // then global default map
+    ].filter((x) => !!x)
+  });
+  ctx.common.issues.push(issue);
+}
+var ParseStatus = class _ParseStatus {
+  constructor() {
+    this.value = "valid";
+  }
+  dirty() {
+    if (this.value === "valid")
+      this.value = "dirty";
+  }
+  abort() {
+    if (this.value !== "aborted")
+      this.value = "aborted";
+  }
+  static mergeArray(status, results) {
+    const arrayValue = [];
+    for (const s of results) {
+      if (s.status === "aborted")
+        return INVALID;
+      if (s.status === "dirty")
+        status.dirty();
+      arrayValue.push(s.value);
+    }
+    return { status: status.value, value: arrayValue };
+  }
+  static async mergeObjectAsync(status, pairs) {
+    const syncPairs = [];
+    for (const pair of pairs) {
+      const key = await pair.key;
+      const value = await pair.value;
+      syncPairs.push({
+        key,
+        value
+      });
+    }
+    return _ParseStatus.mergeObjectSync(status, syncPairs);
+  }
+  static mergeObjectSync(status, pairs) {
+    const finalObject = {};
+    for (const pair of pairs) {
+      const { key, value } = pair;
+      if (key.status === "aborted")
+        return INVALID;
+      if (value.status === "aborted")
+        return INVALID;
+      if (key.status === "dirty")
+        status.dirty();
+      if (value.status === "dirty")
+        status.dirty();
+      if (key.value !== "__proto__" && (typeof value.value !== "undefined" || pair.alwaysSet)) {
+        finalObject[key.value] = value.value;
+      }
+    }
+    return { status: status.value, value: finalObject };
+  }
+};
+var INVALID = Object.freeze({
+  status: "aborted"
+});
+var DIRTY = (value) => ({ status: "dirty", value });
+var OK = (value) => ({ status: "valid", value });
+var isAborted = (x) => x.status === "aborted";
+var isDirty = (x) => x.status === "dirty";
+var isValid = (x) => x.status === "valid";
+var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
+
+// node_modules/zod/v3/helpers/errorUtil.js
+var errorUtil;
+(function(errorUtil2) {
+  errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
+  errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
+})(errorUtil || (errorUtil = {}));
+
+// node_modules/zod/v3/types.js
+var ParseInputLazyPath = class {
+  constructor(parent, value, path3, key) {
+    this._cachedPath = [];
+    this.parent = parent;
+    this.data = value;
+    this._path = path3;
+    this._key = key;
+  }
+  get path() {
+    if (!this._cachedPath.length) {
+      if (Array.isArray(this._key)) {
+        this._cachedPath.push(...this._path, ...this._key);
+      } else {
+        this._cachedPath.push(...this._path, this._key);
+      }
+    }
+    return this._cachedPath;
+  }
+};
+var handleResult = (ctx, result) => {
+  if (isValid(result)) {
+    return { success: true, data: result.value };
+  } else {
+    if (!ctx.common.issues.length) {
+      throw new Error("Validation failed but no issues detected.");
+    }
+    return {
+      success: false,
+      get error() {
+        if (this._error)
+          return this._error;
+        const error2 = new ZodError(ctx.common.issues);
+        this._error = error2;
+        return this._error;
+      }
+    };
+  }
+};
+function processCreateParams(params) {
+  if (!params)
+    return {};
+  const { errorMap: errorMap2, invalid_type_error, required_error, description } = params;
+  if (errorMap2 && (invalid_type_error || required_error)) {
+    throw new Error(`Can't use "invalid_type_error" or "required_error" in conjunction with custom error map.`);
+  }
+  if (errorMap2)
+    return { errorMap: errorMap2, description };
+  const customMap = (iss, ctx) => {
+    const { message } = params;
+    if (iss.code === "invalid_enum_value") {
+      return { message: message ?? ctx.defaultError };
+    }
+    if (typeof ctx.data === "undefined") {
+      return { message: message ?? required_error ?? ctx.defaultError };
+    }
+    if (iss.code !== "invalid_type")
+      return { message: ctx.defaultError };
+    return { message: message ?? invalid_type_error ?? ctx.defaultError };
+  };
+  return { errorMap: customMap, description };
+}
+var ZodType = class {
+  get description() {
+    return this._def.description;
+  }
+  _getType(input) {
+    return getParsedType(input.data);
+  }
+  _getOrReturnCtx(input, ctx) {
+    return ctx || {
+      common: input.parent.common,
+      data: input.data,
+      parsedType: getParsedType(input.data),
+      schemaErrorMap: this._def.errorMap,
+      path: input.path,
+      parent: input.parent
+    };
+  }
+  _processInputParams(input) {
+    return {
+      status: new ParseStatus(),
+      ctx: {
+        common: input.parent.common,
+        data: input.data,
+        parsedType: getParsedType(input.data),
+        schemaErrorMap: this._def.errorMap,
+        path: input.path,
+        parent: input.parent
+      }
+    };
+  }
+  _parseSync(input) {
+    const result = this._parse(input);
+    if (isAsync(result)) {
+      throw new Error("Synchronous parse encountered promise.");
+    }
+    return result;
+  }
+  _parseAsync(input) {
+    const result = this._parse(input);
+    return Promise.resolve(result);
+  }
+  parse(data, params) {
+    const result = this.safeParse(data, params);
+    if (result.success)
+      return result.data;
+    throw result.error;
+  }
+  safeParse(data, params) {
+    const ctx = {
+      common: {
+        issues: [],
+        async: params?.async ?? false,
+        contextualErrorMap: params?.errorMap
+      },
+      path: params?.path || [],
+      schemaErrorMap: this._def.errorMap,
+      parent: null,
+      data,
+      parsedType: getParsedType(data)
+    };
+    const result = this._parseSync({ data, path: ctx.path, parent: ctx });
+    return handleResult(ctx, result);
+  }
+  "~validate"(data) {
+    const ctx = {
+      common: {
+        issues: [],
+        async: !!this["~standard"].async
+      },
+      path: [],
+      schemaErrorMap: this._def.errorMap,
+      parent: null,
+      data,
+      parsedType: getParsedType(data)
+    };
+    if (!this["~standard"].async) {
+      try {
+        const result = this._parseSync({ data, path: [], parent: ctx });
+        return isValid(result) ? {
+          value: result.value
+        } : {
+          issues: ctx.common.issues
+        };
+      } catch (err) {
+        if (err?.message?.toLowerCase()?.includes("encountered")) {
+          this["~standard"].async = true;
+        }
+        ctx.common = {
+          issues: [],
+          async: true
+        };
+      }
+    }
+    return this._parseAsync({ data, path: [], parent: ctx }).then((result) => isValid(result) ? {
+      value: result.value
+    } : {
+      issues: ctx.common.issues
+    });
+  }
+  async parseAsync(data, params) {
+    const result = await this.safeParseAsync(data, params);
+    if (result.success)
+      return result.data;
+    throw result.error;
+  }
+  async safeParseAsync(data, params) {
+    const ctx = {
+      common: {
+        issues: [],
+        contextualErrorMap: params?.errorMap,
+        async: true
+      },
+      path: params?.path || [],
+      schemaErrorMap: this._def.errorMap,
+      parent: null,
+      data,
+      parsedType: getParsedType(data)
+    };
+    const maybeAsyncResult = this._parse({ data, path: ctx.path, parent: ctx });
+    const result = await (isAsync(maybeAsyncResult) ? maybeAsyncResult : Promise.resolve(maybeAsyncResult));
+    return handleResult(ctx, result);
+  }
+  refine(check, message) {
+    const getIssueProperties = (val) => {
+      if (typeof message === "string" || typeof message === "undefined") {
+        return { message };
+      } else if (typeof message === "function") {
+        return message(val);
+      } else {
+        return message;
+      }
+    };
+    return this._refinement((val, ctx) => {
+      const result = check(val);
+      const setError = () => ctx.addIssue({
+        code: ZodIssueCode.custom,
+        ...getIssueProperties(val)
+      });
+      if (typeof Promise !== "undefined" && result instanceof Promise) {
+        return result.then((data) => {
+          if (!data) {
+            setError();
+            return false;
+          } else {
+            return true;
+          }
+        });
+      }
+      if (!result) {
+        setError();
+        return false;
+      } else {
+        return true;
+      }
+    });
+  }
+  refinement(check, refinementData) {
+    return this._refinement((val, ctx) => {
+      if (!check(val)) {
+        ctx.addIssue(typeof refinementData === "function" ? refinementData(val, ctx) : refinementData);
+        return false;
+      } else {
+        return true;
+      }
+    });
+  }
+  _refinement(refinement) {
+    return new ZodEffects({
+      schema: this,
+      typeName: ZodFirstPartyTypeKind.ZodEffects,
+      effect: { type: "refinement", refinement }
+    });
+  }
+  superRefine(refinement) {
+    return this._refinement(refinement);
+  }
+  constructor(def) {
+    this.spa = this.safeParseAsync;
+    this._def = def;
+    this.parse = this.parse.bind(this);
+    this.safeParse = this.safeParse.bind(this);
+    this.parseAsync = this.parseAsync.bind(this);
+    this.safeParseAsync = this.safeParseAsync.bind(this);
+    this.spa = this.spa.bind(this);
+    this.refine = this.refine.bind(this);
+    this.refinement = this.refinement.bind(this);
+    this.superRefine = this.superRefine.bind(this);
+    this.optional = this.optional.bind(this);
+    this.nullable = this.nullable.bind(this);
+    this.nullish = this.nullish.bind(this);
+    this.array = this.array.bind(this);
+    this.promise = this.promise.bind(this);
+    this.or = this.or.bind(this);
+    this.and = this.and.bind(this);
+    this.transform = this.transform.bind(this);
+    this.brand = this.brand.bind(this);
+    this.default = this.default.bind(this);
+    this.catch = this.catch.bind(this);
+    this.describe = this.describe.bind(this);
+    this.pipe = this.pipe.bind(this);
+    this.readonly = this.readonly.bind(this);
+    this.isNullable = this.isNullable.bind(this);
+    this.isOptional = this.isOptional.bind(this);
+    this["~standard"] = {
+      version: 1,
+      vendor: "zod",
+      validate: (data) => this["~validate"](data)
+    };
+  }
+  optional() {
+    return ZodOptional.create(this, this._def);
+  }
+  nullable() {
+    return ZodNullable.create(this, this._def);
+  }
+  nullish() {
+    return this.nullable().optional();
+  }
+  array() {
+    return ZodArray.create(this);
+  }
+  promise() {
+    return ZodPromise.create(this, this._def);
+  }
+  or(option) {
+    return ZodUnion.create([this, option], this._def);
+  }
+  and(incoming) {
+    return ZodIntersection.create(this, incoming, this._def);
+  }
+  transform(transform) {
+    return new ZodEffects({
+      ...processCreateParams(this._def),
+      schema: this,
+      typeName: ZodFirstPartyTypeKind.ZodEffects,
+      effect: { type: "transform", transform }
+    });
+  }
+  default(def) {
+    const defaultValueFunc = typeof def === "function" ? def : () => def;
+    return new ZodDefault({
+      ...processCreateParams(this._def),
+      innerType: this,
+      defaultValue: defaultValueFunc,
+      typeName: ZodFirstPartyTypeKind.ZodDefault
+    });
+  }
+  brand() {
+    return new ZodBranded({
+      typeName: ZodFirstPartyTypeKind.ZodBranded,
+      type: this,
+      ...processCreateParams(this._def)
+    });
+  }
+  catch(def) {
+    const catchValueFunc = typeof def === "function" ? def : () => def;
+    return new ZodCatch({
+      ...processCreateParams(this._def),
+      innerType: this,
+      catchValue: catchValueFunc,
+      typeName: ZodFirstPartyTypeKind.ZodCatch
+    });
+  }
+  describe(description) {
+    const This = this.constructor;
+    return new This({
+      ...this._def,
+      description
+    });
+  }
+  pipe(target) {
+    return ZodPipeline.create(this, target);
+  }
+  readonly() {
+    return ZodReadonly.create(this);
+  }
+  isOptional() {
+    return this.safeParse(void 0).success;
+  }
+  isNullable() {
+    return this.safeParse(null).success;
+  }
+};
+var cuidRegex = /^c[^\s-]{8,}$/i;
+var cuid2Regex = /^[0-9a-z]+$/;
+var ulidRegex = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+var uuidRegex = /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/i;
+var nanoidRegex = /^[a-z0-9_-]{21}$/i;
+var jwtRegex = /^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/;
+var durationRegex = /^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/;
+var emailRegex = /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i;
+var _emojiRegex = `^(\\p{Extended_Pictographic}|\\p{Emoji_Component})+$`;
+var emojiRegex;
+var ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/;
+var ipv4CidrRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/(3[0-2]|[12]?[0-9])$/;
+var ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))$/;
+var ipv6CidrRegex = /^(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/;
+var base64Regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+var base64urlRegex = /^([0-9a-zA-Z-_]{4})*(([0-9a-zA-Z-_]{2}(==)?)|([0-9a-zA-Z-_]{3}(=)?))?$/;
+var dateRegexSource = `((\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-((0[13578]|1[02])-(0[1-9]|[12]\\d|3[01])|(0[469]|11)-(0[1-9]|[12]\\d|30)|(02)-(0[1-9]|1\\d|2[0-8])))`;
+var dateRegex = new RegExp(`^${dateRegexSource}$`);
+function timeRegexSource(args) {
+  let secondsRegexSource = `[0-5]\\d`;
+  if (args.precision) {
+    secondsRegexSource = `${secondsRegexSource}\\.\\d{${args.precision}}`;
+  } else if (args.precision == null) {
+    secondsRegexSource = `${secondsRegexSource}(\\.\\d+)?`;
+  }
+  const secondsQuantifier = args.precision ? "+" : "?";
+  return `([01]\\d|2[0-3]):[0-5]\\d(:${secondsRegexSource})${secondsQuantifier}`;
+}
+function timeRegex(args) {
+  return new RegExp(`^${timeRegexSource(args)}$`);
+}
+function datetimeRegex(args) {
+  let regex = `${dateRegexSource}T${timeRegexSource(args)}`;
+  const opts = [];
+  opts.push(args.local ? `Z?` : `Z`);
+  if (args.offset)
+    opts.push(`([+-]\\d{2}:?\\d{2})`);
+  regex = `${regex}(${opts.join("|")})`;
+  return new RegExp(`^${regex}$`);
+}
+function isValidIP(ip, version2) {
+  if ((version2 === "v4" || !version2) && ipv4Regex.test(ip)) {
+    return true;
+  }
+  if ((version2 === "v6" || !version2) && ipv6Regex.test(ip)) {
+    return true;
+  }
+  return false;
+}
+function isValidJWT(jwt2, alg) {
+  if (!jwtRegex.test(jwt2))
+    return false;
+  try {
+    const [header] = jwt2.split(".");
+    if (!header)
+      return false;
+    const base64 = header.replace(/-/g, "+").replace(/_/g, "/").padEnd(header.length + (4 - header.length % 4) % 4, "=");
+    const decoded = JSON.parse(atob(base64));
+    if (typeof decoded !== "object" || decoded === null)
+      return false;
+    if ("typ" in decoded && decoded?.typ !== "JWT")
+      return false;
+    if (!decoded.alg)
+      return false;
+    if (alg && decoded.alg !== alg)
+      return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+function isValidCidr(ip, version2) {
+  if ((version2 === "v4" || !version2) && ipv4CidrRegex.test(ip)) {
+    return true;
+  }
+  if ((version2 === "v6" || !version2) && ipv6CidrRegex.test(ip)) {
+    return true;
+  }
+  return false;
+}
+var ZodString = class _ZodString extends ZodType {
+  _parse(input) {
+    if (this._def.coerce) {
+      input.data = String(input.data);
+    }
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.string) {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.string,
+        received: ctx2.parsedType
+      });
+      return INVALID;
+    }
+    const status = new ParseStatus();
+    let ctx = void 0;
+    for (const check of this._def.checks) {
+      if (check.kind === "min") {
+        if (input.data.length < check.value) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_small,
+            minimum: check.value,
+            type: "string",
+            inclusive: true,
+            exact: false,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "max") {
+        if (input.data.length > check.value) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_big,
+            maximum: check.value,
+            type: "string",
+            inclusive: true,
+            exact: false,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "length") {
+        const tooBig = input.data.length > check.value;
+        const tooSmall = input.data.length < check.value;
+        if (tooBig || tooSmall) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          if (tooBig) {
+            addIssueToContext(ctx, {
+              code: ZodIssueCode.too_big,
+              maximum: check.value,
+              type: "string",
+              inclusive: true,
+              exact: true,
+              message: check.message
+            });
+          } else if (tooSmall) {
+            addIssueToContext(ctx, {
+              code: ZodIssueCode.too_small,
+              minimum: check.value,
+              type: "string",
+              inclusive: true,
+              exact: true,
+              message: check.message
+            });
+          }
+          status.dirty();
+        }
+      } else if (check.kind === "email") {
+        if (!emailRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "email",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "emoji") {
+        if (!emojiRegex) {
+          emojiRegex = new RegExp(_emojiRegex, "u");
+        }
+        if (!emojiRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "emoji",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "uuid") {
+        if (!uuidRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "uuid",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "nanoid") {
+        if (!nanoidRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "nanoid",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "cuid") {
+        if (!cuidRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "cuid",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "cuid2") {
+        if (!cuid2Regex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "cuid2",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "ulid") {
+        if (!ulidRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "ulid",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "url") {
+        try {
+          new URL(input.data);
+        } catch {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "url",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "regex") {
+        check.regex.lastIndex = 0;
+        const testResult = check.regex.test(input.data);
+        if (!testResult) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "regex",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "trim") {
+        input.data = input.data.trim();
+      } else if (check.kind === "includes") {
+        if (!input.data.includes(check.value, check.position)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_string,
+            validation: { includes: check.value, position: check.position },
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "toLowerCase") {
+        input.data = input.data.toLowerCase();
+      } else if (check.kind === "toUpperCase") {
+        input.data = input.data.toUpperCase();
+      } else if (check.kind === "startsWith") {
+        if (!input.data.startsWith(check.value)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_string,
+            validation: { startsWith: check.value },
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "endsWith") {
+        if (!input.data.endsWith(check.value)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_string,
+            validation: { endsWith: check.value },
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "datetime") {
+        const regex = datetimeRegex(check);
+        if (!regex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_string,
+            validation: "datetime",
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "date") {
+        const regex = dateRegex;
+        if (!regex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_string,
+            validation: "date",
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "time") {
+        const regex = timeRegex(check);
+        if (!regex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_string,
+            validation: "time",
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "duration") {
+        if (!durationRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "duration",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "ip") {
+        if (!isValidIP(input.data, check.version)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "ip",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "jwt") {
+        if (!isValidJWT(input.data, check.alg)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "jwt",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "cidr") {
+        if (!isValidCidr(input.data, check.version)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "cidr",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "base64") {
+        if (!base64Regex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "base64",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "base64url") {
+        if (!base64urlRegex.test(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            validation: "base64url",
+            code: ZodIssueCode.invalid_string,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else {
+        util3.assertNever(check);
+      }
+    }
+    return { status: status.value, value: input.data };
+  }
+  _regex(regex, validation, message) {
+    return this.refinement((data) => regex.test(data), {
+      validation,
+      code: ZodIssueCode.invalid_string,
+      ...errorUtil.errToObj(message)
+    });
+  }
+  _addCheck(check) {
+    return new _ZodString({
+      ...this._def,
+      checks: [...this._def.checks, check]
+    });
+  }
+  email(message) {
+    return this._addCheck({ kind: "email", ...errorUtil.errToObj(message) });
+  }
+  url(message) {
+    return this._addCheck({ kind: "url", ...errorUtil.errToObj(message) });
+  }
+  emoji(message) {
+    return this._addCheck({ kind: "emoji", ...errorUtil.errToObj(message) });
+  }
+  uuid(message) {
+    return this._addCheck({ kind: "uuid", ...errorUtil.errToObj(message) });
+  }
+  nanoid(message) {
+    return this._addCheck({ kind: "nanoid", ...errorUtil.errToObj(message) });
+  }
+  cuid(message) {
+    return this._addCheck({ kind: "cuid", ...errorUtil.errToObj(message) });
+  }
+  cuid2(message) {
+    return this._addCheck({ kind: "cuid2", ...errorUtil.errToObj(message) });
+  }
+  ulid(message) {
+    return this._addCheck({ kind: "ulid", ...errorUtil.errToObj(message) });
+  }
+  base64(message) {
+    return this._addCheck({ kind: "base64", ...errorUtil.errToObj(message) });
+  }
+  base64url(message) {
+    return this._addCheck({
+      kind: "base64url",
+      ...errorUtil.errToObj(message)
+    });
+  }
+  jwt(options) {
+    return this._addCheck({ kind: "jwt", ...errorUtil.errToObj(options) });
+  }
+  ip(options) {
+    return this._addCheck({ kind: "ip", ...errorUtil.errToObj(options) });
+  }
+  cidr(options) {
+    return this._addCheck({ kind: "cidr", ...errorUtil.errToObj(options) });
+  }
+  datetime(options) {
+    if (typeof options === "string") {
+      return this._addCheck({
+        kind: "datetime",
+        precision: null,
+        offset: false,
+        local: false,
+        message: options
+      });
+    }
+    return this._addCheck({
+      kind: "datetime",
+      precision: typeof options?.precision === "undefined" ? null : options?.precision,
+      offset: options?.offset ?? false,
+      local: options?.local ?? false,
+      ...errorUtil.errToObj(options?.message)
+    });
+  }
+  date(message) {
+    return this._addCheck({ kind: "date", message });
+  }
+  time(options) {
+    if (typeof options === "string") {
+      return this._addCheck({
+        kind: "time",
+        precision: null,
+        message: options
+      });
+    }
+    return this._addCheck({
+      kind: "time",
+      precision: typeof options?.precision === "undefined" ? null : options?.precision,
+      ...errorUtil.errToObj(options?.message)
+    });
+  }
+  duration(message) {
+    return this._addCheck({ kind: "duration", ...errorUtil.errToObj(message) });
+  }
+  regex(regex, message) {
+    return this._addCheck({
+      kind: "regex",
+      regex,
+      ...errorUtil.errToObj(message)
+    });
+  }
+  includes(value, options) {
+    return this._addCheck({
+      kind: "includes",
+      value,
+      position: options?.position,
+      ...errorUtil.errToObj(options?.message)
+    });
+  }
+  startsWith(value, message) {
+    return this._addCheck({
+      kind: "startsWith",
+      value,
+      ...errorUtil.errToObj(message)
+    });
+  }
+  endsWith(value, message) {
+    return this._addCheck({
+      kind: "endsWith",
+      value,
+      ...errorUtil.errToObj(message)
+    });
+  }
+  min(minLength, message) {
+    return this._addCheck({
+      kind: "min",
+      value: minLength,
+      ...errorUtil.errToObj(message)
+    });
+  }
+  max(maxLength, message) {
+    return this._addCheck({
+      kind: "max",
+      value: maxLength,
+      ...errorUtil.errToObj(message)
+    });
+  }
+  length(len, message) {
+    return this._addCheck({
+      kind: "length",
+      value: len,
+      ...errorUtil.errToObj(message)
+    });
+  }
+  /**
+   * Equivalent to `.min(1)`
+   */
+  nonempty(message) {
+    return this.min(1, errorUtil.errToObj(message));
+  }
+  trim() {
+    return new _ZodString({
+      ...this._def,
+      checks: [...this._def.checks, { kind: "trim" }]
+    });
+  }
+  toLowerCase() {
+    return new _ZodString({
+      ...this._def,
+      checks: [...this._def.checks, { kind: "toLowerCase" }]
+    });
+  }
+  toUpperCase() {
+    return new _ZodString({
+      ...this._def,
+      checks: [...this._def.checks, { kind: "toUpperCase" }]
+    });
+  }
+  get isDatetime() {
+    return !!this._def.checks.find((ch) => ch.kind === "datetime");
+  }
+  get isDate() {
+    return !!this._def.checks.find((ch) => ch.kind === "date");
+  }
+  get isTime() {
+    return !!this._def.checks.find((ch) => ch.kind === "time");
+  }
+  get isDuration() {
+    return !!this._def.checks.find((ch) => ch.kind === "duration");
+  }
+  get isEmail() {
+    return !!this._def.checks.find((ch) => ch.kind === "email");
+  }
+  get isURL() {
+    return !!this._def.checks.find((ch) => ch.kind === "url");
+  }
+  get isEmoji() {
+    return !!this._def.checks.find((ch) => ch.kind === "emoji");
+  }
+  get isUUID() {
+    return !!this._def.checks.find((ch) => ch.kind === "uuid");
+  }
+  get isNANOID() {
+    return !!this._def.checks.find((ch) => ch.kind === "nanoid");
+  }
+  get isCUID() {
+    return !!this._def.checks.find((ch) => ch.kind === "cuid");
+  }
+  get isCUID2() {
+    return !!this._def.checks.find((ch) => ch.kind === "cuid2");
+  }
+  get isULID() {
+    return !!this._def.checks.find((ch) => ch.kind === "ulid");
+  }
+  get isIP() {
+    return !!this._def.checks.find((ch) => ch.kind === "ip");
+  }
+  get isCIDR() {
+    return !!this._def.checks.find((ch) => ch.kind === "cidr");
+  }
+  get isBase64() {
+    return !!this._def.checks.find((ch) => ch.kind === "base64");
+  }
+  get isBase64url() {
+    return !!this._def.checks.find((ch) => ch.kind === "base64url");
+  }
+  get minLength() {
+    let min = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "min") {
+        if (min === null || ch.value > min)
+          min = ch.value;
+      }
+    }
+    return min;
+  }
+  get maxLength() {
+    let max = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "max") {
+        if (max === null || ch.value < max)
+          max = ch.value;
+      }
+    }
+    return max;
+  }
+};
+ZodString.create = (params) => {
+  return new ZodString({
+    checks: [],
+    typeName: ZodFirstPartyTypeKind.ZodString,
+    coerce: params?.coerce ?? false,
+    ...processCreateParams(params)
+  });
+};
+function floatSafeRemainder(val, step) {
+  const valDecCount = (val.toString().split(".")[1] || "").length;
+  const stepDecCount = (step.toString().split(".")[1] || "").length;
+  const decCount = valDecCount > stepDecCount ? valDecCount : stepDecCount;
+  const valInt = Number.parseInt(val.toFixed(decCount).replace(".", ""));
+  const stepInt = Number.parseInt(step.toFixed(decCount).replace(".", ""));
+  return valInt % stepInt / 10 ** decCount;
+}
+var ZodNumber = class _ZodNumber extends ZodType {
+  constructor() {
+    super(...arguments);
+    this.min = this.gte;
+    this.max = this.lte;
+    this.step = this.multipleOf;
+  }
+  _parse(input) {
+    if (this._def.coerce) {
+      input.data = Number(input.data);
+    }
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.number) {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.number,
+        received: ctx2.parsedType
+      });
+      return INVALID;
+    }
+    let ctx = void 0;
+    const status = new ParseStatus();
+    for (const check of this._def.checks) {
+      if (check.kind === "int") {
+        if (!util3.isInteger(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.invalid_type,
+            expected: "integer",
+            received: "float",
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "min") {
+        const tooSmall = check.inclusive ? input.data < check.value : input.data <= check.value;
+        if (tooSmall) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_small,
+            minimum: check.value,
+            type: "number",
+            inclusive: check.inclusive,
+            exact: false,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "max") {
+        const tooBig = check.inclusive ? input.data > check.value : input.data >= check.value;
+        if (tooBig) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_big,
+            maximum: check.value,
+            type: "number",
+            inclusive: check.inclusive,
+            exact: false,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "multipleOf") {
+        if (floatSafeRemainder(input.data, check.value) !== 0) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.not_multiple_of,
+            multipleOf: check.value,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "finite") {
+        if (!Number.isFinite(input.data)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.not_finite,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else {
+        util3.assertNever(check);
+      }
+    }
+    return { status: status.value, value: input.data };
+  }
+  gte(value, message) {
+    return this.setLimit("min", value, true, errorUtil.toString(message));
+  }
+  gt(value, message) {
+    return this.setLimit("min", value, false, errorUtil.toString(message));
+  }
+  lte(value, message) {
+    return this.setLimit("max", value, true, errorUtil.toString(message));
+  }
+  lt(value, message) {
+    return this.setLimit("max", value, false, errorUtil.toString(message));
+  }
+  setLimit(kind, value, inclusive, message) {
+    return new _ZodNumber({
+      ...this._def,
+      checks: [
+        ...this._def.checks,
+        {
+          kind,
+          value,
+          inclusive,
+          message: errorUtil.toString(message)
+        }
+      ]
+    });
+  }
+  _addCheck(check) {
+    return new _ZodNumber({
+      ...this._def,
+      checks: [...this._def.checks, check]
+    });
+  }
+  int(message) {
+    return this._addCheck({
+      kind: "int",
+      message: errorUtil.toString(message)
+    });
+  }
+  positive(message) {
+    return this._addCheck({
+      kind: "min",
+      value: 0,
+      inclusive: false,
+      message: errorUtil.toString(message)
+    });
+  }
+  negative(message) {
+    return this._addCheck({
+      kind: "max",
+      value: 0,
+      inclusive: false,
+      message: errorUtil.toString(message)
+    });
+  }
+  nonpositive(message) {
+    return this._addCheck({
+      kind: "max",
+      value: 0,
+      inclusive: true,
+      message: errorUtil.toString(message)
+    });
+  }
+  nonnegative(message) {
+    return this._addCheck({
+      kind: "min",
+      value: 0,
+      inclusive: true,
+      message: errorUtil.toString(message)
+    });
+  }
+  multipleOf(value, message) {
+    return this._addCheck({
+      kind: "multipleOf",
+      value,
+      message: errorUtil.toString(message)
+    });
+  }
+  finite(message) {
+    return this._addCheck({
+      kind: "finite",
+      message: errorUtil.toString(message)
+    });
+  }
+  safe(message) {
+    return this._addCheck({
+      kind: "min",
+      inclusive: true,
+      value: Number.MIN_SAFE_INTEGER,
+      message: errorUtil.toString(message)
+    })._addCheck({
+      kind: "max",
+      inclusive: true,
+      value: Number.MAX_SAFE_INTEGER,
+      message: errorUtil.toString(message)
+    });
+  }
+  get minValue() {
+    let min = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "min") {
+        if (min === null || ch.value > min)
+          min = ch.value;
+      }
+    }
+    return min;
+  }
+  get maxValue() {
+    let max = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "max") {
+        if (max === null || ch.value < max)
+          max = ch.value;
+      }
+    }
+    return max;
+  }
+  get isInt() {
+    return !!this._def.checks.find((ch) => ch.kind === "int" || ch.kind === "multipleOf" && util3.isInteger(ch.value));
+  }
+  get isFinite() {
+    let max = null;
+    let min = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "finite" || ch.kind === "int" || ch.kind === "multipleOf") {
+        return true;
+      } else if (ch.kind === "min") {
+        if (min === null || ch.value > min)
+          min = ch.value;
+      } else if (ch.kind === "max") {
+        if (max === null || ch.value < max)
+          max = ch.value;
+      }
+    }
+    return Number.isFinite(min) && Number.isFinite(max);
+  }
+};
+ZodNumber.create = (params) => {
+  return new ZodNumber({
+    checks: [],
+    typeName: ZodFirstPartyTypeKind.ZodNumber,
+    coerce: params?.coerce || false,
+    ...processCreateParams(params)
+  });
+};
+var ZodBigInt = class _ZodBigInt extends ZodType {
+  constructor() {
+    super(...arguments);
+    this.min = this.gte;
+    this.max = this.lte;
+  }
+  _parse(input) {
+    if (this._def.coerce) {
+      try {
+        input.data = BigInt(input.data);
+      } catch {
+        return this._getInvalidInput(input);
+      }
+    }
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.bigint) {
+      return this._getInvalidInput(input);
+    }
+    let ctx = void 0;
+    const status = new ParseStatus();
+    for (const check of this._def.checks) {
+      if (check.kind === "min") {
+        const tooSmall = check.inclusive ? input.data < check.value : input.data <= check.value;
+        if (tooSmall) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_small,
+            type: "bigint",
+            minimum: check.value,
+            inclusive: check.inclusive,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "max") {
+        const tooBig = check.inclusive ? input.data > check.value : input.data >= check.value;
+        if (tooBig) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_big,
+            type: "bigint",
+            maximum: check.value,
+            inclusive: check.inclusive,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "multipleOf") {
+        if (input.data % check.value !== BigInt(0)) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.not_multiple_of,
+            multipleOf: check.value,
+            message: check.message
+          });
+          status.dirty();
+        }
+      } else {
+        util3.assertNever(check);
+      }
+    }
+    return { status: status.value, value: input.data };
+  }
+  _getInvalidInput(input) {
+    const ctx = this._getOrReturnCtx(input);
+    addIssueToContext(ctx, {
+      code: ZodIssueCode.invalid_type,
+      expected: ZodParsedType.bigint,
+      received: ctx.parsedType
+    });
+    return INVALID;
+  }
+  gte(value, message) {
+    return this.setLimit("min", value, true, errorUtil.toString(message));
+  }
+  gt(value, message) {
+    return this.setLimit("min", value, false, errorUtil.toString(message));
+  }
+  lte(value, message) {
+    return this.setLimit("max", value, true, errorUtil.toString(message));
+  }
+  lt(value, message) {
+    return this.setLimit("max", value, false, errorUtil.toString(message));
+  }
+  setLimit(kind, value, inclusive, message) {
+    return new _ZodBigInt({
+      ...this._def,
+      checks: [
+        ...this._def.checks,
+        {
+          kind,
+          value,
+          inclusive,
+          message: errorUtil.toString(message)
+        }
+      ]
+    });
+  }
+  _addCheck(check) {
+    return new _ZodBigInt({
+      ...this._def,
+      checks: [...this._def.checks, check]
+    });
+  }
+  positive(message) {
+    return this._addCheck({
+      kind: "min",
+      value: BigInt(0),
+      inclusive: false,
+      message: errorUtil.toString(message)
+    });
+  }
+  negative(message) {
+    return this._addCheck({
+      kind: "max",
+      value: BigInt(0),
+      inclusive: false,
+      message: errorUtil.toString(message)
+    });
+  }
+  nonpositive(message) {
+    return this._addCheck({
+      kind: "max",
+      value: BigInt(0),
+      inclusive: true,
+      message: errorUtil.toString(message)
+    });
+  }
+  nonnegative(message) {
+    return this._addCheck({
+      kind: "min",
+      value: BigInt(0),
+      inclusive: true,
+      message: errorUtil.toString(message)
+    });
+  }
+  multipleOf(value, message) {
+    return this._addCheck({
+      kind: "multipleOf",
+      value,
+      message: errorUtil.toString(message)
+    });
+  }
+  get minValue() {
+    let min = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "min") {
+        if (min === null || ch.value > min)
+          min = ch.value;
+      }
+    }
+    return min;
+  }
+  get maxValue() {
+    let max = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "max") {
+        if (max === null || ch.value < max)
+          max = ch.value;
+      }
+    }
+    return max;
+  }
+};
+ZodBigInt.create = (params) => {
+  return new ZodBigInt({
+    checks: [],
+    typeName: ZodFirstPartyTypeKind.ZodBigInt,
+    coerce: params?.coerce ?? false,
+    ...processCreateParams(params)
+  });
+};
+var ZodBoolean = class extends ZodType {
+  _parse(input) {
+    if (this._def.coerce) {
+      input.data = Boolean(input.data);
+    }
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.boolean) {
+      const ctx = this._getOrReturnCtx(input);
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.boolean,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    return OK(input.data);
+  }
+};
+ZodBoolean.create = (params) => {
+  return new ZodBoolean({
+    typeName: ZodFirstPartyTypeKind.ZodBoolean,
+    coerce: params?.coerce || false,
+    ...processCreateParams(params)
+  });
+};
+var ZodDate = class _ZodDate extends ZodType {
+  _parse(input) {
+    if (this._def.coerce) {
+      input.data = new Date(input.data);
+    }
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.date) {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.date,
+        received: ctx2.parsedType
+      });
+      return INVALID;
+    }
+    if (Number.isNaN(input.data.getTime())) {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
+        code: ZodIssueCode.invalid_date
+      });
+      return INVALID;
+    }
+    const status = new ParseStatus();
+    let ctx = void 0;
+    for (const check of this._def.checks) {
+      if (check.kind === "min") {
+        if (input.data.getTime() < check.value) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_small,
+            message: check.message,
+            inclusive: true,
+            exact: false,
+            minimum: check.value,
+            type: "date"
+          });
+          status.dirty();
+        }
+      } else if (check.kind === "max") {
+        if (input.data.getTime() > check.value) {
+          ctx = this._getOrReturnCtx(input, ctx);
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.too_big,
+            message: check.message,
+            inclusive: true,
+            exact: false,
+            maximum: check.value,
+            type: "date"
+          });
+          status.dirty();
+        }
+      } else {
+        util3.assertNever(check);
+      }
+    }
+    return {
+      status: status.value,
+      value: new Date(input.data.getTime())
+    };
+  }
+  _addCheck(check) {
+    return new _ZodDate({
+      ...this._def,
+      checks: [...this._def.checks, check]
+    });
+  }
+  min(minDate, message) {
+    return this._addCheck({
+      kind: "min",
+      value: minDate.getTime(),
+      message: errorUtil.toString(message)
+    });
+  }
+  max(maxDate, message) {
+    return this._addCheck({
+      kind: "max",
+      value: maxDate.getTime(),
+      message: errorUtil.toString(message)
+    });
+  }
+  get minDate() {
+    let min = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "min") {
+        if (min === null || ch.value > min)
+          min = ch.value;
+      }
+    }
+    return min != null ? new Date(min) : null;
+  }
+  get maxDate() {
+    let max = null;
+    for (const ch of this._def.checks) {
+      if (ch.kind === "max") {
+        if (max === null || ch.value < max)
+          max = ch.value;
+      }
+    }
+    return max != null ? new Date(max) : null;
+  }
+};
+ZodDate.create = (params) => {
+  return new ZodDate({
+    checks: [],
+    coerce: params?.coerce || false,
+    typeName: ZodFirstPartyTypeKind.ZodDate,
+    ...processCreateParams(params)
+  });
+};
+var ZodSymbol = class extends ZodType {
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.symbol) {
+      const ctx = this._getOrReturnCtx(input);
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.symbol,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    return OK(input.data);
+  }
+};
+ZodSymbol.create = (params) => {
+  return new ZodSymbol({
+    typeName: ZodFirstPartyTypeKind.ZodSymbol,
+    ...processCreateParams(params)
+  });
+};
+var ZodUndefined = class extends ZodType {
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.undefined) {
+      const ctx = this._getOrReturnCtx(input);
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.undefined,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    return OK(input.data);
+  }
+};
+ZodUndefined.create = (params) => {
+  return new ZodUndefined({
+    typeName: ZodFirstPartyTypeKind.ZodUndefined,
+    ...processCreateParams(params)
+  });
+};
+var ZodNull = class extends ZodType {
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.null) {
+      const ctx = this._getOrReturnCtx(input);
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.null,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    return OK(input.data);
+  }
+};
+ZodNull.create = (params) => {
+  return new ZodNull({
+    typeName: ZodFirstPartyTypeKind.ZodNull,
+    ...processCreateParams(params)
+  });
+};
+var ZodAny = class extends ZodType {
+  constructor() {
+    super(...arguments);
+    this._any = true;
+  }
+  _parse(input) {
+    return OK(input.data);
+  }
+};
+ZodAny.create = (params) => {
+  return new ZodAny({
+    typeName: ZodFirstPartyTypeKind.ZodAny,
+    ...processCreateParams(params)
+  });
+};
+var ZodUnknown = class extends ZodType {
+  constructor() {
+    super(...arguments);
+    this._unknown = true;
+  }
+  _parse(input) {
+    return OK(input.data);
+  }
+};
+ZodUnknown.create = (params) => {
+  return new ZodUnknown({
+    typeName: ZodFirstPartyTypeKind.ZodUnknown,
+    ...processCreateParams(params)
+  });
+};
+var ZodNever = class extends ZodType {
+  _parse(input) {
+    const ctx = this._getOrReturnCtx(input);
+    addIssueToContext(ctx, {
+      code: ZodIssueCode.invalid_type,
+      expected: ZodParsedType.never,
+      received: ctx.parsedType
+    });
+    return INVALID;
+  }
+};
+ZodNever.create = (params) => {
+  return new ZodNever({
+    typeName: ZodFirstPartyTypeKind.ZodNever,
+    ...processCreateParams(params)
+  });
+};
+var ZodVoid = class extends ZodType {
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.undefined) {
+      const ctx = this._getOrReturnCtx(input);
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.void,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    return OK(input.data);
+  }
+};
+ZodVoid.create = (params) => {
+  return new ZodVoid({
+    typeName: ZodFirstPartyTypeKind.ZodVoid,
+    ...processCreateParams(params)
+  });
+};
+var ZodArray = class _ZodArray extends ZodType {
+  _parse(input) {
+    const { ctx, status } = this._processInputParams(input);
+    const def = this._def;
+    if (ctx.parsedType !== ZodParsedType.array) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.array,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    if (def.exactLength !== null) {
+      const tooBig = ctx.data.length > def.exactLength.value;
+      const tooSmall = ctx.data.length < def.exactLength.value;
+      if (tooBig || tooSmall) {
+        addIssueToContext(ctx, {
+          code: tooBig ? ZodIssueCode.too_big : ZodIssueCode.too_small,
+          minimum: tooSmall ? def.exactLength.value : void 0,
+          maximum: tooBig ? def.exactLength.value : void 0,
+          type: "array",
+          inclusive: true,
+          exact: true,
+          message: def.exactLength.message
+        });
+        status.dirty();
+      }
+    }
+    if (def.minLength !== null) {
+      if (ctx.data.length < def.minLength.value) {
+        addIssueToContext(ctx, {
+          code: ZodIssueCode.too_small,
+          minimum: def.minLength.value,
+          type: "array",
+          inclusive: true,
+          exact: false,
+          message: def.minLength.message
+        });
+        status.dirty();
+      }
+    }
+    if (def.maxLength !== null) {
+      if (ctx.data.length > def.maxLength.value) {
+        addIssueToContext(ctx, {
+          code: ZodIssueCode.too_big,
+          maximum: def.maxLength.value,
+          type: "array",
+          inclusive: true,
+          exact: false,
+          message: def.maxLength.message
+        });
+        status.dirty();
+      }
+    }
+    if (ctx.common.async) {
+      return Promise.all([...ctx.data].map((item, i) => {
+        return def.type._parseAsync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+      })).then((result2) => {
+        return ParseStatus.mergeArray(status, result2);
+      });
+    }
+    const result = [...ctx.data].map((item, i) => {
+      return def.type._parseSync(new ParseInputLazyPath(ctx, item, ctx.path, i));
+    });
+    return ParseStatus.mergeArray(status, result);
+  }
+  get element() {
+    return this._def.type;
+  }
+  min(minLength, message) {
+    return new _ZodArray({
+      ...this._def,
+      minLength: { value: minLength, message: errorUtil.toString(message) }
+    });
+  }
+  max(maxLength, message) {
+    return new _ZodArray({
+      ...this._def,
+      maxLength: { value: maxLength, message: errorUtil.toString(message) }
+    });
+  }
+  length(len, message) {
+    return new _ZodArray({
+      ...this._def,
+      exactLength: { value: len, message: errorUtil.toString(message) }
+    });
+  }
+  nonempty(message) {
+    return this.min(1, message);
+  }
+};
+ZodArray.create = (schema, params) => {
+  return new ZodArray({
+    type: schema,
+    minLength: null,
+    maxLength: null,
+    exactLength: null,
+    typeName: ZodFirstPartyTypeKind.ZodArray,
+    ...processCreateParams(params)
+  });
+};
+function deepPartialify(schema) {
+  if (schema instanceof ZodObject) {
+    const newShape = {};
+    for (const key in schema.shape) {
+      const fieldSchema = schema.shape[key];
+      newShape[key] = ZodOptional.create(deepPartialify(fieldSchema));
+    }
+    return new ZodObject({
+      ...schema._def,
+      shape: () => newShape
+    });
+  } else if (schema instanceof ZodArray) {
+    return new ZodArray({
+      ...schema._def,
+      type: deepPartialify(schema.element)
+    });
+  } else if (schema instanceof ZodOptional) {
+    return ZodOptional.create(deepPartialify(schema.unwrap()));
+  } else if (schema instanceof ZodNullable) {
+    return ZodNullable.create(deepPartialify(schema.unwrap()));
+  } else if (schema instanceof ZodTuple) {
+    return ZodTuple.create(schema.items.map((item) => deepPartialify(item)));
+  } else {
+    return schema;
+  }
+}
+var ZodObject = class _ZodObject extends ZodType {
+  constructor() {
+    super(...arguments);
+    this._cached = null;
+    this.nonstrict = this.passthrough;
+    this.augment = this.extend;
+  }
+  _getCached() {
+    if (this._cached !== null)
+      return this._cached;
+    const shape = this._def.shape();
+    const keys = util3.objectKeys(shape);
+    this._cached = { shape, keys };
+    return this._cached;
+  }
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.object) {
+      const ctx2 = this._getOrReturnCtx(input);
+      addIssueToContext(ctx2, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.object,
+        received: ctx2.parsedType
+      });
+      return INVALID;
+    }
+    const { status, ctx } = this._processInputParams(input);
+    const { shape, keys: shapeKeys } = this._getCached();
+    const extraKeys = [];
+    if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
+      for (const key in ctx.data) {
+        if (!shapeKeys.includes(key)) {
+          extraKeys.push(key);
+        }
+      }
+    }
+    const pairs = [];
+    for (const key of shapeKeys) {
+      const keyValidator = shape[key];
+      const value = ctx.data[key];
+      pairs.push({
+        key: { status: "valid", value: key },
+        value: keyValidator._parse(new ParseInputLazyPath(ctx, value, ctx.path, key)),
+        alwaysSet: key in ctx.data
+      });
+    }
+    if (this._def.catchall instanceof ZodNever) {
+      const unknownKeys = this._def.unknownKeys;
+      if (unknownKeys === "passthrough") {
+        for (const key of extraKeys) {
+          pairs.push({
+            key: { status: "valid", value: key },
+            value: { status: "valid", value: ctx.data[key] }
+          });
+        }
+      } else if (unknownKeys === "strict") {
+        if (extraKeys.length > 0) {
+          addIssueToContext(ctx, {
+            code: ZodIssueCode.unrecognized_keys,
+            keys: extraKeys
+          });
+          status.dirty();
+        }
+      } else if (unknownKeys === "strip") {
+      } else {
+        throw new Error(`Internal ZodObject error: invalid unknownKeys value.`);
+      }
+    } else {
+      const catchall = this._def.catchall;
+      for (const key of extraKeys) {
+        const value = ctx.data[key];
+        pairs.push({
+          key: { status: "valid", value: key },
+          value: catchall._parse(
+            new ParseInputLazyPath(ctx, value, ctx.path, key)
+            //, ctx.child(key), value, getParsedType(value)
+          ),
+          alwaysSet: key in ctx.data
+        });
+      }
+    }
+    if (ctx.common.async) {
+      return Promise.resolve().then(async () => {
+        const syncPairs = [];
+        for (const pair of pairs) {
+          const key = await pair.key;
+          const value = await pair.value;
+          syncPairs.push({
+            key,
+            value,
+            alwaysSet: pair.alwaysSet
+          });
+        }
+        return syncPairs;
+      }).then((syncPairs) => {
+        return ParseStatus.mergeObjectSync(status, syncPairs);
+      });
+    } else {
+      return ParseStatus.mergeObjectSync(status, pairs);
+    }
+  }
+  get shape() {
+    return this._def.shape();
+  }
+  strict(message) {
+    errorUtil.errToObj;
+    return new _ZodObject({
+      ...this._def,
+      unknownKeys: "strict",
+      ...message !== void 0 ? {
+        errorMap: (issue, ctx) => {
+          const defaultError = this._def.errorMap?.(issue, ctx).message ?? ctx.defaultError;
+          if (issue.code === "unrecognized_keys")
+            return {
+              message: errorUtil.errToObj(message).message ?? defaultError
+            };
+          return {
+            message: defaultError
+          };
+        }
+      } : {}
+    });
+  }
+  strip() {
+    return new _ZodObject({
+      ...this._def,
+      unknownKeys: "strip"
+    });
+  }
+  passthrough() {
+    return new _ZodObject({
+      ...this._def,
+      unknownKeys: "passthrough"
+    });
+  }
+  // const AugmentFactory =
+  //   <Def extends ZodObjectDef>(def: Def) =>
+  //   <Augmentation extends ZodRawShape>(
+  //     augmentation: Augmentation
+  //   ): ZodObject<
+  //     extendShape<ReturnType<Def["shape"]>, Augmentation>,
+  //     Def["unknownKeys"],
+  //     Def["catchall"]
+  //   > => {
+  //     return new ZodObject({
+  //       ...def,
+  //       shape: () => ({
+  //         ...def.shape(),
+  //         ...augmentation,
+  //       }),
+  //     }) as any;
+  //   };
+  extend(augmentation) {
+    return new _ZodObject({
+      ...this._def,
+      shape: () => ({
+        ...this._def.shape(),
+        ...augmentation
+      })
+    });
+  }
+  /**
+   * Prior to zod@1.0.12 there was a bug in the
+   * inferred type of merged objects. Please
+   * upgrade if you are experiencing issues.
+   */
+  merge(merging) {
+    const merged = new _ZodObject({
+      unknownKeys: merging._def.unknownKeys,
+      catchall: merging._def.catchall,
+      shape: () => ({
+        ...this._def.shape(),
+        ...merging._def.shape()
+      }),
+      typeName: ZodFirstPartyTypeKind.ZodObject
+    });
+    return merged;
+  }
+  // merge<
+  //   Incoming extends AnyZodObject,
+  //   Augmentation extends Incoming["shape"],
+  //   NewOutput extends {
+  //     [k in keyof Augmentation | keyof Output]: k extends keyof Augmentation
+  //       ? Augmentation[k]["_output"]
+  //       : k extends keyof Output
+  //       ? Output[k]
+  //       : never;
+  //   },
+  //   NewInput extends {
+  //     [k in keyof Augmentation | keyof Input]: k extends keyof Augmentation
+  //       ? Augmentation[k]["_input"]
+  //       : k extends keyof Input
+  //       ? Input[k]
+  //       : never;
+  //   }
+  // >(
+  //   merging: Incoming
+  // ): ZodObject<
+  //   extendShape<T, ReturnType<Incoming["_def"]["shape"]>>,
+  //   Incoming["_def"]["unknownKeys"],
+  //   Incoming["_def"]["catchall"],
+  //   NewOutput,
+  //   NewInput
+  // > {
+  //   const merged: any = new ZodObject({
+  //     unknownKeys: merging._def.unknownKeys,
+  //     catchall: merging._def.catchall,
+  //     shape: () =>
+  //       objectUtil.mergeShapes(this._def.shape(), merging._def.shape()),
+  //     typeName: ZodFirstPartyTypeKind.ZodObject,
+  //   }) as any;
+  //   return merged;
+  // }
+  setKey(key, schema) {
+    return this.augment({ [key]: schema });
+  }
+  // merge<Incoming extends AnyZodObject>(
+  //   merging: Incoming
+  // ): //ZodObject<T & Incoming["_shape"], UnknownKeys, Catchall> = (merging) => {
+  // ZodObject<
+  //   extendShape<T, ReturnType<Incoming["_def"]["shape"]>>,
+  //   Incoming["_def"]["unknownKeys"],
+  //   Incoming["_def"]["catchall"]
+  // > {
+  //   // const mergedShape = objectUtil.mergeShapes(
+  //   //   this._def.shape(),
+  //   //   merging._def.shape()
+  //   // );
+  //   const merged: any = new ZodObject({
+  //     unknownKeys: merging._def.unknownKeys,
+  //     catchall: merging._def.catchall,
+  //     shape: () =>
+  //       objectUtil.mergeShapes(this._def.shape(), merging._def.shape()),
+  //     typeName: ZodFirstPartyTypeKind.ZodObject,
+  //   }) as any;
+  //   return merged;
+  // }
+  catchall(index) {
+    return new _ZodObject({
+      ...this._def,
+      catchall: index
+    });
+  }
+  pick(mask) {
+    const shape = {};
+    for (const key of util3.objectKeys(mask)) {
+      if (mask[key] && this.shape[key]) {
+        shape[key] = this.shape[key];
+      }
+    }
+    return new _ZodObject({
+      ...this._def,
+      shape: () => shape
+    });
+  }
+  omit(mask) {
+    const shape = {};
+    for (const key of util3.objectKeys(this.shape)) {
+      if (!mask[key]) {
+        shape[key] = this.shape[key];
+      }
+    }
+    return new _ZodObject({
+      ...this._def,
+      shape: () => shape
+    });
+  }
+  /**
+   * @deprecated
+   */
+  deepPartial() {
+    return deepPartialify(this);
+  }
+  partial(mask) {
+    const newShape = {};
+    for (const key of util3.objectKeys(this.shape)) {
+      const fieldSchema = this.shape[key];
+      if (mask && !mask[key]) {
+        newShape[key] = fieldSchema;
+      } else {
+        newShape[key] = fieldSchema.optional();
+      }
+    }
+    return new _ZodObject({
+      ...this._def,
+      shape: () => newShape
+    });
+  }
+  required(mask) {
+    const newShape = {};
+    for (const key of util3.objectKeys(this.shape)) {
+      if (mask && !mask[key]) {
+        newShape[key] = this.shape[key];
+      } else {
+        const fieldSchema = this.shape[key];
+        let newField = fieldSchema;
+        while (newField instanceof ZodOptional) {
+          newField = newField._def.innerType;
+        }
+        newShape[key] = newField;
+      }
+    }
+    return new _ZodObject({
+      ...this._def,
+      shape: () => newShape
+    });
+  }
+  keyof() {
+    return createZodEnum(util3.objectKeys(this.shape));
+  }
+};
+ZodObject.create = (shape, params) => {
+  return new ZodObject({
+    shape: () => shape,
+    unknownKeys: "strip",
+    catchall: ZodNever.create(),
+    typeName: ZodFirstPartyTypeKind.ZodObject,
+    ...processCreateParams(params)
+  });
+};
+ZodObject.strictCreate = (shape, params) => {
+  return new ZodObject({
+    shape: () => shape,
+    unknownKeys: "strict",
+    catchall: ZodNever.create(),
+    typeName: ZodFirstPartyTypeKind.ZodObject,
+    ...processCreateParams(params)
+  });
+};
+ZodObject.lazycreate = (shape, params) => {
+  return new ZodObject({
+    shape,
+    unknownKeys: "strip",
+    catchall: ZodNever.create(),
+    typeName: ZodFirstPartyTypeKind.ZodObject,
+    ...processCreateParams(params)
+  });
+};
+var ZodUnion = class extends ZodType {
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    const options = this._def.options;
+    function handleResults(results) {
+      for (const result of results) {
+        if (result.result.status === "valid") {
+          return result.result;
+        }
+      }
+      for (const result of results) {
+        if (result.result.status === "dirty") {
+          ctx.common.issues.push(...result.ctx.common.issues);
+          return result.result;
+        }
+      }
+      const unionErrors = results.map((result) => new ZodError(result.ctx.common.issues));
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_union,
+        unionErrors
+      });
+      return INVALID;
+    }
+    if (ctx.common.async) {
+      return Promise.all(options.map(async (option) => {
+        const childCtx = {
+          ...ctx,
+          common: {
+            ...ctx.common,
+            issues: []
+          },
+          parent: null
+        };
+        return {
+          result: await option._parseAsync({
+            data: ctx.data,
+            path: ctx.path,
+            parent: childCtx
+          }),
+          ctx: childCtx
+        };
+      })).then(handleResults);
+    } else {
+      let dirty = void 0;
+      const issues = [];
+      for (const option of options) {
+        const childCtx = {
+          ...ctx,
+          common: {
+            ...ctx.common,
+            issues: []
+          },
+          parent: null
+        };
+        const result = option._parseSync({
+          data: ctx.data,
+          path: ctx.path,
+          parent: childCtx
+        });
+        if (result.status === "valid") {
+          return result;
+        } else if (result.status === "dirty" && !dirty) {
+          dirty = { result, ctx: childCtx };
+        }
+        if (childCtx.common.issues.length) {
+          issues.push(childCtx.common.issues);
+        }
+      }
+      if (dirty) {
+        ctx.common.issues.push(...dirty.ctx.common.issues);
+        return dirty.result;
+      }
+      const unionErrors = issues.map((issues2) => new ZodError(issues2));
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_union,
+        unionErrors
+      });
+      return INVALID;
+    }
+  }
+  get options() {
+    return this._def.options;
+  }
+};
+ZodUnion.create = (types, params) => {
+  return new ZodUnion({
+    options: types,
+    typeName: ZodFirstPartyTypeKind.ZodUnion,
+    ...processCreateParams(params)
+  });
+};
+var getDiscriminator = (type) => {
+  if (type instanceof ZodLazy) {
+    return getDiscriminator(type.schema);
+  } else if (type instanceof ZodEffects) {
+    return getDiscriminator(type.innerType());
+  } else if (type instanceof ZodLiteral) {
+    return [type.value];
+  } else if (type instanceof ZodEnum) {
+    return type.options;
+  } else if (type instanceof ZodNativeEnum) {
+    return util3.objectValues(type.enum);
+  } else if (type instanceof ZodDefault) {
+    return getDiscriminator(type._def.innerType);
+  } else if (type instanceof ZodUndefined) {
+    return [void 0];
+  } else if (type instanceof ZodNull) {
+    return [null];
+  } else if (type instanceof ZodOptional) {
+    return [void 0, ...getDiscriminator(type.unwrap())];
+  } else if (type instanceof ZodNullable) {
+    return [null, ...getDiscriminator(type.unwrap())];
+  } else if (type instanceof ZodBranded) {
+    return getDiscriminator(type.unwrap());
+  } else if (type instanceof ZodReadonly) {
+    return getDiscriminator(type.unwrap());
+  } else if (type instanceof ZodCatch) {
+    return getDiscriminator(type._def.innerType);
+  } else {
+    return [];
+  }
+};
+var ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.object) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.object,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    const discriminator = this.discriminator;
+    const discriminatorValue = ctx.data[discriminator];
+    const option = this.optionsMap.get(discriminatorValue);
+    if (!option) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_union_discriminator,
+        options: Array.from(this.optionsMap.keys()),
+        path: [discriminator]
+      });
+      return INVALID;
+    }
+    if (ctx.common.async) {
+      return option._parseAsync({
+        data: ctx.data,
+        path: ctx.path,
+        parent: ctx
+      });
+    } else {
+      return option._parseSync({
+        data: ctx.data,
+        path: ctx.path,
+        parent: ctx
+      });
+    }
+  }
+  get discriminator() {
+    return this._def.discriminator;
+  }
+  get options() {
+    return this._def.options;
+  }
+  get optionsMap() {
+    return this._def.optionsMap;
+  }
+  /**
+   * The constructor of the discriminated union schema. Its behaviour is very similar to that of the normal z.union() constructor.
+   * However, it only allows a union of objects, all of which need to share a discriminator property. This property must
+   * have a different value for each object in the union.
+   * @param discriminator the name of the discriminator property
+   * @param types an array of object schemas
+   * @param params
+   */
+  static create(discriminator, options, params) {
+    const optionsMap = /* @__PURE__ */ new Map();
+    for (const type of options) {
+      const discriminatorValues = getDiscriminator(type.shape[discriminator]);
+      if (!discriminatorValues.length) {
+        throw new Error(`A discriminator value for key \`${discriminator}\` could not be extracted from all schema options`);
+      }
+      for (const value of discriminatorValues) {
+        if (optionsMap.has(value)) {
+          throw new Error(`Discriminator property ${String(discriminator)} has duplicate value ${String(value)}`);
+        }
+        optionsMap.set(value, type);
+      }
+    }
+    return new _ZodDiscriminatedUnion({
+      typeName: ZodFirstPartyTypeKind.ZodDiscriminatedUnion,
+      discriminator,
+      options,
+      optionsMap,
+      ...processCreateParams(params)
+    });
+  }
+};
+function mergeValues(a, b) {
+  const aType = getParsedType(a);
+  const bType = getParsedType(b);
+  if (a === b) {
+    return { valid: true, data: a };
+  } else if (aType === ZodParsedType.object && bType === ZodParsedType.object) {
+    const bKeys = util3.objectKeys(b);
+    const sharedKeys = util3.objectKeys(a).filter((key) => bKeys.indexOf(key) !== -1);
+    const newObj = { ...a, ...b };
+    for (const key of sharedKeys) {
+      const sharedValue = mergeValues(a[key], b[key]);
+      if (!sharedValue.valid) {
+        return { valid: false };
+      }
+      newObj[key] = sharedValue.data;
+    }
+    return { valid: true, data: newObj };
+  } else if (aType === ZodParsedType.array && bType === ZodParsedType.array) {
+    if (a.length !== b.length) {
+      return { valid: false };
+    }
+    const newArray = [];
+    for (let index = 0; index < a.length; index++) {
+      const itemA = a[index];
+      const itemB = b[index];
+      const sharedValue = mergeValues(itemA, itemB);
+      if (!sharedValue.valid) {
+        return { valid: false };
+      }
+      newArray.push(sharedValue.data);
+    }
+    return { valid: true, data: newArray };
+  } else if (aType === ZodParsedType.date && bType === ZodParsedType.date && +a === +b) {
+    return { valid: true, data: a };
+  } else {
+    return { valid: false };
+  }
+}
+var ZodIntersection = class extends ZodType {
+  _parse(input) {
+    const { status, ctx } = this._processInputParams(input);
+    const handleParsed = (parsedLeft, parsedRight) => {
+      if (isAborted(parsedLeft) || isAborted(parsedRight)) {
+        return INVALID;
+      }
+      const merged = mergeValues(parsedLeft.value, parsedRight.value);
+      if (!merged.valid) {
+        addIssueToContext(ctx, {
+          code: ZodIssueCode.invalid_intersection_types
+        });
+        return INVALID;
+      }
+      if (isDirty(parsedLeft) || isDirty(parsedRight)) {
+        status.dirty();
+      }
+      return { status: status.value, value: merged.data };
+    };
+    if (ctx.common.async) {
+      return Promise.all([
+        this._def.left._parseAsync({
+          data: ctx.data,
+          path: ctx.path,
+          parent: ctx
+        }),
+        this._def.right._parseAsync({
+          data: ctx.data,
+          path: ctx.path,
+          parent: ctx
+        })
+      ]).then(([left, right]) => handleParsed(left, right));
+    } else {
+      return handleParsed(this._def.left._parseSync({
+        data: ctx.data,
+        path: ctx.path,
+        parent: ctx
+      }), this._def.right._parseSync({
+        data: ctx.data,
+        path: ctx.path,
+        parent: ctx
+      }));
+    }
+  }
+};
+ZodIntersection.create = (left, right, params) => {
+  return new ZodIntersection({
+    left,
+    right,
+    typeName: ZodFirstPartyTypeKind.ZodIntersection,
+    ...processCreateParams(params)
+  });
+};
+var ZodTuple = class _ZodTuple extends ZodType {
+  _parse(input) {
+    const { status, ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.array) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.array,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    if (ctx.data.length < this._def.items.length) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.too_small,
+        minimum: this._def.items.length,
+        inclusive: true,
+        exact: false,
+        type: "array"
+      });
+      return INVALID;
+    }
+    const rest = this._def.rest;
+    if (!rest && ctx.data.length > this._def.items.length) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.too_big,
+        maximum: this._def.items.length,
+        inclusive: true,
+        exact: false,
+        type: "array"
+      });
+      status.dirty();
+    }
+    const items = [...ctx.data].map((item, itemIndex) => {
+      const schema = this._def.items[itemIndex] || this._def.rest;
+      if (!schema)
+        return null;
+      return schema._parse(new ParseInputLazyPath(ctx, item, ctx.path, itemIndex));
+    }).filter((x) => !!x);
+    if (ctx.common.async) {
+      return Promise.all(items).then((results) => {
+        return ParseStatus.mergeArray(status, results);
+      });
+    } else {
+      return ParseStatus.mergeArray(status, items);
+    }
+  }
+  get items() {
+    return this._def.items;
+  }
+  rest(rest) {
+    return new _ZodTuple({
+      ...this._def,
+      rest
+    });
+  }
+};
+ZodTuple.create = (schemas, params) => {
+  if (!Array.isArray(schemas)) {
+    throw new Error("You must pass an array of schemas to z.tuple([ ... ])");
+  }
+  return new ZodTuple({
+    items: schemas,
+    typeName: ZodFirstPartyTypeKind.ZodTuple,
+    rest: null,
+    ...processCreateParams(params)
+  });
+};
+var ZodRecord = class _ZodRecord extends ZodType {
+  get keySchema() {
+    return this._def.keyType;
+  }
+  get valueSchema() {
+    return this._def.valueType;
+  }
+  _parse(input) {
+    const { status, ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.object) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.object,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    const pairs = [];
+    const keyType = this._def.keyType;
+    const valueType = this._def.valueType;
+    for (const key in ctx.data) {
+      pairs.push({
+        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, key)),
+        value: valueType._parse(new ParseInputLazyPath(ctx, ctx.data[key], ctx.path, key)),
+        alwaysSet: key in ctx.data
+      });
+    }
+    if (ctx.common.async) {
+      return ParseStatus.mergeObjectAsync(status, pairs);
+    } else {
+      return ParseStatus.mergeObjectSync(status, pairs);
+    }
+  }
+  get element() {
+    return this._def.valueType;
+  }
+  static create(first, second, third) {
+    if (second instanceof ZodType) {
+      return new _ZodRecord({
+        keyType: first,
+        valueType: second,
+        typeName: ZodFirstPartyTypeKind.ZodRecord,
+        ...processCreateParams(third)
+      });
+    }
+    return new _ZodRecord({
+      keyType: ZodString.create(),
+      valueType: first,
+      typeName: ZodFirstPartyTypeKind.ZodRecord,
+      ...processCreateParams(second)
+    });
+  }
+};
+var ZodMap = class extends ZodType {
+  get keySchema() {
+    return this._def.keyType;
+  }
+  get valueSchema() {
+    return this._def.valueType;
+  }
+  _parse(input) {
+    const { status, ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.map) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.map,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    const keyType = this._def.keyType;
+    const valueType = this._def.valueType;
+    const pairs = [...ctx.data.entries()].map(([key, value], index) => {
+      return {
+        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index, "key"])),
+        value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index, "value"]))
+      };
+    });
+    if (ctx.common.async) {
+      const finalMap = /* @__PURE__ */ new Map();
+      return Promise.resolve().then(async () => {
+        for (const pair of pairs) {
+          const key = await pair.key;
+          const value = await pair.value;
+          if (key.status === "aborted" || value.status === "aborted") {
+            return INVALID;
+          }
+          if (key.status === "dirty" || value.status === "dirty") {
+            status.dirty();
+          }
+          finalMap.set(key.value, value.value);
+        }
+        return { status: status.value, value: finalMap };
+      });
+    } else {
+      const finalMap = /* @__PURE__ */ new Map();
+      for (const pair of pairs) {
+        const key = pair.key;
+        const value = pair.value;
+        if (key.status === "aborted" || value.status === "aborted") {
+          return INVALID;
+        }
+        if (key.status === "dirty" || value.status === "dirty") {
+          status.dirty();
+        }
+        finalMap.set(key.value, value.value);
+      }
+      return { status: status.value, value: finalMap };
+    }
+  }
+};
+ZodMap.create = (keyType, valueType, params) => {
+  return new ZodMap({
+    valueType,
+    keyType,
+    typeName: ZodFirstPartyTypeKind.ZodMap,
+    ...processCreateParams(params)
+  });
+};
+var ZodSet = class _ZodSet extends ZodType {
+  _parse(input) {
+    const { status, ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.set) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.set,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    const def = this._def;
+    if (def.minSize !== null) {
+      if (ctx.data.size < def.minSize.value) {
+        addIssueToContext(ctx, {
+          code: ZodIssueCode.too_small,
+          minimum: def.minSize.value,
+          type: "set",
+          inclusive: true,
+          exact: false,
+          message: def.minSize.message
+        });
+        status.dirty();
+      }
+    }
+    if (def.maxSize !== null) {
+      if (ctx.data.size > def.maxSize.value) {
+        addIssueToContext(ctx, {
+          code: ZodIssueCode.too_big,
+          maximum: def.maxSize.value,
+          type: "set",
+          inclusive: true,
+          exact: false,
+          message: def.maxSize.message
+        });
+        status.dirty();
+      }
+    }
+    const valueType = this._def.valueType;
+    function finalizeSet(elements2) {
+      const parsedSet = /* @__PURE__ */ new Set();
+      for (const element of elements2) {
+        if (element.status === "aborted")
+          return INVALID;
+        if (element.status === "dirty")
+          status.dirty();
+        parsedSet.add(element.value);
+      }
+      return { status: status.value, value: parsedSet };
+    }
+    const elements = [...ctx.data.values()].map((item, i) => valueType._parse(new ParseInputLazyPath(ctx, item, ctx.path, i)));
+    if (ctx.common.async) {
+      return Promise.all(elements).then((elements2) => finalizeSet(elements2));
+    } else {
+      return finalizeSet(elements);
+    }
+  }
+  min(minSize, message) {
+    return new _ZodSet({
+      ...this._def,
+      minSize: { value: minSize, message: errorUtil.toString(message) }
+    });
+  }
+  max(maxSize, message) {
+    return new _ZodSet({
+      ...this._def,
+      maxSize: { value: maxSize, message: errorUtil.toString(message) }
+    });
+  }
+  size(size, message) {
+    return this.min(size, message).max(size, message);
+  }
+  nonempty(message) {
+    return this.min(1, message);
+  }
+};
+ZodSet.create = (valueType, params) => {
+  return new ZodSet({
+    valueType,
+    minSize: null,
+    maxSize: null,
+    typeName: ZodFirstPartyTypeKind.ZodSet,
+    ...processCreateParams(params)
+  });
+};
+var ZodFunction = class _ZodFunction extends ZodType {
+  constructor() {
+    super(...arguments);
+    this.validate = this.implement;
+  }
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.function) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.function,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    function makeArgsIssue(args, error2) {
+      return makeIssue({
+        data: args,
+        path: ctx.path,
+        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
+        issueData: {
+          code: ZodIssueCode.invalid_arguments,
+          argumentsError: error2
+        }
+      });
+    }
+    function makeReturnsIssue(returns, error2) {
+      return makeIssue({
+        data: returns,
+        path: ctx.path,
+        errorMaps: [ctx.common.contextualErrorMap, ctx.schemaErrorMap, getErrorMap(), en_default].filter((x) => !!x),
+        issueData: {
+          code: ZodIssueCode.invalid_return_type,
+          returnTypeError: error2
+        }
+      });
+    }
+    const params = { errorMap: ctx.common.contextualErrorMap };
+    const fn = ctx.data;
+    if (this._def.returns instanceof ZodPromise) {
+      const me = this;
+      return OK(async function(...args) {
+        const error2 = new ZodError([]);
+        const parsedArgs = await me._def.args.parseAsync(args, params).catch((e) => {
+          error2.addIssue(makeArgsIssue(args, e));
+          throw error2;
+        });
+        const result = await Reflect.apply(fn, this, parsedArgs);
+        const parsedReturns = await me._def.returns._def.type.parseAsync(result, params).catch((e) => {
+          error2.addIssue(makeReturnsIssue(result, e));
+          throw error2;
+        });
+        return parsedReturns;
+      });
+    } else {
+      const me = this;
+      return OK(function(...args) {
+        const parsedArgs = me._def.args.safeParse(args, params);
+        if (!parsedArgs.success) {
+          throw new ZodError([makeArgsIssue(args, parsedArgs.error)]);
+        }
+        const result = Reflect.apply(fn, this, parsedArgs.data);
+        const parsedReturns = me._def.returns.safeParse(result, params);
+        if (!parsedReturns.success) {
+          throw new ZodError([makeReturnsIssue(result, parsedReturns.error)]);
+        }
+        return parsedReturns.data;
+      });
+    }
+  }
+  parameters() {
+    return this._def.args;
+  }
+  returnType() {
+    return this._def.returns;
+  }
+  args(...items) {
+    return new _ZodFunction({
+      ...this._def,
+      args: ZodTuple.create(items).rest(ZodUnknown.create())
+    });
+  }
+  returns(returnType) {
+    return new _ZodFunction({
+      ...this._def,
+      returns: returnType
+    });
+  }
+  implement(func) {
+    const validatedFunc = this.parse(func);
+    return validatedFunc;
+  }
+  strictImplement(func) {
+    const validatedFunc = this.parse(func);
+    return validatedFunc;
+  }
+  static create(args, returns, params) {
+    return new _ZodFunction({
+      args: args ? args : ZodTuple.create([]).rest(ZodUnknown.create()),
+      returns: returns || ZodUnknown.create(),
+      typeName: ZodFirstPartyTypeKind.ZodFunction,
+      ...processCreateParams(params)
+    });
+  }
+};
+var ZodLazy = class extends ZodType {
+  get schema() {
+    return this._def.getter();
+  }
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    const lazySchema = this._def.getter();
+    return lazySchema._parse({ data: ctx.data, path: ctx.path, parent: ctx });
+  }
+};
+ZodLazy.create = (getter, params) => {
+  return new ZodLazy({
+    getter,
+    typeName: ZodFirstPartyTypeKind.ZodLazy,
+    ...processCreateParams(params)
+  });
+};
+var ZodLiteral = class extends ZodType {
+  _parse(input) {
+    if (input.data !== this._def.value) {
+      const ctx = this._getOrReturnCtx(input);
+      addIssueToContext(ctx, {
+        received: ctx.data,
+        code: ZodIssueCode.invalid_literal,
+        expected: this._def.value
+      });
+      return INVALID;
+    }
+    return { status: "valid", value: input.data };
+  }
+  get value() {
+    return this._def.value;
+  }
+};
+ZodLiteral.create = (value, params) => {
+  return new ZodLiteral({
+    value,
+    typeName: ZodFirstPartyTypeKind.ZodLiteral,
+    ...processCreateParams(params)
+  });
+};
+function createZodEnum(values, params) {
+  return new ZodEnum({
+    values,
+    typeName: ZodFirstPartyTypeKind.ZodEnum,
+    ...processCreateParams(params)
+  });
+}
+var ZodEnum = class _ZodEnum extends ZodType {
+  _parse(input) {
+    if (typeof input.data !== "string") {
+      const ctx = this._getOrReturnCtx(input);
+      const expectedValues = this._def.values;
+      addIssueToContext(ctx, {
+        expected: util3.joinValues(expectedValues),
+        received: ctx.parsedType,
+        code: ZodIssueCode.invalid_type
+      });
+      return INVALID;
+    }
+    if (!this._cache) {
+      this._cache = new Set(this._def.values);
+    }
+    if (!this._cache.has(input.data)) {
+      const ctx = this._getOrReturnCtx(input);
+      const expectedValues = this._def.values;
+      addIssueToContext(ctx, {
+        received: ctx.data,
+        code: ZodIssueCode.invalid_enum_value,
+        options: expectedValues
+      });
+      return INVALID;
+    }
+    return OK(input.data);
+  }
+  get options() {
+    return this._def.values;
+  }
+  get enum() {
+    const enumValues = {};
+    for (const val of this._def.values) {
+      enumValues[val] = val;
+    }
+    return enumValues;
+  }
+  get Values() {
+    const enumValues = {};
+    for (const val of this._def.values) {
+      enumValues[val] = val;
+    }
+    return enumValues;
+  }
+  get Enum() {
+    const enumValues = {};
+    for (const val of this._def.values) {
+      enumValues[val] = val;
+    }
+    return enumValues;
+  }
+  extract(values, newDef = this._def) {
+    return _ZodEnum.create(values, {
+      ...this._def,
+      ...newDef
+    });
+  }
+  exclude(values, newDef = this._def) {
+    return _ZodEnum.create(this.options.filter((opt) => !values.includes(opt)), {
+      ...this._def,
+      ...newDef
+    });
+  }
+};
+ZodEnum.create = createZodEnum;
+var ZodNativeEnum = class extends ZodType {
+  _parse(input) {
+    const nativeEnumValues = util3.getValidEnumValues(this._def.values);
+    const ctx = this._getOrReturnCtx(input);
+    if (ctx.parsedType !== ZodParsedType.string && ctx.parsedType !== ZodParsedType.number) {
+      const expectedValues = util3.objectValues(nativeEnumValues);
+      addIssueToContext(ctx, {
+        expected: util3.joinValues(expectedValues),
+        received: ctx.parsedType,
+        code: ZodIssueCode.invalid_type
+      });
+      return INVALID;
+    }
+    if (!this._cache) {
+      this._cache = new Set(util3.getValidEnumValues(this._def.values));
+    }
+    if (!this._cache.has(input.data)) {
+      const expectedValues = util3.objectValues(nativeEnumValues);
+      addIssueToContext(ctx, {
+        received: ctx.data,
+        code: ZodIssueCode.invalid_enum_value,
+        options: expectedValues
+      });
+      return INVALID;
+    }
+    return OK(input.data);
+  }
+  get enum() {
+    return this._def.values;
+  }
+};
+ZodNativeEnum.create = (values, params) => {
+  return new ZodNativeEnum({
+    values,
+    typeName: ZodFirstPartyTypeKind.ZodNativeEnum,
+    ...processCreateParams(params)
+  });
+};
+var ZodPromise = class extends ZodType {
+  unwrap() {
+    return this._def.type;
+  }
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    if (ctx.parsedType !== ZodParsedType.promise && ctx.common.async === false) {
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.promise,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    const promisified = ctx.parsedType === ZodParsedType.promise ? ctx.data : Promise.resolve(ctx.data);
+    return OK(promisified.then((data) => {
+      return this._def.type.parseAsync(data, {
+        path: ctx.path,
+        errorMap: ctx.common.contextualErrorMap
+      });
+    }));
+  }
+};
+ZodPromise.create = (schema, params) => {
+  return new ZodPromise({
+    type: schema,
+    typeName: ZodFirstPartyTypeKind.ZodPromise,
+    ...processCreateParams(params)
+  });
+};
+var ZodEffects = class extends ZodType {
+  innerType() {
+    return this._def.schema;
+  }
+  sourceType() {
+    return this._def.schema._def.typeName === ZodFirstPartyTypeKind.ZodEffects ? this._def.schema.sourceType() : this._def.schema;
+  }
+  _parse(input) {
+    const { status, ctx } = this._processInputParams(input);
+    const effect = this._def.effect || null;
+    const checkCtx = {
+      addIssue: (arg) => {
+        addIssueToContext(ctx, arg);
+        if (arg.fatal) {
+          status.abort();
+        } else {
+          status.dirty();
+        }
+      },
+      get path() {
+        return ctx.path;
+      }
+    };
+    checkCtx.addIssue = checkCtx.addIssue.bind(checkCtx);
+    if (effect.type === "preprocess") {
+      const processed = effect.transform(ctx.data, checkCtx);
+      if (ctx.common.async) {
+        return Promise.resolve(processed).then(async (processed2) => {
+          if (status.value === "aborted")
+            return INVALID;
+          const result = await this._def.schema._parseAsync({
+            data: processed2,
+            path: ctx.path,
+            parent: ctx
+          });
+          if (result.status === "aborted")
+            return INVALID;
+          if (result.status === "dirty")
+            return DIRTY(result.value);
+          if (status.value === "dirty")
+            return DIRTY(result.value);
+          return result;
+        });
+      } else {
+        if (status.value === "aborted")
+          return INVALID;
+        const result = this._def.schema._parseSync({
+          data: processed,
+          path: ctx.path,
+          parent: ctx
+        });
+        if (result.status === "aborted")
+          return INVALID;
+        if (result.status === "dirty")
+          return DIRTY(result.value);
+        if (status.value === "dirty")
+          return DIRTY(result.value);
+        return result;
+      }
+    }
+    if (effect.type === "refinement") {
+      const executeRefinement = (acc) => {
+        const result = effect.refinement(acc, checkCtx);
+        if (ctx.common.async) {
+          return Promise.resolve(result);
+        }
+        if (result instanceof Promise) {
+          throw new Error("Async refinement encountered during synchronous parse operation. Use .parseAsync instead.");
+        }
+        return acc;
+      };
+      if (ctx.common.async === false) {
+        const inner = this._def.schema._parseSync({
+          data: ctx.data,
+          path: ctx.path,
+          parent: ctx
+        });
+        if (inner.status === "aborted")
+          return INVALID;
+        if (inner.status === "dirty")
+          status.dirty();
+        executeRefinement(inner.value);
+        return { status: status.value, value: inner.value };
+      } else {
+        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((inner) => {
+          if (inner.status === "aborted")
+            return INVALID;
+          if (inner.status === "dirty")
+            status.dirty();
+          return executeRefinement(inner.value).then(() => {
+            return { status: status.value, value: inner.value };
+          });
+        });
+      }
+    }
+    if (effect.type === "transform") {
+      if (ctx.common.async === false) {
+        const base2 = this._def.schema._parseSync({
+          data: ctx.data,
+          path: ctx.path,
+          parent: ctx
+        });
+        if (!isValid(base2))
+          return INVALID;
+        const result = effect.transform(base2.value, checkCtx);
+        if (result instanceof Promise) {
+          throw new Error(`Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.`);
+        }
+        return { status: status.value, value: result };
+      } else {
+        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base2) => {
+          if (!isValid(base2))
+            return INVALID;
+          return Promise.resolve(effect.transform(base2.value, checkCtx)).then((result) => ({
+            status: status.value,
+            value: result
+          }));
+        });
+      }
+    }
+    util3.assertNever(effect);
+  }
+};
+ZodEffects.create = (schema, effect, params) => {
+  return new ZodEffects({
+    schema,
+    typeName: ZodFirstPartyTypeKind.ZodEffects,
+    effect,
+    ...processCreateParams(params)
+  });
+};
+ZodEffects.createWithPreprocess = (preprocess, schema, params) => {
+  return new ZodEffects({
+    schema,
+    effect: { type: "preprocess", transform: preprocess },
+    typeName: ZodFirstPartyTypeKind.ZodEffects,
+    ...processCreateParams(params)
+  });
+};
+var ZodOptional = class extends ZodType {
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType === ZodParsedType.undefined) {
+      return OK(void 0);
+    }
+    return this._def.innerType._parse(input);
+  }
+  unwrap() {
+    return this._def.innerType;
+  }
+};
+ZodOptional.create = (type, params) => {
+  return new ZodOptional({
+    innerType: type,
+    typeName: ZodFirstPartyTypeKind.ZodOptional,
+    ...processCreateParams(params)
+  });
+};
+var ZodNullable = class extends ZodType {
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType === ZodParsedType.null) {
+      return OK(null);
+    }
+    return this._def.innerType._parse(input);
+  }
+  unwrap() {
+    return this._def.innerType;
+  }
+};
+ZodNullable.create = (type, params) => {
+  return new ZodNullable({
+    innerType: type,
+    typeName: ZodFirstPartyTypeKind.ZodNullable,
+    ...processCreateParams(params)
+  });
+};
+var ZodDefault = class extends ZodType {
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    let data = ctx.data;
+    if (ctx.parsedType === ZodParsedType.undefined) {
+      data = this._def.defaultValue();
+    }
+    return this._def.innerType._parse({
+      data,
+      path: ctx.path,
+      parent: ctx
+    });
+  }
+  removeDefault() {
+    return this._def.innerType;
+  }
+};
+ZodDefault.create = (type, params) => {
+  return new ZodDefault({
+    innerType: type,
+    typeName: ZodFirstPartyTypeKind.ZodDefault,
+    defaultValue: typeof params.default === "function" ? params.default : () => params.default,
+    ...processCreateParams(params)
+  });
+};
+var ZodCatch = class extends ZodType {
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    const newCtx = {
+      ...ctx,
+      common: {
+        ...ctx.common,
+        issues: []
+      }
+    };
+    const result = this._def.innerType._parse({
+      data: newCtx.data,
+      path: newCtx.path,
+      parent: {
+        ...newCtx
+      }
+    });
+    if (isAsync(result)) {
+      return result.then((result2) => {
+        return {
+          status: "valid",
+          value: result2.status === "valid" ? result2.value : this._def.catchValue({
+            get error() {
+              return new ZodError(newCtx.common.issues);
+            },
+            input: newCtx.data
+          })
+        };
+      });
+    } else {
+      return {
+        status: "valid",
+        value: result.status === "valid" ? result.value : this._def.catchValue({
+          get error() {
+            return new ZodError(newCtx.common.issues);
+          },
+          input: newCtx.data
+        })
+      };
+    }
+  }
+  removeCatch() {
+    return this._def.innerType;
+  }
+};
+ZodCatch.create = (type, params) => {
+  return new ZodCatch({
+    innerType: type,
+    typeName: ZodFirstPartyTypeKind.ZodCatch,
+    catchValue: typeof params.catch === "function" ? params.catch : () => params.catch,
+    ...processCreateParams(params)
+  });
+};
+var ZodNaN = class extends ZodType {
+  _parse(input) {
+    const parsedType = this._getType(input);
+    if (parsedType !== ZodParsedType.nan) {
+      const ctx = this._getOrReturnCtx(input);
+      addIssueToContext(ctx, {
+        code: ZodIssueCode.invalid_type,
+        expected: ZodParsedType.nan,
+        received: ctx.parsedType
+      });
+      return INVALID;
+    }
+    return { status: "valid", value: input.data };
+  }
+};
+ZodNaN.create = (params) => {
+  return new ZodNaN({
+    typeName: ZodFirstPartyTypeKind.ZodNaN,
+    ...processCreateParams(params)
+  });
+};
+var BRAND = /* @__PURE__ */ Symbol("zod_brand");
+var ZodBranded = class extends ZodType {
+  _parse(input) {
+    const { ctx } = this._processInputParams(input);
+    const data = ctx.data;
+    return this._def.type._parse({
+      data,
+      path: ctx.path,
+      parent: ctx
+    });
+  }
+  unwrap() {
+    return this._def.type;
+  }
+};
+var ZodPipeline = class _ZodPipeline extends ZodType {
+  _parse(input) {
+    const { status, ctx } = this._processInputParams(input);
+    if (ctx.common.async) {
+      const handleAsync = async () => {
+        const inResult = await this._def.in._parseAsync({
+          data: ctx.data,
+          path: ctx.path,
+          parent: ctx
+        });
+        if (inResult.status === "aborted")
+          return INVALID;
+        if (inResult.status === "dirty") {
+          status.dirty();
+          return DIRTY(inResult.value);
+        } else {
+          return this._def.out._parseAsync({
+            data: inResult.value,
+            path: ctx.path,
+            parent: ctx
+          });
+        }
+      };
+      return handleAsync();
+    } else {
+      const inResult = this._def.in._parseSync({
+        data: ctx.data,
+        path: ctx.path,
+        parent: ctx
+      });
+      if (inResult.status === "aborted")
+        return INVALID;
+      if (inResult.status === "dirty") {
+        status.dirty();
+        return {
+          status: "dirty",
+          value: inResult.value
+        };
+      } else {
+        return this._def.out._parseSync({
+          data: inResult.value,
+          path: ctx.path,
+          parent: ctx
+        });
+      }
+    }
+  }
+  static create(a, b) {
+    return new _ZodPipeline({
+      in: a,
+      out: b,
+      typeName: ZodFirstPartyTypeKind.ZodPipeline
+    });
+  }
+};
+var ZodReadonly = class extends ZodType {
+  _parse(input) {
+    const result = this._def.innerType._parse(input);
+    const freeze = (data) => {
+      if (isValid(data)) {
+        data.value = Object.freeze(data.value);
+      }
+      return data;
+    };
+    return isAsync(result) ? result.then((data) => freeze(data)) : freeze(result);
+  }
+  unwrap() {
+    return this._def.innerType;
+  }
+};
+ZodReadonly.create = (type, params) => {
+  return new ZodReadonly({
+    innerType: type,
+    typeName: ZodFirstPartyTypeKind.ZodReadonly,
+    ...processCreateParams(params)
+  });
+};
+function cleanParams(params, data) {
+  const p = typeof params === "function" ? params(data) : typeof params === "string" ? { message: params } : params;
+  const p2 = typeof p === "string" ? { message: p } : p;
+  return p2;
+}
+function custom(check, _params = {}, fatal) {
+  if (check)
+    return ZodAny.create().superRefine((data, ctx) => {
+      const r = check(data);
+      if (r instanceof Promise) {
+        return r.then((r3) => {
+          if (!r3) {
+            const params = cleanParams(_params, data);
+            const _fatal = params.fatal ?? fatal ?? true;
+            ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
+          }
+        });
+      }
+      if (!r) {
+        const params = cleanParams(_params, data);
+        const _fatal = params.fatal ?? fatal ?? true;
+        ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
+      }
+      return;
+    });
+  return ZodAny.create();
+}
+var late = {
+  object: ZodObject.lazycreate
+};
+var ZodFirstPartyTypeKind;
+(function(ZodFirstPartyTypeKind2) {
+  ZodFirstPartyTypeKind2["ZodString"] = "ZodString";
+  ZodFirstPartyTypeKind2["ZodNumber"] = "ZodNumber";
+  ZodFirstPartyTypeKind2["ZodNaN"] = "ZodNaN";
+  ZodFirstPartyTypeKind2["ZodBigInt"] = "ZodBigInt";
+  ZodFirstPartyTypeKind2["ZodBoolean"] = "ZodBoolean";
+  ZodFirstPartyTypeKind2["ZodDate"] = "ZodDate";
+  ZodFirstPartyTypeKind2["ZodSymbol"] = "ZodSymbol";
+  ZodFirstPartyTypeKind2["ZodUndefined"] = "ZodUndefined";
+  ZodFirstPartyTypeKind2["ZodNull"] = "ZodNull";
+  ZodFirstPartyTypeKind2["ZodAny"] = "ZodAny";
+  ZodFirstPartyTypeKind2["ZodUnknown"] = "ZodUnknown";
+  ZodFirstPartyTypeKind2["ZodNever"] = "ZodNever";
+  ZodFirstPartyTypeKind2["ZodVoid"] = "ZodVoid";
+  ZodFirstPartyTypeKind2["ZodArray"] = "ZodArray";
+  ZodFirstPartyTypeKind2["ZodObject"] = "ZodObject";
+  ZodFirstPartyTypeKind2["ZodUnion"] = "ZodUnion";
+  ZodFirstPartyTypeKind2["ZodDiscriminatedUnion"] = "ZodDiscriminatedUnion";
+  ZodFirstPartyTypeKind2["ZodIntersection"] = "ZodIntersection";
+  ZodFirstPartyTypeKind2["ZodTuple"] = "ZodTuple";
+  ZodFirstPartyTypeKind2["ZodRecord"] = "ZodRecord";
+  ZodFirstPartyTypeKind2["ZodMap"] = "ZodMap";
+  ZodFirstPartyTypeKind2["ZodSet"] = "ZodSet";
+  ZodFirstPartyTypeKind2["ZodFunction"] = "ZodFunction";
+  ZodFirstPartyTypeKind2["ZodLazy"] = "ZodLazy";
+  ZodFirstPartyTypeKind2["ZodLiteral"] = "ZodLiteral";
+  ZodFirstPartyTypeKind2["ZodEnum"] = "ZodEnum";
+  ZodFirstPartyTypeKind2["ZodEffects"] = "ZodEffects";
+  ZodFirstPartyTypeKind2["ZodNativeEnum"] = "ZodNativeEnum";
+  ZodFirstPartyTypeKind2["ZodOptional"] = "ZodOptional";
+  ZodFirstPartyTypeKind2["ZodNullable"] = "ZodNullable";
+  ZodFirstPartyTypeKind2["ZodDefault"] = "ZodDefault";
+  ZodFirstPartyTypeKind2["ZodCatch"] = "ZodCatch";
+  ZodFirstPartyTypeKind2["ZodPromise"] = "ZodPromise";
+  ZodFirstPartyTypeKind2["ZodBranded"] = "ZodBranded";
+  ZodFirstPartyTypeKind2["ZodPipeline"] = "ZodPipeline";
+  ZodFirstPartyTypeKind2["ZodReadonly"] = "ZodReadonly";
+})(ZodFirstPartyTypeKind || (ZodFirstPartyTypeKind = {}));
+var instanceOfType = (cls, params = {
+  message: `Input not instance of ${cls.name}`
+}) => custom((data) => data instanceof cls, params);
+var stringType = ZodString.create;
+var numberType = ZodNumber.create;
+var nanType = ZodNaN.create;
+var bigIntType = ZodBigInt.create;
+var booleanType = ZodBoolean.create;
+var dateType = ZodDate.create;
+var symbolType = ZodSymbol.create;
+var undefinedType = ZodUndefined.create;
+var nullType = ZodNull.create;
+var anyType = ZodAny.create;
+var unknownType = ZodUnknown.create;
+var neverType = ZodNever.create;
+var voidType = ZodVoid.create;
+var arrayType = ZodArray.create;
+var objectType = ZodObject.create;
+var strictObjectType = ZodObject.strictCreate;
+var unionType = ZodUnion.create;
+var discriminatedUnionType = ZodDiscriminatedUnion.create;
+var intersectionType = ZodIntersection.create;
+var tupleType = ZodTuple.create;
+var recordType = ZodRecord.create;
+var mapType = ZodMap.create;
+var setType = ZodSet.create;
+var functionType = ZodFunction.create;
+var lazyType = ZodLazy.create;
+var literalType = ZodLiteral.create;
+var enumType = ZodEnum.create;
+var nativeEnumType = ZodNativeEnum.create;
+var promiseType = ZodPromise.create;
+var effectsType = ZodEffects.create;
+var optionalType = ZodOptional.create;
+var nullableType = ZodNullable.create;
+var preprocessType = ZodEffects.createWithPreprocess;
+var pipelineType = ZodPipeline.create;
+var ostring = () => stringType().optional();
+var onumber = () => numberType().optional();
+var oboolean = () => booleanType().optional();
+var coerce = {
+  string: ((arg) => ZodString.create({ ...arg, coerce: true })),
+  number: ((arg) => ZodNumber.create({ ...arg, coerce: true })),
+  boolean: ((arg) => ZodBoolean.create({
+    ...arg,
+    coerce: true
+  })),
+  bigint: ((arg) => ZodBigInt.create({ ...arg, coerce: true })),
+  date: ((arg) => ZodDate.create({ ...arg, coerce: true }))
+};
+var NEVER = INVALID;
+
+// apps/api/src/routes/masterdata.ts
+var masterDataRouter = (0, import_express2.Router)();
+masterDataRouter.use(requireAuth);
+masterDataRouter.get("/staff", async (_req, res) => {
+  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
+  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role })));
+});
+var staffSchema = external_exports.object({
+  name: external_exports.string().min(1),
+  role: external_exports.string().min(1),
+  pin: external_exports.string().regex(/^\d{4}$/)
+});
+masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
+  const parsed = staffSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const { name: name2, role, pin } = parsed.data;
+  if (role !== "Admin") {
+    const roleExists = await prisma.role.findUnique({ where: { name: role } });
+    if (!roleExists) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
+  }
+  const pinHash = await import_bcryptjs2.default.hash(pin, 10);
+  const user = await prisma.user.create({ data: { name: name2, role, pinHash } });
+  res.status(201).json({ id: user.id, name: user.name, role: user.role });
+});
+masterDataRouter.get("/roles", requireRole("Admin"), async (_req, res) => {
+  const roles = await prisma.role.findMany({ orderBy: { name: "asc" } });
+  res.json(
+    roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, r[k]]))
+    }))
+  );
+});
+var roleSchema = external_exports.object({
+  name: external_exports.string().min(1).max(60),
+  permissions: external_exports.record(external_exports.string(), external_exports.boolean()).optional()
+});
+function permissionFields(permissions) {
+  const out = {};
+  for (const k of PERMISSION_KEYS) out[k] = permissions?.[k] ?? false;
+  return out;
+}
+masterDataRouter.post("/roles", requireRole("Admin"), async (req, res) => {
+  const parsed = roleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  if (parsed.data.name === "Admin") return res.status(400).json({ error: '"Admin" is reserved and always has full access' });
+  const role = await prisma.role.create({ data: { name: parsed.data.name, ...permissionFields(parsed.data.permissions ?? DEFAULT_ROLE_PERMISSIONS.Staff) } }).catch(() => null);
+  if (!role) return res.status(400).json({ error: "A role with that name already exists" });
+  res.status(201).json({ id: role.id, name: role.name, permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]])) });
+});
+var roleUpdateSchema = external_exports.object({
+  name: external_exports.string().min(1).max(60).optional(),
+  permissions: external_exports.record(external_exports.string(), external_exports.boolean()).optional()
+});
+masterDataRouter.put("/roles/:id", requireRole("Admin"), async (req, res) => {
+  const parsed = roleUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const existing = await prisma.role.findUnique({ where: { id: Number(req.params.id) } });
+  if (!existing) return res.status(404).json({ error: "Role not found" });
+  if (parsed.data.name === "Admin") return res.status(400).json({ error: '"Admin" is reserved and always has full access' });
+  const data = {};
+  if (parsed.data.name) data.name = parsed.data.name;
+  if (parsed.data.permissions) Object.assign(data, permissionFields({ ...Object.fromEntries(PERMISSION_KEYS.map((k) => [k, existing[k]])), ...parsed.data.permissions }));
+  const role = await prisma.role.update({ where: { id: existing.id }, data }).catch(() => null);
+  if (!role) return res.status(400).json({ error: "A role with that name already exists" });
+  res.json({ id: role.id, name: role.name, permissions: Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]])) });
+});
+masterDataRouter.delete("/roles/:id", requireRole("Admin"), async (req, res) => {
+  const existing = await prisma.role.findUnique({ where: { id: Number(req.params.id) } });
+  if (!existing) return res.status(404).json({ error: "Role not found" });
+  const inUse = await prisma.user.findFirst({ where: { role: existing.name } });
+  if (inUse) return res.status(400).json({ error: "Reassign every staff member off this role before deleting it" });
+  await prisma.role.delete({ where: { id: existing.id } });
+  res.status(204).end();
+});
+masterDataRouter.get("/services", async (_req, res) => {
+  res.json(await prisma.service.findMany({ orderBy: { name: "asc" } }));
+});
+var serviceSchema = external_exports.object({
+  name: external_exports.string().min(1),
+  unit: external_exports.enum(["piece", "metre", "sqm"]),
+  price: external_exports.number().positive(),
+  usesArtworkPricing: external_exports.boolean().optional()
+});
+masterDataRouter.post("/services", requireRole("Admin"), async (req, res) => {
+  const parsed = serviceSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  res.status(201).json(await prisma.service.create({ data: parsed.data }));
+});
+var serviceUpdateSchema = external_exports.object({
+  price: external_exports.number().positive().optional(),
+  unit: external_exports.enum(["piece", "metre", "sqm"]).optional(),
+  usesArtworkPricing: external_exports.boolean().optional(),
+  chargesPressingFee: external_exports.boolean().optional()
+}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
+masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => {
+  const parsed = serviceUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const service = await prisma.service.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!service) return res.status(404).json({ error: "Service not found" });
+  res.json(service);
+});
+masterDataRouter.get("/materials", async (_req, res) => {
+  res.json(await prisma.material.findMany({ orderBy: { name: "asc" } }));
+});
+var materialSchema = external_exports.object({ name: external_exports.string().min(1), price: external_exports.number().positive() });
+masterDataRouter.post("/materials", requireRole("Admin"), async (req, res) => {
+  const parsed = materialSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  res.status(201).json(await prisma.material.create({ data: parsed.data }));
+});
+var materialUpdateSchema = external_exports.object({
+  price: external_exports.number().positive().optional(),
+  reorderLevel: external_exports.number().min(0).optional()
+}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
+masterDataRouter.put("/materials/:id", requirePermission("canApproveStock"), async (req, res) => {
+  const parsed = materialUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const material = await prisma.material.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!material) return res.status(404).json({ error: "Material not found" });
+  res.json(material);
+});
+masterDataRouter.get("/corporate-clients", async (_req, res) => {
+  res.json(await prisma.corporateClient.findMany({ orderBy: { name: "asc" } }));
+});
+var clientSchema = external_exports.object({
+  name: external_exports.string().min(1),
+  creditDays: external_exports.number().int().positive(),
+  email: external_exports.string().max(200).optional(),
+  phone: external_exports.string().max(50).optional()
+});
+masterDataRouter.post("/corporate-clients", requireRole("Admin"), async (req, res) => {
+  const parsed = clientSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? "", phone: parsed.data.phone ?? "" } }));
+});
+var clientUpdateSchema = external_exports.object({
+  creditDays: external_exports.number().int().positive().optional(),
+  email: external_exports.string().max(200).optional(),
+  phone: external_exports.string().max(50).optional()
+}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
+masterDataRouter.put("/corporate-clients/:id", requireRole("Admin"), async (req, res) => {
+  const parsed = clientUpdateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const client = await prisma.corporateClient.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!client) return res.status(404).json({ error: "Corporate client not found" });
+  res.json(client);
+});
+function serializeSettings(settings) {
+  return {
+    maxDiscountPct: settings.maxDiscountPct,
+    companyName: settings.companyName,
+    legalName: settings.legalName,
+    companyAddress: settings.companyAddress,
+    companyPhone: settings.companyPhone,
+    companyEmail: settings.companyEmail,
+    logoDataUrl: settings.logoDataUrl
+  };
+}
+masterDataRouter.get("/settings", async (_req, res) => {
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  res.json(serializeSettings(settings));
+});
+var settingsSchema = external_exports.object({
+  maxDiscountPct: external_exports.number().min(0).optional(),
+  companyName: external_exports.string().min(1).max(200).optional(),
+  // The registered company the "companyName" trading name operates under —
+  // shown as a small "trading name of ..." line under the brand name on
+  // printed invoices/quotations (see printInvoice.ts). Blank hides it.
+  legalName: external_exports.string().max(200).optional(),
+  companyAddress: external_exports.string().max(500).optional(),
+  companyPhone: external_exports.string().max(50).optional(),
+  companyEmail: external_exports.string().max(200).optional(),
+  // A data: URL logo image, capped well under the 5mb JSON body limit; null clears it.
+  logoDataUrl: external_exports.string().max(2e6).nullable().optional()
+}).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
+masterDataRouter.put("/settings", requireRole("Admin"), async (req, res) => {
+  const parsed = settingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1, ...parsed.data }, update: parsed.data });
+  res.json(serializeSettings(settings));
+});
+
+// apps/api/src/routes/orders.ts
+var import_express3 = __toESM(require_express2());
+var import_client2 = require("@prisma/client");
+var ordersRouter = (0, import_express3.Router)();
+ordersRouter.use(requireAuth);
+var orderInclude = import_client2.Prisma.validator()({
+  staff: true,
+  corporateClient: true,
+  lineItems: { include: { service: true, material: true } },
+  payments: { orderBy: { id: "asc" } }
+});
+function toLineItemInput(li) {
+  return {
+    itemType: li.itemType,
+    serviceId: li.serviceId,
+    materialId: li.materialId,
+    qty: li.qty,
+    unitPrice: li.unitPrice,
+    discountPct: li.discountPct,
+    discountAmt: li.discountAmt,
+    heatPressFee: li.heatPressFee ?? null
+  };
+}
+function serializeSummary(order) {
+  const lineItems = order.lineItems.map(toLineItemInput);
+  const payments = order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
+  const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
+  const overdue = isOverdue(order.kind, order.status, order.dueDate, totals.balanceDue, todayStr());
+  return {
+    id: order.id,
+    orderNo: order.orderNo,
+    kind: order.kind,
+    channel: order.channel,
+    customerName: order.customerName,
+    phone: order.phone,
+    corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone } : null,
+    staff: { id: order.staff.id, name: order.staff.name },
+    createdDate: order.createdDate,
+    status: order.status,
+    stage: order.stage,
+    dueDate: order.dueDate,
+    totals,
+    overdue
+  };
+}
+function serializeDetail(order) {
+  const summary = serializeSummary(order);
+  return {
+    ...summary,
+    paymentTiming: order.paymentTiming,
+    orderDiscountPct: order.orderDiscountPct,
+    orderDiscountAmt: order.orderDiscountAmt,
+    lineItems: order.lineItems.map((li) => ({
+      id: li.id,
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      serviceName: li.service?.name ?? null,
+      materialId: li.materialId,
+      materialName: li.material?.name ?? null,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee,
+      artworkAreaSqm: li.artworkAreaSqm,
+      lineTotal: buildLineTotal(toLineItemInput(li))
+    })),
+    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method }))
+  };
+}
+function canAccessOrder(userRole, userId, order) {
+  if (userRole === "Staff") return order.staffId === userId;
+  return true;
+}
+function resolveWalkinStatus(balanceDue) {
+  if (balanceDue > 0) return { status: "Invoice", dueDate: addDays(todayStr(), WALKIN_INVOICE_DUE_DAYS) };
+  return { status: "Order", dueDate: null };
+}
+async function convertQuoteToInvoice(tx, order) {
+  const days = order.corporateClient?.creditDays ?? 30;
+  const dueDate = addDays(todayStr(), days);
+  await tx.order.update({ where: { id: order.id }, data: { status: "Invoice", dueDate } });
+}
+ordersRouter.get("/", async (req, res) => {
+  const { staffId, status, channel } = req.query;
+  const where = {};
+  if (req.user.role === "Staff") {
+    where.staffId = req.user.id;
+  } else if (staffId && staffId !== "all") {
+    where.staffId = Number(staffId);
+  }
+  if (status && status !== "all") where.status = status;
+  if (channel && channel !== "all") where.channel = channel;
+  const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: "desc" } });
+  res.json(orders.map(serializeSummary));
+});
+ordersRouter.get("/:id", async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  res.json(serializeDetail(order));
+});
+var lineItemSchema = external_exports.object({
+  itemType: external_exports.enum(["material", "service", "per-metre"]),
+  serviceId: external_exports.number().int().nullable().optional(),
+  materialId: external_exports.number().int().nullable().optional(),
+  qty: external_exports.number().positive(),
+  unitPrice: external_exports.number().nonnegative(),
+  discountPct: external_exports.number().min(0).max(100).default(0),
+  discountAmt: external_exports.number().min(0).default(0),
+  heatPressFee: external_exports.number().nonnegative().nullable().optional(),
+  artworkAreaSqm: external_exports.number().positive().nullable().optional()
+}).refine((li) => li.itemType === "material" ? !!li.materialId : !!li.serviceId, {
+  message: "A material line needs a material, a service line needs a service"
+});
+var walkinSchema = external_exports.object({
+  customerName: external_exports.string().min(1),
+  phone: external_exports.string().optional(),
+  staffId: external_exports.number().int(),
+  paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
+  paymentAmount: external_exports.number().min(0).optional(),
+  paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
+  lineItems: external_exports.array(lineItemSchema).min(1),
+  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
+  orderDiscountAmt: external_exports.number().min(0).default(0)
+});
+ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, res) => {
+  const parsed = walkinSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const form = parsed.data;
+  const paymentAmount = form.paymentTiming === "onAcceptance" ? form.paymentAmount ?? 0 : 0;
+  const totals = computeOrderTotals(
+    { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
+    paymentAmount > 0 ? [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? "Cash" }] : []
+  );
+  const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
+  const order = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const orderNo = "W-" + settings.nextWalkinNo;
+    await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
+    const created = await tx.order.create({
+      data: {
+        orderNo,
+        kind: "walkin",
+        customerName: form.customerName,
+        phone: form.phone,
+        staffId: form.staffId,
+        createdDate: todayStr(),
+        status,
+        dueDate,
+        stage: "Order Received",
+        paymentTiming: form.paymentTiming,
+        orderDiscountPct: form.orderDiscountPct,
+        orderDiscountAmt: form.orderDiscountAmt,
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
+        payments: paymentAmount > 0 ? { create: [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? "Cash", staffId: form.staffId }] } : void 0
+      },
+      include: orderInclude
+    });
+    return created;
+  });
+  res.status(201).json(serializeDetail(order));
+});
+var quoteSchema = external_exports.object({
+  corporateClientId: external_exports.number().int(),
+  staffId: external_exports.number().int(),
+  lineItems: external_exports.array(lineItemSchema).min(1),
+  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
+  orderDiscountAmt: external_exports.number().min(0).default(0)
+});
+ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, res) => {
+  const parsed = quoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const form = parsed.data;
+  const order = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const orderNo = "C-" + settings.nextCorpNo;
+    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
+    return tx.order.create({
+      data: {
+        orderNo,
+        kind: "corporate",
+        corporateClientId: form.corporateClientId,
+        staffId: form.staffId,
+        createdDate: todayStr(),
+        status: "Quote",
+        stage: "Order Received",
+        orderDiscountPct: form.orderDiscountPct,
+        orderDiscountAmt: form.orderDiscountAmt,
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
+      },
+      include: orderInclude
+    });
+  });
+  res.status(201).json(serializeDetail(order));
+});
+ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req, res) => {
+  const parsed = quoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const form = parsed.data;
+  const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
+  if (!client) return res.status(400).json({ error: "Corporate client not found" });
+  const dueDate = addDays(todayStr(), client.creditDays);
+  const order = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const orderNo = "C-" + settings.nextCorpNo;
+    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
+    const created = await tx.order.create({
+      data: {
+        orderNo,
+        kind: "corporate",
+        corporateClientId: form.corporateClientId,
+        staffId: form.staffId,
+        createdDate: todayStr(),
+        status: "Invoice",
+        stage: "Order Received",
+        dueDate,
+        orderDiscountPct: form.orderDiscountPct,
+        orderDiscountAmt: form.orderDiscountAmt,
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
+      },
+      include: orderInclude
+    });
+    return created;
+  });
+  res.status(201).json(serializeDetail(order));
+});
+var paymentSchema = external_exports.object({ amount: external_exports.number().positive(), method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]) });
+ordersRouter.post("/:id/payments", async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  const parsed = paymentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  await prisma.$transaction(async (tx) => {
+    await tx.payment.create({
+      data: { orderId: order.id, date: todayStr(), amount: parsed.data.amount, method: parsed.data.method, staffId: req.user.id }
+    });
+    if (order.status === "Quote") {
+      await convertQuoteToInvoice(tx, order);
+    } else if (order.kind !== "corporate" && order.status === "Invoice") {
+      const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
+      const lineItems = full.lineItems.map(toLineItemInput);
+      const payments = full.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
+      const totals = computeOrderTotals({ lineItems, orderDiscountPct: full.orderDiscountPct, orderDiscountAmt: full.orderDiscountAmt }, payments);
+      if (totals.balanceDue <= 0) {
+        await tx.order.update({ where: { id: order.id }, data: { status: "Order", dueDate: null } });
+      }
+    }
+  });
+  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  res.json(serializeDetail(updated));
+});
+var STAGE_VALUES = ["Order Received", "In Production", "Quality Check", "Ready for Pickup/Delivery", "Completed"];
+var stageSchema = external_exports.object({ stage: external_exports.enum(STAGE_VALUES) });
+ordersRouter.patch("/:id/stage", async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  const parsed = stageSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const updated = await prisma.order.update({ where: { id: order.id }, data: { stage: parsed.data.stage }, include: orderInclude });
+  res.json(serializeDetail(updated));
+});
+ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canViewAllOrders"), async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  if (order.status !== "Quote") return res.status(400).json({ error: "Only quotes can be converted" });
+  await prisma.$transaction((tx) => convertQuoteToInvoice(tx, order));
+  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  res.json(serializeDetail(updated));
+});
+
+// apps/api/src/routes/pnl.ts
+var import_express4 = __toESM(require_express2());
+var pnlRouter = (0, import_express4.Router)();
+pnlRouter.use(requireAuth, requirePermission("canAccessPnl"));
+async function loadOrdersForPnl() {
+  const orders = await prisma.order.findMany({ include: { lineItems: true, payments: true } });
+  return orders.map((o) => ({
+    kind: o.kind,
+    status: o.status,
+    createdDate: o.createdDate,
+    orderDiscountPct: o.orderDiscountPct,
+    orderDiscountAmt: o.orderDiscountAmt,
+    lineItems: o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    })),
+    payments: o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }))
+  }));
+}
+function inRange(d, from, to) {
+  return d >= from && d <= to;
+}
+var SALARIES_CATEGORY = "Salaries & wages";
+function computeAgg(orders, expenses, payroll, cogsPct, from, to) {
+  let revAccrualWalkin = 0;
+  let revAccrualCorp = 0;
+  let revCash = 0;
+  for (const o of orders) {
+    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
+    if (isRevenueOrder && inRange(o.createdDate, from, to)) {
+      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+      if (o.kind === "walkin") revAccrualWalkin += totals.grandTotal;
+      else revAccrualCorp += totals.grandTotal;
+    }
+    for (const p of o.payments) {
+      if (inRange(p.date, from, to)) revCash += p.amount;
+    }
+  }
+  const revAccrual = revAccrualWalkin + revAccrualCorp;
+  const cogs = revAccrual * (cogsPct / 100);
+  const grossProfit = revAccrual - cogs;
+  const expensesInRange = expenses.filter((e) => inRange(e.date, from, to));
+  const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
+  const salariesTotal = payrollInRange.reduce((a, p) => a + p.grossPay, 0);
+  const totalExpenses = expensesInRange.reduce((a, e) => a + e.amount, 0) + salariesTotal;
+  const netProfit = grossProfit - totalExpenses;
+  const byCategory = {};
+  for (const e of expensesInRange) byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
+  if (salariesTotal > 0) byCategory[SALARIES_CATEGORY] = (byCategory[SALARIES_CATEGORY] || 0) + salariesTotal;
+  return { revAccrualWalkin, revAccrualCorp, revAccrual, revCash, cogs, grossProfit, totalExpenses, netProfit, byCategory };
+}
+function priorRange(from, to) {
+  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00");
+  const toD = /* @__PURE__ */ new Date(to + "T00:00:00");
+  const lengthMs = toD.getTime() - fromD.getTime();
+  const priorTo = new Date(fromD);
+  priorTo.setDate(priorTo.getDate() - 1);
+  const priorFrom = new Date(priorTo.getTime() - lengthMs);
+  const fmtD = (d) => d.toISOString().slice(0, 10);
+  return { from: fmtD(priorFrom), to: fmtD(priorTo) };
+}
+function pctChange(cur, prev) {
+  return prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
+}
+pnlRouter.get("/", async (req, res) => {
+  const from = String(req.query.from || "");
+  const to = String(req.query.to || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  }
+  const [orders, allExpenses, allPayroll, settings] = await Promise.all([
+    loadOrdersForPnl(),
+    prisma.expense.findMany({ orderBy: { date: "desc" } }),
+    prisma.payrollEntry.findMany({ select: { date: true, grossPay: true } }),
+    prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} })
+  ]);
+  const cogsPct = settings.cogsPct;
+  const agg = computeAgg(orders, allExpenses, allPayroll, cogsPct, from, to);
+  const prior = priorRange(from, to);
+  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, prior.from, prior.to);
+  const toDateObj = /* @__PURE__ */ new Date(to + "T00:00:00");
+  const trend = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(toDateObj.getFullYear(), toDateObj.getMonth() - i, 1);
+    const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const mTo = monthEnd.toISOString().slice(0, 10);
+    const mAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, mFrom, mTo);
+    trend.push({ label: `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
+  }
+  res.json({
+    fromDate: from,
+    toDate: to,
+    cogsPct,
+    revAccrualWalkin: agg.revAccrualWalkin,
+    revAccrualCorp: agg.revAccrualCorp,
+    revAccrual: agg.revAccrual,
+    revCash: agg.revCash,
+    cogs: agg.cogs,
+    grossProfit: agg.grossProfit,
+    byCategory: agg.byCategory,
+    totalExpenses: agg.totalExpenses,
+    netProfit: agg.netProfit,
+    netMarginPct: agg.revAccrual > 0 ? Math.round(agg.netProfit / agg.revAccrual * 1e3) / 10 : 0,
+    revChangePct: pctChange(agg.revAccrual, priorAgg.revAccrual),
+    profitChangePct: pctChange(agg.netProfit, priorAgg.netProfit),
+    priorFrom: prior.from,
+    priorTo: prior.to,
+    trend,
+    expenseCategories: [SALARIES_CATEGORY, ...EXPENSE_CATEGORIES]
+  });
+});
+var cogsSchema = external_exports.object({ cogsPct: external_exports.number().min(0).max(100) });
+pnlRouter.put("/cogs-pct", async (req, res) => {
+  const parsed = cogsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const settings = await prisma.setting.upsert({
+    where: { id: 1 },
+    create: { id: 1, cogsPct: parsed.data.cogsPct },
+    update: { cogsPct: parsed.data.cogsPct }
+  });
+  res.json({ cogsPct: settings.cogsPct });
+});
+
+// apps/api/src/routes/finance.ts
+var import_express5 = __toESM(require_express2());
+var financeRouter = (0, import_express5.Router)();
+financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
+function inRange2(d, from, to) {
+  return d >= from && d <= to;
+}
+function parseRange(req) {
+  const from = String(req.query.from || "");
+  const to = String(req.query.to || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
+  return { from, to };
+}
+async function computePettyCashBalance(asOfDate) {
+  const [topUps, expenses, pettyPayroll] = await Promise.all([
+    prisma.pettyCashTopUp.findMany(),
+    prisma.expense.findMany(),
+    prisma.payrollEntry.findMany({ where: { paymentSource: "Petty Cash" } })
+  ]);
+  const cutoff = asOfDate ?? "9999-12-31";
+  const topUpsTotal = topUps.filter((t) => t.date <= cutoff).reduce((a, t) => a + t.amount, 0);
+  const expensesTotal = expenses.filter((e) => e.date <= cutoff).reduce((a, e) => a + e.amount, 0);
+  const payrollTotal = pettyPayroll.filter((p) => p.date <= cutoff).reduce((a, p) => a + computePay(p.grossPay, p.employeeType).netPay, 0);
+  return topUpsTotal - expensesTotal - payrollTotal;
+}
+financeRouter.get("/payroll", async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const entries = await prisma.payrollEntry.findMany({
+    where: { date: { gte: range.from, lte: range.to } },
+    include: { staff: true },
+    orderBy: { date: "desc" }
+  });
+  const rows = entries.map((e) => {
+    const pay = computePay(e.grossPay, e.employeeType);
+    return {
+      id: e.id,
+      date: e.date,
+      staffId: e.staffId,
+      name: e.staff.name,
+      employeeType: e.employeeType,
+      department: e.department,
+      daysWorked: e.daysWorked,
+      rate: e.rate,
+      paymentSource: e.paymentSource,
+      capturedByName: e.capturedByName,
+      ...pay
+    };
+  });
+  const totals = rows.reduce(
+    (a, r) => ({
+      grossPayroll: a.grossPayroll + r.grossPay,
+      totalStatutory: a.totalStatutory + r.totalDeductions,
+      netPayroll: a.netPayroll + r.netPay,
+      totalPaye: a.totalPaye + r.paye,
+      totalNssf: a.totalNssf + r.nssf,
+      totalShif: a.totalShif + r.shif,
+      totalHousingLevy: a.totalHousingLevy + r.housingLevy
+    }),
+    { grossPayroll: 0, totalStatutory: 0, netPayroll: 0, totalPaye: 0, totalNssf: 0, totalShif: 0, totalHousingLevy: 0 }
+  );
+  res.json({ fromDate: range.from, toDate: range.to, rows, ...totals });
+});
+var payrollSchema = external_exports.discriminatedUnion("employeeType", [
+  external_exports.object({
+    employeeType: external_exports.literal("Employee"),
+    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    staffId: external_exports.number().int(),
+    department: external_exports.string().max(100).optional(),
+    grossPay: external_exports.number().positive(),
+    paymentSource: external_exports.enum(PAYROLL_PAYMENT_SOURCES)
+  }),
+  external_exports.object({
+    employeeType: external_exports.literal("Casual"),
+    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    staffId: external_exports.number().int(),
+    department: external_exports.string().max(100).optional(),
+    daysWorked: external_exports.number().positive(),
+    rate: external_exports.number().positive(),
+    paymentSource: external_exports.enum(PAYROLL_PAYMENT_SOURCES)
+  })
+]);
+financeRouter.post("/payroll", async (req, res) => {
+  const parsed = payrollSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const data = parsed.data;
+  const staff = await prisma.user.findUnique({ where: { id: data.staffId } });
+  if (!staff) return res.status(400).json({ error: "Selected staff member not found" });
+  const grossPay = data.employeeType === "Employee" ? data.grossPay : data.daysWorked * data.rate;
+  if (data.paymentSource === "Petty Cash") {
+    const netPay = computePay(grossPay, data.employeeType).netPay;
+    const balance = await computePettyCashBalance();
+    if (netPay > balance) {
+      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(netPay).toLocaleString("en-KE")} needed)` });
+    }
+  }
+  const entry = await prisma.payrollEntry.create({
+    data: {
+      date: data.date,
+      staffId: data.staffId,
+      employeeType: data.employeeType,
+      department: data.department ?? "",
+      daysWorked: data.employeeType === "Casual" ? data.daysWorked : null,
+      rate: data.employeeType === "Casual" ? data.rate : null,
+      grossPay,
+      paymentSource: data.paymentSource,
+      capturedByName: req.user.name
+    }
+  });
+  res.status(201).json({ ...entry, name: staff.name });
+});
+financeRouter.get("/vat", async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const orders = await prisma.order.findMany({ include: { lineItems: true } });
+  const forVat = orders.map((o) => ({
+    kind: o.kind,
+    status: o.status,
+    createdDate: o.createdDate,
+    orderDiscountPct: o.orderDiscountPct,
+    orderDiscountAmt: o.orderDiscountAmt,
+    lineItems: o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    }))
+  }));
+  let walkinSales = 0;
+  let corporateSales = 0;
+  for (const o of forVat) {
+    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
+    if (isRevenueOrder && inRange2(o.createdDate, range.from, range.to)) {
+      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+      if (o.kind === "walkin") walkinSales += totals.grandTotal;
+      else corporateSales += totals.grandTotal;
+    }
+  }
+  const totalSales = walkinSales + corporateSales;
+  const { net: netSales, vat: outputVat } = splitVatInclusive(totalSales);
+  res.json({ fromDate: range.from, toDate: range.to, walkinSales, corporateSales, totalSales, netSales, outputVat });
+});
+financeRouter.get("/expenses", async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const rows = await prisma.expense.findMany({
+    where: { date: { gte: range.from, lte: range.to } },
+    orderBy: { date: "desc" }
+  });
+  const totalExpenses = rows.reduce((a, e) => a + e.amount, 0);
+  res.json({ fromDate: range.from, toDate: range.to, rows, totalExpenses, expenseCategories: EXPENSE_CATEGORIES });
+});
+var expenseSchema = external_exports.object({
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  category: external_exports.enum(EXPENSE_CATEGORIES),
+  note: external_exports.string().max(200).optional(),
+  amount: external_exports.number().positive(),
+  // Optional generally, but a "Printing Materials & Consumables" expense
+  // needs one on file to later be linked to a Stock purchase (see
+  // routes/stock.ts).
+  invoiceNumber: external_exports.string().max(100).optional()
+});
+financeRouter.post("/expenses", async (req, res) => {
+  const parsed = expenseSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const balance = await computePettyCashBalance();
+  if (parsed.data.amount > balance) {
+    return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(parsed.data.amount).toLocaleString("en-KE")} needed)` });
+  }
+  const expense = await prisma.expense.create({
+    data: { ...parsed.data, note: parsed.data.note ?? "", capturedByName: req.user.name }
+  });
+  res.status(201).json(expense);
+});
+financeRouter.get("/expenses/amendments", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : void 0;
+  const amendments = await prisma.expenseAmendment.findMany({
+    where: status ? { status } : void 0,
+    include: { expense: true },
+    orderBy: { requestedAt: "desc" }
+  });
+  res.json(
+    amendments.map((a) => ({
+      id: a.id,
+      expenseId: a.expenseId,
+      currentDate: a.expense.date,
+      currentCategory: a.expense.category,
+      currentNote: a.expense.note,
+      currentAmount: a.expense.amount,
+      proposedDate: a.proposedDate,
+      proposedCategory: a.proposedCategory,
+      proposedNote: a.proposedNote,
+      proposedAmount: a.proposedAmount,
+      reason: a.reason,
+      status: a.status,
+      requestedByName: a.requestedByName,
+      requestedAt: a.requestedAt,
+      decidedByName: a.decidedByName,
+      decidedAt: a.decidedAt
+    }))
+  );
+});
+var amendSchema = external_exports.object({
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  category: external_exports.enum(EXPENSE_CATEGORIES),
+  note: external_exports.string().max(200).optional(),
+  amount: external_exports.number().positive(),
+  reason: external_exports.string().min(1, "A reason for the amendment is required")
+});
+financeRouter.post("/expenses/:id/amend", async (req, res) => {
+  const parsed = amendSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
+  if (!expense) return res.status(404).json({ error: "Expense not found" });
+  const amendment = await prisma.expenseAmendment.create({
+    data: {
+      expenseId: expense.id,
+      proposedDate: parsed.data.date,
+      proposedCategory: parsed.data.category,
+      proposedNote: parsed.data.note ?? "",
+      proposedAmount: parsed.data.amount,
+      reason: parsed.data.reason,
+      requestedByName: req.user.name
+    }
+  });
+  res.status(201).json(amendment);
+});
+async function decideAmendment(req, res, approve) {
+  const amendment = await prisma.expenseAmendment.findUnique({ where: { id: Number(req.params.id) } });
+  if (!amendment) return res.status(404).json({ error: "Amendment not found" });
+  if (amendment.status !== "Pending") return res.status(400).json({ error: "Amendment has already been decided" });
+  if (amendment.requestedByName === req.user.name) {
+    return res.status(400).json({ error: "You cannot approve or reject your own amendment request" });
+  }
+  if (approve) {
+    await prisma.expense.update({
+      where: { id: amendment.expenseId },
+      data: { date: amendment.proposedDate, category: amendment.proposedCategory, note: amendment.proposedNote, amount: amendment.proposedAmount }
+    });
+  }
+  const updated = await prisma.expenseAmendment.update({
+    where: { id: amendment.id },
+    data: { status: approve ? "Approved" : "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() }
+  });
+  res.json(updated);
+}
+financeRouter.post("/expenses/amendments/:id/approve", (req, res) => decideAmendment(req, res, true));
+financeRouter.post("/expenses/amendments/:id/reject", (req, res) => decideAmendment(req, res, false));
+financeRouter.get("/petty-cash", async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const [allTopUps, allExpenses, allPettyPayroll, cashPayments] = await Promise.all([
+    prisma.pettyCashTopUp.findMany(),
+    prisma.expense.findMany(),
+    prisma.payrollEntry.findMany({ where: { paymentSource: "Petty Cash" }, include: { staff: true } }),
+    prisma.payment.findMany({ where: { method: "Cash", date: { gte: range.from, lte: range.to } } })
+  ]);
+  const pettyPayrollNet = allPettyPayroll.map((p) => ({ ...p, netPay: computePay(p.grossPay, p.employeeType).netPay }));
+  const balance = await computePettyCashBalance(range.to);
+  const periodTopUps = allTopUps.filter((t) => inRange2(t.date, range.from, range.to));
+  const periodExpenses = allExpenses.filter((e) => inRange2(e.date, range.from, range.to));
+  const periodPayroll = pettyPayrollNet.filter((p) => inRange2(p.date, range.from, range.to));
+  const periodTopUpsTotal = periodTopUps.reduce((a, t) => a + t.amount, 0);
+  const periodExpensesTotal = periodExpenses.reduce((a, e) => a + e.amount, 0) + periodPayroll.reduce((a, p) => a + p.netPay, 0);
+  const cashSalesInPeriod = cashPayments.reduce((a, p) => a + p.amount, 0);
+  const ledger = [
+    ...periodTopUps.map((t) => ({
+      id: "t" + t.id,
+      date: t.date,
+      type: "topup",
+      description: t.source + (t.note ? ": " + t.note : "") + ` (by ${t.authorizedByName})`,
+      amountIn: t.amount,
+      amountOut: 0,
+      topUpId: t.id
+    })),
+    ...periodExpenses.map((e) => ({
+      id: "e" + e.id,
+      date: e.date,
+      type: "expense",
+      description: e.category + (e.note ? ": " + e.note : "") + (e.capturedByName ? ` (by ${e.capturedByName})` : ""),
+      amountIn: 0,
+      amountOut: e.amount,
+      topUpId: null
+    })),
+    ...periodPayroll.map((p) => ({
+      id: "p" + p.id,
+      date: p.date,
+      type: "expense",
+      description: `Payroll: ${p.staff.name} (net pay)`,
+      amountIn: 0,
+      amountOut: p.netPay,
+      topUpId: null
+    }))
+  ].sort((a, b) => a.date < b.date ? 1 : -1);
+  res.json({
+    fromDate: range.from,
+    toDate: range.to,
+    balance,
+    periodTopUpsTotal,
+    periodExpensesTotal,
+    cashSalesInPeriod,
+    ledger,
+    pettyCashSources: PETTY_CASH_SOURCES
+  });
+});
+var pettyCashSchema = external_exports.object({
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  source: external_exports.enum(PETTY_CASH_SOURCES),
+  amount: external_exports.number().positive(),
+  note: external_exports.string().max(200).optional()
+});
+financeRouter.post("/petty-cash/topups", async (req, res) => {
+  const parsed = pettyCashSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const topUp = await prisma.pettyCashTopUp.create({
+    data: { ...parsed.data, note: parsed.data.note ?? "", authorizedByName: req.user.name }
+  });
+  res.status(201).json(topUp);
+});
+var DELETABLE_TYPES = ["Expense", "PayrollEntry", "PettyCashTopUp"];
+async function buildDeletionSummary(recordType2, recordId) {
+  if (recordType2 === "Expense") {
+    const e = await prisma.expense.findUnique({ where: { id: recordId } });
+    if (!e) return null;
+    return `Expense: ${e.category} \u2014 Ksh ${Math.round(e.amount).toLocaleString("en-KE")} (${e.date})`;
+  }
+  if (recordType2 === "PayrollEntry") {
+    const p = await prisma.payrollEntry.findUnique({ where: { id: recordId }, include: { staff: true } });
+    if (!p) return null;
+    return `Payroll: ${p.staff.name} \u2014 Ksh ${Math.round(p.grossPay).toLocaleString("en-KE")} (${p.date})`;
+  }
+  const t = await prisma.pettyCashTopUp.findUnique({ where: { id: recordId } });
+  if (!t) return null;
+  return `Petty cash top-up: ${t.source} \u2014 Ksh ${Math.round(t.amount).toLocaleString("en-KE")} (${t.date})`;
+}
+financeRouter.get("/deletion-requests", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : void 0;
+  const requests = await prisma.deletionRequest.findMany({
+    where: status ? { status } : void 0,
+    orderBy: { requestedAt: "desc" }
+  });
+  res.json(requests);
+});
+var deletionRequestSchema = external_exports.object({
+  recordType: external_exports.enum(DELETABLE_TYPES),
+  recordId: external_exports.number().int(),
+  reason: external_exports.string().min(1, "A reason for the deletion is required")
+});
+financeRouter.post("/deletion-requests", async (req, res) => {
+  const parsed = deletionRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const summary = await buildDeletionSummary(parsed.data.recordType, parsed.data.recordId);
+  if (!summary) return res.status(404).json({ error: "Record not found" });
+  const request = await prisma.deletionRequest.create({
+    data: { ...parsed.data, summary, requestedByName: req.user.name }
+  });
+  res.status(201).json(request);
+});
+async function decideDeletionRequest(req, res, approve) {
+  const request = await prisma.deletionRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!request) return res.status(404).json({ error: "Deletion request not found" });
+  if (request.status !== "Pending") return res.status(400).json({ error: "Deletion request has already been decided" });
+  if (request.requestedByName === req.user.name) {
+    return res.status(400).json({ error: "You cannot approve or reject your own deletion request" });
+  }
+  if (approve) {
+    const recordType2 = request.recordType;
+    if (recordType2 === "Expense") await prisma.expense.delete({ where: { id: request.recordId } }).catch(() => null);
+    else if (recordType2 === "PayrollEntry") await prisma.payrollEntry.delete({ where: { id: request.recordId } }).catch(() => null);
+    else await prisma.pettyCashTopUp.delete({ where: { id: request.recordId } }).catch(() => null);
+  }
+  const updated = await prisma.deletionRequest.update({
+    where: { id: request.id },
+    data: { status: approve ? "Approved" : "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() }
+  });
+  res.json(updated);
+}
+financeRouter.post("/deletion-requests/:id/approve", (req, res) => decideDeletionRequest(req, res, true));
+financeRouter.post("/deletion-requests/:id/reject", (req, res) => decideDeletionRequest(req, res, false));
+
+// apps/api/src/routes/stock.ts
+var import_express6 = __toESM(require_express2());
+var stockRouter = (0, import_express6.Router)();
+stockRouter.use(requireAuth, requirePermission("canAccessStock"));
+var PURCHASE_EXPENSE_CATEGORY = "Printing Materials & Consumables";
+stockRouter.get("/requisitions", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : void 0;
+  const requisitions = await prisma.stockRequisition.findMany({
+    where: status ? { status } : void 0,
+    include: { material: true },
+    orderBy: { requestedAt: "desc" }
+  });
+  res.json(
+    requisitions.map((r) => ({
+      id: r.id,
+      materialId: r.materialId,
+      materialName: r.material.name,
+      qty: r.qty,
+      note: r.note,
+      status: r.status,
+      requestedByName: r.requestedByName,
+      requestedAt: r.requestedAt,
+      decidedByName: r.decidedByName,
+      decidedAt: r.decidedAt
+    }))
+  );
+});
+var requisitionSchema = external_exports.object({
+  materialId: external_exports.number().int(),
+  qty: external_exports.number().positive(),
+  note: external_exports.string().max(200).optional()
+});
+stockRouter.post("/requisitions", async (req, res) => {
+  const parsed = requisitionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const material = await prisma.material.findUnique({ where: { id: parsed.data.materialId } });
+  if (!material) return res.status(400).json({ error: "Material not found" });
+  const requisition = await prisma.stockRequisition.create({
+    data: { ...parsed.data, note: parsed.data.note ?? "", requestedByName: req.user.name }
+  });
+  res.status(201).json({ ...requisition, materialName: material.name });
+});
+async function decideRequisition(id, approve, deciderName, res) {
+  const requisition = await prisma.stockRequisition.findUnique({ where: { id } });
+  if (!requisition) return res.status(404).json({ error: "Requisition not found" });
+  if (requisition.status !== "Pending") return res.status(400).json({ error: "Requisition has already been decided" });
+  if (requisition.requestedByName === deciderName) {
+    return res.status(400).json({ error: "You cannot approve or reject your own requisition" });
+  }
+  const updated = await prisma.stockRequisition.update({
+    where: { id },
+    data: { status: approve ? "Approved" : "Rejected", decidedByName: deciderName, decidedAt: /* @__PURE__ */ new Date() }
+  });
+  res.json(updated);
+}
+stockRouter.post("/requisitions/:id/approve", requirePermission("canApproveStock"), async (req, res) => {
+  await decideRequisition(Number(req.params.id), true, req.user.name, res);
+});
+stockRouter.post("/requisitions/:id/reject", requirePermission("canApproveStock"), async (req, res) => {
+  await decideRequisition(Number(req.params.id), false, req.user.name, res);
+});
+stockRouter.get("/takes", async (_req, res) => {
+  const takes = await prisma.stockTake.findMany({ include: { material: true }, orderBy: { countedAt: "desc" }, take: 200 });
+  res.json(
+    takes.map((t) => ({
+      id: t.id,
+      materialId: t.materialId,
+      materialName: t.material.name,
+      date: t.date,
+      systemQty: t.systemQty,
+      countedQty: t.countedQty,
+      varianceQty: t.varianceQty,
+      note: t.note,
+      countedByName: t.countedByName,
+      countedAt: t.countedAt
+    }))
+  );
+});
+var stockTakeSchema = external_exports.object({
+  materialId: external_exports.number().int(),
+  countedQty: external_exports.number().min(0),
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  note: external_exports.string().max(200).optional()
+});
+stockRouter.post("/takes", async (req, res) => {
+  const parsed = stockTakeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const material = await prisma.material.findUnique({ where: { id: parsed.data.materialId } });
+  if (!material) return res.status(400).json({ error: "Material not found" });
+  const systemQty = material.stockQty;
+  const varianceQty = parsed.data.countedQty - systemQty;
+  const [take] = await prisma.$transaction([
+    prisma.stockTake.create({
+      data: {
+        materialId: material.id,
+        date: parsed.data.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+        systemQty,
+        countedQty: parsed.data.countedQty,
+        varianceQty,
+        note: parsed.data.note ?? "",
+        countedByName: req.user.name
+      }
+    }),
+    prisma.material.update({ where: { id: material.id }, data: { stockQty: parsed.data.countedQty } })
+  ]);
+  res.status(201).json({ ...take, materialName: material.name });
+});
+stockRouter.get("/purchases", async (req, res) => {
+  const status = typeof req.query.status === "string" ? req.query.status : void 0;
+  const purchases = await prisma.purchase.findMany({
+    where: status ? { status } : void 0,
+    include: { material: true, requisition: true },
+    orderBy: { createdAt: "desc" },
+    take: 300
+  });
+  res.json(
+    purchases.map((p) => ({
+      id: p.id,
+      requisitionId: p.requisitionId,
+      materialId: p.materialId,
+      materialName: p.material.name,
+      date: p.date,
+      supplier: p.supplier,
+      qty: p.qty,
+      unitCost: p.unitCost,
+      totalCost: p.totalCost,
+      invoiceNumber: p.invoiceNumber,
+      status: p.status,
+      requisitionedQty: p.requisitionedQty,
+      varianceQty: p.varianceQty,
+      acceptedByName: p.acceptedByName,
+      acceptedAt: p.acceptedAt,
+      rejectReason: p.rejectReason,
+      capturedByName: p.capturedByName,
+      createdAt: p.createdAt
+    }))
+  );
+});
+stockRouter.get("/requisitions/awaiting-purchase", async (_req, res) => {
+  const requisitions = await prisma.stockRequisition.findMany({
+    where: { status: "Approved", purchases: { none: { status: { in: ["Held", "Accepted"] } } } },
+    include: { material: true },
+    orderBy: { requestedAt: "desc" }
+  });
+  res.json(
+    requisitions.map((r) => ({ id: r.id, materialId: r.materialId, materialName: r.material.name, qty: r.qty, note: r.note, requestedByName: r.requestedByName }))
+  );
+});
+stockRouter.get("/available-expenses-for-purchase", async (_req, res) => {
+  const linked = await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } });
+  const linkedIds = linked.map((p) => p.expenseId);
+  const expenses = await prisma.expense.findMany({
+    where: { category: PURCHASE_EXPENSE_CATEGORY, invoiceNumber: { not: null }, id: { notIn: linkedIds } },
+    orderBy: { date: "desc" }
+  });
+  res.json(expenses.map((e) => ({ id: e.id, date: e.date, invoiceNumber: e.invoiceNumber, amount: e.amount, note: e.note })));
+});
+var purchaseSchema = external_exports.discriminatedUnion("mode", [
+  external_exports.object({
+    mode: external_exports.literal("new"),
+    requisitionId: external_exports.number().int().optional(),
+    materialId: external_exports.number().int(),
+    supplier: external_exports.string().max(200).optional(),
+    qty: external_exports.number().positive(),
+    unitCost: external_exports.number().positive(),
+    invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"),
+    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  }),
+  external_exports.object({
+    mode: external_exports.literal("existing"),
+    requisitionId: external_exports.number().int().optional(),
+    materialId: external_exports.number().int(),
+    supplier: external_exports.string().max(200).optional(),
+    qty: external_exports.number().positive(),
+    expenseId: external_exports.number().int(),
+    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+  })
+]);
+stockRouter.post("/purchases", async (req, res) => {
+  const parsed = purchaseSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const data = parsed.data;
+  const material = await prisma.material.findUnique({ where: { id: data.materialId } });
+  if (!material) return res.status(400).json({ error: "Material not found" });
+  let requisitionedQty = null;
+  if (data.requisitionId) {
+    const requisition = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: true } });
+    if (!requisition) return res.status(404).json({ error: "Requisition not found" });
+    if (requisition.status !== "Approved") return res.status(400).json({ error: "Only an approved requisition can be purchased against" });
+    if (requisition.purchases.some((p) => p.status === "Held" || p.status === "Accepted")) {
+      return res.status(400).json({ error: "This requisition already has a purchase in progress or accepted" });
+    }
+    requisitionedQty = requisition.qty;
+  }
+  const date = data.date ?? todayStr();
+  let unitCost;
+  let totalCost;
+  let invoiceNumber;
+  let expenseIdToLink = null;
+  let expenseToCreate = null;
+  if (data.mode === "new") {
+    const balance = await computePettyCashBalance();
+    const cost = data.qty * data.unitCost;
+    if (cost > balance) {
+      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(cost).toLocaleString("en-KE")} needed)` });
+    }
+    unitCost = data.unitCost;
+    totalCost = cost;
+    invoiceNumber = data.invoiceNumber;
+    expenseToCreate = { note: `Stock purchase \u2014 ${material.name} \u2014 invoice/receipt ${data.invoiceNumber}`, amount: cost, invoiceNumber: data.invoiceNumber };
+  } else {
+    const expense = await prisma.expense.findUnique({ where: { id: data.expenseId } });
+    if (!expense) return res.status(404).json({ error: "Expense not found" });
+    if (expense.category !== PURCHASE_EXPENSE_CATEGORY) return res.status(400).json({ error: "That expense is not a stock purchase" });
+    if (!expense.invoiceNumber) return res.status(400).json({ error: "That expense has no invoice/receipt number recorded" });
+    const alreadyLinked = await prisma.purchase.findFirst({ where: { expenseId: expense.id } });
+    if (alreadyLinked) return res.status(400).json({ error: "That expense has already been used for a purchase" });
+    totalCost = expense.amount;
+    unitCost = totalCost / data.qty;
+    invoiceNumber = expense.invoiceNumber;
+    expenseIdToLink = expense.id;
+  }
+  const purchase = await prisma.$transaction(async (tx) => {
+    let finalExpenseId = expenseIdToLink;
+    if (expenseToCreate) {
+      const created = await tx.expense.create({
+        data: { date, category: PURCHASE_EXPENSE_CATEGORY, note: expenseToCreate.note, amount: expenseToCreate.amount, invoiceNumber: expenseToCreate.invoiceNumber, capturedByName: req.user.name }
+      });
+      finalExpenseId = created.id;
+    }
+    return tx.purchase.create({
+      data: {
+        requisitionId: data.requisitionId ?? null,
+        materialId: data.materialId,
+        date,
+        supplier: data.supplier ?? "",
+        qty: data.qty,
+        unitCost,
+        totalCost,
+        invoiceNumber,
+        expenseId: finalExpenseId,
+        requisitionedQty,
+        capturedByName: req.user.name
+      },
+      include: { material: true }
+    });
+  });
+  res.status(201).json({ ...purchase, materialName: purchase.material.name });
+});
+stockRouter.post("/purchases/:id/accept", requirePermission("canApproveStock"), async (req, res) => {
+  const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
+  if (!purchase) return res.status(404).json({ error: "Purchase not found" });
+  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting acceptance" });
+  if (purchase.capturedByName === req.user.name) {
+    return res.status(400).json({ error: "You cannot accept a purchase you captured yourself" });
+  }
+  const varianceQty = purchase.requisitionedQty != null ? purchase.qty - purchase.requisitionedQty : null;
+  const [updated] = await prisma.$transaction([
+    prisma.purchase.update({
+      where: { id: purchase.id },
+      data: { status: "Accepted", varianceQty, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() },
+      include: { material: true }
+    }),
+    prisma.material.update({ where: { id: purchase.materialId }, data: { stockQty: { increment: purchase.qty } } })
+  ]);
+  res.json({ ...updated, materialName: updated.material.name });
+});
+var rejectPurchaseSchema = external_exports.object({ reason: external_exports.string().min(1, "A reason for rejecting is required") });
+stockRouter.post("/purchases/:id/reject", requirePermission("canApproveStock"), async (req, res) => {
+  const parsed = rejectPurchaseSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
+  if (!purchase) return res.status(404).json({ error: "Purchase not found" });
+  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting acceptance" });
+  if (purchase.capturedByName === req.user.name) {
+    return res.status(400).json({ error: "You cannot reject a purchase you captured yourself" });
+  }
+  const updated = await prisma.purchase.update({
+    where: { id: purchase.id },
+    data: { status: "Rejected", rejectReason: parsed.data.reason, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() },
+    include: { material: true }
+  });
+  res.json({ ...updated, materialName: updated.material.name });
+});
+var importLineSchema = external_exports.object({
+  description: external_exports.string().min(1),
+  qty: external_exports.number().positive(),
+  unitCost: external_exports.number().positive(),
+  totalCost: external_exports.number().positive()
+});
+var importBatchSchema = external_exports.object({
+  model: external_exports.enum(["kra", "consolidator"]),
+  reference: external_exports.string().max(200).optional(),
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  lines: external_exports.array(importLineSchema).min(1)
+});
+stockRouter.post("/imports", async (req, res) => {
+  const parsed = importBatchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const { model, lines } = parsed.data;
+  const date = parsed.data.date ?? todayStr();
+  const reference = parsed.data.reference?.trim() || "";
+  const supplier = `China Import (${model === "kra" ? "KRA Full Tax" : "Consolidator"})${reference ? " \u2014 " + reference : ""}`;
+  const existingMaterials = await prisma.material.findMany();
+  const byLowerName = new Map(existingMaterials.map((m) => [m.name.toLowerCase(), m]));
+  const created = await prisma.$transaction(async (tx) => {
+    const rows = [];
+    for (const line of lines) {
+      const name2 = line.description.trim();
+      let material = byLowerName.get(name2.toLowerCase());
+      if (!material) {
+        material = await tx.material.create({ data: { name: name2, price: Math.round(line.unitCost) } });
+        byLowerName.set(name2.toLowerCase(), material);
+      }
+      const purchase = await tx.purchase.create({
+        data: {
+          materialId: material.id,
+          date,
+          supplier,
+          qty: line.qty,
+          unitCost: line.unitCost,
+          totalCost: line.totalCost,
+          invoiceNumber: reference || null,
+          capturedByName: req.user.name
+        }
+      });
+      rows.push({ ...purchase, materialName: material.name });
+    }
+    return rows;
+  });
+  res.status(201).json(created);
+});
+
+// apps/api/src/routes/reports.ts
+var import_express7 = __toESM(require_express2());
+var reportsRouter = (0, import_express7.Router)();
+reportsRouter.use(requireAuth, requirePermission("canAccessReports"));
+function inRange3(d, from, to) {
+  return d >= from && d <= to;
+}
+function parseRange2(req) {
+  const from = String(req.query.from || "");
+  const to = String(req.query.to || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return null;
+  return { from, to };
+}
+reportsRouter.get("/sales-by-category", async (req, res) => {
+  const range = parseRange2(req);
+  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const orders = await prisma.order.findMany({
+    where: { OR: [{ kind: "walkin" }, { status: "Invoice" }] },
+    include: { lineItems: { include: { service: true } } }
+  });
+  const byService = /* @__PURE__ */ new Map();
+  let materialsQty = 0;
+  let materialsRevenue = 0;
+  for (const o of orders) {
+    if (!inRange3(o.createdDate, range.from, range.to)) continue;
+    for (const li of o.lineItems) {
+      const input = {
+        itemType: li.itemType,
+        serviceId: li.serviceId,
+        materialId: li.materialId,
+        qty: li.qty,
+        unitPrice: li.unitPrice,
+        discountPct: li.discountPct,
+        discountAmt: li.discountAmt,
+        heatPressFee: li.heatPressFee
+      };
+      const lineTotal = buildLineTotal(input);
+      if (li.itemType === "material" || !li.service) {
+        materialsQty += li.qty;
+        materialsRevenue += lineTotal;
+      } else {
+        const name2 = li.service.name;
+        const bucket = byService.get(name2) ?? { qty: 0, revenue: 0 };
+        bucket.qty += li.qty;
+        bucket.revenue += lineTotal;
+        byService.set(name2, bucket);
+      }
+    }
+  }
+  const categories = Array.from(byService.entries()).map(([name2, v]) => ({ name: name2, qty: v.qty, revenue: v.revenue })).sort((a, b) => b.revenue - a.revenue);
+  res.json({
+    fromDate: range.from,
+    toDate: range.to,
+    categories,
+    materials: { qty: materialsQty, revenue: materialsRevenue }
+  });
+});
+reportsRouter.get("/embroidery-profitability", async (req, res) => {
+  const range = parseRange2(req);
+  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const embroideryService = await prisma.service.findFirst({ where: { name: "Embroidery" } });
+  let revenue = 0;
+  let qtyPieces = 0;
+  if (embroideryService) {
+    const orders = await prisma.order.findMany({
+      where: { OR: [{ kind: "walkin" }, { status: "Invoice" }] },
+      include: { lineItems: { where: { serviceId: embroideryService.id } } }
+    });
+    for (const o of orders) {
+      if (!inRange3(o.createdDate, range.from, range.to)) continue;
+      for (const li of o.lineItems) {
+        const lineTotal = buildLineTotal({
+          itemType: li.itemType,
+          serviceId: li.serviceId,
+          materialId: li.materialId,
+          qty: li.qty,
+          unitPrice: li.unitPrice,
+          discountPct: li.discountPct,
+          discountAmt: li.discountAmt,
+          heatPressFee: li.heatPressFee
+        });
+        revenue += lineTotal;
+        qtyPieces += li.qty;
+      }
+    }
+  }
+  const consumableMaterials = await prisma.material.findMany({
+    where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } }
+  });
+  const materialIds = consumableMaterials.map((m) => m.id);
+  const purchases = materialIds.length ? await prisma.purchase.findMany({ where: { materialId: { in: materialIds }, status: "Accepted" }, include: { material: true } }) : [];
+  const breakdownMap = /* @__PURE__ */ new Map();
+  let consumablesCost = 0;
+  for (const p of purchases) {
+    if (!inRange3(p.date, range.from, range.to)) continue;
+    consumablesCost += p.totalCost;
+    const b = breakdownMap.get(p.material.name) ?? { qty: 0, totalCost: 0 };
+    b.qty += p.qty;
+    b.totalCost += p.totalCost;
+    breakdownMap.set(p.material.name, b);
+  }
+  const consumableBreakdown = Array.from(breakdownMap.entries()).map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: v.totalCost })).sort((a, b) => b.totalCost - a.totalCost);
+  const grossProfit = revenue - consumablesCost;
+  const marginPct = revenue > 0 ? grossProfit / revenue * 100 : null;
+  const avgRevenuePerPiece = qtyPieces > 0 ? revenue / qtyPieces : null;
+  const avgCostPerPiece = qtyPieces > 0 ? consumablesCost / qtyPieces : null;
+  const marginPerPiece = avgRevenuePerPiece != null && avgCostPerPiece != null ? avgRevenuePerPiece - avgCostPerPiece : null;
+  res.json({
+    fromDate: range.from,
+    toDate: range.to,
+    serviceFound: !!embroideryService,
+    revenue,
+    qtyPieces,
+    consumablesCost,
+    grossProfit,
+    marginPct,
+    avgRevenuePerPiece,
+    avgCostPerPiece,
+    marginPerPiece,
+    underpriced: marginPerPiece != null && marginPerPiece < 0,
+    consumableBreakdown
+  });
+});
+reportsRouter.get("/accounts-receivable", async (req, res) => {
+  const today = todayStr();
+  const orders = await prisma.order.findMany({
+    where: { status: "Invoice" },
+    include: { corporateClient: true, lineItems: true, payments: true, staff: true },
+    orderBy: { dueDate: "asc" }
+  });
+  const rows = orders.map((o) => {
+    const lineItems = o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    }));
+    const payments = o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
+    const totals = computeOrderTotals({ lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }, payments);
+    const daysOverdue = o.dueDate && o.dueDate < today ? Math.round((Date.parse(today) - Date.parse(o.dueDate)) / 864e5) : 0;
+    return {
+      id: o.id,
+      orderNo: o.orderNo,
+      kind: o.kind,
+      channel: o.channel,
+      client: o.kind === "corporate" ? o.corporateClient?.name ?? "\u2014" : o.customerName ?? "\u2014",
+      staffName: o.staff.name,
+      createdDate: o.createdDate,
+      dueDate: o.dueDate,
+      grandTotal: totals.grandTotal,
+      paidTotal: totals.paidTotal,
+      balanceDue: totals.balanceDue,
+      daysOverdue
+    };
+  }).filter((r) => r.balanceDue > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
+  const bucket = (r) => r.daysOverdue <= 0 ? "current" : r.daysOverdue <= 30 ? "days1to30" : r.daysOverdue <= 60 ? "days31to60" : r.daysOverdue <= 90 ? "days61to90" : "days90plus";
+  const buckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days90plus: 0 };
+  for (const r of rows) buckets[bucket(r)] += r.balanceDue;
+  res.json({
+    asOf: today,
+    totalOutstanding: rows.reduce((a, r) => a + r.balanceDue, 0),
+    buckets,
+    rows
+  });
+});
+
+// apps/api/src/routes/email.ts
+var import_express8 = __toESM(require_express2());
+var emailRouter = (0, import_express8.Router)();
+emailRouter.use(requireAuth);
 var sendSchema = external_exports.object({
   to: external_exports.string().email(),
   subject: external_exports.string().min(1).max(200),
@@ -49469,7 +49544,7 @@ emailRouter.post("/send", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   try {
     await transport.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from: mailFrom(),
       to: parsed.data.to,
       subject: parsed.data.subject,
       html: parsed.data.html

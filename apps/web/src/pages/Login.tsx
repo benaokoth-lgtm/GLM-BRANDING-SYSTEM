@@ -20,6 +20,7 @@ export default function Login() {
   const [pin, setPin] = useState('');
   const [shake, setShake] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [forgot, setForgot] = useState(false);
 
   useEffect(() => {
     if (user) navigate('/', { replace: true });
@@ -54,6 +55,8 @@ export default function Login() {
     setSelectedId(id);
     setPin('');
   }
+
+  if (forgot) return <ForgotPin onDone={() => setForgot(false)} />;
 
   return (
     <div className="login-shell">
@@ -100,7 +103,149 @@ export default function Login() {
               </button>
             ))}
           </div>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ marginTop: 'var(--space-3)', width: '100%' }}
+            onClick={() => setForgot(true)}
+          >
+            Admin: forgot PIN?
+          </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Admin-only emailed reset: enter the recovery email → get a 6-digit code →
+// enter it with a new 4-digit PIN. The server replies identically whether or
+// not the email matches an Admin, so this can't be used to probe accounts.
+function ForgotPin({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    setError('');
+    try {
+      await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const sendCode = () =>
+    run(async () => {
+      await api.post('/auth/forgot-pin', { email });
+      setStep('code');
+    });
+
+  const reset = () =>
+    run(async () => {
+      await api.post('/auth/reset-pin', { email, code, newPin });
+      setStep('done');
+    });
+
+  return (
+    <div className="login-shell">
+      <div className="login-card card blueprint elev-md" style={{ display: 'block', maxWidth: 420 }}>
+        <i className="corner tl"></i>
+        <i className="corner tr"></i>
+        <i className="corner bl"></i>
+        <i className="corner br"></i>
+        <div className="card-kicker">GLM Branding</div>
+        <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+          Reset Admin PIN
+        </div>
+
+        {step === 'email' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              sendCode();
+            }}
+          >
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              Enter the Admin's recovery email. We'll send a 6-digit code.
+            </p>
+            <input
+              className="input"
+              type="email"
+              autoFocus
+              placeholder="admin@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ width: '100%' }}
+            />
+            <div className="login-error">{error}</div>
+            <button type="submit" className="btn btn-primary" disabled={busy || !email.trim()} style={{ width: '100%' }}>
+              {busy ? 'Sending…' : 'Send code'}
+            </button>
+          </form>
+        )}
+
+        {step === 'code' && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              reset();
+            }}
+          >
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              If that email belongs to an Admin, a code is on its way (valid 15 minutes). Enter it with a new 4-digit PIN.
+            </p>
+            <input
+              className="input"
+              inputMode="numeric"
+              autoFocus
+              maxLength={6}
+              placeholder="6-digit code"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+              style={{ width: '100%', marginBottom: 'var(--space-2)' }}
+            />
+            <input
+              className="input"
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              placeholder="New 4-digit PIN"
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+              style={{ width: '100%' }}
+            />
+            <div className="login-error">{error}</div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={busy || code.length !== 6 || newPin.length !== 4}
+              style={{ width: '100%' }}
+            >
+              {busy ? 'Saving…' : 'Set new PIN'}
+            </button>
+          </form>
+        )}
+
+        {step === 'done' && (
+          <>
+            <p>Your PIN has been changed. You can log in with it now.</p>
+            <button type="button" className="btn btn-primary" onClick={onDone} style={{ width: '100%' }}>
+              Back to login
+            </button>
+          </>
+        )}
+
+        {step !== 'done' && (
+          <button type="button" className="btn btn-ghost" onClick={onDone} style={{ width: '100%', marginTop: 'var(--space-2)' }}>
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   );

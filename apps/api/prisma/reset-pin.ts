@@ -11,17 +11,31 @@ const prisma = new PrismaClient();
 //
 //   node reset-pin.js "Name"            -> sets a fresh random 4-digit PIN
 //   node reset-pin.js "Name" 1234       -> sets that PIN
-//   node reset-pin.js --list            -> lists users (id, name, role, lock status)
+//   node reset-pin.js --list            -> lists users (id, name, role, email, lock status)
+//   node reset-pin.js "Name" --email a@b.com
+//                                       -> sets the Admin's recovery email (PIN untouched)
+//                                          used by "Forgot PIN?" on the login screen
 async function main() {
-  const [nameArg, pinArg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const emailFlag = args.indexOf('--email');
+  let emailArg: string | undefined;
+  if (emailFlag !== -1) {
+    emailArg = args[emailFlag + 1]?.trim().toLowerCase();
+    args.splice(emailFlag, 2);
+    if (!emailArg || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailArg)) {
+      console.error('--email needs a valid address, e.g. --email you@example.com');
+      process.exit(1);
+    }
+  }
+  const [nameArg, pinArg] = args;
 
   if (!nameArg || nameArg === '--list') {
     const users = await prisma.user.findMany({ orderBy: { id: 'asc' } });
     for (const u of users) {
       const locked = u.lockedUntil && u.lockedUntil > new Date() ? ` — LOCKED until ${u.lockedUntil.toISOString()}` : '';
-      console.log(`${u.id}\t${u.name}\t${u.role}\tfailed attempts: ${u.failedLoginCount}${locked}`);
+      console.log(`${u.id}\t${u.name}\t${u.role}\t${u.email ?? '(no email)'}\tfailed attempts: ${u.failedLoginCount}${locked}`);
     }
-    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [4-digit PIN]');
+    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [4-digit PIN]   |   node reset-pin.js "Name" --email you@example.com');
     return;
   }
 
@@ -41,6 +55,23 @@ async function main() {
   }
 
   const user = matches[0]!;
+
+  if (emailArg) {
+    if (user.role !== 'Admin') {
+      console.error(`"${user.name}" is a ${user.role}; the recovery email is for the Admin only.`);
+      process.exit(1);
+    }
+    const taken = await prisma.user.findUnique({ where: { email: emailArg } });
+    if (taken && taken.id !== user.id) {
+      console.error(`${emailArg} is already set on "${taken.name}".`);
+      process.exit(1);
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { email: emailArg } });
+    console.log(`Recovery email for "${user.name}" is now ${emailArg}.`);
+    // Email alone doesn't touch the PIN; only continue if a PIN was also given.
+    if (pinArg === undefined) return;
+  }
+
   const pin = pinArg ?? String(crypto.randomInt(0, 10000)).padStart(4, '0');
   const pinHash = await bcrypt.hash(pin, 10);
   await prisma.user.update({ where: { id: user.id }, data: { pinHash, failedLoginCount: 0, lockedUntil: null } });

@@ -41,7 +41,7 @@ cPanel → **Setup Node.js App** → Create (or edit) the application:
 | `JWT_SECRET` | a long random string — generate once with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and keep it; changing it logs everyone out |
 | `CORS_ORIGINS` | `https://pos.glmgroup.co.ke` |
 
-No `PORT` — Passenger assigns it. Optional (each feature disables itself cleanly if unset): `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, and the `MPESA_*` set (see `apps/api/.env.example`; `MPESA_CALLBACK_URL` must be `https://api.glmgroup.co.ke/api/mpesa/callback`).
+No `PORT` — Passenger assigns it. Optional (each feature disables itself cleanly if unset): `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (invoice emails and the Admin's emailed PIN reset), and the `MPESA_*` set (see `apps/api/.env.example`; `MPESA_CALLBACK_URL` must be `https://api.glmgroup.co.ke/api/mpesa/callback`).
 
 Save, then click **Run NPM Install** (this installs Prisma and generates its client), then **Restart**.
 
@@ -70,6 +70,14 @@ node reset-pin.js --list                 # who exists, and who is locked
 node reset-pin.js "Your Name"            # new random 4-digit PIN (also clears any lockout)
 node reset-pin.js "Your Name" 4821       # or choose the PIN yourself
 ```
+
+**Emailed reset for the Admin ("Admin: forgot PIN?" on the login screen).** Give the Admin a recovery email once, from the same folder and environment:
+
+```bash
+node reset-pin.js "Your Name" --email you@example.com
+```
+
+Then on the login screen, *Admin: forgot PIN?* → enter that email → enter the 6-digit code it receives (valid 15 minutes, 5 tries, single use) and a new 4-digit PIN. This needs the `SMTP_*` environment variables (step 3) to be set — without them the screen says email isn't configured, and `reset-pin.js` above is the fallback. A cPanel mailbox (e.g. `pos@glmgroup.co.ke`, host `mail.glmgroup.co.ke`, port 465) is the simplest sender; Yahoo/Gmail need an *app password*, not the normal one. Only the Admin can use this, and the screen never reveals whether an email exists.
 
 > Terminal tips for this host: paste one command at a time; if pasted text shows `^[[200~`, run `bind 'set enable-bracketed-paste off'` first; a new Terminal tab starts with no environment, so redo the `source …/activate` and `export` lines.
 

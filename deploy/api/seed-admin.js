@@ -1864,7 +1864,7 @@ async function main() {
   const admin = await prisma.user.create({ data: { name, role: "Admin", pinHash } });
   console.log(`Created Admin user "${admin.name}" (id ${admin.id}) \u2014 PIN: ${pin}`);
   console.log(
-    "There is no PIN-reset or staff-removal feature yet, so keep this PIN somewhere safe \u2014 log in with it, then add whoever should really hold Admin access under Master Data \u2192 Staff & Users."
+    `Keep this PIN somewhere safe \u2014 log in with it, then add whoever should really hold Admin access under Master Data \u2192 Staff & Users. To enable "Forgot PIN?" by email: node reset-pin.js "${admin.name}" --email you@example.com`
   );
 }
 main().catch((e) => {

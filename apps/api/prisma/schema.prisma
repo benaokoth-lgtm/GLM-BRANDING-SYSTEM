@@ -29,6 +29,15 @@ model User {
   lockedUntil      DateTime?
   createdAt        DateTime  @default(now())
 
+  // Only used for the Admin's emailed PIN-reset code (set out-of-band with
+  // `reset-pin.js "Name" --email ...`; there's no in-app field for it).
+  // Stored lowercase. resetCodeHash is a bcrypt hash of a 6-digit code, never
+  // the code itself.
+  email            String?   @unique
+  resetCodeHash    String?
+  resetCodeExpires DateTime?
+  resetAttempts    Int       @default(0)
+
   orders        Order[]
   payments      Payment[]
   payrollEntries PayrollEntry[]

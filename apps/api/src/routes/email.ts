@@ -1,21 +1,10 @@
 import { Router } from 'express';
-import nodemailer from 'nodemailer';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
+import { buildTransport, mailFrom } from '../mailer';
 
 export const emailRouter = Router();
 emailRouter.use(requireAuth);
-
-function buildTransport() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
-  if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
-  return nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: Number(SMTP_PORT) === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS },
-  });
-}
 
 const sendSchema = z.object({
   to: z.string().email(),
@@ -41,7 +30,7 @@ emailRouter.post('/send', async (req, res) => {
 
   try {
     await transport.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+      from: mailFrom(),
       to: parsed.data.to,
       subject: parsed.data.subject,
       html: parsed.data.html,

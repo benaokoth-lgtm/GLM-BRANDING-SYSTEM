@@ -1853,14 +1853,25 @@ var import_bcryptjs = __toESM(require_bcryptjs());
 var import_crypto = __toESM(require("crypto"));
 var prisma = new import_client.PrismaClient();
 async function main() {
-  const [nameArg, pinArg] = process.argv.slice(2);
+  const args = process.argv.slice(2);
+  const emailFlag = args.indexOf("--email");
+  let emailArg;
+  if (emailFlag !== -1) {
+    emailArg = args[emailFlag + 1]?.trim().toLowerCase();
+    args.splice(emailFlag, 2);
+    if (!emailArg || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(emailArg)) {
+      console.error("--email needs a valid address, e.g. --email you@example.com");
+      process.exit(1);
+    }
+  }
+  const [nameArg, pinArg] = args;
   if (!nameArg || nameArg === "--list") {
     const users = await prisma.user.findMany({ orderBy: { id: "asc" } });
     for (const u of users) {
       const locked = u.lockedUntil && u.lockedUntil > /* @__PURE__ */ new Date() ? ` \u2014 LOCKED until ${u.lockedUntil.toISOString()}` : "";
-      console.log(`${u.id}	${u.name}	${u.role}	failed attempts: ${u.failedLoginCount}${locked}`);
+      console.log(`${u.id}	${u.name}	${u.role}	${u.email ?? "(no email)"}	failed attempts: ${u.failedLoginCount}${locked}`);
     }
-    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [4-digit PIN]');
+    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [4-digit PIN]   |   node reset-pin.js "Name" --email you@example.com');
     return;
   }
   if (pinArg !== void 0 && !/^\d{4}$/.test(pinArg)) {
@@ -1877,6 +1888,20 @@ async function main() {
     process.exit(1);
   }
   const user = matches[0];
+  if (emailArg) {
+    if (user.role !== "Admin") {
+      console.error(`"${user.name}" is a ${user.role}; the recovery email is for the Admin only.`);
+      process.exit(1);
+    }
+    const taken = await prisma.user.findUnique({ where: { email: emailArg } });
+    if (taken && taken.id !== user.id) {
+      console.error(`${emailArg} is already set on "${taken.name}".`);
+      process.exit(1);
+    }
+    await prisma.user.update({ where: { id: user.id }, data: { email: emailArg } });
+    console.log(`Recovery email for "${user.name}" is now ${emailArg}.`);
+    if (pinArg === void 0) return;
+  }
   const pin = pinArg ?? String(import_crypto.default.randomInt(0, 1e4)).padStart(4, "0");
   const pinHash = await import_bcryptjs.default.hash(pin, 10);
   await prisma.user.update({ where: { id: user.id }, data: { pinHash, failedLoginCount: 0, lockedUntil: null } });

@@ -17,3 +17,5 @@ deploy/api/public/
 deploy/api/stderr.log
 deploy/api/*.log
 deploy/api/.htaccess
+/stderr.log
+/tmp/

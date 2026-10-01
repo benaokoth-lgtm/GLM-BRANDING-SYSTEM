@@ -43997,7 +43997,7 @@ authRouter.post("/change-pin", requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
   if (!user) return res.status(404).json({ error: "User not found" });
   const ok = await import_bcryptjs.default.compare(currentPin || "", user.pinHash);
-  if (!ok) return res.status(401).json({ error: "Current PIN is incorrect" });
+  if (!ok) return res.status(400).json({ error: "Current PIN is incorrect" });
   const pinHash = await import_bcryptjs.default.hash(newPin, 10);
   await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
   res.json({ ok: true });

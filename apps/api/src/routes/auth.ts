@@ -149,7 +149,8 @@ authRouter.post('/change-pin', requireAuth, async (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
 
   const ok = await bcrypt.compare(currentPin || '', user.pinHash);
-  if (!ok) return res.status(401).json({ error: 'Current PIN is incorrect' });
+  // 400, not 401: the web client treats any 401 as an expired session and logs out.
+  if (!ok) return res.status(400).json({ error: 'Current PIN is incorrect' });
 
   const pinHash = await bcrypt.hash(newPin, 10);
   await prisma.user.update({ where: { id: user.id }, data: { pinHash } });

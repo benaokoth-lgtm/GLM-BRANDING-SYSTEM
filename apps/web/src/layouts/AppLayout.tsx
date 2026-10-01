@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
+import ChangePinDialog from '../components/ChangePinDialog';
 import type { CurrentUser } from '../state/AuthContext';
 
 // Built from the logged-in user's permissions rather than a hardcoded map
@@ -42,6 +44,7 @@ function buildTabs(user: CurrentUser): [string, string][] {
 
 export default function AppLayout() {
   const { user, logout } = useAuth();
+  const [changingPin, setChangingPin] = useState(false);
   const tabs = user ? buildTabs(user) : [];
 
   return (
@@ -54,6 +57,9 @@ export default function AppLayout() {
               {user.name} · {user.role}
             </span>
           )}
+          <button type="button" className="btn btn-secondary" onClick={() => setChangingPin(true)}>
+            Change PIN
+          </button>
           <button type="button" className="btn btn-secondary" onClick={logout}>
             Log out
           </button>
@@ -79,6 +85,7 @@ export default function AppLayout() {
       <main style={{ flex: 1, padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 1280, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         <Outlet />
       </main>
+      {changingPin && <ChangePinDialog onClose={() => setChangingPin(false)} />}
     </div>
   );
 }

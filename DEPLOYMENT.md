@@ -1,11 +1,11 @@
-# Deploying to cPanel — api.glmgroup.co.ke + pos.glmgroup.co.ke
+# Deploying to cPanel — api.glmgroup.co.ke + app.glmgroup.co.ke
 
 Two pieces are hosted, both **prebuilt and committed under `deploy/`** — nothing is built on the server:
 
 | Folder | What it is | Where it runs |
 |---|---|---|
 | `deploy/api/` | One bundled `server.js` (shared code inlined), a tiny `package.json` (only `@prisma/client` + `prisma`), and the Prisma schema pre-set to PostgreSQL | cPanel **Setup Node.js App** → this folder is the *Application root* |
-| `deploy/web/` | The static React build (API URL baked in) + `.htaccess` for client-side routes | Copied to the `pos.glmgroup.co.ke` document root |
+| `deploy/web/` | The static React build (API URL baked in) + `.htaccess` for client-side routes | Copied to the `app.glmgroup.co.ke` document root |
 
 **Why not build on the server?** cPanel's Node.js Selector replaces the app root's `node_modules` with a symlink into its own virtual env, which doesn't cooperate with this repo's npm-workspaces monorepo (npm sees one package and installs nothing). A slim, prebuilt app root is the layout the Selector is designed for. The monorepo itself is unchanged for local development.
 
@@ -39,14 +39,14 @@ cPanel → **Setup Node.js App** → Create (or edit) the application:
 | `NODE_ENV` | `production` |
 | `DATABASE_URL` | the connection string from step 1 |
 | `JWT_SECRET` | a long random string — generate once with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and keep it; changing it logs everyone out |
-| `CORS_ORIGINS` | `https://pos.glmgroup.co.ke` |
+| `CORS_ORIGINS` | `https://app.glmgroup.co.ke` |
 
 No `PORT` — Passenger assigns it. Optional (each feature disables itself cleanly if unset): `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (invoice emails and the Admin's emailed PIN reset), and the `MPESA_*` set (see `apps/api/.env.example`; `MPESA_CALLBACK_URL` must be `https://api.glmgroup.co.ke/api/mpesa/callback`).
 
 Save, then click **Run NPM Install** (this installs Prisma and generates its client), then **Restart**.
 
 ### 4. The web subdomain
-cPanel → **Domains**: create `pos.glmgroup.co.ke`; its document root should be `/home/glmgroup/pos.glmgroup.co.ke` (what `.cpanel.yml` copies into).
+cPanel → **Domains**: create `app.glmgroup.co.ke`; its document root should be `/home/glmgroup/app.glmgroup.co.ke` (what `.cpanel.yml` copies into). Do **not** use `pos.glmgroup.co.ke`: that hosts a separate PHP point-of-sale system, and `.cpanel.yml` refuses to deploy into any folder that has an `index.php`.
 
 ### 5. First deploy
 **Git Version Control → Pull or Deploy → Update from Remote → Deploy HEAD Commit.** This copies `deploy/web` into the subdomain and restarts the API (`.cpanel.yml`).

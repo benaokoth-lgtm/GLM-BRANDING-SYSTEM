@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 build/
 .env
@@ -9,3 +9,11 @@ build/
 .DS_Store
 .claude/settings.local.json
 *.tsbuildinfo
+
+# Files the cPanel Node.js app creates inside deploy/api on the server — must be
+# ignored or the server checkout counts as "dirty" and Deploy HEAD Commit is disabled.
+deploy/api/tmp/
+deploy/api/public/
+deploy/api/stderr.log
+deploy/api/*.log
+deploy/api/.htaccess

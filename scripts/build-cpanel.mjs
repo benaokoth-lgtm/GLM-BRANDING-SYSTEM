@@ -5,7 +5,7 @@
 //                  package.json with only the real runtime packages, and the
 //                  Prisma schema pre-flipped to PostgreSQL. This folder is the
 //                  Node.js App's Application root.
-//   deploy/web/  — the static React build for app.glmgroup.co.ke, plus an
+//   deploy/web/  — the static React build for pos.glmgroup.co.ke, plus an
 //                  .htaccess so client-side routes (/orders/mine etc.) load.
 //
 // Why: cPanel's Node.js Selector replaces the app root's node_modules with a

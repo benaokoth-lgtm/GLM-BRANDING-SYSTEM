@@ -57,7 +57,7 @@ export const right = { textAlign: 'right' } as const;
 export function Spec({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-2) var(--space-3)', margin: '0 -1px -1px 0' }}>
-      <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-neutral-600)' }}>{label}</div>
+      <div style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--color-text-muted)', fontWeight: 700 }}>{label}</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 19, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
     </div>
   );

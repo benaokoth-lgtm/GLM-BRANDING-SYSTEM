@@ -18,7 +18,11 @@
   --color-text: #0b0b0c;
   --color-accent: #0b0b0c;
   --color-accent-2: #6b6458;
-  --color-divider: color-mix(in srgb, #0b0b0c 18%, transparent);
+  /* Secondary text is a SOLID dark warm gray, not translucent black: #3f3b35 on
+     ivory is ~9.5:1 (AAA), so labels, dates and hints stay as legible as the
+     headings. Never go lighter than this for text. */
+  --color-text-muted: #3f3b35;
+  --color-divider: color-mix(in srgb, #0b0b0c 22%, transparent);
 
   --color-neutral-100: #ebe6dd;
   --color-neutral-200: #e0dad0;
@@ -87,7 +91,7 @@ body {
   font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.55;
-  font-weight: 400;
+  font-weight: 500;
 }
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-heading);
@@ -106,11 +110,9 @@ p { margin: 0 0 var(--space-3); }
 a { color: var(--color-text); text-decoration: underline; text-underline-offset: 3px; }
 a:hover { color: var(--color-accent-400); }
 img { display: block; max-width: 100%; }
-/* 65% (not 55%) is the lowest opacity of --color-text that still clears
-   WCAG AA's 4.5:1 for normal text against both --color-bg and --color-surface
-   with the current palette — checked directly, not eyeballed. */
-.text-muted { color: color-mix(in srgb, var(--color-text) 65%, transparent); }
-.note { color: color-mix(in srgb, var(--color-text) 65%, transparent); font-size: 13px; }
+/* Muted text uses the solid --color-text-muted (defined above), never a translucent black. */
+.text-muted { color: var(--color-text-muted); }
+.note { color: var(--color-text-muted); font-size: 13px; }
 :focus { outline: none; }
 :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 ::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
@@ -172,7 +174,7 @@ img { display: block; max-width: 100%; }
 /* — forms — */
 .field > label {
   display: block; font-size: 12px; margin-bottom: 5px;
-  color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  color: var(--color-text-muted); font-weight: 500;
 }
 .input {
   width: 100%; min-height: 36px; padding: 6px 10px; font: inherit;
@@ -196,10 +198,10 @@ textarea.input { min-height: 90px; resize: vertical; }
   padding: var(--space-3); border-radius: 0; background: transparent;
   border: 1px solid var(--color-divider);
 }
-.card-kicker { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
+.card-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-accent); }
 .card-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 17px; line-height: 1.2; }
-.card-body { margin: 0; font-size: 13px; opacity: 0.8; flex: 1; }
-.card-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: color-mix(in srgb, var(--color-text) 65%, transparent); }
+.card-body { margin: 0; font-size: 13px; flex: 1; }
+.card-meta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted); }
 .elev-sm { box-shadow: var(--shadow-sm); }
 .elev-md { box-shadow: var(--shadow-md); }
 .elev-lg { box-shadow: var(--shadow-lg); }
@@ -220,8 +222,8 @@ textarea.input { min-height: 90px; resize: vertical; }
 /* — tables — */
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .table th {
-  text-align: left; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
-  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  text-align: left; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--color-text-muted); font-weight: 700;
   padding: var(--space-2); border-bottom: 1px solid var(--color-divider);
 }
 .table td { padding: var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
@@ -239,7 +241,7 @@ textarea.input { min-height: 90px; resize: vertical; }
   background: var(--color-surface); box-shadow: var(--shadow-lg);
 }
 .dialog-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 20px; }
-.dialog-body { font-size: 14px; opacity: 0.85; }
+.dialog-body { font-size: 14px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
 
 /* — print (P&L "Print / PDF") — */

@@ -3,54 +3,52 @@
    <link> in index.html rather than @import here. */
 
 :root {
-  /* — colour scheme: "nocturne" — a dark theme built around the brand's own
-     rich-blue-family identity read as a midnight sky, with a warm gold
-     "moonlight" as the primary accent (used for buttons) and a soft
-     periwinkle-lavender as the secondary. Ramp *labels* (100-900) no longer
-     mean "light tint to dark shade" uniformly — 100/200 stay light because
-     tag chips (.tag-accent etc.) are still light chips with dark text even
-     on a dark page, but --color-accent itself sits at ~500 (vivid, mid-tone)
-     since a dark-ramp step would vanish against this dark background. Every
-     contrast pairing below was checked against actual hex values (WCAG
-     4.5:1 for text), not eyeballed - see the `a`/`a:hover` override further
-     down, which deliberately uses lighter steps than the old light-theme
-     convention for the same reason. */
-  --color-bg: #0f0b28;
-  --color-surface: #191341;
-  --color-text: #ececf5;
-  --color-accent: #d1922e;
-  --color-accent-2: #7568bd;
-  --color-divider: color-mix(in srgb, #ececf5 16%, transparent);
+  /* — colour scheme: "ivory & black" — the brand palette: Ivory #F6F1EA as the
+     page, Black #0B0B0C for text and as the single strong accent (primary
+     buttons, active nav, charts). Surfaces are a touch lighter than the page so
+     inputs and dialogs lift off it. Ramp labels (100-900) read light-tint →
+     dark again: 100/200 are chip backgrounds (with 800 text), 300 is the mid
+     tone used for the second chart series, 500 is the accent itself (black),
+     600/700 are its hover/active steps. Secondary (accent-2) is a warm taupe.
+     Text on ivory: black 19:1; --color-text at 65% (muted) ≈ 6:1; error red
+     #a33 ≈ 6.5:1 — all above WCAG AA's 4.5:1. */
+  color-scheme: light;
+  --color-bg: #f6f1ea;
+  --color-surface: #fbf8f3;
+  --color-text: #0b0b0c;
+  --color-accent: #0b0b0c;
+  --color-accent-2: #6b6458;
+  --color-divider: color-mix(in srgb, #0b0b0c 18%, transparent);
 
-  --color-neutral-100: #f5f5f8;
-  --color-neutral-200: #e7e7ea;
-  --color-neutral-300: #d4d4d7;
-  --color-neutral-400: #b7b7ba;
-  --color-neutral-500: #98989b;
-  --color-neutral-600: #7a7a7d;
-  --color-neutral-700: #5d5d60;
-  --color-neutral-800: #424244;
-  --color-neutral-900: #2b2b2d;
+  --color-neutral-100: #ebe6dd;
+  --color-neutral-200: #e0dad0;
+  --color-neutral-300: #cfc8bb;
+  --color-neutral-400: #b3ab9c;
+  --color-neutral-500: #968e7f;
+  --color-neutral-600: #7a7367;
+  --color-neutral-700: #5e5850;
+  --color-neutral-800: #433f39;
+  --color-neutral-900: #2a2825;
 
-  --color-accent-100: #fbf0da;
-  --color-accent-200: #f5e0b3;
-  --color-accent-300: #edc97e;
-  --color-accent-400: #e0ac4d;
-  --color-accent-500: #d1922e;
-  --color-accent-600: #b8791f;
-  --color-accent-700: #8f5c18;
-  --color-accent-800: #664213;
-  --color-accent-900: #402a0c;
+  --color-accent-100: #ece5d8;
+  --color-accent-200: #d9d0bf;
+  --color-accent-300: #8f8777;
+  --color-accent-400: #5d574c;
+  --color-accent-500: #0b0b0c;
+  --color-accent-600: #26262a;
+  --color-accent-700: #3b3b40;
+  --color-accent-800: #151517;
+  --color-accent-900: #0b0b0c;
 
-  --color-accent-2-100: #eeecf9;
-  --color-accent-2-200: #d7d2f0;
-  --color-accent-2-300: #b7aee3;
-  --color-accent-2-400: #9488d1;
-  --color-accent-2-500: #7568bd;
-  --color-accent-2-600: #5c4fa0;
-  --color-accent-2-700: #453c7d;
-  --color-accent-2-800: #302b5c;
-  --color-accent-2-900: #1d1a3d;
+  --color-accent-2-100: #efeae1;
+  --color-accent-2-200: #ddd5c8;
+  --color-accent-2-300: #bdb3a2;
+  --color-accent-2-400: #978c7a;
+  --color-accent-2-500: #6b6458;
+  --color-accent-2-600: #554f45;
+  --color-accent-2-700: #403b33;
+  --color-accent-2-800: #2c2923;
+  --color-accent-2-900: #1a1815;
 
   --font-heading: 'Barlow Condensed', system-ui, sans-serif;
   --font-heading-weight: 600;
@@ -67,9 +65,9 @@
   --radius-md: 4px;
   --radius-lg: 7px;
 
-  --shadow-sm: 0 1px 2px color-mix(in srgb, #2b2b2d 14%, transparent);
-  --shadow-md: 0 3px 10px color-mix(in srgb, #2b2b2d 16%, transparent);
-  --shadow-lg: 0 12px 32px color-mix(in srgb, #2b2b2d 22%, transparent);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, #0b0b0c 10%, transparent);
+  --shadow-md: 0 3px 10px color-mix(in srgb, #0b0b0c 10%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, #0b0b0c 18%, transparent);
 }
 
 * ,
@@ -105,11 +103,8 @@ h4 { font-size: 20px; }
 h5 { font-size: 16px; }
 h6 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
 p { margin: 0 0 var(--space-3); }
-/* Lighter steps than a light theme would use — darker steps (700/900) read
-   fine on a pale background but nearly vanish against this dark one (checked:
-   accent-700 on this bg is 3.38:1, below AA; accent-400/200 are 9.26/14.74). */
-a { color: var(--color-accent-400); text-decoration: none; text-underline-offset: 3px; }
-a:hover { color: var(--color-accent-200); }
+a { color: var(--color-text); text-decoration: underline; text-underline-offset: 3px; }
+a:hover { color: var(--color-accent-400); }
 img { display: block; max-width: 100%; }
 /* 65% (not 55%) is the lowest opacity of --color-text that still clears
    WCAG AA's 4.5:1 for normal text against both --color-bg and --color-surface
@@ -220,7 +215,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .nav { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); }
 .nav-brand { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 18px; margin-right: auto; }
 .nav a { color: inherit; text-decoration: none; font-size: 14px; }
-.nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent); }
+.nav a:hover, .nav a[aria-current='page'] { color: var(--color-accent-400); }
 
 /* — tables — */
 .table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -241,7 +236,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .dialog {
   width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
   padding: var(--space-4); border-radius: 0;
-  background: var(--color-bg); box-shadow: var(--shadow-lg);
+  background: var(--color-surface); box-shadow: var(--shadow-lg);
 }
 .dialog-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 20px; }
 .dialog-body { font-size: 14px; opacity: 0.85; }

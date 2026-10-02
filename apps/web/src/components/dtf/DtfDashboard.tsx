@@ -34,7 +34,7 @@ export default function DtfDashboard({ data, go }: { data: DtfData; go: (tab: 's
       </div>
 
       {d.orphanCount > 0 && (
-        <div className="card" style={{ padding: 'var(--space-3) var(--space-4)', borderColor: 'var(--color-accent)', color: 'var(--color-accent-300)' }}>
+        <div className="card" style={{ padding: 'var(--space-3) var(--space-4)', borderColor: 'var(--color-accent)' }}>
           ⚠ {d.orphanCount} sale(s)/job(s) point at a roll that hasn't started (no install date). Fix the roll before trusting these numbers.
         </div>
       )}

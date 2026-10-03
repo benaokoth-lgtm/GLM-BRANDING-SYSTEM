@@ -141,10 +141,49 @@ describe('production → quality → handover', () => {
     const pass = await call('inspector', 'POST', `/quality/orders/${order.id}/check`, { result: 'Passed', unitsInspected: 6 });
     assert.equal(pass.status, 201);
     assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).stage, 'Ready for Pickup/Delivery'); // not Completed
+    // …and the customer has not paid: handover needs the order settled in full
+    const unpaid = await call('manager', 'POST', `/orders/${order.id}/handover`);
+    assert.equal(unpaid.status, 400);
+    assert.equal(unpaid.body.code, 'BALANCE_DUE');
+    assert.equal(unpaid.body.balanceDue, 4000);
+    assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).stage, 'Ready for Pickup/Delivery');
+    await prisma.payment.create({ data: { orderId: order.id, date: '2031-03-05', amount: 4000, method: 'Cash' } });
     const done = await call('manager', 'POST', `/orders/${order.id}/handover`);
     assert.equal(done.status, 200);
     assert.equal(done.body.stage, 'Completed');
+    assert.equal(done.body.handedOverOnCredit, false);
     assert.equal((await call('manager', 'POST', `/orders/${order.id}/handover`)).status, 400); // already handed over
+  });
+
+  it('handing over on credit completes the order and converts it to an invoice; paying it later settles it', async () => {
+    // a walk-in order paid in full at capture is a settled 'Order'; a debit note later leaves it owing, so it is no longer an invoice
+    const order = await newOrder('P-3', 'Order');
+    await prisma.payment.create({ data: { orderId: order.id, date: '2031-03-02', amount: 1000, method: 'Cash' } }); // part payment of 4000
+    await prisma.order.update({ where: { id: order.id }, data: { stage: 'Ready for Pickup/Delivery', dueDate: null } });
+    const blocked = await call('manager', 'POST', `/orders/${order.id}/handover`, { onCredit: false });
+    assert.equal(blocked.status, 400);
+    assert.equal(blocked.body.balanceDue, 3000);
+
+    const credit = await call('manager', 'POST', `/orders/${order.id}/handover`, { onCredit: true });
+    assert.equal(credit.status, 200);
+    assert.equal(credit.body.stage, 'Completed');
+    assert.equal(credit.body.status, 'Invoice'); // converted to an invoice
+    assert.equal(credit.body.handedOverOnCredit, true);
+    assert.ok(credit.body.dueDate, 'the invoice has a due date');
+    const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    assert.equal(saved.handedOverByName, 'manager user');
+    assert.equal(saved.handedOverOnCredit, true);
+
+    // it now shows up as money owed
+    const { buildReceivablesAging } = await import('../src/accounting/reports');
+    const ar = await buildReceivablesAging('9999-12-31');
+    assert.equal(ar.rows.find((r) => r.ref === 'P-3')?.outstanding, 3000);
+
+    // paying the rest through the normal payment route settles the invoice back to an order
+    const paid = await call('manager', 'POST', `/orders/${order.id}/payments`, { payments: [{ method: 'Cash', amount: 3000 }] });
+    assert.equal(paid.status, 200);
+    assert.equal(paid.body.status, 'Order');
+    assert.equal(paid.body.totals.balanceDue, 0);
   });
 
   it('reassigning moves the job to someone else and keeps the old attempt on record', async () => {

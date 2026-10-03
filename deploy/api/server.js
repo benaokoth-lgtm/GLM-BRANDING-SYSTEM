@@ -48856,16 +48856,35 @@ ordersRouter.post("/:id/payments", async (req, res) => {
   const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
   res.json(serializeDetail(updated));
 });
+var handoverSchema = external_exports.object({ onCredit: external_exports.boolean().optional() });
 ordersRouter.post("/:id/handover", async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+  const parsed = handoverSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
+  const onCredit = parsed.data.onCredit === true;
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
   if (order.stage === "Completed") return res.status(400).json({ error: "This order has already been handed over" });
   if (order.stage !== "Ready for Pickup/Delivery") {
     return res.status(400).json({ error: `This order is at \u201C${order.stage}\u201D. It can only be handed over once it has been produced and has passed quality control.` });
   }
-  const updated = await prisma.order.update({ where: { id: order.id }, data: { stage: "Completed" }, include: orderInclude });
-  res.json(serializeDetail(updated));
+  const balance = serializeDetail(order).totals.balanceDue;
+  const owes = balance > 9e-3;
+  if (owes && !onCredit) {
+    return res.status(400).json({
+      error: `This order still owes Ksh ${Math.round(balance).toLocaleString("en-KE")}. Take the payment first \u2014 or hand it over on credit, which turns it into an invoice.`,
+      balanceDue: balance,
+      code: "BALANCE_DUE"
+    });
+  }
+  const data = { stage: "Completed", handedOverAt: /* @__PURE__ */ new Date(), handedOverByName: req.user.name, handedOverOnCredit: owes };
+  if (owes) {
+    const days = order.corporateClient?.creditDays ?? WALKIN_INVOICE_DUE_DAYS;
+    data.status = "Invoice";
+    if (!order.dueDate || order.dueDate < todayStr()) data.dueDate = addDays(todayStr(), days);
+  }
+  const updated = await prisma.order.update({ where: { id: order.id }, data, include: orderInclude });
+  res.json({ ...serializeDetail(updated), handedOverOnCredit: owes });
 });
 ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canViewAllOrders"), async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });

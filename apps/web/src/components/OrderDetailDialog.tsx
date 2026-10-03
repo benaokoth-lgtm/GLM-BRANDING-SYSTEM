@@ -21,6 +21,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
   const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [newPaymentRow()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmCredit, setConfirmCredit] = useState(false);
 
   const [emailTo, setEmailTo] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
@@ -57,12 +58,14 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     }
   }
 
-  // The only way an order is completed: handing it to the customer after it has passed quality control.
-  async function handOver() {
+  // The only way an order is completed: handing it to the customer after it has passed quality control. Normally that needs it
+  // paid in full; "on credit" releases it with a balance and turns it into an invoice.
+  async function handOver(onCredit = false) {
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/orders/${orderId}/handover`, {});
+      await api.post(`/orders/${orderId}/handover`, { onCredit });
+      setConfirmCredit(false);
       load();
       onChanged();
     } catch (err) {
@@ -243,15 +246,43 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 {detail.stage === 'Ready for Pickup/Delivery' && 'Passed quality control — ready for the customer.'}
                 {detail.stage === 'Completed' && 'Handed over to the customer.'}
               </p>
-              {detail.stage === 'Ready for Pickup/Delivery' && (
-                <button type="button" className="btn btn-primary blueprint" onClick={handOver} disabled={busy}>
-                  <i className="corner tl"></i>
-                  <i className="corner tr"></i>
-                  <i className="corner bl"></i>
-                  <i className="corner br"></i>
-                  Hand over to customer (complete the order)
-                </button>
-              )}
+              {detail.stage === 'Ready for Pickup/Delivery' &&
+                (detail.totals.balanceDue <= 0.009 ? (
+                  <button type="button" className="btn btn-primary blueprint" onClick={() => handOver(false)} disabled={busy}>
+                    <i className="corner tl"></i>
+                    <i className="corner tr"></i>
+                    <i className="corner bl"></i>
+                    <i className="corner br"></i>
+                    Hand over to customer (complete the order)
+                  </button>
+                ) : (
+                  <div style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-3)' }}>
+                    <p style={{ margin: 0 }}>
+                      <strong>{fmtKsh(detail.totals.balanceDue)} is still owing.</strong> Take the payment below and the order can be handed over — or release it on credit.
+                    </p>
+                    {!confirmCredit ? (
+                      <button type="button" className="btn btn-secondary" style={{ marginTop: 'var(--space-2)' }} onClick={() => setConfirmCredit(true)} disabled={busy}>
+                        Hand over on credit…
+                      </button>
+                    ) : (
+                      <div style={{ marginTop: 'var(--space-2)' }}>
+                        <p className="note">
+                          The customer takes the order now and it is <strong>converted to an invoice</strong> for the {fmtKsh(detail.totals.balanceDue)} still owing — due{' '}
+                          {detail.status === 'Invoice' && detail.dueDate && detail.dueDate >= new Date().toISOString().slice(0, 10) ? fmtDate(detail.dueDate) : 'after the credit terms'}, and
+                          collected through Accounts Receivable.
+                        </p>
+                        <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                          <button type="button" className="btn btn-primary" onClick={() => handOver(true)} disabled={busy}>
+                            Hand over &amp; convert to invoice
+                          </button>
+                          <button type="button" className="btn btn-ghost" onClick={() => setConfirmCredit(false)} disabled={busy}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
             </>
           )}
 

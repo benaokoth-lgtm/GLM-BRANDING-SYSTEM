@@ -410,6 +410,11 @@ model Order {
   // see convertQuoteToInvoice's sibling logic in routes/orders.ts and
   // routes/dtf.ts's order-creation blocks.
   dueDate           String?
+  // Handover: the order is Completed only when the customer receives it. Normally that needs it paid in full; handing it over
+  // with a balance (onCredit) turns the order into an invoice that is then collected through Accounts Receivable.
+  handedOverAt        DateTime?
+  handedOverByName    String?
+  handedOverOnCredit  Boolean   @default(false)
   paymentTiming     String? // 'onAcceptance' | 'onCompletion' — walk-in only
   orderDiscountPct  Float    @default(0)
   orderDiscountAmt  Float    @default(0)

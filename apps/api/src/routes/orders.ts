@@ -438,18 +438,47 @@ ordersRouter.post('/:id/payments', async (req, res) => {
 
 // ── Hand an order over to the customer — the ONLY way an order becomes Completed ──
 // The production stage is no longer set by hand. It moves only through Production (assign → in production → finish) and
-// Quality Control (pass → ready, fail → back to production). Neither can declare an order completed: completing it is
-// the customer collecting / receiving it, and only an order that has passed QC ("Ready for Pickup/Delivery") can be handed over.
+// Quality Control (pass → ready, fail → back to production). Neither can declare an order completed: completing it is the
+// customer collecting / receiving it, and only an order that has passed QC ("Ready for Pickup/Delivery") can be handed over.
+//
+// Handover also needs the order PAID IN FULL — unless the person handing it over chooses to release it on credit
+// ({ onCredit: true }). Then the order is converted to an invoice automatically: status 'Invoice' with a due date (the client's
+// credit terms, or WALKIN_INVOICE_DUE_DAYS for a walk-in), so what is still owed is collected and aged in Accounts Receivable.
+const handoverSchema = z.object({ onCredit: z.boolean().optional() });
+
 ordersRouter.post('/:id/handover', async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+  const parsed = handoverSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid request' });
+  const onCredit = parsed.data.onCredit === true;
+
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
   if (order.stage === 'Completed') return res.status(400).json({ error: 'This order has already been handed over' });
   if (order.stage !== 'Ready for Pickup/Delivery') {
     return res.status(400).json({ error: `This order is at “${order.stage}”. It can only be handed over once it has been produced and has passed quality control.` });
   }
-  const updated = await prisma.order.update({ where: { id: order.id }, data: { stage: 'Completed' }, include: orderInclude });
-  res.json(serializeDetail(updated));
+
+  const balance = serializeDetail(order).totals.balanceDue;
+  const owes = balance > 0.009;
+  if (owes && !onCredit) {
+    return res.status(400).json({
+      error: `This order still owes Ksh ${Math.round(balance).toLocaleString('en-KE')}. Take the payment first — or hand it over on credit, which turns it into an invoice.`,
+      balanceDue: balance,
+      code: 'BALANCE_DUE',
+    });
+  }
+
+  const data: Prisma.OrderUpdateInput = { stage: 'Completed', handedOverAt: new Date(), handedOverByName: req.user!.name, handedOverOnCredit: owes };
+  if (owes) {
+    // Converted to an invoice now. An invoice that already has a due date still in the future keeps it; otherwise the due date
+    // is counted from today on the client's credit terms (or the walk-in term).
+    const days = order.corporateClient?.creditDays ?? WALKIN_INVOICE_DUE_DAYS;
+    data.status = 'Invoice';
+    if (!order.dueDate || order.dueDate < todayStr()) data.dueDate = addDays(todayStr(), days);
+  }
+  const updated = await prisma.order.update({ where: { id: order.id }, data, include: orderInclude });
+  res.json({ ...serializeDetail(updated), handedOverOnCredit: owes });
 });
 
 // ── Convert quotation to invoice ────────────────────────────────────────

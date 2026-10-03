@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { computeOrderTotals, EXPENSE_CATEGORIES } from '@glm/shared';
@@ -64,8 +63,19 @@ function inRange(d: string, from: string, to: string): boolean {
 // single source of truth: there's no Expense row to also delete/amend when a
 // payroll entry changes, and no way to double-book the same salary cost.
 const SALARIES_CATEGORY = 'Salaries & wages';
+// Expenses filed under this head are material purchases, i.e. cost of sales.
+const PURCHASE_CATEGORY = 'Printing Materials & Consumables';
 
-function computeAgg(orders: OrderForPnl[], expenses: ExpenseRow[], payroll: PayrollForPnl[], cogsPct: number, from: string, to: string) {
+// Cost of sales is what was actually bought to sell and produce with — the purchases — not a percentage of revenue:
+//  • the expense behind a stock purchase (whatever head it was filed under) and the "Printing Materials & Consumables" head;
+//  • stock purchases with no expense behind them (China import batches), unless rejected.
+// Those are taken out of the operating expenses below so nothing is counted twice.
+interface CostItem {
+  date: string;
+  amount: number;
+}
+
+function computeAgg(orders: OrderForPnl[], expenses: ExpenseRow[], payroll: PayrollForPnl[], cosItems: CostItem[], cosExpenseIds: Set<number>, from: string, to: string) {
   let revAccrualWalkin = 0;
   let revAccrualCorp = 0;
   let revCash = 0;
@@ -81,9 +91,9 @@ function computeAgg(orders: OrderForPnl[], expenses: ExpenseRow[], payroll: Payr
     }
   }
   const revAccrual = revAccrualWalkin + revAccrualCorp;
-  const cogs = revAccrual * (cogsPct / 100);
+  const cogs = cosItems.filter((c) => inRange(c.date, from, to)).reduce((a, c) => a + c.amount, 0);
   const grossProfit = revAccrual - cogs;
-  const expensesInRange = expenses.filter((e) => inRange(e.date, from, to));
+  const expensesInRange = expenses.filter((e) => inRange(e.date, from, to) && !cosExpenseIds.has(e.id));
   const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
   const salariesTotal = payrollInRange.reduce((a, p) => a + p.grossPay, 0);
   const totalExpenses = expensesInRange.reduce((a, e) => a + e.amount, 0) + salariesTotal;
@@ -116,17 +126,22 @@ pnlRouter.get('/', async (req, res) => {
     return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
   }
 
-  const [orders, allExpenses, allPayroll, settings] = await Promise.all([
+  const [orders, allExpenses, allPayroll, purchases] = await Promise.all([
     loadOrdersForPnl(),
     prisma.expense.findMany({ orderBy: { date: 'desc' } }),
     prisma.payrollEntry.findMany({ select: { date: true, grossPay: true } }),
-    prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} }),
+    prisma.purchase.findMany({ where: { status: { not: 'Rejected' } }, select: { date: true, totalCost: true, expenseId: true } }),
   ]);
-  const cogsPct = settings.cogsPct;
+  const purchaseExpenseIds = new Set(purchases.filter((p) => p.expenseId != null).map((p) => p.expenseId as number));
+  const cosExpenseIds = new Set(allExpenses.filter((e) => purchaseExpenseIds.has(e.id) || e.category === PURCHASE_CATEGORY).map((e) => e.id));
+  const cosItems: CostItem[] = [
+    ...allExpenses.filter((e) => cosExpenseIds.has(e.id)).map((e) => ({ date: e.date, amount: e.amount })),
+    ...purchases.filter((p) => p.expenseId == null).map((p) => ({ date: p.date, amount: p.totalCost })),
+  ];
 
-  const agg = computeAgg(orders, allExpenses, allPayroll, cogsPct, from, to);
+  const agg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, from, to);
   const prior = priorRange(from, to);
-  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, prior.from, prior.to);
+  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, prior.from, prior.to);
 
   const toDateObj = new Date(to + 'T00:00:00');
   const trend = [];
@@ -135,14 +150,13 @@ pnlRouter.get('/', async (req, res) => {
     const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
     const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     const mTo = monthEnd.toISOString().slice(0, 10);
-    const mAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, mFrom, mTo);
+    const mAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, mFrom, mTo);
     trend.push({ label: `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
   }
 
   res.json({
     fromDate: from,
     toDate: to,
-    cogsPct,
     revAccrualWalkin: agg.revAccrualWalkin,
     revAccrualCorp: agg.revAccrualCorp,
     revAccrual: agg.revAccrual,
@@ -164,16 +178,3 @@ pnlRouter.get('/', async (req, res) => {
 
 // Expense capture (add/remove) lives under Finance > Expenses now
 // (apps/api/src/routes/finance.ts) — this router only reads/aggregates.
-
-const cogsSchema = z.object({ cogsPct: z.number().min(0).max(100) });
-
-pnlRouter.put('/cogs-pct', async (req, res) => {
-  const parsed = cogsSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const settings = await prisma.setting.upsert({
-    where: { id: 1 },
-    create: { id: 1, cogsPct: parsed.data.cogsPct },
-    update: { cogsPct: parsed.data.cogsPct },
-  });
-  res.json({ cogsPct: settings.cogsPct });
-});

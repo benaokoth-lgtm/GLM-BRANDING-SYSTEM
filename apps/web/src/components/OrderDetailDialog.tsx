@@ -57,12 +57,16 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     }
   }
 
-  async function setStage(stage: OrderStage) {
+  // The only way an order is completed: handing it to the customer after it has passed quality control.
+  async function handOver() {
     setBusy(true);
+    setError(null);
     try {
-      await api.patch(`/orders/${orderId}/stage`, { stage });
+      await api.post(`/orders/${orderId}/handover`, {});
       load();
       onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not hand the order over');
     } finally {
       setBusy(false);
     }
@@ -221,19 +225,35 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
           >
             Production stage
           </div>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            {STAGES.map((st) => (
-              <button
-                key={st}
-                type="button"
-                className={'btn btn-sm ' + (detail.stage === st ? 'btn-primary' : 'btn-secondary')}
-                onClick={() => setStage(st)}
-                disabled={busy}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
+          {detail.status === 'Quote' ? (
+            <p className="note">A quotation is not in production yet — it starts once the client accepts it.</p>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                {STAGES.map((st) => (
+                  <span key={st} className={'tag ' + (detail.stage === st ? 'tag-accent' : 'tag-outline')} style={detail.stage === st ? { fontWeight: 700 } : { opacity: 0.55 }}>
+                    {st}
+                  </span>
+                ))}
+              </div>
+              <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+                {detail.stage === 'Order Received' && 'Waiting for Production to assign it to a staff member.'}
+                {detail.stage === 'In Production' && 'Being made. When it is finished it goes to Quality Control.'}
+                {detail.stage === 'Quality Check' && 'Made — waiting for a quality inspection.'}
+                {detail.stage === 'Ready for Pickup/Delivery' && 'Passed quality control — ready for the customer.'}
+                {detail.stage === 'Completed' && 'Handed over to the customer.'}
+              </p>
+              {detail.stage === 'Ready for Pickup/Delivery' && (
+                <button type="button" className="btn btn-primary blueprint" onClick={handOver} disabled={busy}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  Hand over to customer (complete the order)
+                </button>
+              )}
+            </>
+          )}
 
           <div
             style={{

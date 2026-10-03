@@ -151,7 +151,6 @@ export interface PnlTrendPoint {
 export interface PnlData {
   fromDate: string;
   toDate: string;
-  cogsPct: number;
   revAccrualWalkin: number;
   revAccrualCorp: number;
   revAccrual: number;
@@ -243,11 +242,17 @@ export interface PettyCashData {
   pettyCashSources: readonly string[];
 }
 
-export interface StockRequisitionRow {
+export interface StockRequisitionLineRow {
   id: number;
   materialId: number;
   materialName: string;
   qty: number;
+}
+
+export interface StockRequisitionRow {
+  id: number;
+  ref: string | null; // REQ-0001
+  lines: StockRequisitionLineRow[];
   note: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   requestedByName: string;
@@ -283,6 +288,8 @@ export interface StockTakeRow {
 
 export interface RequisitionAwaitingPurchase {
   id: number;
+  ref: string | null;
+  lineId: number;
   materialId: number;
   materialName: string;
   qty: number;
@@ -324,6 +331,7 @@ export interface AssetRow {
 export interface PurchaseRow {
   id: number;
   requisitionId: number | null;
+  requisitionRef: string | null;
   materialId: number;
   materialName: string;
   date: string;

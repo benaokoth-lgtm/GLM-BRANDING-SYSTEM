@@ -101,10 +101,13 @@ async function journalPostings(book: Book) {
 // Accounts Payable until ExpensePayment rows (partial payments allowed) settle it. A paid-on-the-spot expense — the
 // historical default, always from petty cash — is cash out the same day.
 async function expensePostings(book: Book, ctx: Ctx) {
+  // An expense that backs a stock purchase is cost of sales, whichever head it was filed under.
+  const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId as number));
   for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
     const memo = [e.category, e.supplier, e.note].filter(Boolean).join(' · ');
     const ref = e.invoiceNumber || `EXP-${e.id}`;
-    book.drId(e.date, expenseAcctId(ctx, e.category), e.amount, 'Expense', ref, memo);
+    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, e.amount, 'Expense', ref, memo);
+    else book.drId(e.date, expenseAcctId(ctx, e.category), e.amount, 'Expense', ref, memo);
     if (e.paid) {
       book.cr(e.date, methodAccountCode(e.method), e.amount, 'Expense', ref, memo);
       continue;
@@ -137,6 +140,18 @@ async function payrollPostings(book: Book) {
     book.cr(p.date, ACCT.nssfPayable, nssf, 'Wages', ref, memo);
     book.cr(p.date, ACCT.shifPayable, shif, 'Wages', ref, memo);
     book.cr(p.date, ACCT.housingLevyPayable, housing, 'Wages', ref, memo);
+  }
+}
+
+// A stock purchase that has no expense behind it — a China import batch, settled by bank transfer — has no other record, so it
+// posts here: cost of sales, paid from the bank. (Purchases WITH an expense are posted by the expense, above.) A rejected purchase
+// was never accepted into stock and costs nothing.
+async function unlinkedPurchasePostings(book: Book) {
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: 'Rejected' } }, include: { material: true } })) {
+    const ref = `PUR-${p.id}`;
+    const memo = `Stock purchase — ${p.material.name}${p.supplier ? ` — ${p.supplier}` : ''}`;
+    book.dr(p.date, ACCT.costOfSales, p.totalCost, 'Purchase', ref, memo);
+    book.cr(p.date, ACCT.bank, p.totalCost, 'Purchase', ref, memo);
   }
 }
 
@@ -233,6 +248,7 @@ async function mpesaPostings(book: Book) {
 // they had already paid is left as a credit owed back to them (and, if refunded on the day, paid out). A customer debit
 // note charges more. A supplier debit note reduces what we owe a supplier, and the expense it was booked to.
 async function notePostings(book: Book, ctx: Ctx) {
+  const purchaseLinked = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId as number));
   for (const n of await prisma.adjustmentNote.findMany({ include: { expense: true } })) {
     const memo = `${n.number} — ${n.party} — ${n.reason}`;
     if (n.type === 'Credit') {
@@ -251,7 +267,7 @@ async function notePostings(book: Book, ctx: Ctx) {
       book.cr(n.date, ACCT.vatPayable, n.vat, 'Debit note', n.number, memo);
     } else {
       book.dr(n.date, ACCT.payables, n.total, 'Supplier debit note', n.number, memo);
-      book.crId(n.date, n.expense ? expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), n.total, 'Supplier debit note', n.number, memo);
+      book.crId(n.date, n.expense ? (purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category)) : idOf(ctx, ACCT.uncategorised), n.total, 'Supplier debit note', n.number, memo);
     }
   }
 }
@@ -297,6 +313,7 @@ export async function loadLedger(): Promise<Ledger> {
   await orderPostings(book, ctx);
   await mpesaPostings(book);
   await expensePostings(book, ctx);
+  await unlinkedPurchasePostings(book);
   await payrollPostings(book);
   await pettyCashTopUpPostings(book);
   await notePostings(book, ctx);

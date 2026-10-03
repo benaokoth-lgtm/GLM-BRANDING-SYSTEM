@@ -41,6 +41,8 @@ model User {
   orders        Order[]
   payments      Payment[]
   payrollEntries PayrollEntry[]
+  productionTasks ProductionTask[] @relation("TaskAssignee")
+  qualityChecks   QualityCheck[]   @relation("CheckInspector")
 }
 
 // A role is now a configurable row, not a fixed union — Master Data → Roles
@@ -68,6 +70,9 @@ model Role {
   canAccessReports  Boolean @default(false)
   canAccessDtf      Boolean @default(false) // DTF tracker: record film sales & artwork jobs
   canManageDtf      Boolean @default(false) // DTF tracker: roll costs, Setup, profit/wastage dashboard
+  canAccessProduction Boolean @default(false) // Production: see and work the jobs assigned to you (start, finish, record output)
+  canManageProduction Boolean @default(false) // Production: see every order, assign staff, track productivity and output
+  canAccessQuality    Boolean @default(false) // Quality control: inspect finished orders (pass → ready, fail → back to production)
   canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
 }
 
@@ -113,6 +118,7 @@ model Material {
   account      Account? @relation("MaterialAccount", fields: [accountId], references: [id])
   lineItems    OrderLineItem[]
   requisitions StockRequisition[]
+  requisitionLines StockRequisitionLine[] @relation("RequisitionLineMaterial")
   stockTakes   StockTake[]
   purchases    Purchase[]
 }
@@ -171,8 +177,6 @@ model Setting {
   companyEmail   String  @default("")
   logoDataUrl    String? // base64 data: URL, stored inline (small file, no object storage in this app)
 
-  // Cost-of-sales assumption for the P&L account — % of accrual revenue, shared/editable by Supervisor+Admin.
-  cogsPct Float @default(40)
 }
 
 model Expense {
@@ -316,9 +320,14 @@ model DeletionRequest {
 // a one-to-one relation.
 model StockRequisition {
   id              Int        @id @default(autoincrement())
-  materialId      Int
-  material        Material   @relation(fields: [materialId], references: [id])
-  qty             Float
+  // REQ-0001, REQ-0002… — assigned when the requisition is raised.
+  ref             String?    @unique
+  // LEGACY single-line fields (before requisitions had many lines). New requisitions leave these empty and use `lines`;
+  // existing rows are converted to one line on start-up (see requisitions.ts) and keep these only as a record.
+  materialId      Int?
+  material        Material?  @relation(fields: [materialId], references: [id])
+  qty             Float?
+  lines           StockRequisitionLine[]
   note            String     @default("")
   status          String     @default("Pending") // Pending | Approved | Rejected
   requestedByName String
@@ -326,6 +335,16 @@ model StockRequisition {
   decidedByName   String?
   decidedAt       DateTime?
   purchases       Purchase[]
+}
+
+// One material and quantity on a requisition.
+model StockRequisitionLine {
+  id            Int              @id @default(autoincrement())
+  requisitionId Int
+  requisition   StockRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  materialId    Int
+  material      Material         @relation("RequisitionLineMaterial", fields: [materialId], references: [id])
+  qty           Float
 }
 
 // Stock > Purchases — the held-then-released middle stage between a
@@ -401,6 +420,8 @@ model Order {
   dtfFilmSale       DtfFilmSale?
   dtfArtworkJob     DtfArtworkJob?
   notes             AdjustmentNote[]
+  productionTasks   ProductionTask[]
+  qualityChecks     QualityCheck[]
 }
 
 // A line item is either a standalone material sale (Cap, Polo Shirt, canvas,
@@ -610,6 +631,52 @@ model AdjustmentNote {
   restocked       Boolean  @default(false)
   createdByName   String   @default("")
   createdAt       DateTime @default(now())
+}
+
+// ── Production & Quality Control ────────────────────────────────────────
+// Once an order is captured it is managed in Production. Order.stage moves only through these steps — nobody can set
+// 'Completed' from Production or Quality:
+//   Order Received (waiting) → assigned to a staff member → 'In Production'
+//   → the worker records output and finishes → 'Quality Check'
+//   → QC passes → 'Ready for Pickup/Delivery'   (QC fails → back to 'In Production' as rework)
+//   → handed over to the customer → 'Completed' (the only way to complete an order — POST /orders/:id/handover)
+model ProductionTask {
+  id             Int       @id @default(autoincrement())
+  orderId        Int
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  assigneeId     Int
+  assignee       User      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  assignedByName String    @default("")
+  assignedAt     DateTime  @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  status         String    @default("Assigned") // Assigned | In Progress | Finished | Superseded (reassigned before finishing)
+  isRework       Boolean   @default(false) // raised by a failed quality check
+  unitsPlanned   Float     @default(0) // pieces / metres on the order
+  unitsCompleted Float? // what the worker reports having produced
+  note           String    @default("")
+  checks         QualityCheck[]
+
+  @@index([assigneeId, status])
+  @@index([orderId])
+}
+
+model QualityCheck {
+  id             Int            @id @default(autoincrement())
+  orderId        Int
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  taskId         Int?
+  task           ProductionTask? @relation(fields: [taskId], references: [id])
+  inspectorId    Int
+  inspector      User           @relation("CheckInspector", fields: [inspectorId], references: [id])
+  checkedAt      DateTime       @default(now())
+  result         String // Passed | Failed
+  unitsInspected Float?
+  unitsRejected  Float          @default(0)
+  defects        String         @default("")
+  note           String         @default("")
+
+  @@index([orderId])
 }
 
 // ── DTF Sales & Roll Tracker ────────────────────────────────────────────

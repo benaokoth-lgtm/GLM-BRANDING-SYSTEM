@@ -29,6 +29,9 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canAccessDtf: 'DTF: record sales & jobs',
   canManageDtf: 'DTF: rolls, costs & profit',
   canAccessAccounting: 'Accounting',
+  canAccessProduction: 'Production: work assigned jobs',
+  canManageProduction: 'Production: assign staff & productivity',
+  canAccessQuality: 'Quality control: inspect orders',
 };
 
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;

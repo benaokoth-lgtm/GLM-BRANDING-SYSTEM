@@ -16,6 +16,10 @@ interface PlData {
   to: string;
   months: string[];
   income: { rows: PlRow[]; total: number; byMonth: number[] };
+  costOfSales: { rows: PlRow[]; total: number; byMonth: number[] };
+  grossProfit: number;
+  grossByMonth: number[];
+  grossMargin: number | null;
   expenses: { rows: PlRow[]; total: number; byMonth: number[] };
   netProfit: number;
   netByMonth: number[];
@@ -91,7 +95,13 @@ export function ProfitLossTab({ range }: { range: Range }) {
               </thead>
               <tbody>
                 {section('Income', data.income, data.months)}
-                {section('Expenses', data.expenses, data.months)}
+                {section('Cost of sales', data.costOfSales, data.months)}
+                <tr style={{ fontFamily: 'var(--font-heading)', fontSize: 17 }}>
+                  <td>Gross profit</td>
+                  {showMonths && data.grossByMonth.map((v, i) => <td key={i} style={numStyle}>{money(v)}</td>)}
+                  <td style={numStyle}>{money(data.grossProfit)}</td>
+                </tr>
+                {section('Operating expenses', data.expenses, data.months)}
                 <tr style={{ fontFamily: 'var(--font-heading)', fontSize: 18 }}>
                   <td>{data.netProfit >= 0 ? 'Net profit' : 'Net loss'}</td>
                   {showMonths && data.netByMonth.map((v, i) => <td key={i} style={numStyle}>{money(v)}</td>)}
@@ -100,7 +110,10 @@ export function ProfitLossTab({ range }: { range: Range }) {
               </tbody>
             </table>
           </div>
-          {data.margin != null && <p className="note">Net margin {data.margin}% of income.</p>}
+          <p className="note">
+            Cost of sales is what was actually bought — stock purchases and materials expenses — not a percentage of income.
+            {data.grossMargin != null && <> Gross margin {data.grossMargin}%{data.margin != null ? `, net margin ${data.margin}%` : ''}.</>}
+          </p>
           {(Math.abs(data.outside.before.income) + Math.abs(data.outside.before.expenses) + Math.abs(data.outside.after.income) + Math.abs(data.outside.after.expenses) > 0.005) && (
             <p className="note">
               Outside these dates the books also hold income {money(data.outside.before.income + data.outside.after.income)} and expenses {money(data.outside.before.expenses + data.outside.after.expenses)}.

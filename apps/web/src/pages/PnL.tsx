@@ -28,7 +28,6 @@ export default function PnL() {
   const [toDate, setToDate] = useState(initial.to);
   const [data, setData] = useState<PnlData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [cogsDraft, setCogsDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function load() {
@@ -47,21 +46,8 @@ export default function PnL() {
     setToDate(r.to);
   }
 
-  async function saveCogs() {
-    const pct = Number(cogsDraft);
-    if (Number.isNaN(pct) || pct < 0) return;
-    try {
-      await api.put('/pnl/cogs-pct', { cogsPct: pct });
-      setCogsDraft(null);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update cost of sales %');
-    }
-  }
-
   if (loading || !data) return <p className="note">Loading…</p>;
 
-  const cogsValue = cogsDraft ?? String(data.cogsPct);
   const maxTrendVal = Math.max(1, ...data.trend.map((t) => Math.max(t.revenue, Math.abs(t.netProfit))));
 
   return (
@@ -175,18 +161,7 @@ export default function PnL() {
             <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(data.revAccrual)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0', alignItems: 'center' }}>
-            <span>
-              Cost of sales (
-              <input
-                className="input no-print"
-                style={{ width: 56, display: 'inline-block', padding: '2px 6px', height: 26 }}
-                value={cogsValue}
-                onChange={(e) => setCogsDraft(e.target.value)}
-                onBlur={saveCogs}
-              />
-              <span className="no-print">%</span>
-              <span className="print-only">{data.cogsPct}%</span> of revenue)
-            </span>
+            <span>Cost of sales (purchases of materials &amp; stock)</span>
             <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>({fmtKsh(data.cogs)})</span>
           </div>
           <div
@@ -232,8 +207,8 @@ export default function PnL() {
           </div>
         </div>
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-          Cost of sales is estimated as a set % of revenue (adjust above). Categories below match GLM Branding's petty cash tracker
-          (Printing Materials &amp; Consumables here covers indirect supplies — direct job materials are already in cost of sales).
+          Cost of sales is what was actually bought: stock purchases and Printing Materials &amp; Consumables expenses (no percentage is assumed). The categories below are the
+          other operating expenses, matching GLM Branding's petty cash tracker.
         </p>
       </div>
 

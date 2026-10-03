@@ -50,6 +50,12 @@ export async function ensureChartOfAccounts(): Promise<void> {
     const head = await prisma.expenseHead.findUnique({ where: { name } });
     if (!head) await prisma.expenseHead.create({ data: { name, accountId: await accountIdForNewExpenseHead(name) } });
   }
+  // Cost of sales is the purchases: the materials head used to post to 5100; relink it (once) to Cost of Sales.
+  {
+    const cos = await prisma.account.findUnique({ where: { code: ACCT.costOfSales } });
+    const head = await prisma.expenseHead.findUnique({ where: { name: 'Printing Materials & Consumables' }, include: { account: true } });
+    if (cos && head && head.account?.code === '5100') await prisma.expenseHead.update({ where: { id: head.id }, data: { accountId: cos.id } });
+  }
   // Heads already used by old expense rows (a custom category someone typed) must exist too.
   const used = await prisma.expense.findMany({ distinct: ['category'], select: { category: true } });
   for (const { category } of used) {

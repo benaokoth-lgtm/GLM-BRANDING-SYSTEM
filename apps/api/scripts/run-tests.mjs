@@ -11,5 +11,5 @@ for (const f of [dbFile, `${dbFile}-journal`]) fs.rmSync(f, { force: true });
 
 const env = { ...process.env, DATABASE_URL: 'file:./test.db', NODE_ENV: 'test' };
 execSync('npx prisma db push --skip-generate --accept-data-loss', { cwd: root, stdio: 'inherit', env });
-execSync('npx tsx --test tests/*.test.ts', { cwd: root, stdio: 'inherit', env });
+execSync('npx tsx --test --test-concurrency=1 tests/*.test.ts', { cwd: root, stdio: 'inherit', env });
 fs.rmSync(dbFile, { force: true });

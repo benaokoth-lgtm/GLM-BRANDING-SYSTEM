@@ -436,19 +436,19 @@ ordersRouter.post('/:id/payments', async (req, res) => {
   res.json(serializeDetail(updated!));
 });
 
-// ── Set production stage ────────────────────────────────────────────────
-const STAGE_VALUES = ['Order Received', 'In Production', 'Quality Check', 'Ready for Pickup/Delivery', 'Completed'] as const;
-const stageSchema = z.object({ stage: z.enum(STAGE_VALUES) });
-
-ordersRouter.patch('/:id/stage', async (req, res) => {
+// ── Hand an order over to the customer — the ONLY way an order becomes Completed ──
+// The production stage is no longer set by hand. It moves only through Production (assign → in production → finish) and
+// Quality Control (pass → ready, fail → back to production). Neither can declare an order completed: completing it is
+// the customer collecting / receiving it, and only an order that has passed QC ("Ready for Pickup/Delivery") can be handed over.
+ordersRouter.post('/:id/handover', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
-
-  const parsed = stageSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-
-  const updated = await prisma.order.update({ where: { id: order.id }, data: { stage: parsed.data.stage }, include: orderInclude });
+  if (order.stage === 'Completed') return res.status(400).json({ error: 'This order has already been handed over' });
+  if (order.stage !== 'Ready for Pickup/Delivery') {
+    return res.status(400).json({ error: `This order is at “${order.stage}”. It can only be handed over once it has been produced and has passed quality control.` });
+  }
+  const updated = await prisma.order.update({ where: { id: order.id }, data: { stage: 'Completed' }, include: orderInclude });
   res.json(serializeDetail(updated));
 });
 

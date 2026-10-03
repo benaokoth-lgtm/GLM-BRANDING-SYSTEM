@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { ACCT, CASH_ACCOUNT_CODES, computeOrderTotals, round2 } from '@glm/shared';
+import { ACCT, CASH_ACCOUNT_CODES, COST_OF_SALES_SUBTYPE, computeOrderTotals, round2 } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 import { loadLedger, naturalBalance, sumByAccount } from './ledger';
 import type { Posting } from './ledger';
@@ -60,24 +60,32 @@ export async function buildProfitLoss(from: string, to: string) {
     const idx = monthIndex.get(p.date.slice(0, 7));
     if (idx !== undefined) row.byMonth[idx]! += signed;
   }
-  const section = (type: 'Income' | 'Expense') => {
+  // Cost of sales (the purchases) is its own section between income and operating expenses.
+  const section = (type: 'Income' | 'Expense' | 'CostOfSales') => {
+    const isCos = (id: number) => ledger.byId.get(id)!.subtype === COST_OF_SALES_SUBTYPE;
     const list = [...rows.values()]
-      .filter((r) => ledger.byId.get(r.id)!.type === type && (Math.abs(r.amount) > 0.004 || r.byMonth.some((v) => Math.abs(v) > 0.004)))
+      .filter((r) => (type === 'CostOfSales' ? isCos(r.id) : ledger.byId.get(r.id)!.type === type && !(type === 'Expense' && isCos(r.id))) && (Math.abs(r.amount) > 0.004 || r.byMonth.some((v) => Math.abs(v) > 0.004)))
       .sort((a, b) => a.code.localeCompare(b.code))
       .map((r) => ({ ...r, amount: round2(r.amount), byMonth: r.byMonth.map(round2) }));
     return { rows: list, total: round2(list.reduce((a, r) => a + r.amount, 0)), byMonth: months.map((_, i) => round2(list.reduce((a, r) => a + r.byMonth[i]!, 0))) };
   };
   const income = section('Income');
-  const expenses = section('Expense');
-  const netProfit = round2(income.total - expenses.total);
+  const costOfSales = section('CostOfSales');
+  const expenses = section('Expense'); // operating expenses (cost of sales shown above it)
+  const grossProfit = round2(income.total - costOfSales.total);
+  const netProfit = round2(grossProfit - expenses.total);
   return {
     from,
     to,
     months,
     income,
+    costOfSales,
+    grossProfit,
+    grossByMonth: months.map((_, i) => round2(income.byMonth[i]! - costOfSales.byMonth[i]!)),
+    grossMargin: income.total > 0 ? round2((grossProfit / income.total) * 100) : null,
     expenses,
     netProfit,
-    netByMonth: months.map((_, i) => round2(income.byMonth[i]! - expenses.byMonth[i]!)),
+    netByMonth: months.map((_, i) => round2(income.byMonth[i]! - costOfSales.byMonth[i]! - expenses.byMonth[i]!)),
     margin: income.total > 0 ? round2((netProfit / income.total) * 100) : null,
     outside: {
       before: { income: round2(outside.before.income), expenses: round2(outside.before.expenses) },

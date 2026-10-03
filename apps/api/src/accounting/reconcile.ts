@@ -104,6 +104,11 @@ export async function reconcile(from: string, to: string, asOf: string): Promise
   const expenses = bucket('Expense', 'Expense entries', 'expenses');
   for (const e of await prisma.expense.findMany()) put(expenses, e.invoiceNumber || `EXP-${e.id}`, e.amount);
 
+  // Stock purchases with no expense behind them (China imports) post to cost of sales on their own; the ones WITH an expense
+  // are posted by that expense (above).
+  const purchases = bucket('Purchase', 'Stock purchases with no expense (cost of sales)', 'expenses');
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: 'Rejected' } } })) put(purchases, `PUR-${p.id}`, p.totalCost);
+
   const wages = bucket('Wages', 'Wages & salaries (gross)', 'expenses');
   for (const p of await prisma.payrollEntry.findMany()) put(wages, `WAGE-${p.id}`, p.grossPay);
 
@@ -191,13 +196,6 @@ export async function reconcile(from: string, to: string, asOf: string): Promise
 
   // ── Things with a record of their own but no automatic posting ──
   const notInBooks: Reconciliation['notInBooks'] = [];
-  const purchases = (await prisma.purchase.findMany({ where: { expenseId: null, status: { not: 'Rejected' } } })).filter((p) => inWindow(p.date));
-  notInBooks.push({
-    label: 'Stock purchases with no linked expense',
-    amount: round2(purchases.reduce((a, p) => a + p.totalCost, 0)),
-    count: purchases.length,
-    note: 'A purchase only reaches the books through the expense it is linked to. Link or log the supplier invoice under Finance → Expenses.',
-  });
   const assets = (await prisma.asset.findMany({ where: { OR: [{ purchaseDate: null }, { value: null }] } })).filter((a) => a.condition !== 'Retired');
   notInBooks.push({
     label: 'Assets with no purchase date or value (not on the balance sheet)',

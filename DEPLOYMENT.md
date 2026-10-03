@@ -69,6 +69,8 @@ node seed-admin.js "Your Name"
 node books-check.js
 ```
 
+**Production, quality control and requisitions.** The same `npm run db:push` adds their tables. It will warn that it drops the old `cogsPct` column (the cost-of-sales percentage, now replaced by actual purchases) — that is expected; answer `y`. On first start the API (a) gives any older stock requisitions a reference number (REQ-0001…) and turns each one's material into a line, and (b) grants the new Production / Quality permissions once: Staff can work the jobs they're assigned; Supervisor, Finance Manager and General Manager can assign staff and see productivity; Supervisor, Finance Manager and General Manager can inspect quality. Adjust them any time under Master Data → Roles & Access. Orders already in the system appear in Production's "Waiting to be assigned" list according to their current stage.
+
 **M-Pesa matching.** Always available by uploading the M-Pesa statement (Accounting → M-Pesa Matching). To also catch Paybill/Till payments live, set `MPESA_C2B_SECRET` (a long random string) and, if the API's public address differs from `MPESA_CALLBACK_URL`, `MPESA_PUBLIC_URL`; restart; then, signed in as Admin, call `POST /api/mpesa/c2b/register` once.
 
 **Forgot a PIN, or a correct PIN "doesn't work"?** Five wrong attempts lock a user for 15 minutes. From the same folder and environment as above:

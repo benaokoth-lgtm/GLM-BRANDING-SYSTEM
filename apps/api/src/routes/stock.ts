@@ -4,6 +4,7 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { todayStr } from '@glm/shared';
 import { computePettyCashBalance } from './finance';
+import { ensureRequisitionsOnce, formatRequisitionRef, nextRequisitionNumber } from '../requisitions';
 
 export const stockRouter = Router();
 stockRouter.use(requireAuth, requirePermission('canAccessStock'));
@@ -17,45 +18,78 @@ const PURCHASE_EXPENSE_CATEGORY = 'Printing Materials & Consumables';
 // Requisitions are visible to everyone with Stock access; only Finance roles
 // can approve/reject, so an approved requisition (and the stock increase it
 // applies) is always finance-authorized even though Supervisor can request.
+const requisitionInclude = { lines: { include: { material: true }, orderBy: { id: 'asc' as const } } };
+
 stockRouter.get('/requisitions', async (req, res) => {
+  await ensureRequisitionsOnce(); // gives older requisitions a reference and turns their one material into a line
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
   const requisitions = await prisma.stockRequisition.findMany({
     where: status ? { status } : undefined,
-    include: { material: true },
+    include: requisitionInclude,
     orderBy: { requestedAt: 'desc' },
   });
   res.json(
     requisitions.map((r) => ({
       id: r.id,
-      materialId: r.materialId,
-      materialName: r.material.name,
-      qty: r.qty,
+      ref: r.ref,
       note: r.note,
       status: r.status,
       requestedByName: r.requestedByName,
       requestedAt: r.requestedAt,
       decidedByName: r.decidedByName,
       decidedAt: r.decidedAt,
+      lines: r.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty })),
     })),
   );
 });
 
+// A requisition is a reference number plus one or more lines (a material and a quantity each).
 const requisitionSchema = z.object({
-  materialId: z.number().int(),
-  qty: z.number().positive(),
   note: z.string().max(200).optional(),
+  lines: z.array(z.object({ materialId: z.number().int(), qty: z.number().positive() })).min(1, 'Add at least one item').max(40),
 });
 
 stockRouter.post('/requisitions', async (req, res) => {
   const parsed = requisitionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const material = await prisma.material.findUnique({ where: { id: parsed.data.materialId } });
-  if (!material) return res.status(400).json({ error: 'Material not found' });
 
-  const requisition = await prisma.stockRequisition.create({
-    data: { ...parsed.data, note: parsed.data.note ?? '', requestedByName: req.user!.name },
+  // The same material twice on one requisition is one line with the quantities added.
+  const merged = new Map<number, number>();
+  for (const l of parsed.data.lines) merged.set(l.materialId, (merged.get(l.materialId) ?? 0) + l.qty);
+  const materials = await prisma.material.findMany({ where: { id: { in: [...merged.keys()] } } });
+  if (materials.length !== merged.size) return res.status(400).json({ error: 'A chosen material was not found' });
+
+  await ensureRequisitionsOnce();
+  // The reference is the next free number; two people raising one at the same instant would collide on the unique
+  // index, so a collision just takes the next number.
+  const reqNote = parsed.data.note ?? '';
+  let requisition: Awaited<ReturnType<typeof createRequisition>> | null = null;
+  async function createRequisition(number: number) {
+    return prisma.stockRequisition.create({
+      data: {
+        ref: formatRequisitionRef(number),
+        note: reqNote,
+        requestedByName: req.user!.name,
+        lines: { create: [...merged.entries()].map(([materialId, qty]) => ({ materialId, qty })) },
+      },
+      include: requisitionInclude,
+    });
+  }
+  for (let attempt = 0; attempt < 5 && !requisition; attempt++) {
+    try {
+      requisition = await createRequisition((await nextRequisitionNumber()) + attempt);
+    } catch (e) {
+      if (attempt === 4) throw e;
+    }
+  }
+  if (!requisition) return res.status(500).json({ error: 'Could not allocate a reference number — try again' });
+  res.status(201).json({
+    id: requisition.id,
+    ref: requisition.ref,
+    note: requisition.note,
+    status: requisition.status,
+    lines: requisition.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty })),
   });
-  res.status(201).json({ ...requisition, materialName: material.name });
 });
 
 async function decideRequisition(id: number, approve: boolean, deciderName: string, res: Response) {
@@ -162,6 +196,7 @@ stockRouter.get('/purchases', async (req, res) => {
     purchases.map((p) => ({
       id: p.id,
       requisitionId: p.requisitionId,
+      requisitionRef: p.requisition?.ref ?? null,
       materialId: p.materialId,
       materialName: p.material.name,
       date: p.date,
@@ -187,13 +222,20 @@ stockRouter.get('/purchases', async (req, res) => {
 // requisition drops off once a purchase is captured for it, and reappears
 // only if that purchase is later rejected (free to try again).
 stockRouter.get('/requisitions/awaiting-purchase', async (_req, res) => {
+  await ensureRequisitionsOnce();
   const requisitions = await prisma.stockRequisition.findMany({
-    where: { status: 'Approved', purchases: { none: { status: { in: ['Held', 'Accepted'] } } } },
-    include: { material: true },
+    where: { status: 'Approved' },
+    include: { ...requisitionInclude, purchases: { where: { status: { in: ['Held', 'Accepted'] } } } },
     orderBy: { requestedAt: 'desc' },
   });
+  // One entry per LINE: a requisition with five materials is bought line by line, so the line drops off once a purchase for
+  // that material is in flight (and reappears only if that purchase is rejected).
   res.json(
-    requisitions.map((r) => ({ id: r.id, materialId: r.materialId, materialName: r.material.name, qty: r.qty, note: r.note, requestedByName: r.requestedByName })),
+    requisitions.flatMap((r) =>
+      r.lines
+        .filter((l) => !r.purchases.some((p) => p.materialId === l.materialId))
+        .map((l) => ({ id: r.id, ref: r.ref, lineId: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, note: r.note, requestedByName: r.requestedByName })),
+    ),
   );
 });
 
@@ -242,13 +284,16 @@ stockRouter.post('/purchases', async (req, res) => {
 
   let requisitionedQty: number | null = null;
   if (data.requisitionId) {
-    const requisition = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: true } });
+    await ensureRequisitionsOnce();
+    const requisition = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: true, lines: true } });
     if (!requisition) return res.status(404).json({ error: 'Requisition not found' });
     if (requisition.status !== 'Approved') return res.status(400).json({ error: 'Only an approved requisition can be purchased against' });
-    if (requisition.purchases.some((p) => p.status === 'Held' || p.status === 'Accepted')) {
-      return res.status(400).json({ error: 'This requisition already has a purchase in progress or accepted' });
+    const line = requisition.lines.find((l) => l.materialId === data.materialId);
+    if (!line) return res.status(400).json({ error: `${requisition.ref} has no line for that material` });
+    if (requisition.purchases.some((p) => p.materialId === data.materialId && (p.status === 'Held' || p.status === 'Accepted'))) {
+      return res.status(400).json({ error: 'That line of the requisition already has a purchase in progress or accepted' });
     }
-    requisitionedQty = requisition.qty;
+    requisitionedQty = line.qty;
   }
 
   const date = data.date ?? todayStr();

@@ -24,8 +24,18 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
   // canAccessDtf lets Staff reach Film Order/Artwork Order (next to General
   // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
   // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true },
-  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessDtf: true },
+  // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true },
+  Supervisor: {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessStock: true,
+    canAccessDtf: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true,
+  },
   'Finance Manager': {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -38,6 +48,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessDtf: true,
     canManageDtf: true,
     canAccessAccounting: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true,
   },
   'General Manager': {
     ...ALL_FALSE,
@@ -51,6 +64,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessDtf: true,
     canManageDtf: true,
     canAccessAccounting: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true,
   },
   Admin: ALL_TRUE,
 };

@@ -15,7 +15,10 @@ var PERMISSION_KEYS = [
   "canAccessReports",
   "canAccessDtf",
   "canManageDtf",
-  "canAccessAccounting"
+  "canAccessAccounting",
+  "canAccessProduction",
+  "canManageProduction",
+  "canAccessQuality"
 ];
 
 // packages/shared/src/calc.ts
@@ -48,8 +51,18 @@ var DEFAULT_ROLE_PERMISSIONS = {
   // canAccessDtf lets Staff reach Film Order/Artwork Order (next to General
   // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
   // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true },
-  Supervisor: { ...ALL_FALSE, canViewAllOrders: true, canManagePayments: true, canAccessStock: true, canAccessDtf: true },
+  // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true },
+  Supervisor: {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessStock: true,
+    canAccessDtf: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true
+  },
   "Finance Manager": {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -61,7 +74,10 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessReports: true,
     canAccessDtf: true,
     canManageDtf: true,
-    canAccessAccounting: true
+    canAccessAccounting: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -74,7 +90,10 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessReports: true,
     canAccessDtf: true,
     canManageDtf: true,
-    canAccessAccounting: true
+    canAccessAccounting: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true
   },
   Admin: ALL_TRUE
 };
@@ -173,6 +192,7 @@ var ACCT = {
   embroideryIncome: "4040",
   otherIncome: "4100",
   salesReturns: "4900",
+  costOfSales: "5000",
   salaries: "5010",
   depreciation: "6800",
   uncategorised: "6999"
@@ -210,9 +230,12 @@ var DEFAULT_CHART = [
   a("4040", "Embroidery Income", "Income"),
   a("4100", "Other Income", "Income"),
   a("4900", "Sales Returns & Credit Notes", "Income", "", "Credit notes issued to customers (a debit balance that reduces income)."),
+  // Cost of sales — what was bought to sell and produce with. It is simply the purchases: stock purchases and material
+  // expenses post here, there is no percentage assumption. Everything below it is an operating expense.
+  a("5000", "Cost of Sales \u2014 Purchases", "Expense", "CostOfSales", "Materials, blanks, film, ink and consumables purchased (stock purchases and the Printing Materials & Consumables expense head)."),
   // Expenses
   a("5010", "Salaries & Wages", "Expense", "Payroll"),
-  a("5100", "Printing Materials & Consumables", "Expense"),
+  a("5100", "Production Supplies & Overheads", "Expense"),
   a("5110", "Casual Labour", "Expense", "Payroll"),
   a("5120", "Transport", "Expense"),
   a("5130", "Utilities", "Expense"),
@@ -229,7 +252,8 @@ var DEFAULT_CHART = [
 ];
 var SYSTEM_ACCOUNT_CODES = [...Object.values(ACCT)];
 var EXPENSE_HEAD_ACCOUNT_CODES = {
-  "Printing Materials & Consumables": "5100",
+  "Printing Materials & Consumables": "5000",
+  // purchases of materials = cost of sales
   "Casual Labour": "5110",
   Transport: "5120",
   Utilities: "5130",
@@ -352,6 +376,11 @@ async function ensureChartOfAccounts() {
     const head = await prisma.expenseHead.findUnique({ where: { name } });
     if (!head) await prisma.expenseHead.create({ data: { name, accountId: await accountIdForNewExpenseHead(name) } });
   }
+  {
+    const cos = await prisma.account.findUnique({ where: { code: ACCT.costOfSales } });
+    const head = await prisma.expenseHead.findUnique({ where: { name: "Printing Materials & Consumables" }, include: { account: true } });
+    if (cos && head && head.account?.code === "5100") await prisma.expenseHead.update({ where: { id: head.id }, data: { accountId: cos.id } });
+  }
   const used = await prisma.expense.findMany({ distinct: ["category"], select: { category: true } });
   for (const { category } of used) {
     if (!await prisma.expenseHead.findUnique({ where: { name: category } })) {
@@ -451,10 +480,12 @@ async function journalPostings(book) {
   }
 }
 async function expensePostings(book, ctx) {
+  const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
   for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
     const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
     const ref = e.invoiceNumber || `EXP-${e.id}`;
-    book.drId(e.date, expenseAcctId(ctx, e.category), e.amount, "Expense", ref, memo);
+    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, e.amount, "Expense", ref, memo);
+    else book.drId(e.date, expenseAcctId(ctx, e.category), e.amount, "Expense", ref, memo);
     if (e.paid) {
       book.cr(e.date, methodAccountCode(e.method), e.amount, "Expense", ref, memo);
       continue;
@@ -483,6 +514,14 @@ async function payrollPostings(book) {
     book.cr(p.date, ACCT.nssfPayable, nssf, "Wages", ref, memo);
     book.cr(p.date, ACCT.shifPayable, shif, "Wages", ref, memo);
     book.cr(p.date, ACCT.housingLevyPayable, housing, "Wages", ref, memo);
+  }
+}
+async function unlinkedPurchasePostings(book) {
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } }, include: { material: true } })) {
+    const ref = `PUR-${p.id}`;
+    const memo = `Stock purchase \u2014 ${p.material.name}${p.supplier ? ` \u2014 ${p.supplier}` : ""}`;
+    book.dr(p.date, ACCT.costOfSales, p.totalCost, "Purchase", ref, memo);
+    book.cr(p.date, ACCT.bank, p.totalCost, "Purchase", ref, memo);
   }
 }
 var TOP_UP_FUNDING = {
@@ -555,6 +594,7 @@ async function mpesaPostings(book) {
   }
 }
 async function notePostings(book, ctx) {
+  const purchaseLinked = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
   for (const n of await prisma.adjustmentNote.findMany({ include: { expense: true } })) {
     const memo = `${n.number} \u2014 ${n.party} \u2014 ${n.reason}`;
     if (n.type === "Credit") {
@@ -573,7 +613,7 @@ async function notePostings(book, ctx) {
       book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
     } else {
       book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
-      book.crId(n.date, n.expense ? expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), n.total, "Supplier debit note", n.number, memo);
+      book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), n.total, "Supplier debit note", n.number, memo);
     }
   }
 }
@@ -607,6 +647,7 @@ async function loadLedger() {
   await orderPostings(book, ctx);
   await mpesaPostings(book);
   await expensePostings(book, ctx);
+  await unlinkedPurchasePostings(book);
   await payrollPostings(book);
   await pettyCashTopUpPostings(book);
   await notePostings(book, ctx);
@@ -842,6 +883,8 @@ async function reconcile(from, to, asOf) {
   }
   const expenses = bucket("Expense", "Expense entries", "expenses");
   for (const e of await prisma.expense.findMany()) put(expenses, e.invoiceNumber || `EXP-${e.id}`, e.amount);
+  const purchases = bucket("Purchase", "Stock purchases with no expense (cost of sales)", "expenses");
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } } })) put(purchases, `PUR-${p.id}`, p.totalCost);
   const wages = bucket("Wages", "Wages & salaries (gross)", "expenses");
   for (const p of await prisma.payrollEntry.findMany()) put(wages, `WAGE-${p.id}`, p.grossPay);
   const dep = bucket("Depreciation", "Asset depreciation", "expenses");
@@ -914,13 +957,6 @@ async function reconcile(from, to, asOf) {
     if (!linkedHeads.has(e.category)) catchAll.push({ kind: "expense", ref: e.invoiceNumber || `EXP-${e.id}`, head: e.category, amount: e.amount, account: "6999 Uncategorised Expenses" });
   }
   const notInBooks = [];
-  const purchases = (await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } } })).filter((p) => inWindow(p.date));
-  notInBooks.push({
-    label: "Stock purchases with no linked expense",
-    amount: round2(purchases.reduce((a2, p) => a2 + p.totalCost, 0)),
-    count: purchases.length,
-    note: "A purchase only reaches the books through the expense it is linked to. Link or log the supplier invoice under Finance \u2192 Expenses."
-  });
   const assets = (await prisma.asset.findMany({ where: { OR: [{ purchaseDate: null }, { value: null }] } })).filter((a2) => a2.condition !== "Retired");
   notInBooks.push({
     label: "Assets with no purchase date or value (not on the balance sheet)",

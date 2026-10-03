@@ -47,6 +47,7 @@ export const ACCT = {
   embroideryIncome: '4040',
   otherIncome: '4100',
   salesReturns: '4900',
+  costOfSales: '5000',
   salaries: '5010',
   depreciation: '6800',
   uncategorised: '6999',
@@ -94,9 +95,12 @@ export const DEFAULT_CHART: ChartAccountDef[] = [
   a('4040', 'Embroidery Income', 'Income'),
   a('4100', 'Other Income', 'Income'),
   a('4900', 'Sales Returns & Credit Notes', 'Income', '', 'Credit notes issued to customers (a debit balance that reduces income).'),
+  // Cost of sales — what was bought to sell and produce with. It is simply the purchases: stock purchases and material
+  // expenses post here, there is no percentage assumption. Everything below it is an operating expense.
+  a('5000', 'Cost of Sales — Purchases', 'Expense', 'CostOfSales', 'Materials, blanks, film, ink and consumables purchased (stock purchases and the Printing Materials & Consumables expense head).'),
   // Expenses
   a('5010', 'Salaries & Wages', 'Expense', 'Payroll'),
-  a('5100', 'Printing Materials & Consumables', 'Expense'),
+  a('5100', 'Production Supplies & Overheads', 'Expense'),
   a('5110', 'Casual Labour', 'Expense', 'Payroll'),
   a('5120', 'Transport', 'Expense'),
   a('5130', 'Utilities', 'Expense'),
@@ -117,7 +121,7 @@ export const SYSTEM_ACCOUNT_CODES: string[] = [...Object.values(ACCT)];
 
 /** Where the standard expense heads (the old EXPENSE_CATEGORIES) land. Heads added later get an account of their own. */
 export const EXPENSE_HEAD_ACCOUNT_CODES: Record<string, string> = {
-  'Printing Materials & Consumables': '5100',
+  'Printing Materials & Consumables': '5000', // purchases of materials = cost of sales
   'Casual Labour': '5110',
   Transport: '5120',
   Utilities: '5130',
@@ -158,6 +162,9 @@ export function methodAccountCode(method: string | null | undefined): string {
       return ACCT.cash;
   }
 }
+
+/** The account subtype that marks cost of sales on the P&L. */
+export const COST_OF_SALES_SUBTYPE = 'CostOfSales';
 
 /** The cash accounts — what the cash-flow statement tracks. */
 export const CASH_ACCOUNT_CODES: string[] = [ACCT.pettyCash, ACCT.cash, ACCT.mpesa, ACCT.card, ACCT.bank];

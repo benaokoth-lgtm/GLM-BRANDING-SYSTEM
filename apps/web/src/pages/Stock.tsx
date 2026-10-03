@@ -31,10 +31,12 @@ export default function Stock() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const canApprove = !!user && (user.role === 'Admin' || user.permissions.canApproveStock);
 
-  const [newReq, setNewReq] = useState({ materialId: null as number | null, qty: '', note: '' });
+  // A requisition is a reference number (given when it is submitted) and any number of lines.
+  const [newReq, setNewReq] = useState<{ lines: { materialId: number | null; qty: string }[]; note: string }>({ lines: [{ materialId: null, qty: '' }], note: '' });
   const [newTake, setNewTake] = useState({ materialId: null as number | null, countedQty: '', note: '', date: todayStr() });
 
   const [purchaseMode, setPurchaseMode] = useState<'new' | 'existing'>('new');
@@ -74,9 +76,6 @@ export default function Stock() {
   useEffect(load, []);
 
   useEffect(() => {
-    if (newReq.materialId === null && materials.length > 0) {
-      setNewReq((r) => ({ ...r, materialId: materials[0].id }));
-    }
     if (newTake.materialId === null && materials.length > 0) {
       setNewTake((t) => ({ ...t, materialId: materials[0].id }));
     }
@@ -91,19 +90,20 @@ export default function Stock() {
       setNewPurchase((p) => ({ ...p, requisitionKey: key }));
       return;
     }
-    const req = awaitingPurchase.find((r) => String(r.id) === key);
+    const req = awaitingPurchase.find((r) => String(r.lineId) === key);
     setNewPurchase((p) => ({ ...p, requisitionKey: key, materialId: req?.materialId ?? p.materialId, qty: req ? String(req.qty) : p.qty }));
   }
 
   async function addRequisition() {
-    const qty = Number(newReq.qty);
-    if (!newReq.materialId) return setError('Select a material');
-    if (!qty || qty <= 0) return setError('Quantity must be greater than 0');
+    const lines = newReq.lines.map((l) => ({ materialId: l.materialId ?? materials[0]?.id ?? null, qty: Number(l.qty) }));
+    if (lines.some((l) => !l.materialId)) return setError('Choose a material for every line');
+    if (lines.some((l) => !l.qty || l.qty <= 0)) return setError('Every line needs a quantity greater than 0');
     setError(null);
     setBusy(true);
     try {
-      await api.post('/stock/requisitions', { materialId: newReq.materialId, qty, note: newReq.note });
-      setNewReq((r) => ({ ...r, qty: '', note: '' }));
+      const created = await api.post<{ ref: string }>('/stock/requisitions', { lines, note: newReq.note });
+      setNewReq({ lines: [{ materialId: null, qty: '' }], note: '' });
+      setNotice(`Requisition ${created.ref} submitted`);
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit requisition');
@@ -132,7 +132,7 @@ export default function Stock() {
     if (!qty || qty <= 0) return setError('Quantity must be greater than 0');
     setError(null);
 
-    const requisitionId = newPurchase.requisitionKey === STANDALONE ? undefined : Number(newPurchase.requisitionKey);
+    const requisitionId = newPurchase.requisitionKey === STANDALONE ? undefined : awaitingPurchase.find((r) => String(r.lineId) === newPurchase.requisitionKey)?.id;
     let payload: Record<string, unknown>;
     if (purchaseMode === 'new') {
       const unitCost = Number(newPurchase.unitCost);
@@ -322,33 +322,57 @@ export default function Stock() {
             <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
               Request stock
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1.4fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
-              <div className="field">
-                <label>Material</label>
-                <select className="input" value={newReq.materialId ?? ''} onChange={(e) => setNewReq((r) => ({ ...r, materialId: Number(e.target.value) }))}>
-                  {materials.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.stockQty} on hand)
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label>Quantity</label>
-                <input className="input" value={newReq.qty} onChange={(e) => setNewReq((r) => ({ ...r, qty: e.target.value }))} />
-              </div>
-              <div className="field">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Material</th>
+                  <th style={{ width: 140 }}>Quantity</th>
+                  <th style={{ width: 40 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {newReq.lines.map((l, i) => (
+                  <tr key={i}>
+                    <td>
+                      <select className="input" value={l.materialId ?? materials[0]?.id ?? ''} onChange={(e) => setNewReq((r) => ({ ...r, lines: r.lines.map((x, n) => (n === i ? { ...x, materialId: Number(e.target.value) } : x)) }))}>
+                        {materials.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} ({m.stockQty} on hand)
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input className="input" inputMode="decimal" value={l.qty} onChange={(e) => setNewReq((r) => ({ ...r, lines: r.lines.map((x, n) => (n === i ? { ...x, qty: e.target.value } : x)) }))} placeholder="0" />
+                    </td>
+                    <td>
+                      {newReq.lines.length > 1 && (
+                        <button type="button" className="btn btn-ghost btn-sm" aria-label="Remove this line" onClick={() => setNewReq((r) => ({ ...r, lines: r.lines.filter((_, n) => n !== i) }))}>
+                          ✕
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 'var(--space-3)', alignItems: 'end', marginTop: 'var(--space-2)' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewReq((r) => ({ ...r, lines: [...r.lines, { materialId: null, qty: '' }] }))}>
+                + Add another item
+              </button>
+              <div className="field" style={{ margin: 0 }}>
                 <label>Note</label>
-                <input className="input" value={newReq.note} onChange={(e) => setNewReq((r) => ({ ...r, note: e.target.value }))} placeholder="Optional" />
+                <input className="input" value={newReq.note} onChange={(e) => setNewReq((r) => ({ ...r, note: e.target.value }))} placeholder="Optional — what it is for" />
               </div>
               <button type="button" className="btn btn-primary blueprint" onClick={addRequisition} disabled={busy}>
                 <i className="corner tl"></i>
                 <i className="corner tr"></i>
                 <i className="corner bl"></i>
                 <i className="corner br"></i>
-                Submit
+                Submit requisition
               </button>
             </div>
+            {notice && <p className="note" style={{ fontWeight: 700 }}>{notice}</p>}
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
               Approving a requisition (under Stock Approval) only authorizes buying it — stock doesn't actually
               increase yet. A purchase still has to be captured against it under Purchases, then reconciled and
@@ -377,9 +401,9 @@ export default function Stock() {
           <table className="table">
             <thead>
               <tr>
+                <th>Reference</th>
                 <th>Requested</th>
-                <th>Material</th>
-                <th style={{ textAlign: 'right' }}>Qty</th>
+                <th>Items</th>
                 <th>Note</th>
                 <th>Requested by</th>
                 {canApprove && <th className="no-print"></th>}
@@ -388,9 +412,17 @@ export default function Stock() {
             <tbody>
               {pending.map((r) => (
                 <tr key={r.id}>
+                  <td>
+                    <strong>{r.ref}</strong>
+                  </td>
                   <td className="text-muted">{fmtDate(r.requestedAt.slice(0, 10))}</td>
-                  <td>{r.materialName}</td>
-                  <td style={{ textAlign: 'right' }}>{r.qty}</td>
+                  <td>
+                    {r.lines.map((l) => (
+                      <div key={l.id}>
+                        {l.materialName} × {l.qty}
+                      </div>
+                    ))}
+                  </td>
                   <td className="text-muted">{r.note}</td>
                   <td className="text-muted">{r.requestedByName}</td>
                   {canApprove && (
@@ -434,8 +466,8 @@ export default function Stock() {
                 <select className="input" value={newPurchase.requisitionKey} onChange={(e) => pickRequisitionForPurchase(e.target.value)}>
                   <option value={STANDALONE}>No requisition (standalone purchase)</option>
                   {awaitingPurchase.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.materialName} — qty {r.qty} — requested by {r.requestedByName}
+                    <option key={r.lineId} value={r.lineId}>
+                      {r.ref} — {r.materialName} × {r.qty} — requested by {r.requestedByName}
                     </option>
                   ))}
                 </select>
@@ -555,7 +587,10 @@ export default function Stock() {
                     <Fragment key={p.id}>
                       <tr>
                         <td className="text-muted">{fmtDate(p.date)}</td>
-                        <td>{p.materialName}</td>
+                        <td>
+                          {p.materialName}
+                          {p.requisitionRef && <div className="note">{p.requisitionRef}</div>}
+                        </td>
                         <td className="text-muted">{p.supplier || '—'}</td>
                         <td style={{ textAlign: 'right' }}>{p.requisitionedQty ?? '—'}</td>
                         <td style={{ textAlign: 'right' }}>{p.qty}</td>
@@ -753,9 +788,9 @@ function RequisitionTable({ rows, loading }: { rows: StockRequisitionRow[]; load
       <table className="table">
         <thead>
           <tr>
+            <th>Reference</th>
             <th>Requested</th>
-            <th>Material</th>
-            <th style={{ textAlign: 'right' }}>Qty</th>
+            <th>Items</th>
             <th>Note</th>
             <th>Requested by</th>
             <th>Status</th>
@@ -765,9 +800,17 @@ function RequisitionTable({ rows, loading }: { rows: StockRequisitionRow[]; load
         <tbody>
           {rows.map((r) => (
             <tr key={r.id}>
+              <td>
+                <strong>{r.ref}</strong>
+              </td>
               <td className="text-muted">{fmtDate(r.requestedAt.slice(0, 10))}</td>
-              <td>{r.materialName}</td>
-              <td style={{ textAlign: 'right' }}>{r.qty}</td>
+              <td>
+                {r.lines.map((l) => (
+                  <div key={l.id}>
+                    {l.materialName} × {l.qty}
+                  </div>
+                ))}
+              </td>
               <td className="text-muted">{r.note}</td>
               <td className="text-muted">{r.requestedByName}</td>
               <td>

@@ -14,6 +14,8 @@ import PnL from './pages/PnL';
 import Finance from './pages/Finance';
 import Compliance from './pages/Compliance';
 import Accounting from './pages/Accounting';
+import Production from './pages/Production';
+import Quality from './pages/Quality';
 import Reports from './pages/Reports';
 import Stock from './pages/Stock';
 import Dtf from './pages/Dtf';
@@ -101,6 +103,22 @@ export default function App() {
           element={
             <RequirePermission keys={['canAccessFinance']}>
               <Finance />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/production"
+          element={
+            <RequirePermission keys={['canAccessProduction', 'canManageProduction']}>
+              <Production />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/quality"
+          element={
+            <RequirePermission keys={['canAccessQuality']}>
+              <Quality />
             </RequirePermission>
           }
         />

@@ -185,13 +185,33 @@ describe('accounting module', () => {
     assert.equal(await bal('2310'), 0);
   });
 
+  it('cost of sales is the purchases: purchase expenses and unlinked purchases post there, rejected ones do not', async () => {
+    const before = await bal('5000');
+    const mat = await prisma.material.create({ data: { name: 'Blank tee', price: 400 } });
+    // 1) a purchase backed by an expense filed under a different head is still cost of sales
+    const exp = await prisma.expense.create({ data: { date: '2031-03-12', category: 'Transport', amount: 1000, invoiceNumber: 'INV-COS-1', method: 'Cash' } });
+    await prisma.purchase.create({ data: { materialId: mat.id, date: '2031-03-12', qty: 10, unitCost: 100, totalCost: 1000, expenseId: exp.id, capturedByName: 't' } });
+    // 2) a purchase with no expense behind it (an import batch) posts straight to cost of sales, paid from the bank
+    await prisma.purchase.create({ data: { materialId: mat.id, date: '2031-03-13', qty: 50, unitCost: 60, totalCost: 3000, capturedByName: 't', status: 'Accepted' } });
+    // 3) …and a rejected one costs nothing
+    await prisma.purchase.create({ data: { materialId: mat.id, date: '2031-03-13', qty: 5, unitCost: 10, totalCost: 50, capturedByName: 't', status: 'Rejected' } });
+    // 4) the materials expense head is cost of sales too, with no purchase record at all
+    await prisma.expense.create({ data: { date: '2031-03-14', category: 'Printing Materials & Consumables', amount: 700, method: 'Cash' } });
+    assert.equal(await bal('5000'), before + 1000 + 3000 + 700);
+    const pl = await buildProfitLoss('2031-03-01', '2031-03-31');
+    assert.ok(pl.costOfSales.rows.some((r) => r.code === '5000'));
+    assert.ok(!pl.expenses.rows.some((r) => r.code === '5000'), 'cost of sales is not repeated among the operating expenses');
+    assert.equal(pl.grossProfit, Math.round((pl.income.total - pl.costOfSales.total) * 100) / 100);
+  });
+
   it('the books hang together: balanced, reconciled, statements agree', async () => {
     const tb = await buildTrialBalance('2099-12-31');
     assert.ok(tb.balanced, `debits ${tb.debit} credits ${tb.credit}`);
     const bs = await buildBalanceSheet('2099-12-31');
     assert.ok(bs.balanced);
     const pl = await buildProfitLoss('2031-01-01', '2031-12-31');
-    assert.equal(Math.round((pl.income.total - pl.expenses.total) * 100), Math.round(pl.netProfit * 100));
+    assert.equal(Math.round((pl.income.total - pl.costOfSales.total - pl.expenses.total) * 100), Math.round(pl.netProfit * 100));
+    assert.equal(Math.round((pl.income.total - pl.costOfSales.total) * 100), Math.round(pl.grossProfit * 100));
     assert.equal(pl.expenses.rows.find((r) => r.code === '6800')!.amount > 0, true);
     const cf = await buildCashFlowStatement('2031-01-01', '2031-12-31');
     assert.ok(cf.reconciles);

@@ -6,8 +6,8 @@ import type { DtfTabProps } from './shared';
 const FIELDS: [string, string][] = [
   ['rollLengthM', 'Roll length (m)'],
   ['rollWidthCm', 'Roll width (cm)'],
-  ['stdPricePerM', 'Standard price / m (film sales)'],
-  ['minPricePerM', 'Minimum price / m (film sales)'],
+  ['stdPricePerM', 'Standard price / m (film sales — staff may charge more)'],
+  ['minPricePerM', 'Minimum price / m (film sales — the base commission is paid above)'],
   ['wastageTolerancePct', 'Wastage tolerance (%)'],
   ['minPricePerPiece', 'Minimum price / piece (artwork jobs)'],
   ['fixedChargePerMetre', 'Fixed charge / metre (artwork jobs)'],

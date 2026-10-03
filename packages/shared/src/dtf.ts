@@ -5,8 +5,8 @@
 export interface DtfSettings {
   rollLengthM: number;
   rollWidthCm: number;
-  stdPricePerM: number; // film sale ceiling — used by saleCalc only
-  minPricePerM: number; // used by saleCalc only
+  stdPricePerM: number; // the standard film price — what a sale defaults to; staff may charge MORE (there is no ceiling)
+  minPricePerM: number; // the floor, and the base that film commission is measured from
   wastageTolerancePct: number;
   // Artwork-job billing (see jobCalc): every piece pays this per-piece floor
   // plus a share of a fixed per-running-metre charge, split across however
@@ -60,6 +60,8 @@ export interface DtfArtworkJob {
   pieces: number;
   fixedChargePerMetreAtJob: number; // Setup snapshot, so a later Setup change never re-prices history
   minPricePerPieceAtJob: number; // Setup snapshot, same reasoning
+  /** What was actually charged per piece, when staff charged more than the system-recommended price. Null/absent = the recommended price. */
+  chargedPerPiece?: number | null;
 }
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -69,7 +71,7 @@ const div = (a: number, b: number) => (b > 0 ? a / b : 0);
 
 export interface SaleCalc {
   price: number;
-  valid: boolean; // min <= price <= std
+  valid: boolean; // price >= min (no ceiling — a higher price is rewarded, not blocked)
   discountPerM: number;
   total: number;
   balance: number;
@@ -85,7 +87,7 @@ export function saleCalc(
   const total = r2(metres * price);
   return {
     price,
-    valid: price >= s.minPricePerM && price <= s.stdPricePerM,
+    valid: price >= s.minPricePerM,
     discountPerM: r2(s.stdPricePerM - price),
     total,
     balance: r2(total - amountPaid),
@@ -131,8 +133,18 @@ export function jobCalc(
   };
 }
 
-export function jobTotals(j: DtfArtworkJob): JobCalc {
+/** The recommended price per piece the system works out for a job (before any extra the staff member charged). */
+export function systemJobCalc(j: DtfArtworkJob): JobCalc {
   return jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob);
+}
+
+/** What the job really brings in: the recommended price, or the higher price the staff member charged. */
+export function jobTotals(j: DtfArtworkJob): JobCalc {
+  const sys = systemJobCalc(j);
+  if (j.chargedPerPiece != null && j.chargedPerPiece > sys.finalPerPiece) {
+    return { finalPerPiece: r2(j.chargedPerPiece), jobTotal: r2(j.chargedPerPiece * j.pieces) };
+  }
+  return sys;
 }
 
 // ---------- Roll roll-up (the workbook's Rolls sheet / roll_summary view) ----------

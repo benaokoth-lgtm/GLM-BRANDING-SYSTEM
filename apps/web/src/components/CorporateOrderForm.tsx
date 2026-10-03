@@ -6,6 +6,7 @@ import LineItemsEditor, { makeDefaultLine } from '../components/LineItemsEditor'
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { costPayload } from '../utils/lineCosts';
+import SourcingField from './SourcingField';
 
 interface Props {
   kind: 'quote' | 'invoice';
@@ -24,6 +25,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
 
   const [corporateClientId, setCorporateClientId] = useState<number | null>(null);
   const [staffId, setStaffId] = useState<number | null>(user?.id ?? null);
+  const [sourced, setSourced] = useState(false);
   const [lineItems, setLineItems] = useState<DraftLineItem[] | null>(null);
   const [orderDiscountPct, setOrderDiscountPct] = useState('0');
   const [orderDiscountAmt, setOrderDiscountAmt] = useState('0');
@@ -59,11 +61,13 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
       const created = await api.post<{ orderNo: string }>(`/orders/${kind}`, {
         corporateClientId: effectiveClientId,
         staffId,
+        sourcedBy: sourced ? staffId : null,
         lineItems: normalized,
         orderDiscountPct: Number(orderDiscountPct) || 0,
         orderDiscountAmt: Number(orderDiscountAmt) || 0,
       });
       setLineItems(null);
+      setSourced(false);
       setOrderDiscountPct('0');
       setOrderDiscountAmt('0');
       onCreated(created.orderNo);
@@ -112,6 +116,10 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
             ))}
           </select>
         </div>
+      </div>
+
+      <div style={{ marginTop: 'var(--space-3)' }}>
+        <SourcingField corporateClientId={effectiveClientId} staffName={staff.find((s) => s.id === staffId)?.name ?? user?.name ?? ''} checked={sourced} onChange={setSourced} />
       </div>
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />

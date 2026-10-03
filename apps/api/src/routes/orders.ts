@@ -5,6 +5,7 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
 import { ensureChartOnce } from '../accounting/chart';
+import { claimProblem, resolveSourcing } from '../commission';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
@@ -78,6 +79,8 @@ export function serializeDetail(order: FullOrder, opts: { costs?: boolean } = {}
   return {
     ...summary,
     paymentTiming: order.paymentTiming,
+    salesSource: order.salesSource,
+    sourcedByStaffId: order.sourcedByStaffId,
     orderDiscountPct: order.orderDiscountPct,
     orderDiscountAmt: order.orderDiscountAmt,
     lineItems: order.lineItems.map((li) => ({
@@ -232,7 +235,8 @@ ordersRouter.get('/:id', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
-  res.json(serializeDetail(order, { costs: await canSeeCosts(req.user!.role) }));
+  const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
+  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user!.role) }), sourcedByName: sourcer?.name ?? null });
 });
 
 // A line is either a material sale ('material': materialId set, no service)
@@ -266,6 +270,8 @@ const walkinSchema = z.object({
   paymentTiming: z.enum(['onAcceptance', 'onCompletion']),
   paymentAmount: z.number().min(0).optional(),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).optional(),
+  // Set to your own id when this is a client you sourced through your own network: they are then credited to you for 12 months.
+  sourcedBy: z.number().int().nullable().optional(),
   // Preferred: any number of payment lines, e.g. part cash and part M-Pesa.
   payments: z.array(paymentLineSchema).max(6).optional(),
   lineItems: z.array(lineItemSchema).min(1),
@@ -297,8 +303,11 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
     return res.status(400).json({ error: 'The payments add up to more than the order total' });
   }
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
+  const claim = await claimProblem(req.user!, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
 
   const order = await prisma.$transaction(async (tx) => {
+    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = 'W-' + settings.nextWalkinNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
@@ -310,6 +319,7 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
         customerName: form.customerName,
         phone: form.phone,
         staffId: form.staffId,
+        ...sourcing,
         createdDate: todayStr(),
         status,
         dueDate,
@@ -334,6 +344,8 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
 const quoteSchema = z.object({
   corporateClientId: z.number().int(),
   staffId: z.number().int(),
+  // The staff member who sourced this corporate client, if it is new to them (credited for 12 months).
+  sourcedBy: z.number().int().nullable().optional(),
   lineItems: z.array(lineItemSchema).min(1),
   orderDiscountPct: z.number().min(0).max(100).default(0),
   orderDiscountAmt: z.number().min(0).default(0),
@@ -347,8 +359,11 @@ ordersRouter.post('/quote', requirePermission('canAccessFinance'), async (req, r
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
   const costs = await canSeeCosts(req.user!.role);
+  const claim = await claimProblem(req.user!, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
 
   const order = await prisma.$transaction(async (tx) => {
+    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = 'C-' + settings.nextCorpNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
@@ -359,6 +374,7 @@ ordersRouter.post('/quote', requirePermission('canAccessFinance'), async (req, r
         kind: 'corporate',
         corporateClientId: form.corporateClientId,
         staffId: form.staffId,
+        ...sourcing,
         createdDate: todayStr(),
         status: 'Quote',
         stage: 'Order Received',
@@ -387,8 +403,11 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
   const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
   if (!client) return res.status(400).json({ error: 'Corporate client not found' });
   const dueDate = addDays(todayStr(), client.creditDays);
+  const claim = await claimProblem(req.user!, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
 
   const order = await prisma.$transaction(async (tx) => {
+    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = 'C-' + settings.nextCorpNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
@@ -399,6 +418,7 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
         kind: 'corporate',
         corporateClientId: form.corporateClientId,
         staffId: form.staffId,
+        ...sourcing,
         createdDate: todayStr(),
         status: 'Invoice',
         stage: 'Order Received',

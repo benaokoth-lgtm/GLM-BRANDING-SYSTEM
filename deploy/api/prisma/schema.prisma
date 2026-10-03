@@ -38,6 +38,8 @@ model User {
   payrollEntries PayrollEntry[]
   productionTasks ProductionTask[] @relation("TaskAssignee")
   qualityChecks   QualityCheck[]   @relation("CheckInspector")
+  clientOwnerships ClientOwner[]
+  commissionPayouts CommissionPayout[]
 }
 
 // A role is now a configurable row, not a fixed union — Master Data → Roles
@@ -70,6 +72,7 @@ model Role {
   canAccessQuality    Boolean @default(false) // Quality control: inspect finished orders (pass → ready, fail → back to production)
   canSeeCosts         Boolean @default(false) // sees supplier costs and mark-ups on outsourced jobs (everyone else sees selling prices only)
   canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
+  canManageCommission Boolean @default(false) // Sales Commission: settings, every staff member's statement, client ownership, approving and paying commission
 }
 
 model Service {
@@ -426,6 +429,13 @@ model Order {
   paymentTiming     String? // 'onAcceptance' | 'onCompletion' — walk-in only
   orderDiscountPct  Float    @default(0)
   orderDiscountAmt  Float    @default(0)
+
+  // Sales commission. A client sourced by a staff member is credited to them for 12 months (see ClientOwner), so every order from
+  // that client carries the owner's id here — whoever captured it. 'sourced' = credited to sourcedByStaffId, 'house' = nobody.
+  // Nobody shares a client or an order. (A plain id rather than a relation: it is a credit, not a link that must always resolve.)
+  salesSource       String   @default("house")
+  sourcedByStaffId  Int?
+  clientKey         String? // how this client is recognised across orders — see clientKeyFor in shared/commission.ts
 
   lineItems         OrderLineItem[]
   payments          Payment[]
@@ -809,6 +819,9 @@ model DtfArtworkJob {
   pieces           Int
   fixedChargePerMetreAtJob Float @default(2160) // Setup snapshot, so a later Setup change never re-prices history
   minPricePerPieceAtJob    Float @default(30) // Setup snapshot, same reasoning
+  // What was really charged per piece when staff charged MORE than the system-recommended price (null = the recommended price). The
+  // amount above the recommendation is what earns the staff member commission.
+  chargedPerPiece  Float?
   capturedByName   String   @default("")
   createdAt        DateTime @default(now())
   // The Order this job's "Record job" popup generated — see POST /dtf/jobs.
@@ -816,4 +829,63 @@ model DtfArtworkJob {
   // as DtfFilmSale.orderId above.
   orderId          Int?     @unique
   order            Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+}
+
+// ── Staff sales commission ───────────────────────────────────────────────
+// A client a staff member brings in through their own network is credited to them for ownershipMonths (12). While the window is open
+// every order from that client is credited to the owner, whoever captures it; nobody else can claim the client. After the window the
+// client is free again and can be sourced anew. Clients are recognised by clientKey (see clientKeyFor in shared/commission.ts).
+model ClientOwner {
+  id          Int      @id @default(autoincrement())
+  clientKey   String
+  clientName  String
+  staffId     Int
+  staff       User     @relation(fields: [staffId], references: [id])
+  startDate   String // 'YYYY-MM-DD' — when the staff member sourced the client
+  endDate     String // 'YYYY-MM-DD' — the last day the client is credited to them
+  status      String   @default("Active") // Active | Released (let go early by a manager)
+  releasedOn  String?
+  releasedBy  String?
+  note        String   @default("")
+  createdByName String @default("")
+  createdAt   DateTime @default(now())
+
+  @@index([clientKey])
+}
+
+// One row (id 1): the rates. Commission is on money RECEIVED; every figure is editable because there is no sales history to calibrate to yet.
+model CommissionSettings {
+  id               Int      @id @default(1)
+  // General sales — marginal bands on a staff member's monthly NET sales received: [{from, rate}] (see Band in shared/commission.ts)
+  generalBandsJson String   @default("[{\"from\":0,\"rate\":0},{\"from\":150000,\"rate\":2},{\"from\":300000,\"rate\":3.5},{\"from\":500000,\"rate\":5}]")
+  // Film — KES per metre charged ABOVE the base (the DTF minimum price) → % of that slice. No ceiling.
+  filmBandsJson    String   @default("[{\"from\":0,\"rate\":10},{\"from\":25,\"rate\":25},{\"from\":50,\"rate\":40},{\"from\":75,\"rate\":50}]")
+  // Artwork — % of the amount charged above the system-recommended price
+  artworkRatePct   Float    @default(50)
+  ownershipMonths  Int      @default(12)
+  updatedByName    String   @default("")
+  updatedAt        DateTime @updatedAt
+}
+
+// A month's commission for one staff member, approved by a manager and later paid. Approving freezes the figures; paying records the
+// expense (category 'Sales Commission') so it reaches the books.
+model CommissionPayout {
+  id            Int      @id @default(autoincrement())
+  period        String // 'YYYY-MM' — the month the money was received
+  staffId       Int
+  staff         User     @relation(fields: [staffId], references: [id])
+  generalAmount Float    @default(0)
+  filmAmount    Float    @default(0)
+  artworkAmount Float    @default(0)
+  amount        Float // what is payable
+  detailJson    String   @default("{}") // the working at the time of approval
+  status        String   @default("Approved") // Approved | Paid
+  approvedByName String  @default("")
+  approvedAt    DateTime @default(now())
+  paidOn        String?
+  paidMethod    String?
+  paidByName    String?
+  expenseId     Int?
+
+  @@unique([period, staffId])
 }

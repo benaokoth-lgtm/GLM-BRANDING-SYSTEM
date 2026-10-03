@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fmtKsh, fmtNum, saleCalc, todayStr } from '@glm/shared';
+import { VAT_RATE, filmPremiumCommission, filmPremiumPerM, fmtKsh, fmtNum, saleCalc, todayStr } from '@glm/shared';
+import type { Band } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import type { DtfData } from '../components/dtf/shared';
@@ -18,8 +19,14 @@ export default function NewFilmOrder() {
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState({ roll: '', client: '', metres: '', price: '' });
   const [showOrderDialog, setShowOrderDialog] = useState(false);
+  const [filmBands, setFilmBands] = useState<Band[] | null>(null);
 
   useEffect(() => {
+    // The scheme staff are paid under, to show what a higher price is worth to them (nothing is blocked if it can't be read).
+    api
+      .get<{ filmBands: Band[] }>('/commission/settings')
+      .then((c) => setFilmBands(c.filmBands))
+      .catch(() => setFilmBands(null));
     api
       .get<DtfData>('/dtf/data')
       .then(setData)
@@ -85,7 +92,13 @@ export default function NewFilmOrder() {
         </div>
         {!c.valid && (
           <p className="note" style={{ borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
-            Blocked — price must be {settings.minPricePerM}–{settings.stdPricePerM} Ksh/m.
+            Blocked — the price cannot be below {settings.minPricePerM} Ksh/m.
+          </p>
+        )}
+        {c.valid && metres > 0 && filmBands && c.price > settings.minPricePerM && (
+          <p className="note" style={{ borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
+            {fmtNum(filmPremiumPerM(c.price, settings.minPricePerM))} Ksh/m above the {settings.minPricePerM} base — worth about{' '}
+            <b>{fmtKsh(filmPremiumCommission(metres, c.price, settings.minPricePerM, filmBands, VAT_RATE))}</b> commission to you, earned as the customer pays.
           </p>
         )}
         {overRoll && (

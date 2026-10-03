@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fmtKsh, fmtNum, jobCalc, todayStr } from '@glm/shared';
+import { VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import type { DtfData } from '../components/dtf/shared';
@@ -20,10 +20,15 @@ export default function NewArtworkOrder() {
   const navigate = useNavigate();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [f, setF] = useState({ roll: '', client: '', run: '', pieces: '' });
+  const [f, setF] = useState({ roll: '', client: '', run: '', pieces: '', price: '' });
   const [showOrderDialog, setShowOrderDialog] = useState(false);
+  const [artworkRate, setArtworkRate] = useState<number | null>(null);
 
   useEffect(() => {
+    api
+      .get<{ artworkRatePct: number }>('/commission/settings')
+      .then((c) => setArtworkRate(c.artworkRatePct))
+      .catch(() => setArtworkRate(null));
     api
       .get<DtfData>('/dtf/data')
       .then(setData)
@@ -44,11 +49,18 @@ export default function NewArtworkOrder() {
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
   const rollLen = roll?.rollLengthM || settings.rollLengthM;
   const overRoll = !!roll && used + run > rollLen;
-  const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0;
+  // The system's price is the recommended one. Staff may charge MORE (blank = the recommended price) and are rewarded on the extra.
+  const system = c.finalPerPiece;
+  const priceIn = f.price.trim() === '' ? null : num(f.price);
+  const tooLow = priceIn != null && pcs > 0 && priceIn < system - 0.005;
+  const chosen = priceIn != null && priceIn > system ? priceIn : system;
+  const jobTotal = Math.round(chosen * pcs * 100) / 100;
+  const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && !tooLow;
 
   const lines: [string, string, string][] = [
     ['Fixed charge', `${fmtKsh(settings.fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m ÷ ${fmtNum(pcs)} pcs`, pcs > 0 ? fmtKsh((c.finalPerPiece - settings.minPricePerPiece)) : '—'],
-    ['Price / piece', `${fmtKsh(settings.minPricePerPiece)} floor + fixed charge`, fmtKsh(c.finalPerPiece)],
+    ['Recommended price / piece', `${fmtKsh(settings.minPricePerPiece)} floor + fixed charge`, fmtKsh(system)],
+    ...(chosen > system ? ([['Price charged / piece', `${fmtKsh(chosen - system)} above recommended`, fmtKsh(chosen)]] as [string, string, string][]) : []),
   ];
 
   return (
@@ -98,6 +110,20 @@ export default function NewArtworkOrder() {
         </div>
       </div>
 
+      <div className="field" style={{ marginTop: 'var(--space-3)' }}>
+        <label>Price / piece (optional)</label>
+        <input className="input" style={{ maxWidth: 200 }} inputMode="decimal" placeholder={pcs > 0 ? String(system) : 'recommended'} value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} />
+        <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
+          Leave blank to charge the recommended price. You may charge more — you earn commission on the amount above the recommended price, never on the recommended price itself.
+        </p>
+        {tooLow && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Blocked — the price cannot be below the recommended {fmtKsh(system)}.</p>}
+        {!tooLow && chosen > system && artworkRate != null && (
+          <p className="note" style={{ margin: 'var(--space-1) 0 0', borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
+            {fmtKsh(chosen - system)} above recommended on each piece — worth about <b>{fmtKsh(artworkPremiumCommission(pcs, chosen, system, artworkRate, VAT_RATE))}</b> commission to you, earned as the customer pays.
+          </p>
+        )}
+      </div>
+
       {open.length === 0 && <p className="note" style={{ marginTop: 'var(--space-3)' }}>No open film roll — ask a manager to install one under DTF → Rolls before capturing a job.</p>}
 
       <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--color-divider)' }}>
@@ -126,7 +152,7 @@ export default function NewArtworkOrder() {
           paddingTop: 'var(--space-4)',
         }}
       >
-        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>Job total: {fmtKsh(c.jobTotal)}</div>
+        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>Job total: {fmtKsh(jobTotal)}</div>
         <button type="button" className="btn btn-primary blueprint" onClick={() => setShowOrderDialog(true)} disabled={!canSave}>
           <i className="corner tl"></i>
           <i className="corner tr"></i>
@@ -146,9 +172,10 @@ export default function NewArtworkOrder() {
             client: f.client,
             runningMetres: run,
             pieces: pcs,
+            pricePerPiece: chosen > system ? chosen : null,
           }}
           qty={pcs}
-          unitPrice={c.finalPerPiece}
+          unitPrice={chosen}
           client={f.client}
           onClose={() => setShowOrderDialog(false)}
           onDone={() => navigate('/orders/mine')}

@@ -132,7 +132,7 @@ describe('outsourced services', () => {
     assert.equal((await bal('5000')) - cosBefore, 8000); // the whole bill is cost of sales as soon as the supplier takes the job
     const ap = await buildPayablesAging('9999-12-31');
     assert.equal(ap.rows.find((x) => x.supplier === 'Print House')?.outstanding, 5000); // the balance is owed to the supplier
-    assert.equal((await bal('1050')) - bankBefore, -3000); // the deposit left the bank
+    assert.equal(Math.round(((await bal('1050')) - bankBefore) * 100) / 100, -3000); // the deposit left the bank (rounded: other test files share this database)
 
     // a second bill paid in full is a plain paid expense
     const full = await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 1000, paidNow: 1000, method: 'M-Pesa' });

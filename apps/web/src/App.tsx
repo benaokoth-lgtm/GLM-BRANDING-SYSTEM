@@ -16,6 +16,7 @@ import Compliance from './pages/Compliance';
 import Accounting from './pages/Accounting';
 import Production from './pages/Production';
 import Quality from './pages/Quality';
+import Commission from './pages/Commission';
 import Reports from './pages/Reports';
 import Stock from './pages/Stock';
 import Dtf from './pages/Dtf';
@@ -111,6 +112,14 @@ export default function App() {
           element={
             <RequirePermission keys={['canAccessProduction', 'canManageProduction']}>
               <Production />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/commission"
+          element={
+            <RequirePermission keys={['canCaptureOrders', 'canManageCommission']}>
+              <Commission />
             </RequirePermission>
           }
         />

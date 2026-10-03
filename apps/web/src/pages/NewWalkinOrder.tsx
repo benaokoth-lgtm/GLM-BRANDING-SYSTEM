@@ -8,6 +8,7 @@ import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printWalkinReceipt } from '../utils/printTicket';
 import { costPayload } from '../utils/lineCosts';
+import SourcingField from '../components/SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../components/SplitPayments';
 import type { PaymentRow } from '../components/SplitPayments';
 
@@ -23,6 +24,8 @@ export default function NewWalkinOrder() {
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
   const [staffId, setStaffId] = useState<number | null>(user?.id ?? null);
+  // Ticked when the staff member brought this client in through their own network (credited to them for 12 months).
+  const [sourced, setSourced] = useState(false);
   const [paymentTiming, setPaymentTiming] = useState<'onAcceptance' | 'onCompletion'>('onAcceptance');
   // Any mix of methods can pay the order now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
   const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [newPaymentRow()]);
@@ -65,6 +68,7 @@ export default function NewWalkinOrder() {
           customerName,
           phone,
           staffId,
+          sourcedBy: sourced ? staffId : null,
           paymentTiming,
           payments: paymentTiming === 'onAcceptance' ? toApiPayments(paymentRows) : undefined,
           lineItems: normalized,
@@ -126,6 +130,10 @@ export default function NewWalkinOrder() {
             </label>
           </div>
         </div>
+      </div>
+
+      <div style={{ marginTop: 'var(--space-3)' }}>
+        <SourcingField phone={phone} name={customerName} staffName={staff.find((s) => s.id === staffId)?.name ?? user?.name ?? ''} checked={sourced} onChange={setSourced} />
       </div>
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />

@@ -6,6 +6,7 @@ import type { LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
+import { claimProblem, resolveSourcing } from '../commission';
 import { paymentLineSchema, recordOrderPayments, PaymentError, orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
 import type { PaymentLine } from './orders';
 
@@ -81,6 +82,8 @@ async function createDtfOrder(
     serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null };
     materialLines: { materialId: number; qty: number; unitPrice?: number }[];
     payments: PaymentLine[];
+    // Set to the capturing staff member's own id when they sourced this client (credited to them for 12 months)
+    sourcedBy?: number | null;
   },
 ) {
   // The order's staffId comes straight from the caller's JWT — if the dev
@@ -92,6 +95,7 @@ async function createDtfOrder(
   const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
   if (!staffExists) throw new Error('Your session is out of date (the underlying user record no longer exists) — please log out and log back in, then try again.');
 
+  const sourcing = await resolveSourcing(tx, { phone: opts.phone, name: opts.customerName, sourcedBy: opts.sourcedBy });
   const materialItems = await materialLineItems(tx, opts.materialLines);
   const lineItemInputs: LineItemInput[] = [
     { itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
@@ -115,6 +119,7 @@ async function createDtfOrder(
       customerName: opts.customerName || null,
       phone: opts.phone || null,
       staffId: opts.staffId,
+      ...sourcing,
       createdDate: todayStr(),
       status,
       dueDate,
@@ -187,6 +192,7 @@ dtfRouter.get('/data', async (req, res) => {
       pieces: j.pieces,
       fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob,
       minPricePerPieceAtJob: j.minPricePerPieceAtJob,
+      chargedPerPiece: j.chargedPerPiece,
     })),
   });
 });
@@ -287,6 +293,7 @@ const saleSchema = z.object({
   // Preferred: any mix of methods, e.g. part cash and part M-Pesa. Overrides amountPaid/paymentMethod.
   payments: z.array(paymentLineSchema).max(6).optional(),
   materialLines: z.array(materialLineSchema).default([]),
+  sourcedBy: z.number().int().nullable().optional(),
 });
 
 // "Record sale" — the popup's Print button. Builds the DtfFilmSale (roll
@@ -302,11 +309,13 @@ dtfRouter.post('/sales', async (req, res) => {
   if ('error' in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
-  // The price band is enforced here, not just in the form.
+  // The floor is enforced here, not just in the form. There is no ceiling: charging more is rewarded (see Sales Commission).
   const c = saleCalc(settings, d.metres, d.pricePerM ?? null, paid);
   if (!c.valid) {
-    return res.status(400).json({ error: `Price must be between ${settings.minPricePerM} and ${settings.stdPricePerM} KES/m` });
+    return res.status(400).json({ error: `Price cannot be below ${settings.minPricePerM} KES/m` });
   }
+  const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
   if (paid > c.total) return res.status(400).json({ error: 'Amount paid cannot exceed the sale total' });
 
   try {
@@ -320,6 +329,7 @@ dtfRouter.post('/sales', async (req, res) => {
         serviceLine: { itemType: 'per-metre', serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
         payments: paymentLines,
+        sourcedBy: d.sourcedBy,
       });
       const sale = await tx.dtfFilmSale.create({
         data: {
@@ -408,6 +418,10 @@ const jobSchema = z.object({
   runningMetres: z.number().positive('Running metres must be greater than 0'),
   pieces: z.number().int().positive('Pieces must be at least 1'),
   heatPressFee: z.number().positive().nullable().optional(), // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
+  // Price per piece actually charged. Blank = the system-recommended price; it can never be lower, and anything above it is the staff
+  // member's commission base.
+  pricePerPiece: z.number().positive().nullable().optional(),
+  sourcedBy: z.number().int().nullable().optional(),
   amountPaid: z.number().min(0).default(0),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
   payments: z.array(paymentLineSchema).max(6).optional(),
@@ -425,8 +439,15 @@ dtfRouter.post('/jobs', async (req, res) => {
   const found = await openRoll(d.rollId);
   if ('error' in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
-  const c = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
+  const sys = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
+  if (d.pricePerPiece != null && d.pricePerPiece < sys.finalPerPiece - 0.005) {
+    return res.status(400).json({ error: `The price per piece cannot be below the recommended ${sys.finalPerPiece} KES` });
+  }
+  const chargedPerPiece = d.pricePerPiece != null && d.pricePerPiece > sys.finalPerPiece + 0.005 ? Math.round(d.pricePerPiece * 100) / 100 : null;
+  const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
+  const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   if (paid > jobTotal) return res.status(400).json({ error: 'Amount paid cannot exceed the job total' });
 
@@ -441,6 +462,7 @@ dtfRouter.post('/jobs', async (req, res) => {
         serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
         materialLines: d.materialLines,
         payments: paymentLines,
+        sourcedBy: d.sourcedBy,
       });
       const job = await tx.dtfArtworkJob.create({
         data: {
@@ -451,6 +473,7 @@ dtfRouter.post('/jobs', async (req, res) => {
           pieces: d.pieces,
           fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
           minPricePerPieceAtJob: settings.minPricePerPiece,
+          chargedPerPiece,
           capturedByName: req.user!.name,
           orderId: order.id,
         },

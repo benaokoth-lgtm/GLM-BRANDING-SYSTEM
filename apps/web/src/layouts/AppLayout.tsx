@@ -30,6 +30,8 @@ function buildTabs(user: CurrentUser): [string, string][] {
   if (isAdmin || p.canCaptureOrders) {
     tabs.push(['/orders/mine', 'My Orders']);
   }
+  // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team.
+  if (isAdmin || p.canCaptureOrders || p.canManageCommission) tabs.push(['/commission', 'Commission']);
   // Once captured, orders are managed in Production and then inspected in Quality Control.
   if (isAdmin || p.canAccessProduction || p.canManageProduction) tabs.push(['/production', 'Production']);
   if (isAdmin || p.canAccessQuality) tabs.push(['/quality', 'Quality Control']);

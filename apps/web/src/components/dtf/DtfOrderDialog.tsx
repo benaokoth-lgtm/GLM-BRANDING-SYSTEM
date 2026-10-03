@@ -6,6 +6,8 @@ import { useCatalog } from '../../hooks/useCatalog';
 import { printWalkinReceipt } from '../../utils/printTicket';
 import type { CompanySettings, OrderDetail } from '../../api/models';
 import { Corners, Field } from './shared';
+import SourcingField from '../SourcingField';
+import { useAuth } from '../../state/AuthContext';
 import SplitPayments, { newPaymentRow, paymentProblem, paymentsTotal, toApiPayments } from '../SplitPayments';
 import type { PaymentRow } from '../SplitPayments';
 
@@ -35,7 +37,9 @@ interface Props {
 // receipts — nothing is saved before that.
 export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPrice, client, onClose, onDone }: Props) {
   const { materials } = useCatalog();
+  const { user } = useAuth();
   const [phone, setPhone] = useState('');
+  const [sourced, setSourced] = useState(false);
   const [materialLines, setMaterialLines] = useState<MaterialLine[]>([]);
   const [heatPressFee, setHeatPressFee] = useState('');
   // Any mix of methods can pay now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
@@ -77,6 +81,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
       const payload = {
         ...basePayload,
         phone,
+        sourcedBy: sourced && user ? user.id : null,
         payments: toApiPayments(paymentRows),
         materialLines: materialLines
           .filter((l) => Number(l.qty) > 0)
@@ -113,6 +118,8 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
           <Field label="Phone (optional)">
             <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
           </Field>
+
+          <SourcingField phone={phone} name={client} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} />
 
           {mode === 'job' && (
             <Field label="Heat press fee (Ksh/pc) — optional">

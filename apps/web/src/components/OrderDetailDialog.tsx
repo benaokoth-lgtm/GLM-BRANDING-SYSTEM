@@ -177,6 +177,11 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
               <div>{fmtDate(detail.createdDate)}</div>
             </div>
           </div>
+          {detail.salesSource === 'sourced' && detail.sourcedByName && (
+            <p className="note" style={{ marginTop: 'calc(-1 * var(--space-2))' }}>
+              Credited to <b>{detail.sourcedByName}</b> — their sourced client, so this order counts towards their commission.
+            </p>
+          )}
 
           <table className="table">
             <thead>

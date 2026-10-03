@@ -17,7 +17,9 @@ test('film sale: blank price uses standard, band enforced', () => {
   const b = saleCalc(S, 10, 450, 0);
   assert.equal(b.discountPerM, 50); assert.equal(b.total, 4500);
   assert.equal(saleCalc(S, 1, 399, 0).valid, false);
-  assert.equal(saleCalc(S, 1, 501, 0).valid, false);
+  // There is no ceiling any more: charging above the standard price is allowed (and rewarded as commission).
+  assert.equal(saleCalc(S, 1, 501, 0).valid, true);
+  assert.equal(saleCalc(S, 10, 520, 0).discountPerM, -20);
 });
 
 test('artwork job: price per piece = floor + fixed charge per metre / pieces', () => {

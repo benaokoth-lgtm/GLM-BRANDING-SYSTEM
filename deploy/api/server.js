@@ -23324,7 +23324,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router16 = require_router();
+    var Router17 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -23389,7 +23389,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router16({
+        this._router = new Router17({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -25253,7 +25253,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router16 = require_router();
+    var Router17 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -25276,7 +25276,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router16;
+    exports2.Router = Router17;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -27375,7 +27375,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r22 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r22, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r23 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r23, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -29901,10 +29901,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r22, options) => {
+    var intersects = (r1, r23, options) => {
       r1 = new Range(r1, options);
-      r22 = new Range(r22, options);
-      return r1.intersects(r22, options);
+      r23 = new Range(r23, options);
+      return r1.intersects(r23, options);
     };
     module2.exports = intersects;
   }
@@ -31184,7 +31184,7 @@ var require_jsonwebtoken = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express15 = __toESM(require_express2());
+var import_express16 = __toESM(require_express2());
 var import_cors = __toESM(require_lib4());
 
 // node_modules/express-async-errors/index.js
@@ -43741,7 +43741,8 @@ var PERMISSION_KEYS = [
   "canSeeCosts",
   "canAccessProduction",
   "canManageProduction",
-  "canAccessQuality"
+  "canAccessQuality",
+  "canManageCommission"
 ];
 
 // packages/shared/src/calc.ts
@@ -43809,7 +43810,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessProduction: true,
     canManageProduction: true,
     canAccessQuality: true,
-    canSeeCosts: true
+    canSeeCosts: true,
+    canManageCommission: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -43826,7 +43828,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessProduction: true,
     canManageProduction: true,
     canAccessQuality: true,
-    canSeeCosts: true
+    canSeeCosts: true,
+    canManageCommission: true
   },
   Admin: ALL_TRUE
 };
@@ -43844,7 +43847,9 @@ var EXPENSE_CATEGORIES = [
   "Cleaning",
   "Bank Charges",
   // Contracted-out jobs (eulogies, banners, screen printing…): the supplier's bill is the job's cost of sales.
-  "Outsourced Services"
+  "Outsourced Services",
+  // Staff sales commission paid out from Sales Commission → Payouts.
+  "Sales Commission"
 ];
 var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation", "Owner Injection"];
 var WALKIN_INVOICE_DUE_DAYS = 7;
@@ -43921,7 +43926,7 @@ function saleCalc(s, metres, pricePerM, amountPaid) {
   const total = r2(metres * price);
   return {
     price,
-    valid: price >= s.minPricePerM && price <= s.stdPricePerM,
+    valid: price >= s.minPricePerM,
     discountPerM: r2(s.stdPricePerM - price),
     total,
     balance: r2(total - amountPaid)
@@ -43933,6 +43938,9 @@ function jobCalc(runningMetres, pieces, fixedChargePerMetre, minPricePerPiece) {
     finalPerPiece: r2(finalPerPiece),
     jobTotal: r2(finalPerPiece * pieces)
   };
+}
+function systemJobCalc(j) {
+  return jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob);
 }
 function nextRollId(rolls) {
   const max = rolls.reduce((m, r) => Math.max(m, Number(/(\d+)$/.exec(r.id)?.[1] ?? 0)), 0);
@@ -44019,6 +44027,7 @@ var DEFAULT_CHART = [
   // Expenses
   a("5010", "Salaries & Wages", "Expense", "Payroll"),
   a("5100", "Production Supplies & Overheads", "Expense"),
+  a("5020", "Sales Commission", "Expense", "", "Commission paid to staff on sales they sourced and on film/artwork sold above the recommended price."),
   a("5110", "Casual Labour", "Expense", "Payroll"),
   a("5120", "Transport", "Expense"),
   a("5130", "Utilities", "Expense"),
@@ -44039,6 +44048,7 @@ var EXPENSE_HEAD_ACCOUNT_CODES = {
   // purchases of materials = cost of sales
   "Outsourced Services": "5000",
   // contracted-out jobs: the supplier's bill is cost of sales too
+  "Sales Commission": "5020",
   "Casual Labour": "5110",
   Transport: "5120",
   Utilities: "5130",
@@ -44248,6 +44258,88 @@ function jobMargin(sale, cost, vatRate) {
 }
 function needsCosting(line) {
   return line.outsourced && !(Number(line.supplierCost) > 0);
+}
+
+// packages/shared/src/commission.ts
+var r22 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+function bandedAmount(bands, amount) {
+  if (!(amount > 0)) return 0;
+  const sorted = [...bands].sort((a2, b) => a2.from - b.from);
+  let total = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const lo = sorted[i].from;
+    const hi = i + 1 < sorted.length ? sorted[i + 1].from : Infinity;
+    if (amount <= lo) break;
+    total += (Math.min(amount, hi) - lo) * (sorted[i].rate / 100);
+  }
+  return r22(total);
+}
+function bandPosition(bands, amount) {
+  const sorted = [...bands].sort((a2, b) => a2.from - b.from);
+  let idx = 0;
+  for (let i = 0; i < sorted.length; i++) if (amount >= sorted[i].from) idx = i;
+  const next = sorted[idx + 1];
+  return {
+    rate: sorted[idx]?.rate ?? 0,
+    nextFrom: next ? next.from : null,
+    nextRate: next ? next.rate : null,
+    toNext: next ? r22(Math.max(0, next.from - amount)) : null
+  };
+}
+function bandsProblem(bands, what) {
+  if (!Array.isArray(bands) || bands.length === 0) return `${what}: add at least one band`;
+  const sorted = [...bands].sort((a2, b) => a2.from - b.from);
+  if (sorted[0].from !== 0) return `${what}: the first band must start at 0`;
+  for (let i = 0; i < sorted.length; i++) {
+    const b = sorted[i];
+    if (!Number.isFinite(b.from) || b.from < 0) return `${what}: a band starts below 0`;
+    if (!Number.isFinite(b.rate) || b.rate < 0 || b.rate > 100) return `${what}: a rate must be between 0 and 100`;
+    if (i > 0 && b.from === sorted[i - 1].from) return `${what}: two bands start at the same amount`;
+  }
+  return null;
+}
+var DEFAULT_GENERAL_BANDS = [
+  { from: 0, rate: 0 },
+  { from: 15e4, rate: 2 },
+  { from: 3e5, rate: 3.5 },
+  { from: 5e5, rate: 5 }
+];
+var DEFAULT_FILM_BANDS = [
+  { from: 0, rate: 10 },
+  { from: 25, rate: 25 },
+  { from: 50, rate: 40 },
+  { from: 75, rate: 50 }
+];
+var DEFAULT_ARTWORK_RATE_PCT = 50;
+var DEFAULT_OWNERSHIP_MONTHS = 12;
+function filmPremiumCommission(metres, pricePerM, baseM, bands, vatRate) {
+  const premium = pricePerM - baseM;
+  if (!(metres > 0) || !(premium > 0)) return 0;
+  return r22(metres * bandedAmount(bands, premium) / (1 + vatRate));
+}
+function filmPremiumPerM(pricePerM, baseM) {
+  return r22(Math.max(0, pricePerM - baseM));
+}
+function artworkPremiumCommission(pieces, chargedPerPiece, systemPerPiece, ratePct, vatRate) {
+  const excess = chargedPerPiece - systemPerPiece;
+  if (!(pieces > 0) || !(excess > 0)) return 0;
+  return r22(pieces * excess / (1 + vatRate) * (ratePct / 100));
+}
+function ownershipEnd(start, months) {
+  const [y, m, d] = start.split("-").map(Number);
+  const total = m - 1 + months;
+  const ny = y + Math.floor(total / 12);
+  const nm = total % 12;
+  const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  const nd = Math.min(d, lastDay);
+  return `${ny}-${String(nm + 1).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
+}
+function clientKeyFor(c) {
+  if (c.corporateClientId) return `c:${c.corporateClientId}`;
+  const digits = (c.phone ?? "").replace(/\D/g, "");
+  if (digits.length >= 9) return `p:${digits.slice(-9)}`;
+  const name2 = (c.name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return name2.length >= 3 ? `n:${name2}` : null;
 }
 
 // apps/api/src/permissions.ts
@@ -48877,6 +48969,199 @@ async function validateAccountChoice(requested, type) {
   return acc.id;
 }
 
+// apps/api/src/commission.ts
+async function canManageCommission(role) {
+  return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
+}
+async function ensureCommissionAccess() {
+  if (await prisma.role.count({ where: { canManageCommission: true } }) > 0) return;
+  for (const name2 of ["Finance Manager", "General Manager"]) {
+    if (DEFAULT_ROLE_PERMISSIONS[name2]?.canManageCommission) await prisma.role.updateMany({ where: { name: name2 }, data: { canManageCommission: true } });
+  }
+}
+var ensuring2 = null;
+function ensureCommissionAccessOnce() {
+  if (!ensuring2) ensuring2 = ensureCommissionAccess().finally(() => ensuring2 = null);
+  return ensuring2;
+}
+function readBands(json, fallback) {
+  try {
+    const v = JSON.parse(json ?? "");
+    if (Array.isArray(v) && !bandsProblem(v, "bands")) return v.map((b) => ({ from: Number(b.from), rate: Number(b.rate) })).sort((a2, b) => a2.from - b.from);
+  } catch {
+  }
+  return fallback;
+}
+async function getCommissionConfig(db = prisma) {
+  const row = await db.commissionSettings.findUnique({ where: { id: 1 } });
+  return {
+    generalBands: readBands(row?.generalBandsJson, DEFAULT_GENERAL_BANDS),
+    filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
+    artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
+    ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS
+  };
+}
+async function activeOwner(db, clientKey, today = todayStr()) {
+  const row = await db.clientOwner.findFirst({
+    where: { clientKey, status: "Active", endDate: { gte: today } },
+    include: { staff: { select: { name: true } } },
+    orderBy: { id: "desc" }
+  });
+  return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
+}
+async function resolveSourcing(db, o) {
+  const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
+  if (!clientKey) return { salesSource: "house", sourcedByStaffId: null, clientKey: null };
+  const today = todayStr();
+  const owner = await activeOwner(db, clientKey, today);
+  if (owner) return { salesSource: "sourced", sourcedByStaffId: owner.staffId, clientKey };
+  if (o.sourcedBy) {
+    const cfg = await getCommissionConfig(db);
+    await db.clientOwner.create({
+      data: {
+        clientKey,
+        clientName: (o.name ?? "").trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey),
+        staffId: o.sourcedBy,
+        startDate: today,
+        endDate: ownershipEnd(today, cfg.ownershipMonths),
+        createdByName: "Sourced at order capture"
+      }
+    });
+    return { salesSource: "sourced", sourcedByStaffId: o.sourcedBy, clientKey };
+  }
+  return { salesSource: "house", sourcedByStaffId: null, clientKey };
+}
+async function claimProblem(user, o) {
+  if (!o.sourcedBy) return null;
+  if (o.sourcedBy !== user.id && !await canManageCommission(user.role)) return "You can only claim a client for yourself";
+  const key2 = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
+  if (!key2 || key2.startsWith("n:")) return "Enter the client's phone number so they can be credited to you and recognised on their next order";
+  return null;
+}
+var orderInc = { lineItems: true, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true };
+var toInput = (li) => ({
+  itemType: li.itemType,
+  serviceId: li.serviceId,
+  materialId: li.materialId,
+  qty: li.qty,
+  unitPrice: li.unitPrice,
+  discountPct: li.discountPct,
+  discountAmt: li.discountAmt,
+  heatPressFee: li.heatPressFee ?? null
+});
+var orderTotal = (o) => computeOrderTotals({ lineItems: o.lineItems.map(toInput), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
+var customerOf = (o) => o.corporateClient?.name || o.customerName || "Walk-in customer";
+function blankStatement(staffId, staffName = "") {
+  return {
+    staffId,
+    staffName,
+    total: 0,
+    general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
+    film: { commission: 0, sales: [] },
+    artwork: { commission: 0, jobs: [] },
+    productivity: { ordersCaptured: 0, ordersSourced: 0, sourcedValue: 0, filmSales: 0, filmMetres: 0, filmAvgPricePerM: null, filmAvgPremiumPerM: null, artworkJobs: 0, artworkPieces: 0, artworkExtraCharged: 0 }
+  };
+}
+function periodRange(period) {
+  return { start: `${period}-01`, end: `${period}-31` };
+}
+async function buildStatements(period, only) {
+  const { start, end } = periodRange(period);
+  const config = await getCommissionConfig();
+  const [payments, notes, raised] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: start, lte: end } }, select: { orderId: true, amount: true } }),
+    prisma.adjustmentNote.findMany({ where: { type: "Credit", date: { gte: start, lte: end }, orderId: { not: null } }, select: { orderId: true, creditAmt: true } }),
+    prisma.order.findMany({ where: { createdDate: { gte: start, lte: end }, status: { not: "Quote" } }, include: orderInc })
+  ]);
+  const flows = /* @__PURE__ */ new Map();
+  const flow = (id) => {
+    let f = flows.get(id);
+    if (!f) flows.set(id, f = { received: 0, refunded: 0 });
+    return f;
+  };
+  for (const p of payments) flow(p.orderId).received += p.amount;
+  for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
+  const orderIds = [...flows.keys()];
+  const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
+  const people = /* @__PURE__ */ new Map();
+  const who = (id) => {
+    let s = people.get(id);
+    if (!s) people.set(id, s = blankStatement(id));
+    return s;
+  };
+  for (const o of flowOrders) {
+    const f = flows.get(o.id);
+    const net8 = f.received - f.refunded;
+    const total = orderTotal(o);
+    const share = total > 0 ? net8 / total : 0;
+    if (o.dtfFilmSale) {
+      const s = o.dtfFilmSale;
+      const full = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
+      if (full > 0) {
+        const c = round2(full * share);
+        const st = who(o.staffId);
+        st.film.commission = round2(st.film.commission + c);
+        st.film.sales.push({ orderNo: o.orderNo, customer: customerOf(o), metres: s.metres, pricePerM: s.pricePerM, premiumPerM: filmPremiumPerM(s.pricePerM, s.minPriceAtSale), orderTotal: round2(total), moneyIn: round2(net8), commission: c });
+      }
+    } else if (o.dtfArtworkJob) {
+      const j = o.dtfArtworkJob;
+      const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
+      const charged = Math.max(sys, j.chargedPerPiece ?? sys);
+      const full = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
+      if (full > 0) {
+        const c = round2(full * share);
+        const st = who(o.staffId);
+        st.artwork.commission = round2(st.artwork.commission + c);
+        st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net8), commission: c });
+      }
+    } else if (o.channel !== "dtf" && o.sourcedByStaffId && o.status !== "Quote") {
+      const st = who(o.sourcedByStaffId);
+      st.general.received = round2(st.general.received + net8);
+      st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
+    }
+  }
+  const base2 = /* @__PURE__ */ new Map();
+  for (const o of raised) {
+    const cap = who(o.staffId).productivity;
+    cap.ordersCaptured++;
+    if (o.dtfFilmSale) {
+      const s = o.dtfFilmSale;
+      cap.filmSales++;
+      cap.filmMetres = round2(cap.filmMetres + s.metres);
+      const b = base2.get(o.staffId) ?? { filmRevenue: 0, filmPremium: 0 };
+      b.filmRevenue += s.metres * s.pricePerM;
+      b.filmPremium += s.metres * filmPremiumPerM(s.pricePerM, s.minPriceAtSale);
+      base2.set(o.staffId, b);
+    } else if (o.dtfArtworkJob) {
+      const j = o.dtfArtworkJob;
+      const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
+      cap.artworkJobs++;
+      cap.artworkPieces += j.pieces;
+      cap.artworkExtraCharged = round2(cap.artworkExtraCharged + j.pieces * Math.max(0, (j.chargedPerPiece ?? sys) - sys));
+    }
+    if (o.sourcedByStaffId) {
+      const src = who(o.sourcedByStaffId).productivity;
+      src.ordersSourced++;
+      src.sourcedValue = round2(src.sourcedValue + orderTotal(o));
+    }
+  }
+  for (const [id, b] of base2) {
+    const p = people.get(id).productivity;
+    p.filmAvgPricePerM = p.filmMetres > 0 ? round2(b.filmRevenue / p.filmMetres) : null;
+    p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
+  }
+  for (const st of people.values()) {
+    st.general.netSales = round2(Math.max(0, st.general.received) / (1 + VAT_RATE));
+    st.general.commission = bandedAmount(config.generalBands, st.general.netSales);
+    st.general.band = bandPosition(config.generalBands, st.general.netSales);
+    st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+  }
+  const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
+  const names = new Map(users.map((u) => [u.id, u.name]));
+  const statements = [...people.values()].map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` })).filter((s) => only === void 0 || s.staffId === only).sort((a2, b) => b.total - a2.total || a2.staffName.localeCompare(b.staffName));
+  return { config, statements };
+}
+
 // apps/api/src/accounting/ledger.ts
 async function loadCtx() {
   const [accounts, heads] = await Promise.all([prisma.account.findMany(), prisma.expenseHead.findMany()]);
@@ -49184,6 +49469,8 @@ function serializeDetail(order, opts = {}) {
   return {
     ...summary,
     paymentTiming: order.paymentTiming,
+    salesSource: order.salesSource,
+    sourcedByStaffId: order.sourcedByStaffId,
     orderDiscountPct: order.orderDiscountPct,
     orderDiscountAmt: order.orderDiscountAmt,
     lineItems: order.lineItems.map((li) => ({
@@ -49292,7 +49579,8 @@ ordersRouter.get("/:id", async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  res.json(serializeDetail(order, { costs: await canSeeCosts(req.user.role) }));
+  const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
+  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user.role) }), sourcedByName: sourcer?.name ?? null });
 });
 var lineItemSchema = external_exports.object({
   itemType: external_exports.enum(["material", "service", "per-metre"]),
@@ -49319,6 +49607,8 @@ var walkinSchema = external_exports.object({
   paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
   paymentAmount: external_exports.number().min(0).optional(),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
+  // Set to your own id when this is a client you sourced through your own network: they are then credited to you for 12 months.
+  sourcedBy: external_exports.number().int().nullable().optional(),
   // Preferred: any number of payment lines, e.g. part cash and part M-Pesa.
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
   lineItems: external_exports.array(lineItemSchema).min(1),
@@ -49339,7 +49629,10 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
     return res.status(400).json({ error: "The payments add up to more than the order total" });
   }
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
+  const claim = await claimProblem(req.user, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
   const order = await prisma.$transaction(async (tx) => {
+    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = "W-" + settings.nextWalkinNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
@@ -49350,6 +49643,7 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
         customerName: form.customerName,
         phone: form.phone,
         staffId: form.staffId,
+        ...sourcing,
         createdDate: todayStr(),
         status,
         dueDate,
@@ -49372,6 +49666,8 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
 var quoteSchema = external_exports.object({
   corporateClientId: external_exports.number().int(),
   staffId: external_exports.number().int(),
+  // The staff member who sourced this corporate client, if it is new to them (credited for 12 months).
+  sourcedBy: external_exports.number().int().nullable().optional(),
   lineItems: external_exports.array(lineItemSchema).min(1),
   orderDiscountPct: external_exports.number().min(0).max(100).default(0),
   orderDiscountAmt: external_exports.number().min(0).default(0)
@@ -49381,7 +49677,10 @@ ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, r
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const form = parsed.data;
   const costs = await canSeeCosts(req.user.role);
+  const claim = await claimProblem(req.user, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
   const order = await prisma.$transaction(async (tx) => {
+    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = "C-" + settings.nextCorpNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
@@ -49391,6 +49690,7 @@ ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, r
         kind: "corporate",
         corporateClientId: form.corporateClientId,
         staffId: form.staffId,
+        ...sourcing,
         createdDate: todayStr(),
         status: "Quote",
         stage: "Order Received",
@@ -49411,7 +49711,10 @@ ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req,
   const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
   if (!client) return res.status(400).json({ error: "Corporate client not found" });
   const dueDate = addDays(todayStr(), client.creditDays);
+  const claim = await claimProblem(req.user, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
   const order = await prisma.$transaction(async (tx) => {
+    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = "C-" + settings.nextCorpNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
@@ -49421,6 +49724,7 @@ ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req,
         kind: "corporate",
         corporateClientId: form.corporateClientId,
         staffId: form.staffId,
+        ...sourcing,
         createdDate: todayStr(),
         status: "Invoice",
         stage: "Order Received",
@@ -50227,10 +50531,10 @@ async function ensureRequisitions() {
     }
   }
 }
-var ensuring2 = null;
+var ensuring3 = null;
 function ensureRequisitionsOnce() {
-  if (!ensuring2) ensuring2 = ensureRequisitions().finally(() => ensuring2 = null);
-  return ensuring2;
+  if (!ensuring3) ensuring3 = ensureRequisitions().finally(() => ensuring3 = null);
+  return ensuring3;
 }
 
 // apps/api/src/routes/stock.ts
@@ -51684,6 +51988,7 @@ function resolvePaymentLines(d) {
 async function createDtfOrder(tx, opts) {
   const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
   if (!staffExists) throw new Error("Your session is out of date (the underlying user record no longer exists) \u2014 please log out and log back in, then try again.");
+  const sourcing = await resolveSourcing(tx, { phone: opts.phone, name: opts.customerName, sourcedBy: opts.sourcedBy });
   const materialItems = await materialLineItems(tx, opts.materialLines);
   const lineItemInputs = [
     { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
@@ -51705,6 +52010,7 @@ async function createDtfOrder(tx, opts) {
       customerName: opts.customerName || null,
       phone: opts.phone || null,
       staffId: opts.staffId,
+      ...sourcing,
       createdDate: todayStr(),
       status,
       dueDate,
@@ -51771,7 +52077,8 @@ dtfRouter.get("/data", async (req, res) => {
       runningMetres: j.runningMetres,
       pieces: j.pieces,
       fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob,
-      minPricePerPieceAtJob: j.minPricePerPieceAtJob
+      minPricePerPieceAtJob: j.minPricePerPieceAtJob,
+      chargedPerPiece: j.chargedPerPiece
     }))
   });
 });
@@ -51852,7 +52159,8 @@ var saleSchema = external_exports.object({
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
   // Preferred: any mix of methods, e.g. part cash and part M-Pesa. Overrides amountPaid/paymentMethod.
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
-  materialLines: external_exports.array(materialLineSchema).default([])
+  materialLines: external_exports.array(materialLineSchema).default([]),
+  sourcedBy: external_exports.number().int().nullable().optional()
 });
 dtfRouter.post("/sales", async (req, res) => {
   const parsed = saleSchema.safeParse(req.body);
@@ -51864,8 +52172,10 @@ dtfRouter.post("/sales", async (req, res) => {
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   const c = saleCalc(settings, d.metres, d.pricePerM ?? null, paid);
   if (!c.valid) {
-    return res.status(400).json({ error: `Price must be between ${settings.minPricePerM} and ${settings.stdPricePerM} KES/m` });
+    return res.status(400).json({ error: `Price cannot be below ${settings.minPricePerM} KES/m` });
   }
+  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
   if (paid > c.total) return res.status(400).json({ error: "Amount paid cannot exceed the sale total" });
   try {
     const { sale, order } = await prisma.$transaction(async (tx) => {
@@ -51877,7 +52187,8 @@ dtfRouter.post("/sales", async (req, res) => {
         staffId: req.user.id,
         serviceLine: { itemType: "per-metre", serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
-        payments: paymentLines
+        payments: paymentLines,
+        sourcedBy: d.sourcedBy
       });
       const sale2 = await tx.dtfFilmSale.create({
         data: {
@@ -51949,6 +52260,10 @@ var jobSchema = external_exports.object({
   pieces: external_exports.number().int().positive("Pieces must be at least 1"),
   heatPressFee: external_exports.number().positive().nullable().optional(),
   // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
+  // Price per piece actually charged. Blank = the system-recommended price; it can never be lower, and anything above it is the staff
+  // member's commission base.
+  pricePerPiece: external_exports.number().positive().nullable().optional(),
+  sourcedBy: external_exports.number().int().nullable().optional(),
   amountPaid: external_exports.number().min(0).default(0),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
@@ -51961,8 +52276,15 @@ dtfRouter.post("/jobs", async (req, res) => {
   const found = await openRoll(d.rollId);
   if ("error" in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
-  const c = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
+  const sys = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
+  if (d.pricePerPiece != null && d.pricePerPiece < sys.finalPerPiece - 5e-3) {
+    return res.status(400).json({ error: `The price per piece cannot be below the recommended ${sys.finalPerPiece} KES` });
+  }
+  const chargedPerPiece = d.pricePerPiece != null && d.pricePerPiece > sys.finalPerPiece + 5e-3 ? Math.round(d.pricePerPiece * 100) / 100 : null;
+  const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
+  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
+  if (claim) return res.status(400).json({ error: claim });
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   if (paid > jobTotal) return res.status(400).json({ error: "Amount paid cannot exceed the job total" });
   try {
@@ -51975,7 +52297,8 @@ dtfRouter.post("/jobs", async (req, res) => {
         staffId: req.user.id,
         serviceLine: { itemType: "service", serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
         materialLines: d.materialLines,
-        payments: paymentLines
+        payments: paymentLines,
+        sourcedBy: d.sourcedBy
       });
       const job2 = await tx.dtfArtworkJob.create({
         data: {
@@ -51986,6 +52309,7 @@ dtfRouter.post("/jobs", async (req, res) => {
           pieces: d.pieces,
           fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
           minPricePerPieceAtJob: settings.minPricePerPiece,
+          chargedPerPiece,
           capturedByName: req.user.name,
           orderId: order2.id
         }
@@ -52759,10 +53083,10 @@ async function ensureProduction() {
     await prisma.role.updateMany({ where: { name: name2 }, data: { canAccessProduction: d.canAccessProduction, canManageProduction: d.canManageProduction, canAccessQuality: d.canAccessQuality } });
   }
 }
-var ensuring3 = null;
+var ensuring4 = null;
 function ensureProductionOnce() {
-  if (!ensuring3) ensuring3 = ensureProduction().finally(() => ensuring3 = null);
-  return ensuring3;
+  if (!ensuring4) ensuring4 = ensureProduction().finally(() => ensuring4 = null);
+  return ensuring4;
 }
 async function isProductionManager(user) {
   return user.role === "Admin" || (await permissionsForRole(user.role)).canManageProduction;
@@ -53122,11 +53446,217 @@ qualityRouter.post("/orders/:orderId/check", async (req, res) => {
   res.status(201).json({ ok: true, nextStage: d.result === "Passed" ? STAGE_READY : STAGE_IN_PRODUCTION });
 });
 
+// apps/api/src/routes/commission.ts
+var import_express15 = __toESM(require_express2());
+var commissionRouter = (0, import_express15.Router)();
+commissionRouter.use(requireAuth, async (_req, _res, next) => {
+  await ensureCommissionAccessOnce();
+  next();
+});
+var manage = requirePermission("canManageCommission");
+var periodSchema = external_exports.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Period must be YYYY-MM");
+var thisMonth = () => todayStr().slice(0, 7);
+commissionRouter.get("/settings", async (_req, res) => {
+  res.json(await getCommissionConfig());
+});
+var bandSchema = external_exports.object({ from: external_exports.number().min(0), rate: external_exports.number().min(0).max(100) });
+var settingsSchema4 = external_exports.object({
+  generalBands: external_exports.array(bandSchema).min(1),
+  filmBands: external_exports.array(bandSchema).min(1),
+  artworkRatePct: external_exports.number().min(0).max(100),
+  ownershipMonths: external_exports.number().int().min(1).max(60)
+});
+commissionRouter.put("/settings", manage, async (req, res) => {
+  const parsed = settingsSchema4.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands");
+  if (problem) return res.status(400).json({ error: problem });
+  const sort = (b) => [...b].sort((x, y) => x.from - y.from);
+  const data = {
+    generalBandsJson: JSON.stringify(sort(d.generalBands)),
+    filmBandsJson: JSON.stringify(sort(d.filmBands)),
+    artworkRatePct: d.artworkRatePct,
+    ownershipMonths: d.ownershipMonths,
+    updatedByName: req.user.name
+  };
+  await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  res.json(await getCommissionConfig());
+});
+commissionRouter.get("/my", async (req, res) => {
+  const period = periodSchema.safeParse(req.query.period ?? thisMonth());
+  if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
+  const { config, statements } = await buildStatements(period.data, req.user.id);
+  const mine = statements[0] ?? blankStatement(req.user.id, req.user.name);
+  const payout = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: req.user.id } } });
+  const clients = await prisma.clientOwner.findMany({ where: { staffId: req.user.id, status: "Active", endDate: { gte: todayStr() } }, orderBy: { endDate: "asc" } });
+  res.json({
+    period: period.data,
+    config,
+    statement: mine,
+    payout: payout ? { status: payout.status, amount: payout.amount, paidOn: payout.paidOn } : null,
+    clients: clients.map((c) => ({ id: c.id, name: c.clientName, startDate: c.startDate, endDate: c.endDate }))
+  });
+});
+commissionRouter.get("/statement", manage, async (req, res) => {
+  const period = periodSchema.safeParse(req.query.period ?? thisMonth());
+  if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
+  const { config, statements } = await buildStatements(period.data);
+  const payouts = await prisma.commissionPayout.findMany({ where: { period: period.data } });
+  const byStaff = new Map(payouts.map((p) => [p.staffId, p]));
+  res.json({
+    period: period.data,
+    open: period.data >= thisMonth(),
+    // the month is not over, so more money may still arrive
+    config,
+    statements: statements.map((s) => {
+      const p = byStaff.get(s.staffId);
+      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
+    }),
+    totals: { commission: round2(statements.reduce((a2, s) => a2 + s.total, 0)) }
+  });
+});
+var lookupSchema = external_exports.object({
+  corporateClientId: external_exports.coerce.number().int().optional(),
+  phone: external_exports.string().optional(),
+  name: external_exports.string().optional()
+});
+commissionRouter.get("/owner-lookup", async (req, res) => {
+  const q = lookupSchema.safeParse(req.query);
+  if (!q.success) return res.status(400).json({ error: "Invalid input" });
+  const clientKey = clientKeyFor({ corporateClientId: q.data.corporateClientId, phone: q.data.phone, name: q.data.name });
+  const months = (await getCommissionConfig()).ownershipMonths;
+  if (!clientKey) return res.json({ clientKey: null, months, owner: null });
+  const owner = await activeOwner(prisma, clientKey);
+  res.json({ clientKey, months, owner: owner ? { staffId: owner.staffId, staffName: owner.staffName, endDate: owner.endDate, mine: owner.staffId === req.user.id } : null });
+});
+commissionRouter.get("/clients", manage, async (req, res) => {
+  const all = req.query.status === "all";
+  const today = todayStr();
+  const rows = await prisma.clientOwner.findMany({
+    where: all ? {} : { status: "Active", endDate: { gte: today } },
+    include: { staff: { select: { name: true } } },
+    orderBy: [{ endDate: "asc" }, { id: "desc" }],
+    take: 500
+  });
+  res.json(
+    rows.map((r) => ({
+      id: r.id,
+      clientKey: r.clientKey,
+      clientName: r.clientName,
+      staffId: r.staffId,
+      staffName: r.staff.name,
+      startDate: r.startDate,
+      endDate: r.endDate,
+      status: r.status === "Active" && r.endDate < today ? "Expired" : r.status,
+      note: r.note,
+      createdByName: r.createdByName
+    }))
+  );
+});
+var assignSchema2 = external_exports.object({
+  staffId: external_exports.number().int(),
+  corporateClientId: external_exports.number().int().optional(),
+  name: external_exports.string().trim().max(200).optional(),
+  phone: external_exports.string().trim().max(40).optional(),
+  startDate: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  note: external_exports.string().max(200).optional()
+});
+commissionRouter.post("/clients", manage, async (req, res) => {
+  const parsed = assignSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const clientKey = clientKeyFor({ corporateClientId: d.corporateClientId, phone: d.phone, name: d.name });
+  if (!clientKey) return res.status(400).json({ error: "Pick a corporate client, or give the client\u2019s phone number or full name" });
+  const staff = await prisma.user.findUnique({ where: { id: d.staffId } });
+  if (!staff) return res.status(400).json({ error: "Staff member not found" });
+  const owner = await activeOwner(prisma, clientKey);
+  if (owner) return res.status(409).json({ error: `This client is already credited to ${owner.staffName} until ${owner.endDate}. Clients are not shared \u2014 release them first.` });
+  let clientName = d.name?.trim() || "";
+  if (d.corporateClientId) {
+    const c = await prisma.corporateClient.findUnique({ where: { id: d.corporateClientId } });
+    if (!c) return res.status(400).json({ error: "Corporate client not found" });
+    clientName = c.name;
+  }
+  const cfg = await getCommissionConfig();
+  const startDate = d.startDate ?? todayStr();
+  const row = await prisma.clientOwner.create({
+    data: { clientKey, clientName: clientName || clientKey, staffId: d.staffId, startDate, endDate: ownershipEnd(startDate, cfg.ownershipMonths), note: d.note ?? "", createdByName: req.user.name }
+  });
+  res.status(201).json(row);
+});
+commissionRouter.post("/clients/:id/release", manage, async (req, res) => {
+  const row = await prisma.clientOwner.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row) return res.status(404).json({ error: "Not found" });
+  if (row.status !== "Active") return res.status(400).json({ error: "Already released" });
+  res.json(await prisma.clientOwner.update({ where: { id: row.id }, data: { status: "Released", releasedOn: todayStr(), releasedBy: req.user.name } }));
+});
+commissionRouter.post("/payouts/approve", manage, async (req, res) => {
+  const period = periodSchema.safeParse(req.body.period);
+  if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
+  const { statements } = await buildStatements(period.data);
+  const out = [];
+  for (const s of statements) {
+    if (s.total <= 0) continue;
+    const existing = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: s.staffId } } });
+    if (existing?.status === "Paid") {
+      out.push({ staffId: s.staffId, staffName: s.staffName, amount: existing.amount, status: "Paid" });
+      continue;
+    }
+    const data = {
+      generalAmount: s.general.commission,
+      filmAmount: s.film.commission,
+      artworkAmount: s.artwork.commission,
+      amount: s.total,
+      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork }),
+      status: "Approved",
+      approvedByName: req.user.name,
+      approvedAt: /* @__PURE__ */ new Date()
+    };
+    await prisma.commissionPayout.upsert({ where: { period_staffId: { period: period.data, staffId: s.staffId } }, update: data, create: { period: period.data, staffId: s.staffId, ...data } });
+    out.push({ staffId: s.staffId, staffName: s.staffName, amount: s.total, status: "Approved" });
+  }
+  res.json({ period: period.data, payouts: out });
+});
+commissionRouter.get("/payouts", manage, async (req, res) => {
+  const where = typeof req.query.period === "string" ? { period: req.query.period } : {};
+  const rows = await prisma.commissionPayout.findMany({ where, include: { staff: { select: { name: true } } }, orderBy: [{ period: "desc" }, { id: "asc" }], take: 300 });
+  res.json(rows.map((r) => ({ id: r.id, period: r.period, staffId: r.staffId, staffName: r.staff.name, amount: r.amount, generalAmount: r.generalAmount, filmAmount: r.filmAmount, artworkAmount: r.artworkAmount, status: r.status, approvedByName: r.approvedByName, paidOn: r.paidOn, paidMethod: r.paidMethod })));
+});
+var paySchema = external_exports.object({ method: external_exports.enum(EXPENSE_METHODS), date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+commissionRouter.post("/payouts/:id/pay", manage, async (req, res) => {
+  const parsed = paySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const payout = await prisma.commissionPayout.findUnique({ where: { id: Number(req.params.id) }, include: { staff: { select: { name: true } } } });
+  if (!payout) return res.status(404).json({ error: "Not found" });
+  if (payout.status === "Paid") return res.status(400).json({ error: "Already paid" });
+  const date = parsed.data.date ?? todayStr();
+  if (parsed.data.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(payout.amount, date);
+    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString("en-KE")} available, Ksh ${Math.round(payout.amount).toLocaleString("en-KE")} needed)` });
+  }
+  await ensureChartOnce();
+  const updated = await prisma.$transaction(async (tx) => {
+    const expense = await tx.expense.create({
+      data: { date, category: "Sales Commission", amount: payout.amount, supplier: payout.staff.name, note: `Sales commission ${payout.period} \u2014 ${payout.staff.name}`, capturedByName: req.user.name, paid: true, method: parsed.data.method }
+    });
+    return tx.commissionPayout.update({ where: { id: payout.id }, data: { status: "Paid", paidOn: date, paidMethod: parsed.data.method, paidByName: req.user.name, expenseId: expense.id } });
+  });
+  res.json(updated);
+});
+commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
+  const payout = await prisma.commissionPayout.findUnique({ where: { id: Number(req.params.id) } });
+  if (!payout) return res.status(404).json({ error: "Not found" });
+  if (payout.status === "Paid") return res.status(400).json({ error: "A paid commission cannot be withdrawn" });
+  await prisma.commissionPayout.delete({ where: { id: payout.id } });
+  res.status(204).end();
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express15.default)();
+var app = (0, import_express16.default)();
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express15.default.json({ limit: "5mb" }));
+app.use(import_express16.default.json({ limit: "5mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
 app.use("/api/master-data", masterDataRouter);
@@ -53142,6 +53672,7 @@ app.use("/api/dtf", dtfRouter);
 app.use("/api/accounting", accountingRouter);
 app.use("/api/production", productionRouter);
 app.use("/api/quality", qualityRouter);
+app.use("/api/commission", commissionRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });
@@ -53152,5 +53683,5 @@ var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
   console.log(`GLM Branding POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

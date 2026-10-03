@@ -6,3 +6,4 @@ export * from './dtf';
 export * from './accounting';
 export * from './production';
 export * from './outsourced';
+export * from './commission';

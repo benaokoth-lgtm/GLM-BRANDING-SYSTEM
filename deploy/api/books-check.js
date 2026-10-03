@@ -19,7 +19,8 @@ var PERMISSION_KEYS = [
   "canSeeCosts",
   "canAccessProduction",
   "canManageProduction",
-  "canAccessQuality"
+  "canAccessQuality",
+  "canManageCommission"
 ];
 
 // packages/shared/src/calc.ts
@@ -79,7 +80,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessProduction: true,
     canManageProduction: true,
     canAccessQuality: true,
-    canSeeCosts: true
+    canSeeCosts: true,
+    canManageCommission: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -96,7 +98,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessProduction: true,
     canManageProduction: true,
     canAccessQuality: true,
-    canSeeCosts: true
+    canSeeCosts: true,
+    canManageCommission: true
   },
   Admin: ALL_TRUE
 };
@@ -114,7 +117,9 @@ var EXPENSE_CATEGORIES = [
   "Cleaning",
   "Bank Charges",
   // Contracted-out jobs (eulogies, banners, screen printing…): the supplier's bill is the job's cost of sales.
-  "Outsourced Services"
+  "Outsourced Services",
+  // Staff sales commission paid out from Sales Commission → Payouts.
+  "Sales Commission"
 ];
 
 // packages/shared/src/tax.ts
@@ -241,6 +246,7 @@ var DEFAULT_CHART = [
   // Expenses
   a("5010", "Salaries & Wages", "Expense", "Payroll"),
   a("5100", "Production Supplies & Overheads", "Expense"),
+  a("5020", "Sales Commission", "Expense", "", "Commission paid to staff on sales they sourced and on film/artwork sold above the recommended price."),
   a("5110", "Casual Labour", "Expense", "Payroll"),
   a("5120", "Transport", "Expense"),
   a("5130", "Utilities", "Expense"),
@@ -261,6 +267,7 @@ var EXPENSE_HEAD_ACCOUNT_CODES = {
   // purchases of materials = cost of sales
   "Outsourced Services": "5000",
   // contracted-out jobs: the supplier's bill is cost of sales too
+  "Sales Commission": "5020",
   "Casual Labour": "5110",
   Transport: "5120",
   Utilities: "5130",

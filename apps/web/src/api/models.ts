@@ -94,6 +94,10 @@ export interface PaymentView {
 
 export interface OrderDetail extends OrderSummary {
   paymentTiming: PaymentTiming | null;
+  // Sales commission: who the order is credited to (a staff member's own client), or the house
+  salesSource?: 'sourced' | 'house';
+  sourcedByStaffId?: number | null;
+  sourcedByName?: string | null;
   orderDiscountPct: number;
   orderDiscountAmt: number;
   lineItems: OrderLineItemView[];

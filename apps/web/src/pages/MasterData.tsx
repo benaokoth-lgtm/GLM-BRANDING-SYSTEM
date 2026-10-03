@@ -38,6 +38,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canAccessProduction: 'Production: work assigned jobs',
   canManageProduction: 'Production: assign staff & productivity',
   canAccessQuality: 'Quality control: inspect orders',
+  canManageCommission: 'Commission: rates, team statements & payouts',
 };
 
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;

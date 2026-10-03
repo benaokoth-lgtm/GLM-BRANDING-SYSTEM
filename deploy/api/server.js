@@ -44360,6 +44360,11 @@ var MAX_ATTEMPTS = 5;
 function initials(name2) {
   return name2.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("");
 }
+authRouter.get("/branding", async (_req, res) => {
+  const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  res.set("Cache-Control", "public, max-age=300");
+  res.json({ companyName: s.companyName, logoDataUrl: s.logoDataUrl });
+});
 authRouter.get("/users", async (_req, res) => {
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
   res.json(

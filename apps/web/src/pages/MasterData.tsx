@@ -41,6 +41,8 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canManageCommission: 'Commission: rates, team statements & payouts',
 };
 
+import { notifyBrandingChanged } from '../hooks/useBranding';
+
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 
 export default function MasterData() {
@@ -392,6 +394,7 @@ export default function MasterData() {
         logoDataUrl: logoValue,
       });
       catalog.reload();
+      notifyBrandingChanged();
       setCompanySaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save company info');

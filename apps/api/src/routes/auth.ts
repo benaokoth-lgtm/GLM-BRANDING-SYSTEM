@@ -23,6 +23,13 @@ function initials(name: string): string {
     .join('');
 }
 
+// The company name and logo, for the login page and the app header (nothing sensitive).
+authRouter.get('/branding', async (_req, res) => {
+  const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  res.set('Cache-Control', 'public, max-age=300'); // the logo can be large; it rarely changes
+  res.json({ companyName: s.companyName, logoDataUrl: s.logoDataUrl });
+});
+
 authRouter.get('/users', async (_req, res) => {
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
   res.json(

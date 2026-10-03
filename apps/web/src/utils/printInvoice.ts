@@ -114,7 +114,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
   .brand-mark .ring { position: absolute; inset: 0; border-radius: 50%; border: 9px solid ${TEAL}; }
   .brand-mark .dot-a { position: absolute; width: 16px; height: 16px; border-radius: 50%; background: ${PURPLE}; top: 4px; left: 4px; }
   .brand-mark .dot-b { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: ${ORANGE}; bottom: 2px; right: 2px; }
-  .brand-logo { max-width: 90px; max-height: 48px; object-fit: contain; }
+  .brand-logo { max-width: 140px; max-height: 64px; object-fit: contain; }
   .brand-name { font-family: 'Barlow Condensed', system-ui, sans-serif; font-weight: 800; font-size: 19px; line-height: 1.05; letter-spacing: 0.01em; }
   .brand-sub { font-size: 10px; color: ${MUTED}; margin-top: 2px; }
   .doc-title { text-align: right; }

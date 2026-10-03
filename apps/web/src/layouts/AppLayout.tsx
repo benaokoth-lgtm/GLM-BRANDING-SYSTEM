@@ -51,7 +51,10 @@ function buildTabs(user: CurrentUser): [string, string][] {
   return tabs;
 }
 
+import { useBranding } from '../hooks/useBranding';
+
 export default function AppLayout() {
+  const branding = useBranding();
   const { user, logout, clearMustChangePin } = useAuth();
   const [changingPin, setChangingPin] = useState(false);
   const tabs = user ? buildTabs(user) : [];
@@ -59,7 +62,10 @@ export default function AppLayout() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <nav className="nav no-print" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        <span className="nav-brand">GLM Branding — Order &amp; POS</span>
+        <span className="nav-brand" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {branding?.logoDataUrl && <img src={branding.logoDataUrl} alt={branding.companyName} style={{ height: 40, maxWidth: 140, objectFit: 'contain' }} />}
+          <span>{branding?.companyName || 'GLM Branding'} — Order &amp; POS</span>
+        </span>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
           {user && (
             <span className="text-muted" style={{ fontSize: 13 }}>

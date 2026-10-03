@@ -75,6 +75,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
     font-family: 'Courier New', Courier, monospace; font-size: 11px; color: #111;
   }
   .center { text-align: center; }
+  .logo { display: block; margin: 0 auto 3px; max-width: 46mm; max-height: 20mm; object-fit: contain; filter: grayscale(1) contrast(1.3); }
   .brand { font-size: 18px; font-weight: 700; letter-spacing: 0.03em; }
   .tagline { font-size: 10px; color: #333; margin-top: 1px; }
   .meta { font-size: 10px; color: #333; }
@@ -93,6 +94,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
 </head>
 <body>
   <div class="center">
+    ${company.logoDataUrl ? `<img class="logo" src="${company.logoDataUrl}" alt="" />` : ''}
     <div class="brand">${companyName}</div>
     ${legalNameLine}
   </div>

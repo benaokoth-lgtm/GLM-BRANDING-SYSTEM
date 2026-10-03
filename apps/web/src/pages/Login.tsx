@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
+import { useBranding } from '../hooks/useBranding';
 
 interface SelectableUser {
   id: number;
@@ -14,6 +15,7 @@ const PAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '<'];
 
 export default function Login() {
   const { login, loginError, user } = useAuth();
+  const branding = useBranding();
   const navigate = useNavigate();
   const [users, setUsers] = useState<SelectableUser[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -67,7 +69,8 @@ export default function Login() {
         <i className="corner br"></i>
 
         <div className="login-users">
-          <div className="card-kicker">GLM Branding</div>
+          {branding?.logoDataUrl && <img src={branding.logoDataUrl} alt={branding.companyName} style={{ maxHeight: 72, maxWidth: 220, objectFit: 'contain', alignSelf: 'flex-start', marginBottom: 'var(--space-2)' }} />}
+          <div className="card-kicker">{branding?.companyName || 'GLM Branding'}</div>
           <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
             Who's working?
           </div>

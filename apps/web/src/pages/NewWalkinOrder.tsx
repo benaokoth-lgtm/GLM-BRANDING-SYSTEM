@@ -13,7 +13,7 @@ import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../
 import type { PaymentRow } from '../components/SplitPayments';
 
 export default function NewWalkinOrder() {
-  const { services: allServices, materials, staff, maxDiscountPct, loading } = useCatalog();
+  const { services: allServices, materials, maxDiscountPct, loading } = useCatalog();
   // DTF Printing / DTF Sheet are sold exclusively through the DTF Sales &
   // Roll Tracker's own "Record sale"/"Record job" order popup (see
   // components/dtf/DtfOrderDialog.tsx) — not picked as a line item here.
@@ -23,7 +23,8 @@ export default function NewWalkinOrder() {
 
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
-  const [staffId, setStaffId] = useState<number | null>(user?.id ?? null);
+  // The order belongs to whoever is capturing it.
+  const staffId = user?.id ?? null;
   // Ticked when the staff member brought this client in through their own network (credited to them for 12 months).
   const [sourced, setSourced] = useState(false);
   const [paymentTiming, setPaymentTiming] = useState<'onAcceptance' | 'onCompletion'>('onAcceptance');
@@ -35,7 +36,6 @@ export default function NewWalkinOrder() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const staffOnly = staff.filter((s) => s.role === 'Staff');
   const items = lineItems ?? (services.length && materials.length ? [makeDefaultLine(services, materials)] : []);
 
   const normalized = items.map((li) => ({
@@ -108,16 +108,6 @@ export default function NewWalkinOrder() {
           <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
         </div>
         <div className="field">
-          <label>Allocate to staff</label>
-          <select className="input" value={staffId ?? ''} onChange={(e) => setStaffId(Number(e.target.value))}>
-            {staffOnly.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
           <label>Payment timing</label>
           <div className="seg" role="radiogroup">
             <label className={'seg-opt' + (paymentTiming === 'onAcceptance' ? ' checked' : '')}>
@@ -133,7 +123,7 @@ export default function NewWalkinOrder() {
       </div>
 
       <div style={{ marginTop: 'var(--space-3)' }}>
-        <SourcingField phone={phone} name={customerName} staffName={staff.find((s) => s.id === staffId)?.name ?? user?.name ?? ''} checked={sourced} onChange={setSourced} />
+        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} />
       </div>
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />

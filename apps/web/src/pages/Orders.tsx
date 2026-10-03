@@ -17,6 +17,9 @@ export default function Orders({ scope }: Props) {
   const [statusFilter, setStatusFilter] = useState('all');
   const [channelFilter, setChannelFilter] = useState<'all' | 'general' | 'dtf'>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
+  // My Orders keeps three kinds of document apart: an Order (paid in full), an Invoice (still has a balance, collected as it is paid)
+  // and a Quotation (an offer nobody has accepted yet).
+  const [kind, setKind] = useState<'Order' | 'Invoice' | 'Quote'>('Order');
 
   function load() {
     setLoading(true);
@@ -35,6 +38,10 @@ export default function Orders({ scope }: Props) {
   useEffect(load, [scope, staffFilter, statusFilter, channelFilter]);
 
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
+
+  const count = (s: string) => orders.filter((o) => o.status === s).length;
+  const shown = scope === 'mine' ? orders.filter((o) => o.status === kind) : orders;
+  const showDue = scope === 'mine' && kind === 'Invoice';
 
   const kpis =
     scope === 'all'
@@ -62,6 +69,30 @@ export default function Orders({ scope }: Props) {
           Film &amp; Artwork
         </label>
       </div>
+
+      {scope === 'mine' && (
+        <>
+          <div className="seg" role="radiogroup" style={{ marginBottom: 'var(--space-2)', maxWidth: 480 }}>
+            {(
+              [
+                ['Order', 'Orders'],
+                ['Invoice', 'Invoices'],
+                ...(count('Quote') > 0 || kind === 'Quote' ? [['Quote', 'Quotations']] : []),
+              ] as ['Order' | 'Invoice' | 'Quote', string][]
+            ).map(([k, label]) => (
+              <label key={k} className={'seg-opt' + (kind === k ? ' checked' : '')}>
+                <input type="radio" name="ordkind" checked={kind === k} onChange={() => setKind(k)} />
+                {label} ({count(k)})
+              </label>
+            ))}
+          </div>
+          <p className="note" style={{ marginTop: 0 }}>
+            {kind === 'Order' && 'Orders are paid in full. Anything that still has a balance is an invoice.'}
+            {kind === 'Invoice' && 'Invoices still have a balance to collect (or were handed over on credit). They move to Orders once paid in full.'}
+            {kind === 'Quote' && 'Quotations are offers not yet accepted — a deposit payment turns one into an invoice.'}
+          </p>
+        </>
+      )}
 
       {scope === 'all' && (
         <>
@@ -105,6 +136,7 @@ export default function Orders({ scope }: Props) {
             <th>Client</th>
             <th>Staff</th>
             <th>Status</th>
+            {showDue && <th>Due</th>}
             <th>Stage</th>
             <th>Total</th>
             <th>Balance</th>
@@ -112,7 +144,7 @@ export default function Orders({ scope }: Props) {
           </tr>
         </thead>
         <tbody>
-          {orders.map((row) => {
+          {shown.map((row) => {
             const overdueTag = row.overdue ? 'Overdue' : row.totals.balanceDue > 0 ? 'Pending' : 'Settled';
             const overdueClass = row.overdue ? 'tag tag-accent' : row.totals.balanceDue > 0 ? 'tag tag-outline' : 'tag tag-neutral';
             return (
@@ -125,6 +157,7 @@ export default function Orders({ scope }: Props) {
                 <td>
                   <span className={row.status === 'Quote' ? 'tag tag-outline' : 'tag tag-accent'}>{row.status}</span>
                 </td>
+                {showDue && <td className={row.overdue ? '' : 'text-muted'} style={row.overdue ? { color: '#a33', fontWeight: 700 } : undefined}>{row.dueDate ? fmtDate(row.dueDate) : '—'}</td>}
                 <td className="text-muted">{row.status === 'Quote' ? '—' : row.stage}</td>
                 <td>{fmtKsh(row.totals.grandTotal)}</td>
                 <td>{fmtKsh(row.totals.balanceDue)}</td>
@@ -136,7 +169,9 @@ export default function Orders({ scope }: Props) {
           })}
         </tbody>
       </table>
-      {!loading && orders.length === 0 && <p className="note">No orders here yet.</p>}
+      {!loading && shown.length === 0 && (
+        <p className="note">{scope === 'mine' ? `No ${kind === 'Order' ? 'orders' : kind === 'Invoice' ? 'invoices' : 'quotations'} here yet.` : 'No orders here yet.'}</p>
+      )}
 
       {detailId && (
         <OrderDetailDialog

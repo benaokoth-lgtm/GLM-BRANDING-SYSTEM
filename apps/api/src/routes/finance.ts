@@ -5,13 +5,14 @@ import { requireAuth, requirePermission } from '../middleware/auth';
 import {
   computeOrderTotals,
   computePay,
-  EMPLOYEE_TYPES,
-  EXPENSE_CATEGORIES,
-  PAYROLL_PAYMENT_SOURCES,
+  EXPENSE_METHODS,
   PETTY_CASH_SOURCES,
+  PETTY_CASH_METHOD,
   splitVatInclusive,
 } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
+import { ensureChartOnce, accountIdForNewExpenseHead } from '../accounting/chart';
+import { loadLedger, pettyCashBalance, pettyCashShortfall } from '../accounting/ledger';
 
 export const financeRouter = Router();
 financeRouter.use(requireAuth, requirePermission('canAccessFinance'));
@@ -27,25 +28,15 @@ function parseRange(req: { query: Record<string, unknown> }): { from: string; to
   return { from, to };
 }
 
-// Current Petty Cash float: all-time top-ups minus all-time Expense rows
-// minus all-time PayrollEntry rows paid from 'Petty Cash' (netPay only — the
-// statutory deductions on a petty-cash-paid salary are a separate downstream
-// remittance, not cash that left the tin). Shared by the /petty-cash read
-// endpoint and the insufficient-funds guards on new Expense/Payroll entries
-// below, so both always agree on the same number.
+// Current Petty Cash float, read from the ledger (accounting/ledger.ts) so the float, the books and the
+// insufficient-funds guards on new expenses/wages always agree on one number: top-ups in, minus every expense paid from
+// petty cash, minus the net pay of every pay-run paid from it, minus petty-cash refunds. Shared with Stock's purchase flow.
 export async function computePettyCashBalance(asOfDate?: string): Promise<number> {
-  const [topUps, expenses, pettyPayroll] = await Promise.all([
-    prisma.pettyCashTopUp.findMany(),
-    prisma.expense.findMany(),
-    prisma.payrollEntry.findMany({ where: { paymentSource: 'Petty Cash' } }),
-  ]);
-  const cutoff = asOfDate ?? '9999-12-31';
-  const topUpsTotal = topUps.filter((t) => t.date <= cutoff).reduce((a, t) => a + t.amount, 0);
-  const expensesTotal = expenses.filter((e) => e.date <= cutoff).reduce((a, e) => a + e.amount, 0);
-  const payrollTotal = pettyPayroll
-    .filter((p) => p.date <= cutoff)
-    .reduce((a, p) => a + computePay(p.grossPay, p.employeeType as 'Employee' | 'Casual').netPay, 0);
-  return topUpsTotal - expensesTotal - payrollTotal;
+  return pettyCashBalance(asOfDate);
+}
+
+function shortMessage(available: number, needed: number): string {
+  return `Insufficient petty cash balance (Ksh ${Math.round(available).toLocaleString('en-KE')} available, Ksh ${Math.round(needed).toLocaleString('en-KE')} needed)`;
 }
 
 // ── Payroll (also backs the NSSF/SHIF derived views on the frontend) ───────
@@ -101,7 +92,7 @@ const payrollSchema = z.discriminatedUnion('employeeType', [
     staffId: z.number().int(),
     department: z.string().max(100).optional(),
     grossPay: z.number().positive(),
-    paymentSource: z.enum(PAYROLL_PAYMENT_SOURCES),
+    paymentSource: z.string().optional(), // ignored: wages are always paid from petty cash
   }),
   z.object({
     employeeType: z.literal('Casual'),
@@ -110,7 +101,7 @@ const payrollSchema = z.discriminatedUnion('employeeType', [
     department: z.string().max(100).optional(),
     daysWorked: z.number().positive(),
     rate: z.number().positive(),
-    paymentSource: z.enum(PAYROLL_PAYMENT_SOURCES),
+    paymentSource: z.string().optional(), // ignored: wages are always paid from petty cash
   }),
 ]);
 
@@ -124,13 +115,11 @@ financeRouter.post('/payroll', async (req, res) => {
 
   const grossPay = data.employeeType === 'Employee' ? data.grossPay : data.daysWorked * data.rate;
 
-  if (data.paymentSource === 'Petty Cash') {
-    const netPay = computePay(grossPay, data.employeeType).netPay;
-    const balance = await computePettyCashBalance();
-    if (netPay > balance) {
-      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString('en-KE')} available, Ksh ${Math.round(netPay).toLocaleString('en-KE')} needed)` });
-    }
-  }
+  // Wages are always paid out of petty cash — net pay leaves the float, so the float must cover it (on the pay date and
+  // on every later day). The statutory deductions are held as liabilities until remitted.
+  const netPay = computePay(grossPay, data.employeeType).netPay;
+  const check = await pettyCashShortfall(netPay, data.date);
+  if (check.short) return res.status(400).json({ error: shortMessage(check.available, netPay) });
 
   const entry = await prisma.payrollEntry.create({
     data: {
@@ -141,7 +130,7 @@ financeRouter.post('/payroll', async (req, res) => {
       daysWorked: data.employeeType === 'Casual' ? data.daysWorked : null,
       rate: data.employeeType === 'Casual' ? data.rate : null,
       grossPay,
-      paymentSource: data.paymentSource,
+      paymentSource: PETTY_CASH_METHOD,
       capturedByName: req.user!.name,
     },
   });
@@ -201,48 +190,109 @@ financeRouter.get('/vat', async (req, res) => {
 });
 
 // ── Operating expenses (capture) — P&L reads/aggregates the same table ──────
+async function expenseHeadNames(): Promise<string[]> {
+  await ensureChartOnce();
+  return (await prisma.expenseHead.findMany({ orderBy: { name: 'asc' } })).map((h) => h.name);
+}
+
 financeRouter.get('/expenses', async (req, res) => {
   const range = parseRange(req);
   if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
 
   const rows = await prisma.expense.findMany({
     where: { date: { gte: range.from, lte: range.to } },
+    include: { payments: true, notes: true },
     orderBy: { date: 'desc' },
+  });
+  const out = rows.map(({ payments, notes, ...e }) => {
+    const paidAmount = e.paid ? e.amount : payments.reduce((a, p) => a + p.amount, 0);
+    const credited = notes.filter((n) => n.type === 'SupplierDebit').reduce((a, n) => a + n.total, 0);
+    return { ...e, paidAmount, credited, outstanding: e.paid ? 0 : Math.max(0, Math.round((e.amount - paidAmount - credited) * 100) / 100), payments };
   });
   const totalExpenses = rows.reduce((a, e) => a + e.amount, 0);
 
-  res.json({ fromDate: range.from, toDate: range.to, rows, totalExpenses, expenseCategories: EXPENSE_CATEGORIES });
+  res.json({ fromDate: range.from, toDate: range.to, rows: out, totalExpenses, expenseCategories: await expenseHeadNames(), expenseMethods: EXPENSE_METHODS });
 });
 
+const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const expenseSchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  category: z.enum(EXPENSE_CATEGORIES),
+  date: dateStr,
+  category: z.string().min(1).max(100),
   note: z.string().max(200).optional(),
   amount: z.number().positive(),
   // Optional generally, but a "Printing Materials & Consumables" expense
   // needs one on file to later be linked to a Stock purchase (see
   // routes/stock.ts).
   invoiceNumber: z.string().max(100).optional(),
+  // How it was paid. Defaults to petty cash (the historical behaviour). `paid: false` records a bill on credit — it
+  // goes to Accounts Payable until payments are made against it (POST /expenses/:id/payments).
+  method: z.enum(EXPENSE_METHODS).default(PETTY_CASH_METHOD),
+  paid: z.boolean().default(true),
+  supplier: z.string().max(120).optional(),
+  dueDate: dateStr.optional().nullable(),
 });
 
-// Every Expense row is implicitly petty-cash-funded (see the Petty Cash
-// ledger's balance calc) — so no expense can be captured for more than the
-// float currently holds, full stop. This is the same rule payroll's
-// 'Petty Cash' payment source enforces, just applied unconditionally here
-// since there's no separate funding-source field on Expense.
 financeRouter.post('/expenses', async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  if (!(await expenseHeadNames()).includes(d.category)) return res.status(400).json({ error: 'Choose one of the expense heads (add new ones under Accounting → Chart of Accounts)' });
+  if (!d.paid && !(d.supplier || '').trim()) return res.status(400).json({ error: 'A supplier is required for an expense bought on credit' });
 
-  const balance = await computePettyCashBalance();
-  if (parsed.data.amount > balance) {
-    return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString('en-KE')} available, Ksh ${Math.round(parsed.data.amount).toLocaleString('en-KE')} needed)` });
+  // Anything paid from petty cash — now, not on credit — must be covered by the float (on its day and every later day).
+  if (d.paid && d.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(d.amount, d.date);
+    if (check.short) return res.status(400).json({ error: shortMessage(check.available, d.amount) });
   }
 
   const expense = await prisma.expense.create({
-    data: { ...parsed.data, note: parsed.data.note ?? '', capturedByName: req.user!.name },
+    data: {
+      date: d.date,
+      category: d.category,
+      note: d.note ?? '',
+      amount: d.amount,
+      invoiceNumber: d.invoiceNumber,
+      method: d.paid ? d.method : PETTY_CASH_METHOD,
+      paid: d.paid,
+      supplier: (d.supplier || '').trim(),
+      dueDate: d.paid ? null : d.dueDate ?? null,
+      capturedByName: req.user!.name,
+    },
   });
   res.status(201).json(expense);
+});
+
+// Pay down an expense bought on credit — in full or in part, by any method (petty cash included, if the float covers it).
+const expensePaymentSchema = z.object({ date: dateStr, amount: z.number().positive(), method: z.enum(EXPENSE_METHODS), note: z.string().max(200).optional() });
+
+financeRouter.post('/expenses/:id/payments', async (req, res) => {
+  const parsed = expensePaymentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) }, include: { payments: true, notes: true } });
+  if (!expense) return res.status(404).json({ error: 'Expense not found' });
+  if (expense.paid) return res.status(400).json({ error: 'This expense was paid when it was recorded — there is nothing outstanding' });
+  const paidSoFar = expense.payments.reduce((a, p) => a + p.amount, 0);
+  const credited = expense.notes.filter((n) => n.type === 'SupplierDebit').reduce((a, n) => a + n.total, 0);
+  const outstanding = Math.round((expense.amount - paidSoFar - credited) * 100) / 100;
+  if (parsed.data.amount > outstanding + 0.01) return res.status(400).json({ error: `Only Ksh ${Math.round(outstanding).toLocaleString('en-KE')} is outstanding on this bill` });
+  if (parsed.data.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(parsed.data.amount, parsed.data.date);
+    if (check.short) return res.status(400).json({ error: shortMessage(check.available, parsed.data.amount) });
+  }
+  const payment = await prisma.expensePayment.create({
+    data: { expenseId: expense.id, date: parsed.data.date, amount: parsed.data.amount, method: parsed.data.method, note: parsed.data.note ?? '', capturedByName: req.user!.name },
+  });
+  res.status(201).json(payment);
+});
+
+// Expense heads (and the account each posts to) are managed under Accounting → Chart of Accounts.
+financeRouter.post('/expense-heads', async (req, res) => {
+  const name = String((req.body as { name?: string }).name || '').trim();
+  if (!name || name.length > 100) return res.status(400).json({ error: 'Enter a name for the expense head' });
+  await ensureChartOnce();
+  if (await prisma.expenseHead.findUnique({ where: { name } })) return res.status(400).json({ error: 'That expense head already exists' });
+  const head = await prisma.expenseHead.create({ data: { name, accountId: await accountIdForNewExpenseHead(name) } });
+  res.status(201).json(head);
 });
 
 // No direct DELETE for expenses — see the generic DeletionRequest flow below.
@@ -281,7 +331,7 @@ financeRouter.get('/expenses/amendments', async (req, res) => {
 
 const amendSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  category: z.enum(EXPENSE_CATEGORIES),
+  category: z.string().min(1).max(100),
   note: z.string().max(200).optional(),
   amount: z.number().positive(),
   reason: z.string().min(1, 'A reason for the amendment is required'),
@@ -292,6 +342,7 @@ financeRouter.post('/expenses/:id/amend', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
   if (!expense) return res.status(404).json({ error: 'Expense not found' });
+  if (!(await expenseHeadNames()).includes(parsed.data.category)) return res.status(400).json({ error: 'Choose one of the expense heads' });
 
   const amendment = await prisma.expenseAmendment.create({
     data: {
@@ -339,61 +390,38 @@ financeRouter.get('/petty-cash', async (req, res) => {
   const range = parseRange(req);
   if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
 
-  const [allTopUps, allExpenses, allPettyPayroll, cashPayments] = await Promise.all([
-    prisma.pettyCashTopUp.findMany(),
-    prisma.expense.findMany(),
-    prisma.payrollEntry.findMany({ where: { paymentSource: 'Petty Cash' }, include: { staff: true } }),
+  const [ledger, cashPayments] = await Promise.all([
+    loadLedger(),
     prisma.payment.findMany({ where: { method: 'Cash', date: { gte: range.from, lte: range.to } } }),
   ]);
-  const pettyPayrollNet = allPettyPayroll.map((p) => ({ ...p, netPay: computePay(p.grossPay, p.employeeType as 'Employee' | 'Casual').netPay }));
-
+  const petty = ledger.byCode.get('1010');
+  const mine = petty ? ledger.postings.filter((p) => p.accountId === petty.id && inRange(p.date, range.from, range.to)) : [];
   const balance = await computePettyCashBalance(range.to);
 
-  const periodTopUps = allTopUps.filter((t) => inRange(t.date, range.from, range.to));
-  const periodExpenses = allExpenses.filter((e) => inRange(e.date, range.from, range.to));
-  const periodPayroll = pettyPayrollNet.filter((p) => inRange(p.date, range.from, range.to));
-  const periodTopUpsTotal = periodTopUps.reduce((a, t) => a + t.amount, 0);
-  const periodExpensesTotal = periodExpenses.reduce((a, e) => a + e.amount, 0) + periodPayroll.reduce((a, p) => a + p.netPay, 0);
-  const cashSalesInPeriod = cashPayments.reduce((a, p) => a + p.amount, 0);
-
-  const ledger = [
-    ...periodTopUps.map((t) => ({
-      id: 't' + t.id,
-      date: t.date,
-      type: 'topup' as const,
-      description: t.source + (t.note ? ': ' + t.note : '') + ` (by ${t.authorizedByName})`,
-      amountIn: t.amount,
-      amountOut: 0,
-      topUpId: t.id,
-    })),
-    ...periodExpenses.map((e) => ({
-      id: 'e' + e.id,
-      date: e.date,
-      type: 'expense' as const,
-      description: e.category + (e.note ? ': ' + e.note : '') + (e.capturedByName ? ` (by ${e.capturedByName})` : ''),
-      amountIn: 0,
-      amountOut: e.amount,
-      topUpId: null as number | null,
-    })),
-    ...periodPayroll.map((p) => ({
-      id: 'p' + p.id,
-      date: p.date,
-      type: 'expense' as const,
-      description: `Payroll: ${p.staff.name} (net pay)`,
-      amountIn: 0,
-      amountOut: p.netPay,
-      topUpId: null as number | null,
-    })),
-  ].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const rows = mine
+    .map((p, i) => {
+      const isTopUp = p.source === 'Petty cash top-up';
+      const topUpId = isTopUp && p.ref.startsWith('PCT-') ? Number(p.ref.slice(4)) : null;
+      return {
+        id: `${p.source}:${p.ref}:${i}`,
+        date: p.date,
+        type: (p.debit > 0 ? 'topup' : 'expense') as 'topup' | 'expense',
+        description: p.memo || p.source,
+        amountIn: p.debit,
+        amountOut: p.credit,
+        topUpId,
+      };
+    })
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
 
   res.json({
     fromDate: range.from,
     toDate: range.to,
     balance,
-    periodTopUpsTotal,
-    periodExpensesTotal,
-    cashSalesInPeriod,
-    ledger,
+    periodTopUpsTotal: rows.reduce((a, r) => a + r.amountIn, 0),
+    periodExpensesTotal: rows.reduce((a, r) => a + r.amountOut, 0),
+    cashSalesInPeriod: cashPayments.reduce((a, p) => a + p.amount, 0),
+    ledger: rows,
     pettyCashSources: PETTY_CASH_SOURCES,
   });
 });

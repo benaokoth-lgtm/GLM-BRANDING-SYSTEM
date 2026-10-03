@@ -48,6 +48,7 @@ const common = {
 await build({ ...common, entryPoints: [path.join(root, 'apps/api/src/server.ts')], outfile: path.join(apiOut, 'server.js') });
 await build({ ...common, entryPoints: [path.join(root, 'apps/api/prisma/seed-admin.ts')], outfile: path.join(apiOut, 'seed-admin.js') });
 await build({ ...common, entryPoints: [path.join(root, 'apps/api/prisma/reset-pin.ts')], outfile: path.join(apiOut, 'reset-pin.js') });
+await build({ ...common, entryPoints: [path.join(root, 'apps/api/prisma/books-check.ts')], outfile: path.join(apiOut, 'books-check.js') });
 
 fs.writeFileSync(
   path.join(apiOut, 'package.json'),
@@ -63,6 +64,7 @@ fs.writeFileSync(
         'db:push': 'prisma db push --schema=prisma/schema.prisma',
         'db:seed-admin': 'node seed-admin.js',
         'db:reset-pin': 'node reset-pin.js',
+        'db:books-check': 'node books-check.js',
       },
       dependencies: { '@prisma/client': PRISMA_VERSION, prisma: PRISMA_VERSION },
       // Newer npm versions block dependency install scripts by default;

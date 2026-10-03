@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
-import { EXPENSE_CATEGORIES, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
+import { EXPENSE_CATEGORIES, EXPENSE_METHODS, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import type { ExpenseCategory, PettyCashSource } from '@glm/shared';
 import { api } from '../api/client';
 import type { DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesData, PettyCashData } from '../api/models';
@@ -54,10 +54,15 @@ function presetRange(preset: Preset, today: string): { from: string; to: string 
 
 interface ExpenseDraft {
   date: string;
-  category: ExpenseCategory;
+  category: string;
   note: string;
   amount: string;
   invoiceNumber: string;
+  // How it was paid; "on credit" records a bill that sits in Accounts Payable until paid.
+  method: string;
+  onCredit: boolean;
+  supplier: string;
+  dueDate: string;
 }
 
 function ExpenseCaptureForm({
@@ -65,13 +70,19 @@ function ExpenseCaptureForm({
   setDraft,
   onSubmit,
   busy,
+  categories,
+  full,
 }: {
   draft: ExpenseDraft;
   setDraft: (fn: (d: ExpenseDraft) => ExpenseDraft) => void;
   onSubmit: () => void;
   busy: boolean;
+  categories: readonly string[];
+  /** The Expenses tab offers payment method / on-credit; the Petty Cash tab is always petty cash. */
+  full: boolean;
 }) {
   return (
+    <>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr 1fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
       <div className="field">
         <label>Date</label>
@@ -79,8 +90,8 @@ function ExpenseCaptureForm({
       </div>
       <div className="field">
         <label>Category</label>
-        <select className="input" value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value as ExpenseCategory }))}>
-          {EXPENSE_CATEGORIES.map((cat) => (
+        <select className="input" value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}>
+          {categories.map((cat) => (
             <option key={cat} value={cat}>
               {cat}
             </option>
@@ -107,6 +118,44 @@ function ExpenseCaptureForm({
         Add
       </button>
     </div>
+    {full && (
+      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr 1fr', gap: 'var(--space-3)', alignItems: 'end', marginTop: 'var(--space-3)' }}>
+        <div className="field">
+          <label>Paid by</label>
+          <select className="input" value={draft.onCredit ? 'credit' : draft.method} onChange={(e) => (e.target.value === 'credit' ? setDraft((d) => ({ ...d, onCredit: true })) : setDraft((d) => ({ ...d, onCredit: false, method: e.target.value })))}>
+            {EXPENSE_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+            <option value="credit">On credit (pay the supplier later)</option>
+          </select>
+        </div>
+        {draft.onCredit ? (
+          <>
+            <div className="field">
+              <label>Supplier</label>
+              <input className="input" value={draft.supplier} onChange={(e) => setDraft((d) => ({ ...d, supplier: e.target.value }))} placeholder="Required for credit" />
+            </div>
+            <div className="field">
+              <label>Payment due</label>
+              <input className="input" type="date" value={draft.dueDate} onChange={(e) => setDraft((d) => ({ ...d, dueDate: e.target.value }))} />
+            </div>
+            <span className="note">Goes to Accounts Payable until you pay it.</span>
+          </>
+        ) : (
+          <>
+            <div className="field">
+              <label>Supplier (optional)</label>
+              <input className="input" value={draft.supplier} onChange={(e) => setDraft((d) => ({ ...d, supplier: e.target.value }))} />
+            </div>
+            <span />
+            <span className="note">{draft.method === 'Petty Cash' ? 'Comes out of the petty cash float.' : ''}</span>
+          </>
+        )}
+      </div>
+    )}
+    </>
   );
 }
 
@@ -125,18 +174,26 @@ export default function Finance() {
 
   const [newExpense, setNewExpense] = useState<ExpenseDraft>({
     date: today,
-    category: EXPENSE_CATEGORIES[0] as ExpenseCategory,
+    category: EXPENSE_CATEGORIES[0] as string,
     note: '',
     amount: '',
     invoiceNumber: '',
+    method: 'Petty Cash',
+    onCredit: false,
+    supplier: '',
+    dueDate: '',
   });
 
   const [newPettyExpense, setNewPettyExpense] = useState<ExpenseDraft>({
     date: today,
-    category: EXPENSE_CATEGORIES[0] as ExpenseCategory,
+    category: EXPENSE_CATEGORIES[0] as string,
     note: '',
     amount: '',
     invoiceNumber: '',
+    method: 'Petty Cash',
+    onCredit: false,
+    supplier: '',
+    dueDate: '',
   });
 
   const [newTopUp, setNewTopUp] = useState({
@@ -146,8 +203,12 @@ export default function Finance() {
     amount: '',
   });
 
+  // Paying down an expense bought on credit.
+  const [payingId, setPayingId] = useState<number | null>(null);
+  const [payDraft, setPayDraft] = useState({ date: today, amount: '', method: 'Bank Transfer' });
+
   const [amendingId, setAmendingId] = useState<number | null>(null);
-  const [amendDraft, setAmendDraft] = useState({ date: '', category: EXPENSE_CATEGORIES[0] as ExpenseCategory, note: '', amount: '', reason: '' });
+  const [amendDraft, setAmendDraft] = useState({ date: '', category: EXPENSE_CATEGORIES[0] as string, note: '', amount: '', reason: '' });
 
   const [deletionRequests, setDeletionRequests] = useState<DeletionRequest[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<{ type: DeletableRecordType; id: number } | null>(null);
@@ -189,7 +250,17 @@ export default function Finance() {
     setError(null);
     setBusy(true);
     try {
-      await api.post('/finance/expenses', { ...draft, amount, invoiceNumber: draft.invoiceNumber || undefined });
+      await api.post('/finance/expenses', {
+        date: draft.date,
+        category: draft.category,
+        note: draft.note,
+        amount,
+        invoiceNumber: draft.invoiceNumber || undefined,
+        method: draft.onCredit ? 'Petty Cash' : draft.method,
+        paid: !draft.onCredit,
+        supplier: draft.supplier || undefined,
+        dueDate: draft.onCredit && draft.dueDate ? draft.dueDate : undefined,
+      });
       reset();
       load();
     } catch (err) {
@@ -199,9 +270,25 @@ export default function Finance() {
     }
   }
 
+  async function submitSupplierPayment(expenseId: number) {
+    const amount = Number(payDraft.amount);
+    if (!amount || amount <= 0) return setError('Amount must be greater than 0');
+    setError(null);
+    setBusy(true);
+    try {
+      await api.post(`/finance/expenses/${expenseId}/payments`, { date: payDraft.date, amount, method: payDraft.method });
+      setPayingId(null);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to record payment');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function startAmend(e: ExpensesData['rows'][number]) {
     setAmendingId(e.id);
-    setAmendDraft({ date: e.date, category: e.category as ExpenseCategory, note: e.note, amount: String(e.amount), reason: '' });
+    setAmendDraft({ date: e.date, category: e.category, note: e.note, amount: String(e.amount), reason: '' });
     setError(null);
   }
 
@@ -404,7 +491,7 @@ export default function Finance() {
               Operating expenses
             </div>
 
-            <ExpenseCaptureForm draft={newExpense} setDraft={setNewExpense} busy={busy} onSubmit={() => submitExpense(newExpense, () => setNewExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '' })))} />
+            <ExpenseCaptureForm full categories={expenses.expenseCategories} draft={newExpense} setDraft={setNewExpense} busy={busy} onSubmit={() => submitExpense(newExpense, () => setNewExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '', supplier: '', dueDate: '' })))} />
 
             <table className="table" style={{ marginTop: 'var(--space-4)' }}>
               <thead>
@@ -414,6 +501,7 @@ export default function Finance() {
                   <th>Note</th>
                   <th>Invoice #</th>
                   <th style={{ textAlign: 'right' }}>Amount</th>
+                  <th>Paid</th>
                   <th>Captured by</th>
                   <th></th>
                 </tr>
@@ -427,6 +515,22 @@ export default function Finance() {
                       <td className="text-muted">{e.note}</td>
                       <td className="text-muted">{e.invoiceNumber || '—'}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(e.amount)}</td>
+                      <td>
+                        {e.paid ? (
+                          <span className="text-muted">{e.method}</span>
+                        ) : e.outstanding > 0 ? (
+                          <span>
+                            <span className="tag tag-outline" style={{ fontSize: 10 }}>On credit</span>{' '}
+                            {e.supplier && <span className="text-muted">{e.supplier} · </span>}
+                            <strong>{fmtKsh(e.outstanding)}</strong> owed{e.dueDate ? <span className="text-muted"> · due {fmtDate(e.dueDate)}</span> : null}{' '}
+                            <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setPayingId(e.id); setPayDraft({ date: today, amount: String(e.outstanding), method: 'Bank Transfer' }); setError(null); }} disabled={busy}>
+                              Pay
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-muted">Settled{e.supplier ? ` — ${e.supplier}` : ''}</span>
+                        )}
+                      </td>
                       <td className="text-muted">{e.capturedByName || '—'}</td>
                       <td style={{ display: 'flex', gap: 'var(--space-1)' }}>
                         <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startAmend(e)} disabled={busy}>
@@ -444,11 +548,43 @@ export default function Finance() {
                       </td>
                     </tr>
                     {deleteTarget?.type === 'Expense' && deleteTarget.id === e.id && (
-                      <DeleteReasonRow colSpan={7} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
+                      <DeleteReasonRow colSpan={8} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
+                    )}
+                    {payingId === e.id && (
+                      <tr>
+                        <td colSpan={8} style={{ background: 'var(--color-surface)' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Payment date</label>
+                              <input className="input" type="date" value={payDraft.date} onChange={(ev) => setPayDraft((d) => ({ ...d, date: ev.target.value }))} />
+                            </div>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Amount (Ksh)</label>
+                              <input className="input" value={payDraft.amount} onChange={(ev) => setPayDraft((d) => ({ ...d, amount: ev.target.value }))} />
+                            </div>
+                            <div className="field" style={{ margin: 0 }}>
+                              <label>Paid by</label>
+                              <select className="input" value={payDraft.method} onChange={(ev) => setPayDraft((d) => ({ ...d, method: ev.target.value }))}>
+                                {EXPENSE_METHODS.map((m) => (
+                                  <option key={m} value={m}>
+                                    {m}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <button type="button" className="btn btn-primary" onClick={() => submitSupplierPayment(e.id)} disabled={busy}>
+                              Record payment
+                            </button>
+                            <button type="button" className="btn btn-secondary" onClick={() => setPayingId(null)} disabled={busy}>
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
                     )}
                     {amendingId === e.id && (
                       <tr>
-                        <td colSpan={7} style={{ background: 'var(--color-surface)' }}>
+                        <td colSpan={8} style={{ background: 'var(--color-surface)' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1.6fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                             <div className="field" style={{ margin: 0 }}>
                               <label>Date</label>
@@ -456,8 +592,8 @@ export default function Finance() {
                             </div>
                             <div className="field" style={{ margin: 0 }}>
                               <label>Category</label>
-                              <select className="input" value={amendDraft.category} onChange={(ev) => setAmendDraft((d) => ({ ...d, category: ev.target.value as ExpenseCategory }))}>
-                                {EXPENSE_CATEGORIES.map((cat) => (
+                              <select className="input" value={amendDraft.category} onChange={(ev) => setAmendDraft((d) => ({ ...d, category: ev.target.value }))}>
+                                {(expenses?.expenseCategories ?? EXPENSE_CATEGORIES).map((cat) => (
                                   <option key={cat} value={cat}>
                                     {cat}
                                   </option>
@@ -495,6 +631,7 @@ export default function Finance() {
                     Total
                   </td>
                   <td style={{ textAlign: 'right' }}>{fmtKsh(expenses.totalExpenses)}</td>
+                  <td></td>
                   <td></td>
                   <td></td>
                 </tr>
@@ -658,6 +795,8 @@ export default function Finance() {
               Same ledger as Finance → Expenses — logged here for convenience while you're already reviewing the float.
             </p>
             <ExpenseCaptureForm
+              full={false}
+              categories={expenses?.expenseCategories ?? EXPENSE_CATEGORIES}
               draft={newPettyExpense}
               setDraft={setNewPettyExpense}
               busy={busy}

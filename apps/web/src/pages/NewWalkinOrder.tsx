@@ -7,7 +7,8 @@ import LineItemsEditor, { makeDefaultLine } from '../components/LineItemsEditor'
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printWalkinReceipt } from '../utils/printTicket';
-import MpesaStkButton from '../components/MpesaStkButton';
+import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../components/SplitPayments';
+import type { PaymentRow } from '../components/SplitPayments';
 
 export default function NewWalkinOrder() {
   const { services: allServices, materials, staff, maxDiscountPct, loading } = useCatalog();
@@ -22,9 +23,8 @@ export default function NewWalkinOrder() {
   const [phone, setPhone] = useState('');
   const [staffId, setStaffId] = useState<number | null>(user?.id ?? null);
   const [paymentTiming, setPaymentTiming] = useState<'onAcceptance' | 'onCompletion'>('onAcceptance');
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'>('Cash');
-  const [mpesaConfirmed, setMpesaConfirmed] = useState(false);
+  // Any mix of methods can pay the order now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
+  const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [newPaymentRow()]);
   const [lineItems, setLineItems] = useState<DraftLineItem[] | null>(null);
   const [orderDiscountPct, setOrderDiscountPct] = useState('0');
   const [orderDiscountAmt, setOrderDiscountAmt] = useState('0');
@@ -48,8 +48,10 @@ export default function NewWalkinOrder() {
   const totals = computeOrderTotals({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 });
   const discountWarning = exceedsDiscountCeiling({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 }, maxDiscountPct);
 
+  const payProblem = paymentTiming === 'onAcceptance' ? paymentProblem(paymentRows, totals.grandTotal) : null;
+
   async function submit() {
-    if (!customerName.trim() || !staffId) return;
+    if (!customerName.trim() || !staffId || payProblem) return;
     setSubmitting(true);
     setError(null);
     // Open the popup synchronously (before any await) so browser popup
@@ -62,8 +64,7 @@ export default function NewWalkinOrder() {
           phone,
           staffId,
           paymentTiming,
-          paymentAmount: paymentTiming === 'onAcceptance' ? Number(paymentAmount) || 0 : undefined,
-          paymentMethod: paymentTiming === 'onAcceptance' ? paymentMethod : undefined,
+          payments: paymentTiming === 'onAcceptance' ? toApiPayments(paymentRows) : undefined,
           lineItems: normalized,
           orderDiscountPct: Number(orderDiscountPct) || 0,
           orderDiscountAmt: Number(orderDiscountAmt) || 0,
@@ -140,50 +141,15 @@ export default function NewWalkinOrder() {
       </div>
 
       {paymentTiming === 'onAcceptance' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
-          <div className="field">
-            <label>Amount received now (Ksh)</label>
-            <input
-              className="input"
-              value={paymentAmount}
-              onChange={(e) => {
-                setPaymentAmount(e.target.value);
-                setMpesaConfirmed(false);
-              }}
-              placeholder="Full or partial"
-            />
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
+            Payment now — split across cash, M-Pesa, bank or card if the customer likes
           </div>
-          <div className="field">
-            <label>Method</label>
-            <select
-              className="input"
-              value={paymentMethod}
-              onChange={(e) => {
-                setPaymentMethod(e.target.value as typeof paymentMethod);
-                setMpesaConfirmed(false);
-              }}
-            >
-              <option value="Cash">Cash</option>
-              <option value="M-Pesa">M-Pesa</option>
-              <option value="Bank Transfer">Bank Transfer</option>
-              <option value="Card">Card</option>
-            </select>
-          </div>
-          {paymentMethod === 'M-Pesa' && (
-            <div style={{ gridColumn: '1 / -1' }}>
-              {mpesaConfirmed ? (
-                <span className="tag tag-accent">M-Pesa payment confirmed — ready to capture the order</span>
-              ) : (
-                <MpesaStkButton
-                  phone={phone}
-                  amount={Number(paymentAmount) || 0}
-                  accountReference={customerName || 'Walk-in order'}
-                  description="Walk-in order payment"
-                  onSuccess={() => setMpesaConfirmed(true)}
-                />
-              )}
-              {!phone && <p className="note" style={{ marginTop: 'var(--space-2)' }}>Enter the customer's phone number above to send the STK push.</p>}
-            </div>
+          <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={totals.grandTotal} phone={phone} accountReference={customerName || 'Walk-in order'} />
+          {payProblem && (
+            <p className="note" style={{ color: '#a33', marginTop: 'var(--space-2)' }}>
+              {payProblem}
+            </p>
           )}
         </div>
       )}
@@ -209,7 +175,7 @@ export default function NewWalkinOrder() {
           type="button"
           className="btn btn-primary blueprint"
           onClick={submit}
-          disabled={submitting || !customerName.trim() || (paymentTiming === 'onAcceptance' && paymentMethod === 'M-Pesa' && Number(paymentAmount) > 0 && !mpesaConfirmed)}
+          disabled={submitting || !customerName.trim() || !!payProblem}
         >
           <i className="corner tl"></i>
           <i className="corner tr"></i>

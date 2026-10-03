@@ -18,9 +18,9 @@ var __export = (target, all) => {
 };
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    for (let key2 of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key2) && key2 !== except)
+        __defProp(to, key2, { get: () => from[key2], enumerable: !(desc = __getOwnPropDesc(from, key2)) || desc.enumerable });
   }
   return to;
 };
@@ -117,7 +117,7 @@ var require_main = __commonJS({
       lines = lines.replace(/\r\n?/mg, "\n");
       let match;
       while ((match = LINE.exec(lines)) != null) {
-        const key = match[1];
+        const key2 = match[1];
         let value = match[2] || "";
         value = value.trim();
         const maybeQuote = value[0];
@@ -126,7 +126,7 @@ var require_main = __commonJS({
           value = value.replace(/\\n/g, "\n");
           value = value.replace(/\\r/g, "\r");
         }
-        obj[key] = value;
+        obj[key2] = value;
       }
       return obj;
     }
@@ -145,8 +145,8 @@ var require_main = __commonJS({
       let decrypted;
       for (let i = 0; i < length; i++) {
         try {
-          const key = keys[i].trim();
-          const attrs = _instructions(result, key);
+          const key2 = keys[i].trim();
+          const attrs = _instructions(result, key2);
           decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
           break;
         } catch (error2) {
@@ -187,8 +187,8 @@ var require_main = __commonJS({
         }
         throw error2;
       }
-      const key = uri.password;
-      if (!key) {
+      const key2 = uri.password;
+      if (!key2) {
         const err = new Error("INVALID_DOTENV_KEY: Missing key part");
         err.code = "INVALID_DOTENV_KEY";
         throw err;
@@ -206,7 +206,7 @@ var require_main = __commonJS({
         err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
         throw err;
       }
-      return { ciphertext, key };
+      return { ciphertext, key: key2 };
     }
     function _vaultPath(options) {
       let possibleVaultPath = null;
@@ -320,13 +320,13 @@ var require_main = __commonJS({
       return DotenvModule._configVault(options);
     }
     function decrypt(encrypted, keyStr) {
-      const key = Buffer.from(keyStr.slice(-64), "hex");
+      const key2 = Buffer.from(keyStr.slice(-64), "hex");
       let ciphertext = Buffer.from(encrypted, "base64");
       const nonce = ciphertext.subarray(0, 12);
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto9.createDecipheriv("aes-256-gcm", key, nonce);
+        const aesgcm = crypto9.createDecipheriv("aes-256-gcm", key2, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error2) {
@@ -354,20 +354,20 @@ var require_main = __commonJS({
         err.code = "OBJECT_REQUIRED";
         throw err;
       }
-      for (const key of Object.keys(parsed)) {
-        if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
+      for (const key2 of Object.keys(parsed)) {
+        if (Object.prototype.hasOwnProperty.call(processEnv, key2)) {
           if (override === true) {
-            processEnv[key] = parsed[key];
+            processEnv[key2] = parsed[key2];
           }
           if (debug) {
             if (override === true) {
-              _debug(`"${key}" is already defined and WAS overwritten`);
+              _debug(`"${key2}" is already defined and WAS overwritten`);
             } else {
-              _debug(`"${key}" is already defined and was NOT overwritten`);
+              _debug(`"${key2}" is already defined and was NOT overwritten`);
             }
           }
         } else {
-          processEnv[key] = parsed[key];
+          processEnv[key2] = parsed[key2];
         }
       }
     }
@@ -558,11 +558,11 @@ var require_depd = __commonJS({
           break;
         }
       }
-      var key = caller ? depSite.join(":") + "__" + caller.join(":") : void 0;
-      if (key !== void 0 && key in this._warned) {
+      var key2 = caller ? depSite.join(":") + "__" + caller.join(":") : void 0;
+      if (key2 !== void 0 && key2 in this._warned) {
         return;
       }
-      this._warned[key] = true;
+      this._warned[key2] = true;
       var msg = message;
       if (!msg) {
         msg = callSite === depSite || !callSite.name ? defaultMessage(depSite) : defaultMessage(callSite);
@@ -882,7 +882,7 @@ var require_content_type = __commonJS({
       }
       var obj = new ContentType(type.toLowerCase());
       if (index !== -1) {
-        var key;
+        var key2;
         var match;
         var value;
         PARAM_REGEXP.lastIndex = index;
@@ -891,7 +891,7 @@ var require_content_type = __commonJS({
             throw new TypeError("invalid parameter format");
           }
           index += match[0].length;
-          key = match[1].toLowerCase();
+          key2 = match[1].toLowerCase();
           value = match[2];
           if (value.charCodeAt(0) === 34) {
             value = value.slice(1, -1);
@@ -899,7 +899,7 @@ var require_content_type = __commonJS({
               value = value.replace(QESC_REGEXP, "$1");
             }
           }
-          obj.parameters[key] = value;
+          obj.parameters[key2] = value;
         }
         if (index !== header.length) {
           throw new TypeError("invalid parameter format");
@@ -1209,9 +1209,9 @@ var require_http_errors = __commonJS({
         err.expose = status < 500;
         err.status = err.statusCode = status;
       }
-      for (var key in props) {
-        if (key !== "status" && key !== "statusCode") {
-          err[key] = props[key];
+      for (var key2 in props) {
+        if (key2 !== "status" && key2 !== "statusCode") {
+          err[key2] = props[key2];
         }
       }
       return err;
@@ -1627,13 +1627,13 @@ var require_node = __commonJS({
     exports2.load = load;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
-    exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
-      return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
-      var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
+    exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
+      return /^debug_/i.test(key2);
+    }).reduce(function(obj, key2) {
+      var prop = key2.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
         return k.toUpperCase();
       });
-      var val = process.env[key];
+      var val = process.env[key2];
       if (/^(yes|on|true|enabled)$/i.test(val)) val = true;
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
@@ -1839,17 +1839,17 @@ var require_safer = __commonJS({
     var buffer = require("buffer");
     var Buffer3 = buffer.Buffer;
     var safer = {};
-    var key;
-    for (key in buffer) {
-      if (!buffer.hasOwnProperty(key)) continue;
-      if (key === "SlowBuffer" || key === "Buffer") continue;
-      safer[key] = buffer[key];
+    var key2;
+    for (key2 in buffer) {
+      if (!buffer.hasOwnProperty(key2)) continue;
+      if (key2 === "SlowBuffer" || key2 === "Buffer") continue;
+      safer[key2] = buffer[key2];
     }
     var Safer = safer.Buffer = {};
-    for (key in Buffer3) {
-      if (!Buffer3.hasOwnProperty(key)) continue;
-      if (key === "allocUnsafe" || key === "allocUnsafeSlow") continue;
-      Safer[key] = Buffer3[key];
+    for (key2 in Buffer3) {
+      if (!Buffer3.hasOwnProperty(key2)) continue;
+      if (key2 === "allocUnsafe" || key2 === "allocUnsafeSlow") continue;
+      Safer[key2] = Buffer3[key2];
     }
     safer.Buffer.prototype = Buffer3.prototype;
     if (!Safer.from || Safer.from === Uint8Array.from) {
@@ -5213,8 +5213,8 @@ var require_lib = __commonJS({
             enc = codecDef;
             break;
           case "object":
-            for (var key in codecDef)
-              codecOptions[key] = codecDef[key];
+            for (var key2 in codecDef)
+              codecOptions[key2] = codecDef[key2];
             if (!codecOptions.encodingName)
               codecOptions.encodingName = enc;
             enc = codecDef.type;
@@ -5833,7 +5833,7 @@ var require_media_typer = __commonJS({
       }
       var index = string.indexOf(";");
       var type = index !== -1 ? string.substr(0, index) : string;
-      var key;
+      var key2;
       var match;
       var obj = splitType(type);
       var params = {};
@@ -5844,12 +5844,12 @@ var require_media_typer = __commonJS({
           throw new TypeError("invalid parameter format");
         }
         index += match[0].length;
-        key = match[1].toLowerCase();
+        key2 = match[1].toLowerCase();
         value = match[2];
         if (value[0] === '"') {
           value = value.substr(1, value.length - 2).replace(qescRegExp, "$1");
         }
-        params[key] = value;
+        params[key2] = value;
       }
       if (index !== -1 && index !== string.length) {
         throw new TypeError("invalid parameter format");
@@ -14742,9 +14742,9 @@ var require_json = __commonJS({
     function normalizeJsonSyntaxError(error2, obj) {
       var keys = Object.getOwnPropertyNames(error2);
       for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        if (key !== "stack" && key !== "message") {
-          delete error2[key];
+        var key2 = keys[i];
+        if (key2 !== "stack" && key2 !== "message") {
+          delete error2[key2];
         }
       }
       error2.stack = obj.stack.replace(error2.message, obj.message);
@@ -15092,8 +15092,8 @@ var require_object_inspect = __commonJS({
       if (isMap(obj)) {
         var mapParts = [];
         if (mapForEach) {
-          mapForEach.call(obj, function(value, key) {
-            mapParts.push(inspect(key, obj, true) + " => " + inspect(value, obj));
+          mapForEach.call(obj, function(value, key2) {
+            mapParts.push(inspect(key2, obj, true) + " => " + inspect(value, obj));
           });
         }
         return collectionOf("Map", mapSize.call(obj), mapParts, indent);
@@ -15134,7 +15134,7 @@ var require_object_inspect = __commonJS({
       if (typeof globalThis !== "undefined" && obj === globalThis || typeof global !== "undefined" && obj === global) {
         return "{ [object globalThis] }";
       }
-      if (!isDate(obj) && !isRegExp(obj)) {
+      if (!isDate2(obj) && !isRegExp(obj)) {
         var ys = arrObjKeys(obj, inspect);
         var isPlainObject = gPO ? gPO(obj) === Object.prototype : obj instanceof Object || obj.constructor === Object;
         var protoTag = obj instanceof Object ? "" : "null prototype";
@@ -15165,7 +15165,7 @@ var require_object_inspect = __commonJS({
     function isArray(obj) {
       return toStr(obj) === "[object Array]" && canTrustToString(obj);
     }
-    function isDate(obj) {
+    function isDate2(obj) {
       return toStr(obj) === "[object Date]" && canTrustToString(obj);
     }
     function isRegExp(obj) {
@@ -15211,11 +15211,11 @@ var require_object_inspect = __commonJS({
       }
       return false;
     }
-    var hasOwn2 = Object.prototype.hasOwnProperty || function(key) {
-      return key in this;
+    var hasOwn2 = Object.prototype.hasOwnProperty || function(key2) {
+      return key2 in this;
     };
-    function has(obj, key) {
-      return hasOwn2.call(obj, key);
+    function has(obj, key2) {
+      return hasOwn2.call(obj, key2);
     }
     function toStr(obj) {
       return objectToString.call(obj);
@@ -15406,19 +15406,19 @@ var require_object_inspect = __commonJS({
           symMap["$" + syms[k]] = syms[k];
         }
       }
-      for (var key in obj) {
-        if (!has(obj, key)) {
+      for (var key2 in obj) {
+        if (!has(obj, key2)) {
           continue;
         }
-        if (isArr && String(Number(key)) === key && key < obj.length) {
+        if (isArr && String(Number(key2)) === key2 && key2 < obj.length) {
           continue;
         }
-        if (hasShammedSymbols && symMap["$" + key] instanceof Symbol) {
+        if (hasShammedSymbols && symMap["$" + key2] instanceof Symbol) {
           continue;
-        } else if ($test.call(/[^\w$]/, key)) {
-          xs.push(inspect(key, obj) + ": " + inspect(obj[key], obj));
+        } else if ($test.call(/[^\w$]/, key2)) {
+          xs.push(inspect(key2, obj) + ": " + inspect(obj[key2], obj));
         } else {
-          xs.push(key + ": " + inspect(obj[key], obj));
+          xs.push(key2 + ": " + inspect(obj[key2], obj));
         }
       }
       if (typeof gOPS === "function") {
@@ -15439,11 +15439,11 @@ var require_side_channel_list = __commonJS({
     "use strict";
     var inspect = require_object_inspect();
     var $TypeError = require_type();
-    var listGetNode = function(list, key, isDelete) {
+    var listGetNode = function(list, key2, isDelete) {
       var prev = list;
       var curr;
       for (; (curr = prev.next) != null; prev = curr) {
-        if (curr.key === key) {
+        if (curr.key === key2) {
           prev.next = curr.next;
           if (!isDelete) {
             curr.next = /** @type {NonNullable<typeof list.next>} */
@@ -15454,60 +15454,60 @@ var require_side_channel_list = __commonJS({
         }
       }
     };
-    var listGet = function(objects, key) {
+    var listGet = function(objects, key2) {
       if (!objects) {
         return void 0;
       }
-      var node = listGetNode(objects, key);
+      var node = listGetNode(objects, key2);
       return node && node.value;
     };
-    var listSet = function(objects, key, value) {
-      var node = listGetNode(objects, key);
+    var listSet = function(objects, key2, value) {
+      var node = listGetNode(objects, key2);
       if (node) {
         node.value = value;
       } else {
         objects.next = /** @type {import('./list.d.ts').ListNode<typeof value, typeof key>} */
         {
           // eslint-disable-line no-param-reassign, no-extra-parens
-          key,
+          key: key2,
           next: objects.next,
           value
         };
       }
     };
-    var listHas = function(objects, key) {
+    var listHas = function(objects, key2) {
       if (!objects) {
         return false;
       }
-      return !!listGetNode(objects, key);
+      return !!listGetNode(objects, key2);
     };
-    var listDelete = function(objects, key) {
+    var listDelete = function(objects, key2) {
       if (objects) {
-        return listGetNode(objects, key, true);
+        return listGetNode(objects, key2, true);
       }
     };
     module2.exports = function getSideChannelList() {
       var $o;
       var channel = {
-        assert: function(key) {
-          if (!channel.has(key)) {
-            throw new $TypeError("Side channel does not contain " + inspect(key));
+        assert: function(key2) {
+          if (!channel.has(key2)) {
+            throw new $TypeError("Side channel does not contain " + inspect(key2));
           }
         },
-        "delete": function(key) {
-          var deletedNode = listDelete($o, key);
+        "delete": function(key2) {
+          var deletedNode = listDelete($o, key2);
           if (deletedNode && $o && !$o.next) {
             $o = void 0;
           }
           return !!deletedNode;
         },
-        get: function(key) {
-          return listGet($o, key);
+        get: function(key2) {
+          return listGet($o, key2);
         },
-        has: function(key) {
-          return listHas($o, key);
+        has: function(key2) {
+          return listHas($o, key2);
         },
-        set: function(key, value) {
+        set: function(key2, value) {
           if (!$o) {
             $o = {
               next: void 0
@@ -15516,7 +15516,7 @@ var require_side_channel_list = __commonJS({
           listSet(
             /** @type {NonNullable<typeof $o>} */
             $o,
-            key,
+            key2,
             value
           );
         }
@@ -15634,8 +15634,8 @@ var require_round = __commonJS({
 var require_isNaN = __commonJS({
   "node_modules/math-intrinsics/isNaN.js"(exports2, module2) {
     "use strict";
-    module2.exports = Number.isNaN || function isNaN2(a) {
-      return a !== a;
+    module2.exports = Number.isNaN || function isNaN2(a2) {
+      return a2 !== a2;
     };
   }
 });
@@ -15798,13 +15798,13 @@ var require_implementation = __commonJS({
     var toStr = Object.prototype.toString;
     var max = Math.max;
     var funcType = "[object Function]";
-    var concatty = function concatty2(a, b) {
+    var concatty = function concatty2(a2, b) {
       var arr = [];
-      for (var i = 0; i < a.length; i += 1) {
-        arr[i] = a[i];
+      for (var i = 0; i < a2.length; i += 1) {
+        arr[i] = a2[i];
       }
       for (var j = 0; j < b.length; j += 1) {
-        arr[j + a.length] = b[j];
+        arr[j + a2.length] = b[j];
       }
       return arr;
     };
@@ -16362,14 +16362,14 @@ var require_side_channel_map = __commonJS({
     function getSideChannelMap() {
       var $m;
       var channel = {
-        assert: function(key) {
-          if (!channel.has(key)) {
-            throw new $TypeError("Side channel does not contain " + inspect(key));
+        assert: function(key2) {
+          if (!channel.has(key2)) {
+            throw new $TypeError("Side channel does not contain " + inspect(key2));
           }
         },
-        "delete": function(key) {
+        "delete": function(key2) {
           if ($m) {
-            var result = $mapDelete($m, key);
+            var result = $mapDelete($m, key2);
             if ($mapSize($m) === 0) {
               $m = void 0;
             }
@@ -16377,22 +16377,22 @@ var require_side_channel_map = __commonJS({
           }
           return false;
         },
-        get: function(key) {
+        get: function(key2) {
           if ($m) {
-            return $mapGet($m, key);
+            return $mapGet($m, key2);
           }
         },
-        has: function(key) {
+        has: function(key2) {
           if ($m) {
-            return $mapHas($m, key);
+            return $mapHas($m, key2);
           }
           return false;
         },
-        set: function(key, value) {
+        set: function(key2, value) {
           if (!$m) {
             $m = new $Map();
           }
-          $mapSet($m, key, value);
+          $mapSet($m, key2, value);
         }
       };
       return channel;
@@ -16420,50 +16420,50 @@ var require_side_channel_weakmap = __commonJS({
         var $wm;
         var $m;
         var channel = {
-          assert: function(key) {
-            if (!channel.has(key)) {
-              throw new $TypeError("Side channel does not contain " + inspect(key));
+          assert: function(key2) {
+            if (!channel.has(key2)) {
+              throw new $TypeError("Side channel does not contain " + inspect(key2));
             }
           },
-          "delete": function(key) {
-            if ($WeakMap && key && (typeof key === "object" || typeof key === "function")) {
+          "delete": function(key2) {
+            if ($WeakMap && key2 && (typeof key2 === "object" || typeof key2 === "function")) {
               if ($wm) {
-                return $weakMapDelete($wm, key);
+                return $weakMapDelete($wm, key2);
               }
             } else if (getSideChannelMap) {
               if ($m) {
-                return $m["delete"](key);
+                return $m["delete"](key2);
               }
             }
             return false;
           },
-          get: function(key) {
-            if ($WeakMap && key && (typeof key === "object" || typeof key === "function")) {
+          get: function(key2) {
+            if ($WeakMap && key2 && (typeof key2 === "object" || typeof key2 === "function")) {
               if ($wm) {
-                return $weakMapGet($wm, key);
+                return $weakMapGet($wm, key2);
               }
             }
-            return $m && $m.get(key);
+            return $m && $m.get(key2);
           },
-          has: function(key) {
-            if ($WeakMap && key && (typeof key === "object" || typeof key === "function")) {
+          has: function(key2) {
+            if ($WeakMap && key2 && (typeof key2 === "object" || typeof key2 === "function")) {
               if ($wm) {
-                return $weakMapHas($wm, key);
+                return $weakMapHas($wm, key2);
               }
             }
-            return !!$m && $m.has(key);
+            return !!$m && $m.has(key2);
           },
-          set: function(key, value) {
-            if ($WeakMap && key && (typeof key === "object" || typeof key === "function")) {
+          set: function(key2, value) {
+            if ($WeakMap && key2 && (typeof key2 === "object" || typeof key2 === "function")) {
               if (!$wm) {
                 $wm = new $WeakMap();
               }
-              $weakMapSet($wm, key, value);
+              $weakMapSet($wm, key2, value);
             } else if (getSideChannelMap) {
               if (!$m) {
                 $m = getSideChannelMap();
               }
-              $m.set(key, value);
+              $m.set(key2, value);
             }
           }
         };
@@ -16486,26 +16486,26 @@ var require_side_channel = __commonJS({
     module2.exports = function getSideChannel() {
       var $channelData;
       var channel = {
-        assert: function(key) {
-          if (!channel.has(key)) {
-            var keyDesc = key && Object(key) === key ? "the given object key" : inspect(key);
+        assert: function(key2) {
+          if (!channel.has(key2)) {
+            var keyDesc = key2 && Object(key2) === key2 ? "the given object key" : inspect(key2);
             throw new $TypeError("Side channel does not contain " + keyDesc);
           }
         },
-        "delete": function(key) {
-          return !!$channelData && $channelData["delete"](key);
+        "delete": function(key2) {
+          return !!$channelData && $channelData["delete"](key2);
         },
-        get: function(key) {
-          return $channelData && $channelData.get(key);
+        get: function(key2) {
+          return $channelData && $channelData.get(key2);
         },
-        has: function(key) {
-          return !!$channelData && $channelData.has(key);
+        has: function(key2) {
+          return !!$channelData && $channelData.has(key2);
         },
-        set: function(key, value) {
+        set: function(key2, value) {
           if (!$channelData) {
             $channelData = makeChannel();
           }
-          $channelData.set(key, value);
+          $channelData.set(key2, value);
         }
       };
       return channel;
@@ -16593,16 +16593,16 @@ var require_utils = __commonJS({
       }
       return obj;
     };
-    var setProperty = function setProperty2(obj, key, value) {
-      if (key === "__proto__" && defineProperty) {
-        defineProperty(obj, key, {
+    var setProperty = function setProperty2(obj, key2, value) {
+      if (key2 === "__proto__" && defineProperty) {
+        defineProperty(obj, key2, {
           configurable: true,
           enumerable: true,
           value,
           writable: true
         });
       } else {
-        obj[key] = value;
+        obj[key2] = value;
       }
     };
     var merge = function merge2(target, source, options) {
@@ -16678,19 +16678,19 @@ var require_utils = __commonJS({
         }
         return target;
       }
-      return Object.keys(source).reduce(function(acc, key) {
-        var value = source[key];
-        if (has.call(acc, key)) {
-          setProperty(acc, key, merge2(acc[key], value, options));
+      return Object.keys(source).reduce(function(acc, key2) {
+        var value = source[key2];
+        if (has.call(acc, key2)) {
+          setProperty(acc, key2, merge2(acc[key2], value, options));
         } else {
-          setProperty(acc, key, value);
+          setProperty(acc, key2, value);
         }
         if (isOverflow(source) && !isOverflow(acc)) {
           markOverflow(acc, getMaxIndex(source));
         }
         if (isOverflow(acc)) {
-          var keyNum = parseInt(key, 10);
-          if (String(keyNum) === key && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
+          var keyNum = parseInt(key2, 10);
+          if (String(keyNum) === key2 && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
             setMaxIndex(acc, keyNum);
           }
         }
@@ -16698,8 +16698,8 @@ var require_utils = __commonJS({
       }, mergeTarget);
     };
     var assign2 = function assignSingleSource(target, source) {
-      return Object.keys(source).reduce(function(acc, key) {
-        setProperty(acc, key, source[key]);
+      return Object.keys(source).reduce(function(acc, key2) {
+        setProperty(acc, key2, source[key2]);
         return acc;
       }, target);
     };
@@ -16775,10 +16775,10 @@ var require_utils = __commonJS({
         var obj = item.obj[item.prop];
         var keys = Object.keys(obj);
         for (var j = 0; j < keys.length; ++j) {
-          var key = keys[j];
-          var val = obj[key];
+          var key2 = keys[j];
+          var val = obj[key2];
           if (typeof val === "object" && val !== null && !refs.has(val)) {
-            queue[queue.length] = { obj, prop: key };
+            queue[queue.length] = { obj, prop: key2 };
             refs.set(val, true);
           }
         }
@@ -16795,21 +16795,21 @@ var require_utils = __commonJS({
       }
       return !!(obj.constructor && typeof obj.constructor.isBuffer === "function" && obj.constructor.isBuffer(obj));
     };
-    var combine = function combine2(a, b, arrayLimit, plainObjects, throwOnLimitExceeded) {
-      if (isOverflow(a)) {
+    var combine = function combine2(a2, b, arrayLimit, plainObjects, throwOnLimitExceeded) {
+      if (isOverflow(a2)) {
         if (throwOnLimitExceeded) {
           throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
         }
         var bValues = isArray(b) ? b : [b];
-        var newIndex = getMaxIndex(a);
+        var newIndex = getMaxIndex(a2);
         for (var i = 0; i < bValues.length; ++i) {
           newIndex += 1;
-          a[newIndex] = bValues[i];
+          a2[newIndex] = bValues[i];
         }
-        setMaxIndex(a, newIndex);
-        return a;
+        setMaxIndex(a2, newIndex);
+        return a2;
       }
-      var result = [].concat(a, b);
+      var result = [].concat(a2, b);
       if (result.length > arrayLimit) {
         if (throwOnLimitExceeded) {
           throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
@@ -16858,8 +16858,8 @@ var require_stringify = __commonJS({
         return prefix + "[]";
       },
       comma: "comma",
-      indices: function indices(prefix, key) {
-        return prefix + "[" + key + "]";
+      indices: function indices(prefix, key2) {
+        return prefix + "[" + key2 + "]";
       },
       repeat: function repeat(prefix) {
         return prefix;
@@ -16971,12 +16971,12 @@ var require_stringify = __commonJS({
         return adjustedPrefix + "[]";
       }
       for (var j = 0; j < objKeys.length; ++j) {
-        var key = objKeys[j];
-        var value = typeof key === "object" && key && typeof key.value !== "undefined" ? key.value : obj[key];
+        var key2 = objKeys[j];
+        var value = typeof key2 === "object" && key2 && typeof key2.value !== "undefined" ? key2.value : obj[key2];
         if (skipNulls && value === null) {
           continue;
         }
-        var encodedKey = allowDots && encodeDotInKeys ? String(key).replace(/\./g, "%2E") : String(key);
+        var encodedKey = allowDots && encodeDotInKeys ? String(key2).replace(/\./g, "%2E") : String(key2);
         var keyPrefix = isArray(obj) ? typeof generateArrayPrefix === "function" ? generateArrayPrefix(adjustedPrefix, encodedKey) : adjustedPrefix : adjustedPrefix + (allowDots ? "." + encodedKey : "[" + encodedKey + "]");
         sideChannel.set(object, step);
         var valueSideChannel = getSideChannel();
@@ -17096,15 +17096,15 @@ var require_stringify = __commonJS({
       }
       var sideChannel = getSideChannel();
       for (var i = 0; i < objKeys.length; ++i) {
-        var key = objKeys[i];
-        if (typeof key === "undefined" || key === null) {
+        var key2 = objKeys[i];
+        if (typeof key2 === "undefined" || key2 === null) {
           continue;
         }
-        var value = obj[key];
+        var value = obj[key2];
         if (options.skipNulls && value === null) {
           continue;
         }
-        var encodedKey = options.encodeDotInKeys ? String(key).replace(/\./g, "%2E") : String(key);
+        var encodedKey = options.encodeDotInKeys ? String(key2).replace(/\./g, "%2E") : String(key2);
         pushToArray(keys, stringify(
           value,
           encodedKey,
@@ -17235,19 +17235,19 @@ var require_parse = __commonJS({
         var part = parts[i];
         var bracketEqualsPos = part.indexOf("]=");
         var pos = bracketEqualsPos === -1 ? part.indexOf("=") : bracketEqualsPos + 1;
-        var key;
+        var key2;
         var val;
         if (pos === -1) {
-          key = options.decoder(part, defaults.decoder, charset, "key");
+          key2 = options.decoder(part, defaults.decoder, charset, "key");
           val = options.strictNullHandling ? null : "";
         } else {
-          key = options.decoder(part.slice(0, pos), defaults.decoder, charset, "key");
-          if (key !== null) {
+          key2 = options.decoder(part.slice(0, pos), defaults.decoder, charset, "key");
+          if (key2 !== null) {
             val = utils.maybeMap(
               parseArrayValue(
                 part.slice(pos + 1),
                 options,
-                isArray(obj[key]) ? obj[key].length : 0
+                isArray(obj[key2]) ? obj[key2].length : 0
               ),
               function(encodedVal) {
                 return options.decoder(encodedVal, defaults.decoder, charset, "value");
@@ -17264,18 +17264,18 @@ var require_parse = __commonJS({
         if (options.comma && isArray(val) && val.length > options.arrayLimit) {
           val = utils.combine([], val, options.arrayLimit, options.plainObjects, options.throwOnLimitExceeded);
         }
-        if (key !== null) {
-          var existing = has.call(obj, key);
+        if (key2 !== null) {
+          var existing = has.call(obj, key2);
           if (existing && (options.duplicates === "combine" || part.indexOf("[]=") > -1)) {
-            obj[key] = utils.combine(
-              obj[key],
+            obj[key2] = utils.combine(
+              obj[key2],
               val,
               options.arrayLimit,
               options.plainObjects,
               options.throwOnLimitExceeded
             );
           } else if (!existing || options.duplicates === "last") {
-            obj[key] = val;
+            obj[key2] = val;
           }
         }
       }
@@ -17328,18 +17328,18 @@ var require_parse = __commonJS({
       return leaf;
     };
     var splitKeyIntoSegments = function splitKeyIntoSegments2(originalKey, options) {
-      var key = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
+      var key2 = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
       if (options.depth <= 0) {
-        if (!options.plainObjects && has.call(Object.prototype, key)) {
+        if (!options.plainObjects && has.call(Object.prototype, key2)) {
           if (!options.allowPrototypes) {
             return;
           }
         }
-        return [key];
+        return [key2];
       }
       var segments = [];
-      var first = key.indexOf("[");
-      var parent = first >= 0 ? key.slice(0, first) : key;
+      var first = key2.indexOf("[");
+      var parent = first >= 0 ? key2.slice(0, first) : key2;
       if (parent) {
         if (!options.plainObjects && has.call(Object.prototype, parent)) {
           if (!options.allowPrototypes) {
@@ -17348,7 +17348,7 @@ var require_parse = __commonJS({
         }
         segments[segments.length] = parent;
       }
-      var n = key.length;
+      var n = key2.length;
       var open = first;
       var collected = 0;
       while (open >= 0 && collected < options.depth) {
@@ -17356,7 +17356,7 @@ var require_parse = __commonJS({
         var i = open + 1;
         var close = -1;
         while (i < n && close < 0) {
-          var cu = key.charCodeAt(i);
+          var cu = key2.charCodeAt(i);
           if (cu === 91) {
             level += 1;
           } else if (cu === 93) {
@@ -17368,23 +17368,23 @@ var require_parse = __commonJS({
           i += 1;
         }
         if (close < 0) {
-          segments[segments.length] = "[" + key.slice(open) + "]";
+          segments[segments.length] = "[" + key2.slice(open) + "]";
           return segments;
         }
-        var seg = key.slice(open, close + 1);
+        var seg = key2.slice(open, close + 1);
         var content = seg.slice(1, -1);
         if (!options.plainObjects && has.call(Object.prototype, content) && !options.allowPrototypes) {
           return;
         }
         segments[segments.length] = seg;
         collected += 1;
-        open = key.indexOf("[", close + 1);
+        open = key2.indexOf("[", close + 1);
       }
       if (open >= 0) {
         if (options.strictDepth === true) {
           throw new RangeError("Input depth exceeded depth option of " + options.depth + " and strictDepth is true");
         }
-        segments[segments.length] = "[" + key.slice(open) + "]";
+        segments[segments.length] = "[" + key2.slice(open) + "]";
       }
       return segments;
     };
@@ -17458,8 +17458,8 @@ var require_parse = __commonJS({
       var obj = options.plainObjects ? { __proto__: null } : {};
       var keys = Object.keys(tempObj);
       for (var i = 0; i < keys.length; ++i) {
-        var key = keys[i];
-        var newObj = parseKeys(key, tempObj[key], options, typeof str === "string");
+        var key2 = keys[i];
+        var newObj = parseKeys(key2, tempObj[key2], options, typeof str === "string");
         obj = utils.merge(obj, newObj, options);
       }
       if (options.allowSparse === true) {
@@ -18072,13 +18072,13 @@ var require_node2 = __commonJS({
     exports2.load = load;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
-    exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
-      return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
-      var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
+    exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
+      return /^debug_/i.test(key2);
+    }).reduce(function(obj, key2) {
+      var prop = key2.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
         return k.toUpperCase();
       });
-      var val = process.env[key];
+      var val = process.env[key2];
       if (/^(yes|on|true|enabled)$/i.test(val)) val = true;
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
@@ -18402,8 +18402,8 @@ var require_finalhandler = __commonJS({
       var headers = /* @__PURE__ */ Object.create(null);
       var keys = Object.keys(err.headers);
       for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        headers[key] = err.headers[key];
+        var key2 = keys[i];
+        headers[key2] = err.headers[key2];
       }
       return headers;
     }
@@ -18478,8 +18478,8 @@ var require_finalhandler = __commonJS({
       }
       var keys = Object.keys(headers);
       for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        res.setHeader(key, headers[key]);
+        var key2 = keys[i];
+        res.setHeader(key2, headers[key2]);
       }
     }
   }
@@ -18791,13 +18791,13 @@ var require_node3 = __commonJS({
     exports2.load = load;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
-    exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
-      return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
-      var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
+    exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
+      return /^debug_/i.test(key2);
+    }).reduce(function(obj, key2) {
+      var prop = key2.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
         return k.toUpperCase();
       });
-      var val = process.env[key];
+      var val = process.env[key2];
       if (/^(yes|on|true|enabled)$/i.test(val)) val = true;
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
@@ -18986,7 +18986,7 @@ var require_path_to_regexp = __commonJS({
       }
       path3 = path3.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
-        function(match, slash, format, key, capture, star, optional, offset) {
+        function(match, slash, format, key2, capture, star, optional, offset) {
           if (match[0] === "\\") {
             backtrack += match;
             pos += 2;
@@ -19021,7 +19021,7 @@ var require_path_to_regexp = __commonJS({
             return m2 === "*" ? "(.*)" : m2;
           }) : backtrack ? "((?:(?!/|" + backtrack + ").)+?)" : "([^/" + format + "]+?)";
           keys.push({
-            name: key,
+            name: key2,
             optional: !!optional,
             offset: offset + extraOffset
           });
@@ -19123,8 +19123,8 @@ var require_layer = __commonJS({
       var keys = this.keys;
       var params = this.params;
       for (var i = 1; i < match2.length; i++) {
-        var key = keys[i - 1];
-        var prop = key.name;
+        var key2 = keys[i - 1];
+        var prop = key2.name;
         var val = decode_param(match2[i]);
         if (val !== void 0 || !hasOwnProperty.call(params, prop)) {
           params[prop] = val;
@@ -19308,13 +19308,13 @@ var require_route = __commonJS({
 // node_modules/utils-merge/index.js
 var require_utils_merge = __commonJS({
   "node_modules/utils-merge/index.js"(exports2, module2) {
-    exports2 = module2.exports = function(a, b) {
-      if (a && b) {
-        for (var key in b) {
-          a[key] = b[key];
+    exports2 = module2.exports = function(a2, b) {
+      if (a2 && b) {
+        for (var key2 in b) {
+          a2[key2] = b[key2];
         }
       }
-      return a;
+      return a2;
     };
   }
 });
@@ -19505,7 +19505,7 @@ var require_router = __commonJS({
       var i = 0;
       var name2;
       var paramIndex = 0;
-      var key;
+      var key2;
       var paramVal;
       var paramCallbacks;
       var paramCalled;
@@ -19517,8 +19517,8 @@ var require_router = __commonJS({
           return done();
         }
         paramIndex = 0;
-        key = keys[i++];
-        name2 = key.name;
+        key2 = keys[i++];
+        name2 = key2.name;
         paramVal = req.params[name2];
         paramCallbacks = params[name2];
         paramCalled = called[name2];
@@ -19538,7 +19538,7 @@ var require_router = __commonJS({
       }
       function paramCallback(err) {
         var fn = paramCallbacks[paramIndex++];
-        paramCalled.value = req.params[key.name];
+        paramCalled.value = req.params[key2.name];
         if (err) {
           paramCalled.error = err;
           param(err);
@@ -19546,7 +19546,7 @@ var require_router = __commonJS({
         }
         if (!fn) return param();
         try {
-          fn(req, res, paramCallback, paramVal, key.name);
+          fn(req, res, paramCallback, paramVal, key2.name);
         } catch (e) {
           paramCallback(e);
         }
@@ -19802,16 +19802,16 @@ var require_utils2 = __commonJS({
       }
       return obj;
     };
-    var setProperty = function setProperty2(obj, key, value) {
-      if (key === "__proto__" && defineProperty) {
-        defineProperty(obj, key, {
+    var setProperty = function setProperty2(obj, key2, value) {
+      if (key2 === "__proto__" && defineProperty) {
+        defineProperty(obj, key2, {
           configurable: true,
           enumerable: true,
           value,
           writable: true
         });
       } else {
-        obj[key] = value;
+        obj[key2] = value;
       }
     };
     var merge = function merge2(target, source, options) {
@@ -19887,19 +19887,19 @@ var require_utils2 = __commonJS({
         }
         return target;
       }
-      return Object.keys(source).reduce(function(acc, key) {
-        var value = source[key];
-        if (has.call(acc, key)) {
-          setProperty(acc, key, merge2(acc[key], value, options));
+      return Object.keys(source).reduce(function(acc, key2) {
+        var value = source[key2];
+        if (has.call(acc, key2)) {
+          setProperty(acc, key2, merge2(acc[key2], value, options));
         } else {
-          setProperty(acc, key, value);
+          setProperty(acc, key2, value);
         }
         if (isOverflow(source) && !isOverflow(acc)) {
           markOverflow(acc, getMaxIndex(source));
         }
         if (isOverflow(acc)) {
-          var keyNum = parseInt(key, 10);
-          if (String(keyNum) === key && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
+          var keyNum = parseInt(key2, 10);
+          if (String(keyNum) === key2 && keyNum >= 0 && keyNum > getMaxIndex(acc)) {
             setMaxIndex(acc, keyNum);
           }
         }
@@ -19907,8 +19907,8 @@ var require_utils2 = __commonJS({
       }, mergeTarget);
     };
     var assign2 = function assignSingleSource(target, source) {
-      return Object.keys(source).reduce(function(acc, key) {
-        setProperty(acc, key, source[key]);
+      return Object.keys(source).reduce(function(acc, key2) {
+        setProperty(acc, key2, source[key2]);
         return acc;
       }, target);
     };
@@ -19984,10 +19984,10 @@ var require_utils2 = __commonJS({
         var obj = item.obj[item.prop];
         var keys = Object.keys(obj);
         for (var j = 0; j < keys.length; ++j) {
-          var key = keys[j];
-          var val = obj[key];
+          var key2 = keys[j];
+          var val = obj[key2];
           if (typeof val === "object" && val !== null && !refs.has(val)) {
-            queue[queue.length] = { obj, prop: key };
+            queue[queue.length] = { obj, prop: key2 };
             refs.set(val, true);
           }
         }
@@ -20004,17 +20004,17 @@ var require_utils2 = __commonJS({
       }
       return !!(obj.constructor && obj.constructor.isBuffer && obj.constructor.isBuffer(obj));
     };
-    var combine = function combine2(a, b, arrayLimit, plainObjects, throwOnLimitExceeded) {
-      if (isOverflow(a)) {
+    var combine = function combine2(a2, b, arrayLimit, plainObjects, throwOnLimitExceeded) {
+      if (isOverflow(a2)) {
         if (throwOnLimitExceeded) {
           throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
         }
-        var newIndex = getMaxIndex(a) + 1;
-        a[newIndex] = b;
-        setMaxIndex(a, newIndex);
-        return a;
+        var newIndex = getMaxIndex(a2) + 1;
+        a2[newIndex] = b;
+        setMaxIndex(a2, newIndex);
+        return a2;
       }
-      var result = [].concat(a, b);
+      var result = [].concat(a2, b);
       if (result.length > arrayLimit) {
         if (throwOnLimitExceeded) {
           throw new RangeError("Array limit exceeded. Only " + arrayLimit + " element" + (arrayLimit === 1 ? "" : "s") + " allowed in an array.");
@@ -20063,8 +20063,8 @@ var require_stringify2 = __commonJS({
         return prefix + "[]";
       },
       comma: "comma",
-      indices: function indices(prefix, key) {
-        return prefix + "[" + key + "]";
+      indices: function indices(prefix, key2) {
+        return prefix + "[" + key2 + "]";
       },
       repeat: function repeat(prefix) {
         return prefix;
@@ -20173,12 +20173,12 @@ var require_stringify2 = __commonJS({
         return adjustedPrefix + "[]";
       }
       for (var j = 0; j < objKeys.length; ++j) {
-        var key = objKeys[j];
-        var value = typeof key === "object" && key && typeof key.value !== "undefined" ? key.value : obj[key];
+        var key2 = objKeys[j];
+        var value = typeof key2 === "object" && key2 && typeof key2.value !== "undefined" ? key2.value : obj[key2];
         if (skipNulls && value === null) {
           continue;
         }
-        var encodedKey = allowDots && encodeDotInKeys ? String(key).replace(/\./g, "%2E") : String(key);
+        var encodedKey = allowDots && encodeDotInKeys ? String(key2).replace(/\./g, "%2E") : String(key2);
         var keyPrefix = isArray(obj) ? typeof generateArrayPrefix === "function" ? generateArrayPrefix(adjustedPrefix, encodedKey) : adjustedPrefix : adjustedPrefix + (allowDots ? "." + encodedKey : "[" + encodedKey + "]");
         sideChannel.set(object, step);
         var valueSideChannel = getSideChannel();
@@ -20295,17 +20295,17 @@ var require_stringify2 = __commonJS({
       }
       var sideChannel = getSideChannel();
       for (var i = 0; i < objKeys.length; ++i) {
-        var key = objKeys[i];
-        if (typeof key === "undefined" || key === null) {
+        var key2 = objKeys[i];
+        if (typeof key2 === "undefined" || key2 === null) {
           continue;
         }
-        var value = obj[key];
+        var value = obj[key2];
         if (options.skipNulls && value === null) {
           continue;
         }
         pushToArray(keys, stringify(
           value,
-          key,
+          key2,
           generateArrayPrefix,
           commaRoundTrip,
           options.allowEmptyArrays,
@@ -20431,19 +20431,19 @@ var require_parse2 = __commonJS({
         var part = parts[i];
         var bracketEqualsPos = part.indexOf("]=");
         var pos = bracketEqualsPos === -1 ? part.indexOf("=") : bracketEqualsPos + 1;
-        var key;
+        var key2;
         var val;
         if (pos === -1) {
-          key = options.decoder(part, defaults.decoder, charset, "key");
+          key2 = options.decoder(part, defaults.decoder, charset, "key");
           val = options.strictNullHandling ? null : "";
         } else {
-          key = options.decoder(part.slice(0, pos), defaults.decoder, charset, "key");
-          if (key !== null) {
+          key2 = options.decoder(part.slice(0, pos), defaults.decoder, charset, "key");
+          if (key2 !== null) {
             val = utils.maybeMap(
               parseArrayValue(
                 part.slice(pos + 1),
                 options,
-                isArray(obj[key]) ? obj[key].length : 0,
+                isArray(obj[key2]) ? obj[key2].length : 0,
                 part.indexOf("[]=") === -1
               ),
               function(encodedVal) {
@@ -20461,18 +20461,18 @@ var require_parse2 = __commonJS({
         if (options.comma && isArray(val) && val.length > options.arrayLimit) {
           val = utils.combine([], val, options.arrayLimit, options.plainObjects, options.throwOnLimitExceeded);
         }
-        if (key !== null) {
-          var existing = has.call(obj, key);
+        if (key2 !== null) {
+          var existing = has.call(obj, key2);
           if (existing && (options.duplicates === "combine" || part.indexOf("[]=") > -1)) {
-            obj[key] = utils.combine(
-              obj[key],
+            obj[key2] = utils.combine(
+              obj[key2],
               val,
               options.arrayLimit,
               options.plainObjects,
               options.throwOnLimitExceeded
             );
           } else if (!existing || options.duplicates === "last") {
-            obj[key] = val;
+            obj[key2] = val;
           }
         }
       }
@@ -20525,18 +20525,18 @@ var require_parse2 = __commonJS({
       return leaf;
     };
     var splitKeyIntoSegments = function splitKeyIntoSegments2(originalKey, options) {
-      var key = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
+      var key2 = options.allowDots ? originalKey.replace(/\.([^.[]+)/g, "[$1]") : originalKey;
       if (options.depth <= 0) {
-        if (!options.plainObjects && has.call(Object.prototype, key)) {
+        if (!options.plainObjects && has.call(Object.prototype, key2)) {
           if (!options.allowPrototypes) {
             return;
           }
         }
-        return [key];
+        return [key2];
       }
       var segments = [];
-      var first = key.indexOf("[");
-      var parent = first >= 0 ? key.slice(0, first) : key;
+      var first = key2.indexOf("[");
+      var parent = first >= 0 ? key2.slice(0, first) : key2;
       if (parent) {
         if (!options.plainObjects && has.call(Object.prototype, parent)) {
           if (!options.allowPrototypes) {
@@ -20545,7 +20545,7 @@ var require_parse2 = __commonJS({
         }
         segments[segments.length] = parent;
       }
-      var n = key.length;
+      var n = key2.length;
       var open = first;
       var collected = 0;
       while (open >= 0 && collected < options.depth) {
@@ -20553,7 +20553,7 @@ var require_parse2 = __commonJS({
         var i = open + 1;
         var close = -1;
         while (i < n && close < 0) {
-          var cu = key.charCodeAt(i);
+          var cu = key2.charCodeAt(i);
           if (cu === 91) {
             level += 1;
           } else if (cu === 93) {
@@ -20565,23 +20565,23 @@ var require_parse2 = __commonJS({
           i += 1;
         }
         if (close < 0) {
-          segments[segments.length] = "[" + key.slice(open) + "]";
+          segments[segments.length] = "[" + key2.slice(open) + "]";
           return segments;
         }
-        var seg = key.slice(open, close + 1);
+        var seg = key2.slice(open, close + 1);
         var content = seg.slice(1, -1);
         if (!options.plainObjects && has.call(Object.prototype, content) && !options.allowPrototypes) {
           return;
         }
         segments[segments.length] = seg;
         collected += 1;
-        open = key.indexOf("[", close + 1);
+        open = key2.indexOf("[", close + 1);
       }
       if (open >= 0) {
         if (options.strictDepth === true) {
           throw new RangeError("Input depth exceeded depth option of " + options.depth + " and strictDepth is true");
         }
-        segments[segments.length] = "[" + key.slice(open) + "]";
+        segments[segments.length] = "[" + key2.slice(open) + "]";
       }
       return segments;
     };
@@ -20655,8 +20655,8 @@ var require_parse2 = __commonJS({
       var obj = options.plainObjects ? { __proto__: null } : {};
       var keys = Object.keys(tempObj);
       for (var i = 0; i < keys.length; ++i) {
-        var key = keys[i];
-        var newObj = parseKeys(key, tempObj[key], options, typeof str === "string");
+        var key2 = keys[i];
+        var newObj = parseKeys(key2, tempObj[key2], options, typeof str === "string");
         obj = utils.merge(obj, newObj, options);
       }
       if (options.allowSparse === true) {
@@ -20796,8 +20796,8 @@ var require_safe_buffer = __commonJS({
     var buffer = require("buffer");
     var Buffer3 = buffer.Buffer;
     function copyProps(src, dst) {
-      for (var key in src) {
-        dst[key] = src[key];
+      for (var key2 in src) {
+        dst[key2] = src[key2];
       }
     }
     if (Buffer3.from && Buffer3.alloc && Buffer3.allocUnsafe && Buffer3.allocUnsafeSlow) {
@@ -20954,7 +20954,7 @@ var require_content_disposition = __commonJS({
       }
       var index = match[0].length;
       var type = match[1].toLowerCase();
-      var key;
+      var key2;
       var names = [];
       var params = {};
       var value;
@@ -20964,25 +20964,25 @@ var require_content_disposition = __commonJS({
           throw new TypeError("invalid parameter format");
         }
         index += match[0].length;
-        key = match[1].toLowerCase();
+        key2 = match[1].toLowerCase();
         value = match[2];
-        if (names.indexOf(key) !== -1) {
+        if (names.indexOf(key2) !== -1) {
           throw new TypeError("invalid duplicate parameter");
         }
-        names.push(key);
-        if (key.indexOf("*") + 1 === key.length) {
-          key = key.slice(0, -1);
+        names.push(key2);
+        if (key2.indexOf("*") + 1 === key2.length) {
+          key2 = key2.slice(0, -1);
           value = decodefield(value);
-          params[key] = value;
+          params[key2] = value;
           continue;
         }
-        if (typeof params[key] === "string") {
+        if (typeof params[key2] === "string") {
           continue;
         }
         if (value[0] === '"') {
           value = value.substr(1, value.length - 2).replace(QESC_REGEXP, "$1");
         }
-        params[key] = value;
+        params[key2] = value;
       }
       if (index !== -1 && index !== string.length) {
         throw new TypeError("invalid parameter format");
@@ -21317,13 +21317,13 @@ var require_node4 = __commonJS({
     exports2.load = load;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
-    exports2.inspectOpts = Object.keys(process.env).filter(function(key) {
-      return /^debug_/i.test(key);
-    }).reduce(function(obj, key) {
-      var prop = key.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
+    exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
+      return /^debug_/i.test(key2);
+    }).reduce(function(obj, key2) {
+      var prop = key2.substring(6).toLowerCase().replace(/_([a-z])/g, function(_, k) {
         return k.toUpperCase();
       });
-      var val = process.env[key];
+      var val = process.env[key2];
       if (/^(yes|on|true|enabled)$/i.test(val)) val = true;
       else if (/^(no|off|false|disabled)$/i.test(val)) val = false;
       else if (val === "null") val = null;
@@ -21744,9 +21744,9 @@ var require_range_parser = __commonJS({
       var ranges = [];
       ranges.type = str.slice(0, index);
       for (var i = 0; i < arr.length; i++) {
-        var range = arr[i].split("-");
-        var start = parseInt(range[0], 10);
-        var end = parseInt(range[1], 10);
+        var range2 = arr[i].split("-");
+        var start = parseInt(range2[0], 10);
+        var end = parseInt(range2[1], 10);
         if (isNaN(start)) {
           start = size - end;
           end = size - 1;
@@ -21772,13 +21772,13 @@ var require_range_parser = __commonJS({
     function combineRanges(ranges) {
       var ordered = ranges.map(mapWithIndex).sort(sortByRangeStart);
       for (var j = 0, i = 1; i < ordered.length; i++) {
-        var range = ordered[i];
+        var range2 = ordered[i];
         var current = ordered[j];
-        if (range.start > current.end + 1) {
-          ordered[++j] = range;
-        } else if (range.end > current.end) {
-          current.end = range.end;
-          current.index = Math.min(current.index, range.index);
+        if (range2.start > current.end + 1) {
+          ordered[++j] = range2;
+        } else if (range2.end > current.end) {
+          current.end = range2.end;
+          current.index = Math.min(current.index, range2.index);
         }
       }
       ordered.length = j + 1;
@@ -21786,24 +21786,24 @@ var require_range_parser = __commonJS({
       combined.type = ranges.type;
       return combined;
     }
-    function mapWithIndex(range, index) {
+    function mapWithIndex(range2, index) {
       return {
-        start: range.start,
-        end: range.end,
+        start: range2.start,
+        end: range2.end,
         index
       };
     }
-    function mapWithoutIndex(range) {
+    function mapWithoutIndex(range2) {
       return {
-        start: range.start,
-        end: range.end
+        start: range2.start,
+        end: range2.end
       };
     }
-    function sortByRangeIndex(a, b) {
-      return a.index - b.index;
+    function sortByRangeIndex(a2, b) {
+      return a2.index - b.index;
     }
-    function sortByRangeStart(a, b) {
-      return a.start - b.start;
+    function sortByRangeStart(a2, b) {
+      return a2.start - b.start;
     }
   }
 });
@@ -22274,8 +22274,8 @@ var require_send = __commonJS({
       }
       return false;
     }
-    function contentRange(type, size, range) {
-      return type + " " + (range ? range.start + "-" + range.end : "*") + "/" + size;
+    function contentRange(type, size, range2) {
+      return type + " " + (range2 ? range2.start + "-" + range2.end : "*") + "/" + size;
     }
     function createHtmlDocument(title, body) {
       return '<!DOCTYPE html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<title>' + title + "</title>\n</head>\n<body>\n<pre>" + body + "</pre>\n</body>\n</html>\n";
@@ -22346,8 +22346,8 @@ var require_send = __commonJS({
     function setHeaders(res, headers) {
       var keys = Object.keys(headers);
       for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        res.setHeader(key, headers[key]);
+        var key2 = keys[i];
+        res.setHeader(key2, headers[key2]);
       }
     }
   }
@@ -23098,20 +23098,20 @@ var require_proxy_addr = __commonJS({
         ip = ip.toIPv4Address();
       }
       var max = ip.kind() === "ipv6" ? 128 : 32;
-      var range = pos !== -1 ? note.substring(pos + 1, note.length) : null;
-      if (range === null) {
-        range = max;
-      } else if (DIGIT_REGEXP.test(range)) {
-        range = parseInt(range, 10);
-      } else if (ip.kind() === "ipv4" && isip(range)) {
-        range = parseNetmask(range);
+      var range2 = pos !== -1 ? note.substring(pos + 1, note.length) : null;
+      if (range2 === null) {
+        range2 = max;
+      } else if (DIGIT_REGEXP.test(range2)) {
+        range2 = parseInt(range2, 10);
+      } else if (ip.kind() === "ipv4" && isip(range2)) {
+        range2 = parseNetmask(range2);
       } else {
-        range = null;
+        range2 = null;
       }
-      if (range <= 0 || range > max) {
+      if (range2 <= 0 || range2 > max) {
         throw new TypeError("invalid range on address: " + note);
       }
-      return [ip, range];
+      return [ip, range2];
     }
     function parseNetmask(netmask) {
       var ip = parseip(netmask);
@@ -23282,7 +23282,7 @@ var require_utils3 = __commonJS({
         };
       }
       if (typeof val === "number") {
-        return function(a, i) {
+        return function(a2, i) {
           return i < val;
         };
       }
@@ -23324,7 +23324,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router13 = require_router();
+    var Router14 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -23389,7 +23389,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router13({
+        this._router = new Router14({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -23670,8 +23670,8 @@ var require_charset = __commonJS({
         return provided[priorities.indexOf(priority)];
       });
     }
-    function compareSpecs(a, b) {
-      return b.q - a.q || b.s - a.s || a.o - b.o || a.i - b.i || 0;
+    function compareSpecs(a2, b) {
+      return b.q - a2.q || b.s - a2.s || a2.o - b.o || a2.i - b.i || 0;
     }
     function getFullCharset(spec) {
       return spec.charset;
@@ -23768,8 +23768,8 @@ var require_encoding = __commonJS({
         return provided[priorities.indexOf(priority)];
       });
     }
-    function compareSpecs(a, b) {
-      return b.q - a.q || b.s - a.s || a.o - b.o || a.i - b.i || 0;
+    function compareSpecs(a2, b) {
+      return b.q - a2.q || b.s - a2.s || a2.o - b.o || a2.i - b.i || 0;
     }
     function getFullEncoding(spec) {
       return spec.encoding;
@@ -23863,8 +23863,8 @@ var require_language = __commonJS({
         return provided[priorities.indexOf(priority)];
       });
     }
-    function compareSpecs(a, b) {
-      return b.q - a.q || b.s - a.s || a.o - b.o || a.i - b.i || 0;
+    function compareSpecs(a2, b) {
+      return b.q - a2.q || b.s - a2.s || a2.o - b.o || a2.i - b.i || 0;
     }
     function getFullLanguage(spec) {
       return spec.full;
@@ -23904,14 +23904,14 @@ var require_mediaType = __commonJS({
         var kvps = splitParameters(match[3]).map(splitKeyValuePair);
         for (var j = 0; j < kvps.length; j++) {
           var pair = kvps[j];
-          var key = pair[0].toLowerCase();
+          var key2 = pair[0].toLowerCase();
           var val = pair[1];
           var value = val && val[0] === '"' && val[val.length - 1] === '"' ? val.substr(1, val.length - 2) : val;
-          if (key === "q") {
+          if (key2 === "q") {
             q = parseFloat(value);
             break;
           }
-          params[key] = value;
+          params[key2] = value;
         }
       }
       return {
@@ -23977,8 +23977,8 @@ var require_mediaType = __commonJS({
         return provided[priorities.indexOf(priority)];
       });
     }
-    function compareSpecs(a, b) {
-      return b.q - a.q || b.s - a.s || a.o - b.o || a.i - b.i || 0;
+    function compareSpecs(a2, b) {
+      return b.q - a2.q || b.s - a2.s || a2.o - b.o || a2.i - b.i || 0;
     }
     function getFullType(spec) {
       return spec.type + "/" + spec.subtype;
@@ -23997,15 +23997,15 @@ var require_mediaType = __commonJS({
     }
     function splitKeyValuePair(str) {
       var index = str.indexOf("=");
-      var key;
+      var key2;
       var val;
       if (index === -1) {
-        key = str;
+        key2 = str;
       } else {
-        key = str.substr(0, index);
+        key2 = str.substr(0, index);
         val = str.substr(index + 1);
       }
-      return [key, val];
+      return [key2, val];
     }
     function splitMediaTypes(accept) {
       var accepts = accept.split(",");
@@ -24232,10 +24232,10 @@ var require_request = __commonJS({
       req.acceptsLanguages,
       "req.acceptsLanguage: Use acceptsLanguages instead"
     );
-    req.range = function range(size, options) {
-      var range2 = this.get("Range");
-      if (!range2) return;
-      return parseRange3(size, range2, options);
+    req.range = function range2(size, options) {
+      var range3 = this.get("Range");
+      if (!range3) return;
+      return parseRange3(size, range3, options);
     };
     req.param = function param(name2, defaultValue) {
       var params = this.params || {};
@@ -24393,8 +24393,8 @@ var require_cookie = __commonJS({
         }
         var keyStartIdx = startIndex(str, index, eqIdx);
         var keyEndIdx = endIndex(str, eqIdx, keyStartIdx);
-        var key = str.slice(keyStartIdx, keyEndIdx);
-        if (!__hasOwnProperty.call(obj, key)) {
+        var key2 = str.slice(keyStartIdx, keyEndIdx);
+        if (!__hasOwnProperty.call(obj, key2)) {
           var valStartIdx = startIndex(str, eqIdx + 1, endIdx);
           var valEndIdx = endIndex(str, endIdx, valStartIdx);
           if (str.charCodeAt(valStartIdx) === 34 && str.charCodeAt(valEndIdx - 1) === 34) {
@@ -24402,7 +24402,7 @@ var require_cookie = __commonJS({
             valEndIdx--;
           }
           var val = str.slice(valStartIdx, valEndIdx);
-          obj[key] = tryDecode(val, dec);
+          obj[key2] = tryDecode(val, dec);
         }
         index = endIdx + 1;
       } while (index < len);
@@ -24457,7 +24457,7 @@ var require_cookie = __commonJS({
       }
       if (opt.expires) {
         var expires = opt.expires;
-        if (!isDate(expires) || isNaN(expires.valueOf())) {
+        if (!isDate2(expires) || isNaN(expires.valueOf())) {
           throw new TypeError("option expires is invalid");
         }
         str += "; Expires=" + expires.toUTCString();
@@ -24511,7 +24511,7 @@ var require_cookie = __commonJS({
     function decode2(str) {
       return str.indexOf("%") !== -1 ? decodeURIComponent(str) : str;
     }
-    function isDate(val) {
+    function isDate2(val) {
       return __toString.call(val) === "[object Date]";
     }
     function tryDecode(str, decode3) {
@@ -24872,9 +24872,9 @@ var require_response = __commonJS({
       if (opts && opts.headers) {
         var keys = Object.keys(opts.headers);
         for (var i = 0; i < keys.length; i++) {
-          var key = keys[i];
-          if (key.toLowerCase() !== "content-disposition") {
-            headers[key] = opts.headers[key];
+          var key2 = keys[i];
+          if (key2.toLowerCase() !== "content-disposition") {
+            headers[key2] = opts.headers[key2];
           }
         }
       }
@@ -24893,11 +24893,11 @@ var require_response = __commonJS({
       var keys = Object.keys(obj).filter(function(v) {
         return v !== "default";
       });
-      var key = keys.length > 0 ? req.accepts(keys) : false;
+      var key2 = keys.length > 0 ? req.accepts(keys) : false;
       this.vary("Accept");
-      if (key) {
-        this.set("Content-Type", normalizeType(key).value);
-        obj[key](req, this, next);
+      if (key2) {
+        this.set("Content-Type", normalizeType(key2).value);
+        obj[key2](req, this, next);
       } else if (obj.default) {
         obj.default(req, this, next);
       } else {
@@ -24938,8 +24938,8 @@ var require_response = __commonJS({
         }
         this.setHeader(field, value);
       } else {
-        for (var key in field) {
-          this.set(key, field[key]);
+        for (var key2 in field) {
+          this.set(key2, field[key2]);
         }
       }
       return this;
@@ -25253,7 +25253,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router13 = require_router();
+    var Router14 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -25276,7 +25276,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router13;
+    exports2.Router = Router14;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -25372,9 +25372,9 @@ var require_object_assign = __commonJS({
       var symbols;
       for (var s = 1; s < arguments.length; s++) {
         from = Object(arguments[s]);
-        for (var key in from) {
-          if (hasOwnProperty.call(from, key)) {
-            to[key] = from[key];
+        for (var key2 in from) {
+          if (hasOwnProperty.call(from, key2)) {
+            to[key2] = from[key2];
           }
         }
         if (getOwnPropertySymbols) {
@@ -25620,9 +25620,9 @@ var require_bcrypt = __commonJS({
           } catch (e) {
           }
         try {
-          var a;
-          (self["crypto"] || self["msCrypto"])["getRandomValues"](a = new Uint32Array(len));
-          return Array.prototype.slice.call(a);
+          var a2;
+          (self["crypto"] || self["msCrypto"])["getRandomValues"](a2 = new Uint32Array(len));
+          return Array.prototype.slice.call(a2);
         } catch (e) {
         }
         if (!randomFallback)
@@ -26017,23 +26017,23 @@ var require_bcrypt = __commonJS({
           }
         };
         utfx2.decodeUTF8 = function(src, dst) {
-          var a, b, c, d, fail = function(b2) {
+          var a2, b, c, d, fail = function(b2) {
             b2 = b2.slice(0, b2.indexOf(null));
             var err = Error(b2.toString());
             err.name = "TruncatedError";
             err["bytes"] = b2;
             throw err;
           };
-          while ((a = src()) !== null) {
-            if ((a & 128) === 0)
-              dst(a);
-            else if ((a & 224) === 192)
-              (b = src()) === null && fail([a, b]), dst((a & 31) << 6 | b & 63);
-            else if ((a & 240) === 224)
-              ((b = src()) === null || (c = src()) === null) && fail([a, b, c]), dst((a & 15) << 12 | (b & 63) << 6 | c & 63);
-            else if ((a & 248) === 240)
-              ((b = src()) === null || (c = src()) === null || (d = src()) === null) && fail([a, b, c, d]), dst((a & 7) << 18 | (b & 63) << 12 | (c & 63) << 6 | d & 63);
-            else throw RangeError("Illegal starting byte: " + a);
+          while ((a2 = src()) !== null) {
+            if ((a2 & 128) === 0)
+              dst(a2);
+            else if ((a2 & 224) === 192)
+              (b = src()) === null && fail([a2, b]), dst((a2 & 31) << 6 | b & 63);
+            else if ((a2 & 240) === 224)
+              ((b = src()) === null || (c = src()) === null) && fail([a2, b, c]), dst((a2 & 15) << 12 | (b & 63) << 6 | c & 63);
+            else if ((a2 & 248) === 240)
+              ((b = src()) === null || (c = src()) === null || (d = src()) === null) && fail([a2, b, c, d]), dst((a2 & 7) << 18 | (b & 63) << 12 | (c & 63) << 6 | d & 63);
+            else throw RangeError("Illegal starting byte: " + a2);
           }
         };
         utfx2.UTF16toUTF8 = function(src, dst) {
@@ -27250,19 +27250,19 @@ var require_bcrypt = __commonJS({
           word = word << 8 | data[offp] & 255, offp = (offp + 1) % data.length;
         return { key: word, offp };
       }
-      function _key(key, P, S) {
+      function _key(key2, P, S) {
         var offset = 0, lr = [0, 0], plen = P.length, slen = S.length, sw;
         for (var i = 0; i < plen; i++)
-          sw = _streamtoword(key, offset), offset = sw.offp, P[i] = P[i] ^ sw.key;
+          sw = _streamtoword(key2, offset), offset = sw.offp, P[i] = P[i] ^ sw.key;
         for (i = 0; i < plen; i += 2)
           lr = _encipher(lr, 0, P, S), P[i] = lr[0], P[i + 1] = lr[1];
         for (i = 0; i < slen; i += 2)
           lr = _encipher(lr, 0, P, S), S[i] = lr[0], S[i + 1] = lr[1];
       }
-      function _ekskey(data, key, P, S) {
+      function _ekskey(data, key2, P, S) {
         var offp = 0, lr = [0, 0], plen = P.length, slen = S.length, sw;
         for (var i = 0; i < plen; i++)
-          sw = _streamtoword(key, offp), offp = sw.offp, P[i] = P[i] ^ sw.key;
+          sw = _streamtoword(key2, offp), offp = sw.offp, P[i] = P[i] ^ sw.key;
         offp = 0;
         for (i = 0; i < plen; i += 2)
           sw = _streamtoword(data, offp), offp = sw.offp, lr[0] ^= sw.key, sw = _streamtoword(data, offp), offp = sw.offp, lr[1] ^= sw.key, lr = _encipher(lr, 0, P, S), P[i] = lr[0], P[i + 1] = lr[1];
@@ -27636,16 +27636,16 @@ var require_buffer_equal_constant_time = __commonJS({
     var Buffer3 = require("buffer").Buffer;
     var SlowBuffer = require("buffer").SlowBuffer;
     module2.exports = bufferEq;
-    function bufferEq(a, b) {
-      if (!Buffer3.isBuffer(a) || !Buffer3.isBuffer(b)) {
+    function bufferEq(a2, b) {
+      if (!Buffer3.isBuffer(a2) || !Buffer3.isBuffer(b)) {
         return false;
       }
-      if (a.length !== b.length) {
+      if (a2.length !== b.length) {
         return false;
       }
       var c = 0;
-      for (var i = 0; i < a.length; i++) {
-        c |= a[i] ^ b[i];
+      for (var i = 0; i < a2.length; i++) {
+        c |= a2[i] ^ b[i];
       }
       return c === 0;
     }
@@ -27679,58 +27679,58 @@ var require_jwa = __commonJS({
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
     }
-    function checkIsPublicKey(key) {
-      if (Buffer3.isBuffer(key)) {
+    function checkIsPublicKey(key2) {
+      if (Buffer3.isBuffer(key2)) {
         return;
       }
-      if (typeof key === "string") {
+      if (typeof key2 === "string") {
         return;
       }
       if (!supportsKeyObjects) {
         throw typeError(MSG_INVALID_VERIFIER_KEY);
       }
-      if (typeof key !== "object") {
+      if (typeof key2 !== "object") {
         throw typeError(MSG_INVALID_VERIFIER_KEY);
       }
-      if (typeof key.type !== "string") {
+      if (typeof key2.type !== "string") {
         throw typeError(MSG_INVALID_VERIFIER_KEY);
       }
-      if (typeof key.asymmetricKeyType !== "string") {
+      if (typeof key2.asymmetricKeyType !== "string") {
         throw typeError(MSG_INVALID_VERIFIER_KEY);
       }
-      if (typeof key.export !== "function") {
+      if (typeof key2.export !== "function") {
         throw typeError(MSG_INVALID_VERIFIER_KEY);
       }
     }
-    function checkIsPrivateKey(key) {
-      if (Buffer3.isBuffer(key)) {
+    function checkIsPrivateKey(key2) {
+      if (Buffer3.isBuffer(key2)) {
         return;
       }
-      if (typeof key === "string") {
+      if (typeof key2 === "string") {
         return;
       }
-      if (typeof key === "object") {
+      if (typeof key2 === "object") {
         return;
       }
       throw typeError(MSG_INVALID_SIGNER_KEY);
     }
-    function checkIsSecretKey(key) {
-      if (Buffer3.isBuffer(key)) {
+    function checkIsSecretKey(key2) {
+      if (Buffer3.isBuffer(key2)) {
         return;
       }
-      if (typeof key === "string") {
-        return key;
+      if (typeof key2 === "string") {
+        return key2;
       }
       if (!supportsKeyObjects) {
         throw typeError(MSG_INVALID_SECRET);
       }
-      if (typeof key !== "object") {
+      if (typeof key2 !== "object") {
         throw typeError(MSG_INVALID_SECRET);
       }
-      if (key.type !== "secret") {
+      if (key2.type !== "secret") {
         throw typeError(MSG_INVALID_SECRET);
       }
-      if (typeof key.export !== "function") {
+      if (typeof key2.export !== "function") {
         throw typeError(MSG_INVALID_SECRET);
       }
     }
@@ -27770,21 +27770,21 @@ var require_jwa = __commonJS({
       };
     }
     var bufferEqual;
-    var timingSafeEqual = "timingSafeEqual" in crypto9 ? function timingSafeEqual2(a, b) {
-      if (a.byteLength !== b.byteLength) {
+    var timingSafeEqual2 = "timingSafeEqual" in crypto9 ? function timingSafeEqual3(a2, b) {
+      if (a2.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto9.timingSafeEqual(a, b);
-    } : function timingSafeEqual2(a, b) {
+      return crypto9.timingSafeEqual(a2, b);
+    } : function timingSafeEqual3(a2, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
       }
-      return bufferEqual(a, b);
+      return bufferEqual(a2, b);
     };
     function createHmacVerifier(bits) {
       return function verify(thing, signature, secret) {
         var computedSig = createHmacSigner(bits)(thing, secret);
-        return timingSafeEqual(Buffer3.from(signature), Buffer3.from(computedSig));
+        return timingSafeEqual2(Buffer3.from(signature), Buffer3.from(computedSig));
       };
     }
     function createKeySigner(bits) {
@@ -28379,19 +28379,19 @@ var require_identifiers = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/internal/identifiers.js"(exports2, module2) {
     "use strict";
     var numeric = /^[0-9]+$/;
-    var compareIdentifiers = (a, b) => {
-      if (typeof a === "number" && typeof b === "number") {
-        return a === b ? 0 : a < b ? -1 : 1;
+    var compareIdentifiers = (a2, b) => {
+      if (typeof a2 === "number" && typeof b === "number") {
+        return a2 === b ? 0 : a2 < b ? -1 : 1;
       }
-      const anum = numeric.test(a);
+      const anum = numeric.test(a2);
       const bnum = numeric.test(b);
       if (anum && bnum) {
-        a = +a;
+        a2 = +a2;
         b = +b;
       }
-      return a === b ? 0 : anum && !bnum ? -1 : bnum && !anum ? 1 : a < b ? -1 : 1;
+      return a2 === b ? 0 : anum && !bnum ? -1 : bnum && !anum ? 1 : a2 < b ? -1 : 1;
     };
-    var rcompareIdentifiers = (a, b) => compareIdentifiers(b, a);
+    var rcompareIdentifiers = (a2, b) => compareIdentifiers(b, a2);
     module2.exports = {
       compareIdentifiers,
       rcompareIdentifiers
@@ -28534,19 +28534,19 @@ var require_semver = __commonJS({
         }
         let i = 0;
         do {
-          const a = this.prerelease[i];
+          const a2 = this.prerelease[i];
           const b = other.prerelease[i];
-          debug("prerelease compare", i, a, b);
-          if (a === void 0 && b === void 0) {
+          debug("prerelease compare", i, a2, b);
+          if (a2 === void 0 && b === void 0) {
             return 0;
           } else if (b === void 0) {
             return 1;
-          } else if (a === void 0) {
+          } else if (a2 === void 0) {
             return -1;
-          } else if (a === b) {
+          } else if (a2 === b) {
             continue;
           } else {
-            return compareIdentifiers(a, b);
+            return compareIdentifiers(a2, b);
           }
         } while (++i);
       }
@@ -28556,19 +28556,19 @@ var require_semver = __commonJS({
         }
         let i = 0;
         do {
-          const a = this.build[i];
+          const a2 = this.build[i];
           const b = other.build[i];
-          debug("build compare", i, a, b);
-          if (a === void 0 && b === void 0) {
+          debug("build compare", i, a2, b);
+          if (a2 === void 0 && b === void 0) {
             return 0;
           } else if (b === void 0) {
             return 1;
-          } else if (a === void 0) {
+          } else if (a2 === void 0) {
             return -1;
-          } else if (a === b) {
+          } else if (a2 === b) {
             continue;
           } else {
-            return compareIdentifiers(a, b);
+            return compareIdentifiers(a2, b);
           }
         } while (++i);
       }
@@ -28812,7 +28812,7 @@ var require_major = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/major.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var major = (a, loose) => new SemVer(a, loose).major;
+    var major = (a2, loose) => new SemVer(a2, loose).major;
     module2.exports = major;
   }
 });
@@ -28822,7 +28822,7 @@ var require_minor = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/minor.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var minor = (a, loose) => new SemVer(a, loose).minor;
+    var minor = (a2, loose) => new SemVer(a2, loose).minor;
     module2.exports = minor;
   }
 });
@@ -28832,7 +28832,7 @@ var require_patch = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/patch.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var patch = (a, loose) => new SemVer(a, loose).patch;
+    var patch = (a2, loose) => new SemVer(a2, loose).patch;
     module2.exports = patch;
   }
 });
@@ -28855,7 +28855,7 @@ var require_compare = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/compare.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var compare = (a, b, loose) => new SemVer(a, loose).compare(new SemVer(b, loose));
+    var compare = (a2, b, loose) => new SemVer(a2, loose).compare(new SemVer(b, loose));
     module2.exports = compare;
   }
 });
@@ -28865,7 +28865,7 @@ var require_rcompare = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/rcompare.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var rcompare = (a, b, loose) => compare(b, a, loose);
+    var rcompare = (a2, b, loose) => compare(b, a2, loose);
     module2.exports = rcompare;
   }
 });
@@ -28875,7 +28875,7 @@ var require_compare_loose = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/compare-loose.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var compareLoose = (a, b) => compare(a, b, true);
+    var compareLoose = (a2, b) => compare(a2, b, true);
     module2.exports = compareLoose;
   }
 });
@@ -28885,8 +28885,8 @@ var require_compare_build = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/compare-build.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var compareBuild = (a, b, loose) => {
-      const versionA = new SemVer(a, loose);
+    var compareBuild = (a2, b, loose) => {
+      const versionA = new SemVer(a2, loose);
       const versionB = new SemVer(b, loose);
       return versionA.compare(versionB) || versionA.compareBuild(versionB);
     };
@@ -28899,7 +28899,7 @@ var require_sort = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/sort.js"(exports2, module2) {
     "use strict";
     var compareBuild = require_compare_build();
-    var sort = (list, loose) => list.sort((a, b) => compareBuild(a, b, loose));
+    var sort = (list, loose) => list.sort((a2, b) => compareBuild(a2, b, loose));
     module2.exports = sort;
   }
 });
@@ -28909,7 +28909,7 @@ var require_rsort = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/rsort.js"(exports2, module2) {
     "use strict";
     var compareBuild = require_compare_build();
-    var rsort = (list, loose) => list.sort((a, b) => compareBuild(b, a, loose));
+    var rsort = (list, loose) => list.sort((a2, b) => compareBuild(b, a2, loose));
     module2.exports = rsort;
   }
 });
@@ -28919,7 +28919,7 @@ var require_gt = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/gt.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var gt = (a, b, loose) => compare(a, b, loose) > 0;
+    var gt = (a2, b, loose) => compare(a2, b, loose) > 0;
     module2.exports = gt;
   }
 });
@@ -28929,7 +28929,7 @@ var require_lt = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/lt.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var lt = (a, b, loose) => compare(a, b, loose) < 0;
+    var lt = (a2, b, loose) => compare(a2, b, loose) < 0;
     module2.exports = lt;
   }
 });
@@ -28939,7 +28939,7 @@ var require_eq = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/eq.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var eq = (a, b, loose) => compare(a, b, loose) === 0;
+    var eq = (a2, b, loose) => compare(a2, b, loose) === 0;
     module2.exports = eq;
   }
 });
@@ -28949,7 +28949,7 @@ var require_neq = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/neq.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var neq = (a, b, loose) => compare(a, b, loose) !== 0;
+    var neq = (a2, b, loose) => compare(a2, b, loose) !== 0;
     module2.exports = neq;
   }
 });
@@ -28959,7 +28959,7 @@ var require_gte = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/gte.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var gte = (a, b, loose) => compare(a, b, loose) >= 0;
+    var gte = (a2, b, loose) => compare(a2, b, loose) >= 0;
     module2.exports = gte;
   }
 });
@@ -28969,7 +28969,7 @@ var require_lte = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/lte.js"(exports2, module2) {
     "use strict";
     var compare = require_compare();
-    var lte = (a, b, loose) => compare(a, b, loose) <= 0;
+    var lte = (a2, b, loose) => compare(a2, b, loose) <= 0;
     module2.exports = lte;
   }
 });
@@ -28984,38 +28984,38 @@ var require_cmp = __commonJS({
     var gte = require_gte();
     var lt = require_lt();
     var lte = require_lte();
-    var cmp = (a, op, b, loose) => {
+    var cmp = (a2, op, b, loose) => {
       switch (op) {
         case "===":
-          if (typeof a === "object") {
-            a = a.version;
+          if (typeof a2 === "object") {
+            a2 = a2.version;
           }
           if (typeof b === "object") {
             b = b.version;
           }
-          return a === b;
+          return a2 === b;
         case "!==":
-          if (typeof a === "object") {
-            a = a.version;
+          if (typeof a2 === "object") {
+            a2 = a2.version;
           }
           if (typeof b === "object") {
             b = b.version;
           }
-          return a !== b;
+          return a2 !== b;
         case "":
         case "=":
         case "==":
-          return eq(a, b, loose);
+          return eq(a2, b, loose);
         case "!=":
-          return neq(a, b, loose);
+          return neq(a2, b, loose);
         case ">":
-          return gt(a, b, loose);
+          return gt(a2, b, loose);
         case ">=":
-          return gte(a, b, loose);
+          return gte(a2, b, loose);
         case "<":
-          return lt(a, b, loose);
+          return lt(a2, b, loose);
         case "<=":
-          return lte(a, b, loose);
+          return lte(a2, b, loose);
         default:
           throw new TypeError(`Invalid operator: ${op}`);
       }
@@ -29120,27 +29120,27 @@ var require_lrucache = __commonJS({
         this.max = 1e3;
         this.map = /* @__PURE__ */ new Map();
       }
-      get(key) {
-        const value = this.map.get(key);
+      get(key2) {
+        const value = this.map.get(key2);
         if (value === void 0) {
           return void 0;
         } else {
-          this.map.delete(key);
-          this.map.set(key, value);
+          this.map.delete(key2);
+          this.map.set(key2, value);
           return value;
         }
       }
-      delete(key) {
-        return this.map.delete(key);
+      delete(key2) {
+        return this.map.delete(key2);
       }
-      set(key, value) {
-        const deleted = this.delete(key);
+      set(key2, value) {
+        const deleted = this.delete(key2);
         if (!deleted && value !== void 0) {
           if (this.map.size >= this.max) {
             const firstKey = this.map.keys().next().value;
             this.delete(firstKey);
           }
-          this.map.set(key, value);
+          this.map.set(key2, value);
         }
         return this;
       }
@@ -29155,25 +29155,25 @@ var require_range2 = __commonJS({
     "use strict";
     var SPACE_CHARACTERS = /\s+/g;
     var Range = class _Range {
-      constructor(range, options) {
+      constructor(range2, options) {
         options = parseOptions2(options);
-        if (range instanceof _Range) {
-          if (range.loose === !!options.loose && range.includePrerelease === !!options.includePrerelease) {
-            return range;
+        if (range2 instanceof _Range) {
+          if (range2.loose === !!options.loose && range2.includePrerelease === !!options.includePrerelease) {
+            return range2;
           } else {
-            return new _Range(range.raw, options);
+            return new _Range(range2.raw, options);
           }
         }
-        if (range instanceof Comparator) {
-          this.raw = range.value;
-          this.set = [[range]];
+        if (range2 instanceof Comparator) {
+          this.raw = range2.value;
+          this.set = [[range2]];
           this.formatted = void 0;
           return this;
         }
         this.options = options;
         this.loose = !!options.loose;
         this.includePrerelease = !!options.includePrerelease;
-        this.raw = range.trim().replace(SPACE_CHARACTERS, " ");
+        this.raw = range2.trim().replace(SPACE_CHARACTERS, " ");
         this.set = this.raw.split("||").map((r) => this.parseRange(r.trim())).filter((c) => c.length);
         if (!this.set.length) {
           throw new TypeError(`Invalid SemVer Range: ${this.raw}`);
@@ -29218,25 +29218,25 @@ var require_range2 = __commonJS({
       toString() {
         return this.range;
       }
-      parseRange(range) {
-        range = range.replace(BUILDSTRIPRE, "");
+      parseRange(range2) {
+        range2 = range2.replace(BUILDSTRIPRE, "");
         const memoOpts = (this.options.includePrerelease && FLAG_INCLUDE_PRERELEASE) | (this.options.loose && FLAG_LOOSE);
-        const memoKey = memoOpts + ":" + range;
+        const memoKey = memoOpts + ":" + range2;
         const cached = cache.get(memoKey);
         if (cached) {
           return cached;
         }
         const loose = this.options.loose;
         const hr = loose ? re[t.HYPHENRANGELOOSE] : re[t.HYPHENRANGE];
-        range = range.replace(hr, hyphenReplace(this.options.includePrerelease));
-        debug("hyphen replace", range);
-        range = range.replace(re[t.COMPARATORTRIM], comparatorTrimReplace);
-        debug("comparator trim", range);
-        range = range.replace(re[t.TILDETRIM], tildeTrimReplace);
-        debug("tilde trim", range);
-        range = range.replace(re[t.CARETTRIM], caretTrimReplace);
-        debug("caret trim", range);
-        let rangeList = range.split(" ").map((comp) => parseComparator(comp, this.options)).join(" ").split(/\s+/).map((comp) => replaceGTE0(comp, this.options));
+        range2 = range2.replace(hr, hyphenReplace(this.options.includePrerelease));
+        debug("hyphen replace", range2);
+        range2 = range2.replace(re[t.COMPARATORTRIM], comparatorTrimReplace);
+        debug("comparator trim", range2);
+        range2 = range2.replace(re[t.TILDETRIM], tildeTrimReplace);
+        debug("tilde trim", range2);
+        range2 = range2.replace(re[t.CARETTRIM], caretTrimReplace);
+        debug("caret trim", range2);
+        let rangeList = range2.split(" ").map((comp) => parseComparator(comp, this.options)).join(" ").split(/\s+/).map((comp) => replaceGTE0(comp, this.options));
         if (loose) {
           rangeList = rangeList.filter((comp) => {
             debug("loose invalid filter", comp, this.options);
@@ -29259,12 +29259,12 @@ var require_range2 = __commonJS({
         cache.set(memoKey, result);
         return result;
       }
-      intersects(range, options) {
-        if (!(range instanceof _Range)) {
+      intersects(range2, options) {
+        if (!(range2 instanceof _Range)) {
           throw new TypeError("a Range is required");
         }
         return this.set.some((thisComparators) => {
-          return isSatisfiable(thisComparators, options) && range.set.some((rangeComparators) => {
+          return isSatisfiable(thisComparators, options) && range2.set.some((rangeComparators) => {
             return isSatisfiable(rangeComparators, options) && thisComparators.every((thisComparator) => {
               return rangeComparators.every((rangeComparator) => {
                 return thisComparator.intersects(rangeComparator, options);
@@ -29652,13 +29652,13 @@ var require_satisfies = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/satisfies.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var satisfies = (version2, range, options) => {
+    var satisfies = (version2, range2, options) => {
       try {
-        range = new Range(range, options);
+        range2 = new Range(range2, options);
       } catch (er) {
         return false;
       }
-      return range.test(version2);
+      return range2.test(version2);
     };
     module2.exports = satisfies;
   }
@@ -29669,7 +29669,7 @@ var require_to_comparators = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/to-comparators.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var toComparators = (range, options) => new Range(range, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
+    var toComparators = (range2, options) => new Range(range2, options).set.map((comp) => comp.map((c) => c.value).join(" ").trim().split(" "));
     module2.exports = toComparators;
   }
 });
@@ -29680,12 +29680,12 @@ var require_max_satisfying = __commonJS({
     "use strict";
     var SemVer = require_semver();
     var Range = require_range2();
-    var maxSatisfying = (versions, range, options) => {
+    var maxSatisfying = (versions, range2, options) => {
       let max = null;
       let maxSV = null;
       let rangeObj = null;
       try {
-        rangeObj = new Range(range, options);
+        rangeObj = new Range(range2, options);
       } catch (er) {
         return null;
       }
@@ -29709,12 +29709,12 @@ var require_min_satisfying = __commonJS({
     "use strict";
     var SemVer = require_semver();
     var Range = require_range2();
-    var minSatisfying = (versions, range, options) => {
+    var minSatisfying = (versions, range2, options) => {
       let min = null;
       let minSV = null;
       let rangeObj = null;
       try {
-        rangeObj = new Range(range, options);
+        rangeObj = new Range(range2, options);
       } catch (er) {
         return null;
       }
@@ -29739,19 +29739,19 @@ var require_min_version = __commonJS({
     var SemVer = require_semver();
     var Range = require_range2();
     var gt = require_gt();
-    var minVersion = (range, loose) => {
-      range = new Range(range, loose);
+    var minVersion = (range2, loose) => {
+      range2 = new Range(range2, loose);
       let minver = new SemVer("0.0.0");
-      if (range.test(minver)) {
+      if (range2.test(minver)) {
         return minver;
       }
       minver = new SemVer("0.0.0-0");
-      if (range.test(minver)) {
+      if (range2.test(minver)) {
         return minver;
       }
       minver = null;
-      for (let i = 0; i < range.set.length; ++i) {
-        const comparators = range.set[i];
+      for (let i = 0; i < range2.set.length; ++i) {
+        const comparators = range2.set[i];
         let setMin = null;
         comparators.forEach((comparator) => {
           const compver = new SemVer(comparator.semver.version);
@@ -29782,7 +29782,7 @@ var require_min_version = __commonJS({
           minver = setMin;
         }
       }
-      if (minver && range.test(minver)) {
+      if (minver && range2.test(minver)) {
         return minver;
       }
       return null;
@@ -29796,9 +29796,9 @@ var require_valid2 = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/valid.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var validRange = (range, options) => {
+    var validRange = (range2, options) => {
       try {
-        return new Range(range, options).range || "*";
+        return new Range(range2, options).range || "*";
       } catch (er) {
         return null;
       }
@@ -29820,9 +29820,9 @@ var require_outside = __commonJS({
     var lt = require_lt();
     var lte = require_lte();
     var gte = require_gte();
-    var outside = (version2, range, hilo, options) => {
+    var outside = (version2, range2, hilo, options) => {
       version2 = new SemVer(version2, options);
-      range = new Range(range, options);
+      range2 = new Range(range2, options);
       let gtfn, ltefn, ltfn, comp, ecomp;
       switch (hilo) {
         case ">":
@@ -29842,11 +29842,11 @@ var require_outside = __commonJS({
         default:
           throw new TypeError('Must provide a hilo val of "<" or ">"');
       }
-      if (satisfies(version2, range, options)) {
+      if (satisfies(version2, range2, options)) {
         return false;
       }
-      for (let i = 0; i < range.set.length; ++i) {
-        const comparators = range.set[i];
+      for (let i = 0; i < range2.set.length; ++i) {
+        const comparators = range2.set[i];
         let high = null;
         let low = null;
         comparators.forEach((comparator) => {
@@ -29881,7 +29881,7 @@ var require_gtr = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/gtr.js"(exports2, module2) {
     "use strict";
     var outside = require_outside();
-    var gtr = (version2, range, options) => outside(version2, range, ">", options);
+    var gtr = (version2, range2, options) => outside(version2, range2, ">", options);
     module2.exports = gtr;
   }
 });
@@ -29891,7 +29891,7 @@ var require_ltr = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/ltr.js"(exports2, module2) {
     "use strict";
     var outside = require_outside();
-    var ltr = (version2, range, options) => outside(version2, range, "<", options);
+    var ltr = (version2, range2, options) => outside(version2, range2, "<", options);
     module2.exports = ltr;
   }
 });
@@ -29916,13 +29916,13 @@ var require_simplify = __commonJS({
     "use strict";
     var satisfies = require_satisfies();
     var compare = require_compare();
-    module2.exports = (versions, range, options) => {
+    module2.exports = (versions, range2, options) => {
       const set = [];
       let first = null;
       let prev = null;
-      const v = versions.sort((a, b) => compare(a, b, options));
+      const v = versions.sort((a2, b) => compare(a2, b, options));
       for (const version2 of v) {
-        const included = satisfies(version2, range, options);
+        const included = satisfies(version2, range2, options);
         if (included) {
           prev = version2;
           if (!first) {
@@ -29954,8 +29954,8 @@ var require_simplify = __commonJS({
         }
       }
       const simplified = ranges.join(" || ");
-      const original = typeof range.raw === "string" ? range.raw : String(range);
-      return simplified.length < original.length ? simplified : range;
+      const original = typeof range2.raw === "string" ? range2.raw : String(range2);
+      return simplified.length < original.length ? simplified : range2;
     };
   }
 });
@@ -30104,19 +30104,19 @@ var require_subset = __commonJS({
       }
       return true;
     };
-    var higherGT = (a, b, options) => {
-      if (!a) {
+    var higherGT = (a2, b, options) => {
+      if (!a2) {
         return b;
       }
-      const comp = compare(a.semver, b.semver, options);
-      return comp > 0 ? a : comp < 0 ? b : b.operator === ">" && a.operator === ">=" ? b : a;
+      const comp = compare(a2.semver, b.semver, options);
+      return comp > 0 ? a2 : comp < 0 ? b : b.operator === ">" && a2.operator === ">=" ? b : a2;
     };
-    var lowerLT = (a, b, options) => {
-      if (!a) {
+    var lowerLT = (a2, b, options) => {
+      if (!a2) {
         return b;
       }
-      const comp = compare(a.semver, b.semver, options);
-      return comp < 0 ? a : comp > 0 ? b : b.operator === "<" && a.operator === "<=" ? b : a;
+      const comp = compare(a2.semver, b.semver, options);
+      return comp < 0 ? a2 : comp > 0 ? b : b.operator === "<" && a2.operator === "<=" ? b : a2;
     };
     module2.exports = subset;
   }
@@ -30250,9 +30250,9 @@ var require_validateAsymmetricKey = __commonJS({
       ES384: "secp384r1",
       ES512: "secp521r1"
     };
-    module2.exports = function(algorithm, key) {
-      if (!algorithm || !key) return;
-      const keyType = key.asymmetricKeyType;
+    module2.exports = function(algorithm, key2) {
+      if (!algorithm || !key2) return;
+      const keyType = key2.asymmetricKeyType;
       if (!keyType) return;
       const allowedAlgorithms = allowedAlgorithmsForKeys[keyType];
       if (!allowedAlgorithms) {
@@ -30264,7 +30264,7 @@ var require_validateAsymmetricKey = __commonJS({
       if (ASYMMETRIC_KEY_DETAILS_SUPPORTED) {
         switch (keyType) {
           case "ec":
-            const keyCurve = key.asymmetricKeyDetails.namedCurve;
+            const keyCurve = key2.asymmetricKeyDetails.namedCurve;
             const allowedCurve = allowedCurves[algorithm];
             if (keyCurve !== allowedCurve) {
               throw new Error(`"alg" parameter "${algorithm}" requires curve "${allowedCurve}".`);
@@ -30273,7 +30273,7 @@ var require_validateAsymmetricKey = __commonJS({
           case "rsa-pss":
             if (RSA_PSS_KEY_DETAILS_SUPPORTED) {
               const length = parseInt(algorithm.slice(-3), 10);
-              const { hashAlgorithm, mgf1HashAlgorithm, saltLength } = key.asymmetricKeyDetails;
+              const { hashAlgorithm, mgf1HashAlgorithm, saltLength } = key2.asymmetricKeyDetails;
               if (hashAlgorithm !== `sha${length}` || mgf1HashAlgorithm !== hashAlgorithm) {
                 throw new Error(`Invalid key for this operation, its RSA-PSS parameters do not meet the requirements of "alg" ${algorithm}.`);
               }
@@ -30568,8 +30568,8 @@ var require_lodash = __commonJS({
       return result;
     }
     function baseValues(object, props) {
-      return arrayMap(props, function(key) {
-        return object[key];
+      return arrayMap(props, function(key2) {
+        return object[key2];
       });
     }
     function overArg(func, transform) {
@@ -30586,9 +30586,9 @@ var require_lodash = __commonJS({
     function arrayLikeKeys(value, inherited) {
       var result = isArray(value) || isArguments(value) ? baseTimes(value.length, String) : [];
       var length = result.length, skipIndexes = !!length;
-      for (var key in value) {
-        if ((inherited || hasOwnProperty.call(value, key)) && !(skipIndexes && (key == "length" || isIndex(key, length)))) {
-          result.push(key);
+      for (var key2 in value) {
+        if ((inherited || hasOwnProperty.call(value, key2)) && !(skipIndexes && (key2 == "length" || isIndex(key2, length)))) {
+          result.push(key2);
         }
       }
       return result;
@@ -30598,9 +30598,9 @@ var require_lodash = __commonJS({
         return nativeKeys(object);
       }
       var result = [];
-      for (var key in Object(object)) {
-        if (hasOwnProperty.call(object, key) && key != "constructor") {
-          result.push(key);
+      for (var key2 in Object(object)) {
+        if (hasOwnProperty.call(object, key2) && key2 != "constructor") {
+          result.push(key2);
         }
       }
       return result;
@@ -30656,7 +30656,7 @@ var require_lodash = __commonJS({
       if (!value) {
         return value === 0 ? value : 0;
       }
-      value = toNumber(value);
+      value = toNumber2(value);
       if (value === INFINITY || value === -INFINITY) {
         var sign2 = value < 0 ? -1 : 1;
         return sign2 * MAX_INTEGER;
@@ -30667,7 +30667,7 @@ var require_lodash = __commonJS({
       var result = toFinite(value), remainder = result % 1;
       return result === result ? remainder ? result - remainder : result : 0;
     }
-    function toNumber(value) {
+    function toNumber2(value) {
       if (typeof value == "number") {
         return value;
       }
@@ -30742,7 +30742,7 @@ var require_lodash3 = __commonJS({
       if (!value) {
         return value === 0 ? value : 0;
       }
-      value = toNumber(value);
+      value = toNumber2(value);
       if (value === INFINITY || value === -INFINITY) {
         var sign2 = value < 0 ? -1 : 1;
         return sign2 * MAX_INTEGER;
@@ -30753,7 +30753,7 @@ var require_lodash3 = __commonJS({
       var result = toFinite(value), remainder = result % 1;
       return result === result ? remainder ? result - remainder : result : 0;
     }
-    function toNumber(value) {
+    function toNumber2(value) {
       if (typeof value == "number") {
         return value;
       }
@@ -30900,7 +30900,7 @@ var require_lodash7 = __commonJS({
       if (!value) {
         return value === 0 ? value : 0;
       }
-      value = toNumber(value);
+      value = toNumber2(value);
       if (value === INFINITY || value === -INFINITY) {
         var sign2 = value < 0 ? -1 : 1;
         return sign2 * MAX_INTEGER;
@@ -30911,7 +30911,7 @@ var require_lodash7 = __commonJS({
       var result = toFinite(value), remainder = result % 1;
       return result === result ? remainder ? result - remainder : result : 0;
     }
-    function toNumber(value) {
+    function toNumber2(value) {
       if (typeof value == "number") {
         return value;
       }
@@ -30983,15 +30983,15 @@ var require_sign2 = __commonJS({
       if (!isPlainObject(object)) {
         throw new Error('Expected "' + parameterName + '" to be a plain object.');
       }
-      Object.keys(object).forEach(function(key) {
-        const validator = schema[key];
+      Object.keys(object).forEach(function(key2) {
+        const validator = schema[key2];
         if (!validator) {
           if (!allowUnknown) {
-            throw new Error('"' + key + '" is not allowed in "' + parameterName + '"');
+            throw new Error('"' + key2 + '" is not allowed in "' + parameterName + '"');
           }
           return;
         }
-        if (!validator.isValid(object[key])) {
+        if (!validator.isValid(object[key2])) {
           throw new Error(validator.message);
         }
       });
@@ -31124,13 +31124,13 @@ var require_sign2 = __commonJS({
           return failure(new Error('"expiresIn" should be a number of seconds or string representing a timespan eg: "1d", "20h", 60'));
         }
       }
-      Object.keys(options_to_payload).forEach(function(key) {
-        const claim = options_to_payload[key];
-        if (typeof options[key] !== "undefined") {
+      Object.keys(options_to_payload).forEach(function(key2) {
+        const claim = options_to_payload[key2];
+        if (typeof options[key2] !== "undefined") {
           if (typeof payload[claim] !== "undefined") {
-            return failure(new Error('Bad "options.' + key + '" option. The payload already has an "' + claim + '" property.'));
+            return failure(new Error('Bad "options.' + key2 + '" option. The payload already has an "' + claim + '" property.'));
           }
-          payload[claim] = options[key];
+          payload[claim] = options[key2];
         }
       });
       const encoding = options.encoding || "utf8";
@@ -31184,7 +31184,7 @@ var require_jsonwebtoken = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express12 = __toESM(require_express2());
+var import_express13 = __toESM(require_express2());
 var import_cors = __toESM(require_lib4());
 
 // node_modules/express-async-errors/index.js
@@ -31193,8 +31193,8 @@ var Router = require_router();
 var last = (arr = []) => arr[arr.length - 1];
 var noop = Function.prototype;
 function copyFnProps(oldFn, newFn) {
-  Object.keys(oldFn).forEach((key) => {
-    newFn[key] = oldFn[key];
+  Object.keys(oldFn).forEach((key2) => {
+    newFn[key2] = oldFn[key2];
   });
   return newFn;
 }
@@ -31254,9 +31254,9 @@ var getResetSeconds = (resetTime, windowMs) => {
   }
   return resetSeconds;
 };
-var getPartitionKey = (key) => {
+var getPartitionKey = (key2) => {
   const hash = (0, import_node_crypto.createHash)("sha256");
-  hash.update(key);
+  hash.update(key2);
   const partitionKey = hash.digest("hex").slice(0, 12);
   return import_node_buffer.Buffer.from(partitionKey).toString("base64");
 };
@@ -31292,11 +31292,11 @@ var setDraft7Headers = (response, info, windowMs) => {
     `limit=${info.limit}, remaining=${info.remaining}, reset=${resetSeconds}`
   );
 };
-var setDraft8Headers = (response, info, windowMs, name2, key) => {
+var setDraft8Headers = (response, info, windowMs, name2, key2) => {
   if (response.headersSent) return;
   const windowSeconds = Math.ceil(windowMs / 1e3);
   const resetSeconds = getResetSeconds(info.resetTime, windowMs);
-  const partitionKey = getPartitionKey(key);
+  const partitionKey = getPartitionKey(key2);
   const policy = `q=${info.limit}; w=${windowSeconds}; pk=:${partitionKey}:`;
   const header = `r=${info.remaining}; t=${resetSeconds}`;
   response.append("RateLimit-Policy", `"${name2}"; ${policy}`);
@@ -31430,7 +31430,7 @@ var validations = {
    *
    * @returns {void}
    */
-  singleCount(request, store, key) {
+  singleCount(request, store, key2) {
     let storeKeys = singleCountKeys.get(request);
     if (!storeKeys) {
       storeKeys = /* @__PURE__ */ new Map();
@@ -31442,11 +31442,11 @@ var validations = {
       keys = [];
       storeKeys.set(storeKey, keys);
     }
-    const prefixedKey = `${store.prefix ?? ""}${key}`;
+    const prefixedKey = `${store.prefix ?? ""}${key2}`;
     if (keys.includes(prefixedKey)) {
       throw new ValidationError(
         "ERR_ERL_DOUBLE_COUNT",
-        `The hit count for ${key} was incremented more than once for a single request.`
+        `The hit count for ${key2} was incremented more than once for a single request.`
       );
     }
     keys.push(prefixedKey);
@@ -31544,11 +31544,11 @@ var validations = {
       (k) => !["enabled", "disable"].includes(k)
     );
     supportedValidations.push("default");
-    for (const key of Object.keys(this.enabled)) {
-      if (!supportedValidations.includes(key)) {
+    for (const key2 of Object.keys(this.enabled)) {
+      if (!supportedValidations.includes(key2)) {
         throw new ValidationError(
           "ERR_ERL_UNKNOWN_VALIDATION",
-          `options.validate.${key} is not recognized. Supported validate options are: ${supportedValidations.join(
+          `options.validate.${key2} is not recognized. Supported validate options are: ${supportedValidations.join(
             ", "
           )}.`
         );
@@ -31641,8 +31641,8 @@ var MemoryStore = class {
    *
    * @public
    */
-  async get(key) {
-    return this.current.get(key) ?? this.previous.get(key);
+  async get(key2) {
+    return this.current.get(key2) ?? this.previous.get(key2);
   }
   /**
    * Method to increment a client's hit counter.
@@ -31653,8 +31653,8 @@ var MemoryStore = class {
    *
    * @public
    */
-  async increment(key) {
-    const client = this.getClient(key);
+  async increment(key2) {
+    const client = this.getClient(key2);
     const now = Date.now();
     if (client.resetTime.getTime() <= now) {
       this.resetClient(client, now);
@@ -31669,8 +31669,8 @@ var MemoryStore = class {
    *
    * @public
    */
-  async decrement(key) {
-    const client = this.getClient(key);
+  async decrement(key2) {
+    const client = this.getClient(key2);
     if (client.totalHits > 0) client.totalHits--;
   }
   /**
@@ -31680,9 +31680,9 @@ var MemoryStore = class {
    *
    * @public
    */
-  async resetKey(key) {
-    this.current.delete(key);
-    this.previous.delete(key);
+  async resetKey(key2) {
+    this.current.delete(key2);
+    this.previous.delete(key2);
   }
   /**
    * Method to reset everyone's hit counter.
@@ -31728,17 +31728,17 @@ var MemoryStore = class {
    *
    * @returns {Client} - The requested client.
    */
-  getClient(key) {
-    if (this.current.has(key)) return this.current.get(key);
+  getClient(key2) {
+    if (this.current.has(key2)) return this.current.get(key2);
     let client;
-    if (this.previous.has(key)) {
-      client = this.previous.get(key);
-      this.previous.delete(key);
+    if (this.previous.has(key2)) {
+      client = this.previous.get(key2);
+      this.previous.delete(key2);
     } else {
       client = { totalHits: 0, resetTime: /* @__PURE__ */ new Date() };
       this.resetClient(client);
     }
-    this.current.set(key, client);
+    this.current.set(key2, client);
     return client;
   }
   /**
@@ -31762,10 +31762,10 @@ var promisifyStore = (passedStore) => {
   }
   const legacyStore = passedStore;
   class PromisifiedStore {
-    async increment(key) {
+    async increment(key2) {
       return new Promise((resolve3, reject) => {
         legacyStore.incr(
-          key,
+          key2,
           (error2, totalHits, resetTime) => {
             if (error2) reject(error2);
             resolve3({ totalHits, resetTime });
@@ -31773,11 +31773,11 @@ var promisifyStore = (passedStore) => {
         );
       });
     }
-    async decrement(key) {
-      return legacyStore.decrement(key);
+    async decrement(key2) {
+      return legacyStore.decrement(key2);
     }
-    async resetKey(key) {
-      return legacyStore.resetKey(key);
+    async resetKey(key2) {
+      return legacyStore.resetKey(key2);
     }
     /* istanbul ignore next */
     async resetAll() {
@@ -31797,9 +31797,9 @@ var getOptionsFromConfig = (config) => {
 var omitUndefinedOptions = (passedOptions) => {
   const omittedOptions = {};
   for (const k of Object.keys(passedOptions)) {
-    const key = k;
-    if (passedOptions[key] !== void 0) {
-      omittedOptions[key] = passedOptions[key];
+    const key2 = k;
+    if (passedOptions[key2] !== void 0) {
+      omittedOptions[key2] = passedOptions[key2];
     }
   }
   return omittedOptions;
@@ -31896,11 +31896,11 @@ var rateLimit = (passedOptions) => {
         return;
       }
       const augmentedRequest = request;
-      const key = await config.keyGenerator(request, response);
+      const key2 = await config.keyGenerator(request, response);
       let totalHits = 0;
       let resetTime;
       try {
-        const incrementResult = await config.store.increment(key);
+        const incrementResult = await config.store.increment(key2);
         totalHits = incrementResult.totalHits;
         resetTime = incrementResult.resetTime;
       } catch (error2) {
@@ -31915,7 +31915,7 @@ var rateLimit = (passedOptions) => {
         throw error2;
       }
       config.validations.positiveHits(totalHits);
-      config.validations.singleCount(request, config.store, key);
+      config.validations.singleCount(request, config.store, key2);
       const retrieveLimit = typeof config.limit === "function" ? config.limit(request, response) : config.limit;
       const limit = await retrieveLimit;
       config.validations.limit(limit);
@@ -31949,7 +31949,7 @@ var rateLimit = (passedOptions) => {
             const retrieveName = typeof config.identifier === "function" ? config.identifier(request, response) : config.identifier;
             const name2 = await retrieveName;
             config.validations.headersResetTime(info.resetTime);
-            setDraft8Headers(response, info, config.windowMs, name2, key);
+            setDraft8Headers(response, info, config.windowMs, name2, key2);
             break;
           }
           default: {
@@ -31962,7 +31962,7 @@ var rateLimit = (passedOptions) => {
         let decremented = false;
         const decrementKey = async () => {
           if (!decremented) {
-            await config.store.decrement(key);
+            await config.store.decrement(key2);
             decremented = true;
           }
         };
@@ -32308,16 +32308,16 @@ var parse = (input, parseQueryString) => {
   let query;
   if (parseQueryString) {
     const parsed = /* @__PURE__ */ Object.create(null);
-    u.searchParams.forEach((value, key) => {
-      if (Object.prototype.hasOwnProperty.call(parsed, key)) {
-        const existing = parsed[key];
+    u.searchParams.forEach((value, key2) => {
+      if (Object.prototype.hasOwnProperty.call(parsed, key2)) {
+        const existing = parsed[key2];
         if (Array.isArray(existing)) {
           existing.push(value);
         } else {
-          parsed[key] = [existing, value];
+          parsed[key2] = [existing, value];
         }
       } else {
-        parsed[key] = value;
+        parsed[key2] = value;
       }
     });
     query = parsed;
@@ -32439,13 +32439,13 @@ var Cookies = class {
     const cookie = {};
     (cookieStr || "").toString().split(";").forEach((cookiePart) => {
       const valueParts = cookiePart.split("=");
-      const key = valueParts.shift().trim().toLowerCase();
+      const key2 = valueParts.shift().trim().toLowerCase();
       let value = valueParts.join("=").trim();
       let domain;
-      if (!key) {
+      if (!key2) {
         return;
       }
-      switch (key) {
+      switch (key2) {
         case "expires": {
           const expires = new Date(value);
           if (expires.toString() !== "Invalid Date") {
@@ -32474,7 +32474,7 @@ var Cookies = class {
           break;
         default:
           if (!cookie.name) {
-            cookie.name = key;
+            cookie.name = key2;
             cookie.value = value;
           }
       }
@@ -32535,8 +32535,8 @@ var Cookies = class {
    * @param b Cookie to check against
    * @returns True, if the cookies are the same
    */
-  compare(a, b) {
-    return a.name === b.name && a.path === b.path && a.domain === b.domain && a.secure === b.secure && a.httponly === b.httponly;
+  compare(a2, b) {
+    return a2.name === b.name && a2.path === b.path && a2.domain === b.domain && a2.secure === b.secure && a2.httponly === b.httponly;
   }
   /**
    * Checks if a cookie is expired
@@ -32589,13 +32589,13 @@ var EURLACCESS = "EURLACCESS";
 var EFETCH = "EFETCH";
 
 // node_modules/nodemailer/dist/esm/shared/objects.js
-var isProtoKey = (key) => key === "__proto__";
+var isProtoKey = (key2) => key2 === "__proto__";
 var copyOwnKeys = (target, source, skip) => {
-  Object.keys(source || {}).forEach((key) => {
-    if (isProtoKey(key) || skip && skip(key)) {
+  Object.keys(source || {}).forEach((key2) => {
+    if (isProtoKey(key2) || skip && skip(key2)) {
       return;
     }
-    target[key] = source[key];
+    target[key2] = source[key2];
   });
   return target;
 };
@@ -32673,11 +32673,11 @@ function nmfetch(url, options) {
     "accept-encoding": "gzip,deflate",
     "user-agent": "nodemailer/" + version
   };
-  Object.keys(options.headers || {}).forEach((key) => {
-    if (isProtoKey(key.toLowerCase().trim())) {
+  Object.keys(options.headers || {}).forEach((key2) => {
+    if (isProtoKey(key2.toLowerCase().trim())) {
       return;
     }
-    headers[key.toLowerCase().trim()] = options.headers[key];
+    headers[key2.toLowerCase().trim()] = options.headers[key2];
   });
   if (options.userAgent) {
     headers["user-agent"] = options.userAgent;
@@ -32709,9 +32709,9 @@ function nmfetch(url, options) {
         body = options.body;
       } else if (typeof options.body === "object") {
         try {
-          body = Buffer.from(Object.keys(options.body).map((key) => {
-            const value = options.body[key].toString().trim();
-            return encodeURIComponent(key) + "=" + encodeURIComponent(value);
+          body = Buffer.from(Object.keys(options.body).map((key2) => {
+            const value = options.body[key2].toString().trim();
+            return encodeURIComponent(key2) + "=" + encodeURIComponent(value);
           }).join("&"));
         } catch (E) {
           if (finished) {
@@ -32745,9 +32745,9 @@ function nmfetch(url, options) {
     agent: false
   };
   if (options.tls) {
-    Object.keys(options.tls).forEach((key) => {
-      if (TLS_OPTION_KEYS.includes(key)) {
-        reqOptions[key] = options.tls[key];
+    Object.keys(options.tls).forEach((key2) => {
+      if (TLS_OPTION_KEYS.includes(key2)) {
+        reqOptions[key2] = options.tls[key2];
       }
     });
   }
@@ -32836,9 +32836,9 @@ function nmfetch(url, options) {
       const downgrade = parsed.protocol === "https:" && redirectParsed.protocol === "http:";
       if (options.headers && (crossHost || downgrade)) {
         const sensitive = ["authorization", "cookie", "proxy-authorization"];
-        Object.keys(options.headers).forEach((key) => {
-          if (sensitive.includes(key.toLowerCase())) {
-            delete options.headers[key];
+        Object.keys(options.headers).forEach((key2) => {
+          if (sensitive.includes(key2.toLowerCase())) {
+            delete options.headers[key2];
           }
         });
       }
@@ -32989,7 +32989,7 @@ var resolveHostname = (options, callback) => {
       if (dnsCache.size > MAX_CACHE_SIZE) {
         const toDelete = Math.floor(MAX_CACHE_SIZE * 0.1);
         const keys = Array.from(dnsCache.keys()).slice(0, toDelete);
-        keys.forEach((key) => dnsCache.delete(key));
+        keys.forEach((key2) => dnsCache.delete(key2));
       }
     }
     if (!cached.expires || cached.expires >= now) {
@@ -33124,10 +33124,10 @@ var parseConnectionUrl = (str) => {
       pass: url.password || ""
     };
   }
-  Object.keys(url.query || {}).forEach((key) => {
+  Object.keys(url.query || {}).forEach((key2) => {
     let obj = options;
-    let lKey = key;
-    let value = url.query[key];
+    let lKey = key2;
+    let value = url.query[key2];
     if (!isNaN(value)) {
       value = Number(value);
     }
@@ -33139,13 +33139,13 @@ var parseConnectionUrl = (str) => {
         value = false;
         break;
     }
-    if (key.indexOf("tls.") === 0) {
-      lKey = key.substr(4);
+    if (key2.indexOf("tls.") === 0) {
+      lKey = key2.substr(4);
       if (!options.tls) {
         options.tls = {};
       }
       obj = options.tls;
-    } else if (key.indexOf(".") >= 0) {
+    } else if (key2.indexOf(".") >= 0) {
       return;
     }
     if (!isProtoKey(lKey) && !(lKey in obj)) {
@@ -33219,10 +33219,10 @@ var parseDataURI = (uri) => {
     const entry = metaEntries[i];
     const sepPos = entry.indexOf("=");
     if (sepPos > 0) {
-      const key = entry.substring(0, sepPos).trim();
+      const key2 = entry.substring(0, sepPos).trim();
       const value = entry.substring(sepPos + 1).trim();
-      if (key && !isProtoKey(key)) {
-        params[key] = value;
+      if (key2 && !isProtoKey(key2)) {
+        params[key2] = value;
       }
     }
   }
@@ -33247,7 +33247,7 @@ var parseDataURI = (uri) => {
     params
   };
 };
-function resolveContent(data, key, options, callback) {
+function resolveContent(data, key2, options, callback) {
   if (!callback && typeof options === "function") {
     callback = options;
     options = false;
@@ -33259,12 +33259,12 @@ function resolveContent(data, key, options, callback) {
       callback = callbackPromise(resolve3, reject);
     });
   }
-  resolveContentValue(data, key, options, callback);
+  resolveContentValue(data, key2, options, callback);
   return promise;
 }
-function resolveContentValue(data, key, options, callback) {
-  let content = data && data[key] && data[key].content || data[key];
-  const encoding = (typeof data[key] === "object" && data[key].encoding || "utf8").toString().toLowerCase().replace(/[-_\s]/g, "");
+function resolveContentValue(data, key2, options, callback) {
+  let content = data && data[key2] && data[key2].content || data[key2];
+  const encoding = (typeof data[key2] === "object" && data[key2].encoding || "utf8").toString().toLowerCase().replace(/[-_\s]/g, "");
   if (!content) {
     return callback(null, content);
   }
@@ -33274,10 +33274,10 @@ function resolveContentValue(data, key, options, callback) {
         if (err) {
           return callback(err);
         }
-        if (data[key].content) {
-          data[key].content = value;
+        if (data[key2].content) {
+          data[key2].content = value;
         } else {
-          data[key] = value;
+          data[key2] = value;
         }
         callback(null, value);
       });
@@ -33307,22 +33307,22 @@ function resolveContentValue(data, key, options, callback) {
       return resolveStream(import_node_fs.default.createReadStream(content.path), callback);
     }
   }
-  if (typeof data[key].content === "string" && !["utf8", "usascii", "ascii"].includes(encoding)) {
-    content = Buffer.from(data[key].content, encoding);
+  if (typeof data[key2].content === "string" && !["utf8", "usascii", "ascii"].includes(encoding)) {
+    content = Buffer.from(data[key2].content, encoding);
   }
   setImmediate(() => callback(null, content));
 }
 var assign = function(...args) {
   const target = args.shift() || {};
   args.forEach((source) => {
-    Object.keys(source || {}).forEach((key) => {
-      if (isProtoKey(key)) {
+    Object.keys(source || {}).forEach((key2) => {
+      if (isProtoKey(key2)) {
         return;
       }
-      if (["tls", "auth"].includes(key) && source[key] && typeof source[key] === "object") {
-        target[key] = copyOwnKeys(target[key] || {}, source[key]);
+      if (["tls", "auth"].includes(key2) && source[key2] && typeof source[key2] === "object") {
+        target[key2] = copyOwnKeys(target[key2] || {}, source[key2]);
       } else {
-        target[key] = source[key];
+        target[key2] = source[key2];
       }
     });
   });
@@ -35712,14 +35712,14 @@ function wrap3(str, lineLength) {
 }
 function checkRanges(nr, ranges) {
   for (let i = ranges.length - 1; i >= 0; i--) {
-    const range = ranges[i];
-    if (!range.length) {
+    const range2 = ranges[i];
+    if (!range2.length) {
       continue;
     }
-    if (range.length === 1 && nr === range[0]) {
+    if (range2.length === 1 && nr === range2[0]) {
       return true;
     }
-    if (range.length === 2 && nr >= range[0] && nr <= range[1]) {
+    if (range2.length === 2 && nr >= range2[0] && nr <= range2[1]) {
       return true;
     }
   }
@@ -35861,9 +35861,9 @@ function encodeWords(value, mimeWordEncoding, maxLength, encodeAll) {
 }
 function buildHeaderValue(structured) {
   const paramsArray = [];
-  Object.keys(structured.params || {}).forEach((key) => {
-    const value2 = structured.params[key];
-    const param = key.replace(/[\x00-\x1f\x7f]/g, "");
+  Object.keys(structured.params || {}).forEach((key2) => {
+    const value2 = structured.params[key2];
+    const param = key2.replace(/[\x00-\x1f\x7f]/g, "");
     if (!isPlainText(value2, true) || value2.length >= 75) {
       buildHeaderParam(param, value2, 50).forEach((encodedParam) => {
         if (!/[\s"\\;:/=(),<>@[\]?]|^[-']|'$/.test(encodedParam.value) || encodedParam.key.substr(-1) === "*") {
@@ -35881,7 +35881,7 @@ function buildHeaderValue(structured) {
   const value = typeof structured.value === "string" ? structured.value.replace(/[\x00-\x1f\x7f]/g, "") : structured.value;
   return value + (paramsArray.length ? "; " + paramsArray.join("; ") : "");
 }
-function buildHeaderParam(key, data, maxLength) {
+function buildHeaderParam(key2, data, maxLength) {
   const list = [];
   let encodedStr = typeof data === "string" ? data : (data || "").toString();
   let chr;
@@ -35893,7 +35893,7 @@ function buildHeaderParam(key, data, maxLength) {
     if (encodedStr.length <= maxLength) {
       return [
         {
-          key,
+          key: key2,
           value: encodedStr
         }
       ];
@@ -35976,7 +35976,7 @@ function buildHeaderParam(key, data, maxLength) {
     // encoded lines: {name}*{part}*
     // unencoded lines: {name}*{part}
     // if any line needs to be encoded then the first line (part==0) is always encoded
-    key: key + "*" + i2 + (item.encoded ? "*" : ""),
+    key: key2 + "*" + i2 + (item.encoded ? "*" : ""),
     value: item.line
   }));
 }
@@ -35990,7 +35990,7 @@ function parseHeaderValue(str) {
       response.params[name2] = value2;
     }
   };
-  let key = false;
+  let key2 = false;
   let value = "";
   let type = "value";
   let quote = false;
@@ -36000,7 +36000,7 @@ function parseHeaderValue(str) {
     chr = str.charAt(i);
     if (type === "key") {
       if (chr === "=") {
-        key = value.trim().toLowerCase();
+        key2 = value.trim().toLowerCase();
         type = "value";
         value = "";
         continue;
@@ -36017,10 +36017,10 @@ function parseHeaderValue(str) {
       } else if (!quote && chr === '"') {
         quote = chr;
       } else if (!quote && chr === ";") {
-        if (key === false) {
+        if (key2 === false) {
           response.value = value.trim();
         } else {
-          setParam(key, value.trim());
+          setParam(key2, value.trim());
         }
         type = "key";
         value = "";
@@ -36031,21 +36031,21 @@ function parseHeaderValue(str) {
     }
   }
   if (type === "value") {
-    if (key === false) {
+    if (key2 === false) {
       response.value = value.trim();
     } else {
-      setParam(key, value.trim());
+      setParam(key2, value.trim());
     }
   } else if (value.trim()) {
     setParam(value.trim().toLowerCase(), "");
   }
-  Object.keys(response.params).forEach((key2) => {
+  Object.keys(response.params).forEach((key3) => {
     let actualKey, nr, match, value2;
-    if (match = key2.match(/(\*(\d+)|\*(\d+)\*|\*)$/)) {
-      actualKey = key2.substr(0, match.index);
+    if (match = key3.match(/(\*(\d+)|\*(\d+)\*|\*)$/)) {
+      actualKey = key3.substr(0, match.index);
       nr = Number(match[2] || match[3]) || 0;
       if (isProtoKey(actualKey)) {
-        delete response.params[key2];
+        delete response.params[key3];
         return;
       }
       if (!response.params[actualKey] || typeof response.params[actualKey] !== "object") {
@@ -36054,21 +36054,21 @@ function parseHeaderValue(str) {
           values: []
         };
       }
-      value2 = response.params[key2];
+      value2 = response.params[key3];
       if (nr === 0 && match[0].substr(-1) === "*" && (match = value2.match(/^([^']*)'[^']*'(.*)$/))) {
         response.params[actualKey].charset = match[1] || "iso-8859-1";
         value2 = match[2];
       }
       response.params[actualKey].values[nr] = value2;
-      delete response.params[key2];
+      delete response.params[key3];
     }
   });
-  Object.keys(response.params).forEach((key2) => {
+  Object.keys(response.params).forEach((key3) => {
     let value2;
-    if (response.params[key2] && Array.isArray(response.params[key2].values)) {
-      value2 = response.params[key2].values.map((val) => val || "").join("");
-      if (response.params[key2].charset) {
-        response.params[key2] = "=?" + response.params[key2].charset + "?Q?" + value2.replace(/[=?_\s]/g, (s) => {
+    if (response.params[key3] && Array.isArray(response.params[key3].values)) {
+      value2 = response.params[key3].values.map((val) => val || "").join("");
+      if (response.params[key3].charset) {
+        response.params[key3] = "=?" + response.params[key3].charset + "?Q?" + value2.replace(/[=?_\s]/g, (s) => {
           const c = s.charCodeAt(0).toString(16);
           if (s === " ") {
             return "_";
@@ -36076,7 +36076,7 @@ function parseHeaderValue(str) {
           return "%" + (c.length < 2 ? "0" : "") + c;
         }).replace(/%/g, "=") + "?=";
       } else {
-        response.params[key2] = value2;
+        response.params[key3] = value2;
       }
     }
   });
@@ -36820,29 +36820,29 @@ var MimeNode = class _MimeNode {
    * @param value Header value
    * @return current node
    */
-  setHeader(key, value) {
+  setHeader(key2, value) {
     let added = false;
-    if (!value && key && typeof key === "object") {
-      if (key.key && "value" in key) {
-        this.setHeader(key.key, key.value);
-      } else if (Array.isArray(key)) {
-        key.forEach((i) => {
+    if (!value && key2 && typeof key2 === "object") {
+      if (key2.key && "value" in key2) {
+        this.setHeader(key2.key, key2.value);
+      } else if (Array.isArray(key2)) {
+        key2.forEach((i) => {
           this.setHeader(i.key, i.value);
         });
       } else {
-        Object.keys(key).forEach((i) => {
-          this.setHeader(i, key[i]);
+        Object.keys(key2).forEach((i) => {
+          this.setHeader(i, key2[i]);
         });
       }
       return this;
     }
-    key = this._normalizeHeaderKey(key);
+    key2 = this._normalizeHeaderKey(key2);
     const headerValue = {
-      key,
+      key: key2,
       value
     };
     for (let i = 0, len = this._headers.length; i < len; i++) {
-      if (this._headers[i].key === key) {
+      if (this._headers[i].key === key2) {
         if (!added) {
           this._headers[i] = headerValue;
           added = true;
@@ -36868,28 +36868,28 @@ var MimeNode = class _MimeNode {
    * @param value Header value
    * @return current node
    */
-  addHeader(key, value) {
-    if (!value && key && typeof key === "object") {
-      if (key.key && key.value) {
-        this.addHeader(key.key, key.value);
-      } else if (Array.isArray(key)) {
-        key.forEach((i) => {
+  addHeader(key2, value) {
+    if (!value && key2 && typeof key2 === "object") {
+      if (key2.key && key2.value) {
+        this.addHeader(key2.key, key2.value);
+      } else if (Array.isArray(key2)) {
+        key2.forEach((i) => {
           this.addHeader(i.key, i.value);
         });
       } else {
-        Object.keys(key).forEach((i) => {
-          this.addHeader(i, key[i]);
+        Object.keys(key2).forEach((i) => {
+          this.addHeader(i, key2[i]);
         });
       }
       return this;
     } else if (Array.isArray(value)) {
       value.forEach((val) => {
-        this.addHeader(key, val);
+        this.addHeader(key2, val);
       });
       return this;
     }
     this._headers.push({
-      key: this._normalizeHeaderKey(key),
+      key: this._normalizeHeaderKey(key2),
       value
     });
     return this;
@@ -36900,10 +36900,10 @@ var MimeNode = class _MimeNode {
    * @param key Key to search for
    * @retun Value for the key
    */
-  getHeader(key) {
-    key = this._normalizeHeaderKey(key);
+  getHeader(key2) {
+    key2 = this._normalizeHeaderKey(key2);
     for (let i = 0, len = this._headers.length; i < len; i++) {
-      if (this._headers[i].key === key) {
+      if (this._headers[i].key === key2) {
         return this._headers[i].value;
       }
     }
@@ -37023,13 +37023,13 @@ var MimeNode = class _MimeNode {
       }
     }
     this._headers.forEach((header) => {
-      let key = header.key;
+      let key2 = header.key;
       let value = header.value;
       let structured;
       let param;
       const options = {};
       const formattedHeaders = FORMATTED_HEADERS;
-      if (value && typeof value === "object" && !formattedHeaders.includes(key)) {
+      if (value && typeof value === "object" && !formattedHeaders.includes(key2)) {
         copyOwnKeys(options, value, (optionKey) => optionKey === "value");
         value = (value.value || "").toString();
         if (!value.trim()) {
@@ -37038,9 +37038,9 @@ var MimeNode = class _MimeNode {
       }
       if (options.prepared) {
         if (options.foldLines) {
-          headers.push(foldLines(key + ": " + value));
+          headers.push(foldLines(key2 + ": " + value));
         } else {
-          headers.push(key + ": " + value);
+          headers.push(key2 + ": " + value);
         }
         return;
       }
@@ -37074,18 +37074,18 @@ var MimeNode = class _MimeNode {
           }
           break;
       }
-      value = this._encodeHeaderValue(key, value);
+      value = this._encodeHeaderValue(key2, value);
       if (!(value || "").toString().trim()) {
         return;
       }
       if (typeof this.normalizeHeaderKey === "function") {
-        const normalized2 = this.normalizeHeaderKey(key, value);
+        const normalized2 = this.normalizeHeaderKey(key2, value);
         const cleaned = typeof normalized2 === "string" ? normalized2.replace(/[\x00-\x1f\x7f]/g, "") : "";
         if (cleaned) {
-          key = cleaned;
+          key2 = cleaned;
         }
       }
-      headers.push(foldLines(key + ": " + value, 76));
+      headers.push(foldLines(key2 + ": " + value, 76));
     });
     return headers.join("\r\n");
   }
@@ -37291,14 +37291,14 @@ var MimeNode = class _MimeNode {
     }
     const seenRecipients = /* @__PURE__ */ new Set();
     const recipients = [];
-    ["to", "cc", "bcc"].forEach((key) => {
-      if (envelope[key]) {
-        this._convertAddresses(this._parseEnvelopeAddresses(envelope[key]), recipients, seenRecipients);
+    ["to", "cc", "bcc"].forEach((key2) => {
+      if (envelope[key2]) {
+        this._convertAddresses(this._parseEnvelopeAddresses(envelope[key2]), recipients, seenRecipients);
       }
     });
     this._envelope.to = recipients.map((to) => to.address).filter((address) => address);
     const standardFields = ["to", "cc", "bcc", "from"];
-    copyOwnKeys(this._envelope, envelope, (key) => standardFields.includes(key));
+    copyOwnKeys(this._envelope, envelope, (key2) => standardFields.includes(key2));
     return this;
   }
   /**
@@ -37310,13 +37310,13 @@ var MimeNode = class _MimeNode {
     const addresses = {};
     const seenByKey = /* @__PURE__ */ new Map();
     this._headers.forEach((header) => {
-      const key = header.key.toLowerCase();
-      if (["from", "sender", "reply-to", "to", "cc", "bcc"].includes(key)) {
-        if (!Array.isArray(addresses[key])) {
-          addresses[key] = [];
-          seenByKey.set(key, /* @__PURE__ */ new Set());
+      const key2 = header.key.toLowerCase();
+      if (["from", "sender", "reply-to", "to", "cc", "bcc"].includes(key2)) {
+        if (!Array.isArray(addresses[key2])) {
+          addresses[key2] = [];
+          seenByKey.set(key2, /* @__PURE__ */ new Set());
         }
-        this._convertAddresses(this._parseAddresses(header.value), addresses[key], seenByKey.get(key));
+        this._convertAddresses(this._parseAddresses(header.value), addresses[key2], seenByKey.get(key2));
       }
     });
     return addresses;
@@ -37554,9 +37554,9 @@ var MimeNode = class _MimeNode {
    * @return key in Camel-Case form
    * @internal
    */
-  _normalizeHeaderKey(key) {
-    key = (key || "").toString().replace(/\r?\n|\r/g, " ").replace(/[\x00-\x1f\x7f]/g, "").trim().toLowerCase().replace(/^X-SMTPAPI$|^(MIME|DKIM|ARC|BIMI)\b|^[a-z]|-(SPF|FBL|ID|MD5)$|-[a-z]/gi, (c) => c.toUpperCase()).replace(/^Content-Features$/i, "Content-features");
-    return key;
+  _normalizeHeaderKey(key2) {
+    key2 = (key2 || "").toString().replace(/\r?\n|\r/g, " ").replace(/[\x00-\x1f\x7f]/g, "").trim().toLowerCase().replace(/^X-SMTPAPI$|^(MIME|DKIM|ARC|BIMI)\b|^[a-z]|-(SPF|FBL|ID|MD5)$|-[a-z]/gi, (c) => c.toUpperCase()).replace(/^Content-Features$/i, "Content-features");
+    return key2;
   }
   /**
    * Checks if the content type is multipart and defines boundary if needed.
@@ -37591,9 +37591,9 @@ var MimeNode = class _MimeNode {
    * @param value Header value
    * @internal
    */
-  _encodeHeaderValue(key, value) {
-    key = this._normalizeHeaderKey(key);
-    switch (key) {
+  _encodeHeaderValue(key2, value) {
+    key2 = this._normalizeHeaderKey(key2);
+    switch (key2) {
       // Structured headers
       case "From":
       case "Sender":
@@ -37849,9 +37849,9 @@ var MailComposer = class {
       this.message.addHeader(this.mail.headers);
     }
     ["from", "sender", "to", "cc", "bcc", "reply-to", "in-reply-to", "references", "subject", "message-id", "date"].forEach((header) => {
-      const key = header.replace(/-(\w)/g, (o, c) => c.toUpperCase());
-      if (this.mail[key]) {
-        this.message.setHeader(header, this.mail[key]);
+      const key2 = header.replace(/-(\w)/g, (o, c) => c.toUpperCase());
+      if (this.mail[key2]) {
+        this.message.setHeader(header, this.mail[key2]);
       }
     });
     if (this.mail.envelope) {
@@ -38684,11 +38684,11 @@ var DKIMSigner = class {
         setImmediate(() => this.sendNextChunk());
         return;
       }
-      const key = this.keys[keyPos++];
+      const key2 = this.keys[keyPos++];
       const dkimField = sign_default(this.headers, this.hashAlgo, this.bodyHash, {
-        domainName: key.domainName,
-        keySelector: key.keySelector,
-        privateKey: key.privateKey,
+        domainName: key2.domainName,
+        keySelector: key2.keySelector,
+        privateKey: key2.privateKey,
         headerFieldNames: this.options.headerFieldNames,
         skipFields: this.options.skipFields
       });
@@ -38856,7 +38856,7 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
     socket.write(
       // HTTP method
       "CONNECT " + destinationHost + ":" + destinationPort + " HTTP/1.1\r\n" + // HTTP request headers
-      Object.keys(reqHeaders).map((key) => key + ": " + reqHeaders[key]).join("\r\n") + // End request
+      Object.keys(reqHeaders).map((key2) => key2 + ": " + reqHeaders[key2]).join("\r\n") + // End request
       "\r\n\r\n"
     );
     let headers = "";
@@ -38909,7 +38909,7 @@ var http_proxy_client_default = httpProxyClient;
 var import_node_util2 = __toESM(require("node:util"), 1);
 
 // node_modules/nodemailer/dist/esm/mailer/mail-message.js
-var hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+var hasOwn = (obj, key2) => Object.prototype.hasOwnProperty.call(obj, key2);
 var MailMessage = class {
   constructor(mailer, data) {
     this.mailer = mailer;
@@ -38920,20 +38920,20 @@ var MailMessage = class {
     const defaults = mailer._defaults || {};
     copyOwnKeys(this.data, data);
     this.data.headers = this.data.headers || {};
-    copyOwnKeys(this.data, defaults, (key) => hasOwn(this.data, key));
-    copyOwnKeys(this.data.headers, defaults.headers, (key) => hasOwn(this.data.headers, key));
-    ["disableFileAccess", "disableUrlAccess", "normalizeHeaderKey", "maxRecipients"].forEach((key) => {
-      if (key in options) {
-        this.data[key] = options[key];
+    copyOwnKeys(this.data, defaults, (key2) => hasOwn(this.data, key2));
+    copyOwnKeys(this.data.headers, defaults.headers, (key2) => hasOwn(this.data.headers, key2));
+    ["disableFileAccess", "disableUrlAccess", "normalizeHeaderKey", "maxRecipients"].forEach((key2) => {
+      if (key2 in options) {
+        this.data[key2] = options[key2];
       }
     });
-    ["disableFileAccess", "disableUrlAccess"].forEach((key) => {
-      if (!(key in options) && hasOwn(defaults, key)) {
-        this.data[key] = this.data[key] || defaults[key];
+    ["disableFileAccess", "disableUrlAccess"].forEach((key2) => {
+      if (!(key2 in options) && hasOwn(defaults, key2)) {
+        this.data[key2] = this.data[key2] || defaults[key2];
       }
     });
   }
-  resolveContent(data, key, options, callback) {
+  resolveContent(data, key2, options, callback) {
     if (!callback && typeof options === "function") {
       callback = options;
       options = false;
@@ -38943,7 +38943,7 @@ var MailMessage = class {
       disableFileAccess: this.data.disableFileAccess || options.disableFileAccess,
       disableUrlAccess: this.data.disableUrlAccess || options.disableUrlAccess
     };
-    return resolveContent(data, key, policy, callback);
+    return resolveContent(data, key2, policy, callback);
   }
   resolveAll(callback) {
     const keys = [
@@ -39010,7 +39010,7 @@ var MailMessage = class {
           content: value
         };
         if (args[0][args[1]] && typeof args[0][args[1]] === "object" && !Buffer.isBuffer(args[0][args[1]])) {
-          copyOwnKeys(node, args[0][args[1]], (key) => key in node || ["content", "path", "href", "raw"].includes(key));
+          copyOwnKeys(node, args[0][args[1]], (key2) => key2 in node || ["content", "path", "href", "raw"].includes(key2));
         }
         args[0][args[1]] = node;
         resolveNext();
@@ -39027,12 +39027,12 @@ var MailMessage = class {
       }
       data.envelope = envelope;
       data.messageId = messageId;
-      ["html", "text", "watchHtml", "amp"].forEach((key) => {
-        if (data[key] && data[key].content) {
-          if (typeof data[key].content === "string") {
-            data[key] = data[key].content;
-          } else if (Buffer.isBuffer(data[key].content)) {
-            data[key] = data[key].content.toString();
+      ["html", "text", "watchHtml", "amp"].forEach((key2) => {
+        if (data[key2] && data[key2].content) {
+          if (typeof data[key2].content === "string") {
+            data[key2] = data[key2].content;
+          } else if (Buffer.isBuffer(data[key2].content)) {
+            data[key2] = data[key2].content.toString();
           }
         }
       });
@@ -39057,17 +39057,17 @@ var MailMessage = class {
         });
       }
       data.normalizedHeaders = {};
-      Object.keys(data.headers || {}).forEach((key) => {
-        if (isProtoKey(key)) {
+      Object.keys(data.headers || {}).forEach((key2) => {
+        if (isProtoKey(key2)) {
           return;
         }
-        let value = [].concat(data.headers[key] || []).shift();
+        let value = [].concat(data.headers[key2] || []).shift();
         value = value && value.value || value;
         if (value) {
-          if (["references", "in-reply-to", "message-id", "content-id"].includes(key)) {
-            value = this.message._encodeHeaderValue(key, value);
+          if (["references", "in-reply-to", "message-id", "content-id"].includes(key2)) {
+            value = this.message._encodeHeaderValue(key2, value);
           }
-          data.normalizedHeaders[key] = value;
+          data.normalizedHeaders[key2] = value;
         }
       });
       if (data.list && typeof data.list === "object") {
@@ -39121,9 +39121,9 @@ var MailMessage = class {
   }
   /** @internal */
   _getListHeaders(listData) {
-    return Object.keys(listData).map((key) => ({
-      key: "list-" + key.toLowerCase().trim(),
-      value: [].concat(listData[key] || []).map((value) => ({
+    return Object.keys(listData).map((key2) => ({
+      key: "list-" + key2.toLowerCase().trim(),
+      value: [].concat(listData[key2] || []).map((value) => ({
         prepared: true,
         foldLines: true,
         value: [].concat(value || []).map((value2) => {
@@ -39135,7 +39135,7 @@ var MailMessage = class {
           if (value2 && value2.url) {
             let comment = (value2.comment || "").toString().replace(/\r?\n|\r/g, " ");
             const needsEncoding = !isPlainText(comment) || /\x7f/.test(comment);
-            if (key.toLowerCase().trim() === "id") {
+            if (key2.toLowerCase().trim() === "id") {
               comment = needsEncoding ? encodeWord(comment) : quoteString(comment);
               return (value2.comment ? comment + " " : "") + this._formatListUrl(value2.url).replace(/^<[^:]+:\/{0,2}/, "<");
             }
@@ -39306,7 +39306,7 @@ var Mail = class extends import_node_events.EventEmitter {
             this.logger.debug({
               tnx: "DKIM",
               messageId: mail.message.messageId(),
-              dkimDomains: dkim.keys.map((key) => key.keySelector + "." + key.domainName).join(", ")
+              dkimDomains: dkim.keys.map((key2) => key2.keySelector + "." + key2.domainName).join(", ")
             }, "Signing outgoing message with %s keys", dkim.keys.length);
             return dkim.sign(input, mail.data._dkim);
           });
@@ -39488,11 +39488,11 @@ var Mail = class extends import_node_events.EventEmitter {
       callback();
     });
   }
-  set(key, value) {
-    return this.meta.set(key, value);
+  set(key2, value) {
+    return this.meta.set(key2, value);
   }
-  get(key) {
-    return this.meta.get(key);
+  get(key2) {
+    return this.meta.get(key2);
   }
 };
 var mailer_default = Mail;
@@ -39629,10 +39629,10 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
       sid: this.id
     });
     this.customAuth = /* @__PURE__ */ new Map();
-    for (const key of Object.keys(this.options.customAuth || {})) {
-      const mapKey = (key || "").toString().trim().toUpperCase();
+    for (const key2 of Object.keys(this.options.customAuth || {})) {
+      const mapKey = (key2 || "").toString().trim().toUpperCase();
       if (mapKey) {
-        this.customAuth.set(mapKey, this.options.customAuth[key]);
+        this.customAuth.set(mapKey, this.options.customAuth[key2]);
       }
     }
     this.version = version;
@@ -39760,9 +39760,9 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
         resolved: resolved.host,
         cached: !!resolved.cached
       }, "Resolved %s as %s [cache %s]", opts.host, resolved.host, resolved.cached ? "hit" : "miss");
-      for (const key of Object.keys(resolved)) {
-        if (key.charAt(0) !== "_" && resolved[key]) {
-          opts[key] = resolved[key];
+      for (const key2 of Object.keys(resolved)) {
+        if (key2.charAt(0) !== "_" && resolved[key2]) {
+          opts[key2] = resolved[key2];
         }
       }
       callback(resolved);
@@ -42233,10 +42233,10 @@ var services = {
 
 // node_modules/nodemailer/dist/esm/well-known/index.js
 var normalized = {};
-Object.keys(services).forEach((key) => {
-  const service = services[key];
+Object.keys(services).forEach((key2) => {
+  const service = services[key2];
   const normalizedService = normalizeService(service);
-  normalized[normalizeKey(key)] = normalizedService;
+  normalized[normalizeKey(key2)] = normalizedService;
   [].concat(service.aliases || []).forEach((alias) => {
     normalized[normalizeKey(alias)] = normalizedService;
   });
@@ -42244,21 +42244,21 @@ Object.keys(services).forEach((key) => {
     normalized[normalizeKey(domain)] = normalizedService;
   });
 });
-function normalizeKey(key) {
-  return key.replace(/[^a-zA-Z0-9.-]/g, "").toLowerCase();
+function normalizeKey(key2) {
+  return key2.replace(/[^a-zA-Z0-9.-]/g, "").toLowerCase();
 }
 function normalizeService(service) {
   const response = {};
-  Object.keys(service).forEach((key) => {
-    if (!["domains", "aliases"].includes(key)) {
-      response[key] = service[key];
+  Object.keys(service).forEach((key2) => {
+    if (!["domains", "aliases"].includes(key2)) {
+      response[key2] = service[key2];
     }
   });
   return response;
 }
-function wellKnown(key) {
-  key = normalizeKey(key.split("@").pop());
-  return normalized[key] || false;
+function wellKnown(key2) {
+  key2 = normalizeKey(key2.split("@").pop());
+  return normalized[key2] || false;
 }
 
 // node_modules/nodemailer/dist/esm/smtp-pool/index.js
@@ -43514,7 +43514,7 @@ function createTransport(transporter, defaults) {
     const urlConfig = typeof transporter === "string" ? transporter : transporter.url;
     if (urlConfig) {
       const parsed = parseConnectionUrl(urlConfig);
-      options = typeof transporter === "object" ? assign(false, copyOwnKeys({}, transporter, (key) => key === "url"), parsed) : parsed;
+      options = typeof transporter === "object" ? assign(false, copyOwnKeys({}, transporter, (key2) => key2 === "url"), parsed) : parsed;
     } else {
       options = transporter;
     }
@@ -43612,8 +43612,8 @@ function getTestMessageUrl(info) {
     const open = response.indexOf("[", response.lastIndexOf("]", response.length - 2) + 1);
     if (open >= 0 && open < response.length - 2) {
       const props = response.substring(open + 1, response.length - 1);
-      props.replace(/\b([A-Z0-9]+)=([^\s]+)/g, (m, key, value) => {
-        infoProps.set(key, value);
+      props.replace(/\b([A-Z0-9]+)=([^\s]+)/g, (m, key2, value) => {
+        infoProps.set(key2, value);
         return m;
       });
     }
@@ -43698,7 +43698,8 @@ var PERMISSION_KEYS = [
   "canApproveStock",
   "canAccessReports",
   "canAccessDtf",
-  "canManageDtf"
+  "canManageDtf",
+  "canAccessAccounting"
 ];
 
 // packages/shared/src/calc.ts
@@ -43711,11 +43712,11 @@ function buildLineTotal(li) {
   return Math.max(0, qty * (price + heatPressFee) * (1 - pct / 100) - amt);
 }
 function computeOrderTotals(order, payments = []) {
-  const subtotal = order.lineItems.reduce((a, li) => a + buildLineTotal(li), 0);
+  const subtotal = order.lineItems.reduce((a2, li) => a2 + buildLineTotal(li), 0);
   const opct = Number(order.orderDiscountPct) || 0;
   const oamt = Number(order.orderDiscountAmt) || 0;
   const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
-  const paidTotal = payments.reduce((a, p) => a + (Number(p.amount) || 0), 0);
+  const paidTotal = payments.reduce((a2, p) => a2 + (Number(p.amount) || 0), 0);
   const balanceDue = Math.max(0, grandTotal - paidTotal);
   const paidPct = grandTotal > 0 ? Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
   return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
@@ -43723,8 +43724,8 @@ function computeOrderTotals(order, payments = []) {
 function isOverdue(kind, status, dueDate, balanceDue, today) {
   return status === "Invoice" && !!dueDate && dueDate < today && balanceDue > 0;
 }
-function addDays(dateStr2, days) {
-  const d = /* @__PURE__ */ new Date(dateStr2 + "T00:00:00");
+function addDays(dateStr4, days) {
+  const d = /* @__PURE__ */ new Date(dateStr4 + "T00:00:00");
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
@@ -43751,7 +43752,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canApproveStock: true,
     canAccessReports: true,
     canAccessDtf: true,
-    canManageDtf: true
+    canManageDtf: true,
+    canAccessAccounting: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -43763,7 +43765,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canApproveStock: true,
     canAccessReports: true,
     canAccessDtf: true,
-    canManageDtf: true
+    canManageDtf: true,
+    canAccessAccounting: true
   },
   Admin: ALL_TRUE
 };
@@ -43781,8 +43784,7 @@ var EXPENSE_CATEGORIES = [
   "Cleaning",
   "Bank Charges"
 ];
-var PAYROLL_PAYMENT_SOURCES = ["Petty Cash", "Bank/Cheque"];
-var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation"];
+var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation", "Owner Injection"];
 var WALKIN_INVOICE_DUE_DAYS = 7;
 var ASSET_CATEGORIES = [
   "Printing Equipment",
@@ -43851,7 +43853,7 @@ function computePay(grossPay, employeeType) {
 
 // packages/shared/src/dtf.ts
 var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-var div = (a, b) => b > 0 ? a / b : 0;
+var div = (a2, b) => b > 0 ? a2 / b : 0;
 function saleCalc(s, metres, pricePerM, amountPaid) {
   const price = pricePerM == null || Number.isNaN(pricePerM) ? s.stdPricePerM : pricePerM;
   const total = r2(metres * price);
@@ -43873,6 +43875,213 @@ function jobCalc(runningMetres, pieces, fixedChargePerMetre, minPricePerPiece) {
 function nextRollId(rolls) {
   const max = rolls.reduce((m, r) => Math.max(m, Number(/(\d+)$/.exec(r.id)?.[1] ?? 0)), 0);
   return `ROLL-${String(max + 1).padStart(3, "0")}`;
+}
+
+// packages/shared/src/accounting.ts
+var ACCOUNT_TYPES = ["Asset", "Liability", "Equity", "Income", "Expense"];
+function isDebitNormal(type) {
+  return type === "Asset" || type === "Expense";
+}
+var PETTY_CASH_METHOD = "Petty Cash";
+var EXPENSE_METHODS = [PETTY_CASH_METHOD, "Cash", "M-Pesa", "Bank Transfer", "Card"];
+var PAYOUT_METHODS = ["Cash", "M-Pesa", "Bank Transfer", "Card", PETTY_CASH_METHOD];
+var ACCT = {
+  pettyCash: "1010",
+  cash: "1020",
+  mpesa: "1030",
+  card: "1040",
+  bank: "1050",
+  receivables: "1100",
+  inventory: "1200",
+  fixedAssets: "1500",
+  accumDepreciation: "1590",
+  payables: "2010",
+  vatPayable: "2100",
+  payePayable: "2200",
+  nssfPayable: "2210",
+  shifPayable: "2220",
+  housingLevyPayable: "2230",
+  customerCredits: "2300",
+  unallocatedMpesa: "2310",
+  loans: "2400",
+  capital: "3010",
+  drawings: "3020",
+  retainedEarnings: "3030",
+  printingIncome: "4010",
+  merchandiseIncome: "4020",
+  dtfIncome: "4030",
+  embroideryIncome: "4040",
+  otherIncome: "4100",
+  salesReturns: "4900",
+  salaries: "5010",
+  depreciation: "6800",
+  uncategorised: "6999"
+};
+var a = (code, name2, type, subtype = "", description = "") => ({ code, name: name2, type, subtype, description });
+var DEFAULT_CHART = [
+  // Assets
+  a("1010", "Petty Cash", "Asset", "PettyCash", "The petty-cash float. Pays all wages and small expenses; topped up only by a bank withdrawal, a cash-sales allocation or an owner injection."),
+  a("1020", "Cash on Hand (Tills)", "Asset", "Cash", "Cash collected from customers, before it is banked."),
+  a("1030", "M-Pesa", "Asset", "Mobile", "M-Pesa receipts and payments."),
+  a("1040", "Card Settlements", "Asset", "Card", "Card payments awaiting settlement by the bank."),
+  a("1050", "Bank Account", "Asset", "Bank", "The business bank account."),
+  a("1100", "Accounts Receivable", "Asset", "Receivable", "What customers and corporate clients still owe on invoices."),
+  a("1200", "Stock & Inventory", "Asset", "Inventory", "Stock held in stores (opening balance and manual adjustments)."),
+  a("1500", "Machinery, Equipment & Vehicles (Cost)", "Asset", "FixedAsset", "Cost of fixed assets from the Asset Register."),
+  a("1590", "Accumulated Depreciation", "Asset", "FixedAsset", "Contra-asset: the depreciation charged to date on the Asset Register."),
+  // Liabilities
+  a("2010", "Accounts Payable", "Liability", "Payable", "Suppliers owed."),
+  a("2100", "VAT Payable", "Liability", "Tax", "Output VAT collected on sales, owed to KRA."),
+  a("2200", "PAYE Payable", "Liability", "Tax", "PAYE withheld from employees."),
+  a("2210", "NSSF Payable", "Liability", "Tax"),
+  a("2220", "SHIF Payable", "Liability", "Tax"),
+  a("2230", "Housing Levy Payable", "Liability", "Tax"),
+  a("2300", "Customer Deposits & Credits", "Liability", "Deposit", "Money received before an order is invoiced, or owed back to a customer after a credit note."),
+  a("2310", "Unallocated M-Pesa Receipts", "Liability", "Suspense", "M-Pesa money received that has not yet been matched to an order."),
+  a("2400", "Loans Payable", "Liability", "Loan"),
+  // Equity
+  a("3010", "Owner's Capital", "Equity", "Capital", "Money the owner has put into the business."),
+  a("3020", "Owner's Drawings", "Equity", "Drawings", "Money the owner has taken out of the business."),
+  a("3030", "Retained Earnings", "Equity", "RetainedEarnings", "Profit kept from earlier periods (opening balance)."),
+  // Income
+  a("4010", "Printing & Branding Services Income", "Income", "", "Default account for services with no account of their own."),
+  a("4020", "Merchandise & Materials Sales", "Income", "", "Caps, shirts, canvas and other materials sold."),
+  a("4030", "DTF Film & Printing Income", "Income"),
+  a("4040", "Embroidery Income", "Income"),
+  a("4100", "Other Income", "Income"),
+  a("4900", "Sales Returns & Credit Notes", "Income", "", "Credit notes issued to customers (a debit balance that reduces income)."),
+  // Expenses
+  a("5010", "Salaries & Wages", "Expense", "Payroll"),
+  a("5100", "Printing Materials & Consumables", "Expense"),
+  a("5110", "Casual Labour", "Expense", "Payroll"),
+  a("5120", "Transport", "Expense"),
+  a("5130", "Utilities", "Expense"),
+  a("5140", "Equipment Maintenance", "Expense"),
+  a("5150", "Office Supplies", "Expense"),
+  a("5160", "Courier & Delivery", "Expense"),
+  a("5170", "Refreshments", "Expense"),
+  a("5180", "Airtime & Data", "Expense"),
+  a("5190", "Cleaning", "Expense"),
+  a("5200", "Bank Charges", "Expense"),
+  a("6800", "Depreciation", "Expense", "", "Charged automatically each month from the Asset Register."),
+  a("6900", "Miscellaneous Expenses", "Expense"),
+  a("6999", "Uncategorised Expenses", "Expense", "", "Catch-all for an expense head that has no account yet.")
+];
+var SYSTEM_ACCOUNT_CODES = [...Object.values(ACCT)];
+var EXPENSE_HEAD_ACCOUNT_CODES = {
+  "Printing Materials & Consumables": "5100",
+  "Casual Labour": "5110",
+  Transport: "5120",
+  Utilities: "5130",
+  "Equipment Maintenance": "5140",
+  "Office Supplies": "5150",
+  "Courier/Delivery": "5160",
+  Refreshments: "5170",
+  "Airtime/Data": "5180",
+  Cleaning: "5190",
+  "Bank Charges": "5200",
+  Miscellaneous: "6900"
+};
+function defaultServiceIncomeCode(serviceName) {
+  const n = serviceName.toLowerCase();
+  if (n.includes("dtf")) return ACCT.dtfIncome;
+  if (n.includes("embroid")) return ACCT.embroideryIncome;
+  return ACCT.printingIncome;
+}
+function methodAccountCode(method) {
+  switch ((method || "").trim().toLowerCase()) {
+    case "m-pesa":
+    case "mpesa":
+      return ACCT.mpesa;
+    case "card":
+      return ACCT.card;
+    case "bank transfer":
+    case "bank":
+    case "bank/cheque":
+    case "cheque":
+      return ACCT.bank;
+    case "petty cash":
+      return ACCT.pettyCash;
+    default:
+      return ACCT.cash;
+  }
+}
+var CASH_ACCOUNT_CODES = [ACCT.pettyCash, ACCT.cash, ACCT.mpesa, ACCT.card, ACCT.bank];
+var round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var DEPRECIATION_METHODS = ["None", "Straight-line", "Reducing balance"];
+function monthOf(date) {
+  return date.slice(0, 7);
+}
+function nextMonth(period) {
+  const [y, m] = period.split("-").map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+}
+function monthEnd(period) {
+  const [y, m] = period.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m, 0));
+  return d.toISOString().slice(0, 10);
+}
+function monthsBetween(from, to) {
+  const out = [];
+  for (let p = from; p <= to; p = nextMonth(p)) out.push(p);
+  return out;
+}
+function monthlyDepreciation(asset, accumulated) {
+  const cost = Math.max(0, asset.cost);
+  const salvage = Math.min(Math.max(0, asset.salvage), cost);
+  const bookValue = cost - accumulated;
+  const room = bookValue - salvage;
+  if (!(room > 4e-3)) return 0;
+  let charge = 0;
+  if (asset.method === "Straight-line" && asset.lifeYears && asset.lifeYears > 0) {
+    charge = (cost - salvage) / (asset.lifeYears * 12);
+  } else if (asset.method === "Reducing balance" && asset.ratePct && asset.ratePct > 0) {
+    charge = bookValue * (asset.ratePct / 100 / 12);
+  } else {
+    return 0;
+  }
+  return round2(Math.min(charge, room));
+}
+function depreciationMonthsDue(purchaseDate, throughMonth, charged, retiredOn) {
+  const first = nextMonth(monthOf(purchaseDate));
+  const last2 = retiredOn && monthOf(retiredOn) < throughMonth ? monthOf(retiredOn) : throughMonth;
+  return monthsBetween(first, last2).filter((p) => !charged.has(p));
+}
+function phoneKey(phone) {
+  return String(phone ?? "").replace(/\D/g, "").slice(-9);
+}
+var TOLERANCE = 1;
+var fits = (p, t) => p.amount <= t.balance + TOLERANCE;
+function orderRefIn(text, targets) {
+  const hay = (text || "").toUpperCase();
+  if (!hay) return void 0;
+  return targets.find((t) => new RegExp(`(^|[^A-Z0-9])${t.ref.toUpperCase().replace(/[-]/g, "[- ]?")}([^A-Z0-9]|$)`).test(hay));
+}
+function matchPayment(payment, targets) {
+  const byRef = orderRefIn(payment.accountReference, targets);
+  if (byRef) {
+    if (fits(payment, byRef)) return { matched: true, target: byRef, reason: "reference" };
+    return { matched: false, reason: `${byRef.ref} only owes KES ${Math.round(byRef.balance)}, less than the KES ${Math.round(payment.amount)} paid` };
+  }
+  const key2 = phoneKey(payment.phone);
+  if (key2.length >= 7) {
+    const candidates = targets.filter((t) => phoneKey(t.phone) === key2 && fits(payment, t));
+    const exact = candidates.filter((t) => Math.abs(t.balance - payment.amount) <= TOLERANCE);
+    const pick = exact.length ? exact : candidates;
+    if (pick.length === 1) return { matched: true, target: pick[0], reason: "phone-and-amount" };
+    if (pick.length > 1) return { matched: false, reason: `More than one open order for this number could take KES ${Math.round(payment.amount)} \u2014 choose which one` };
+  }
+  return { matched: false, reason: "No open order matches this payment" };
+}
+function suggestionsFor(payment, targets) {
+  const key2 = phoneKey(payment.phone);
+  const score = (t) => (orderRefIn(payment.accountReference, [t]) ? 4 : 0) + (key2 && phoneKey(t.phone) === key2 ? 2 : 0) + (Math.abs(t.balance - payment.amount) <= TOLERANCE ? 1 : 0);
+  return [...targets].filter((t) => score(t) > 0 || fits(payment, t)).sort((x, y) => score(y) - score(x) || (x.createdDate < y.createdDate ? -1 : 1)).slice(0, 8);
+}
+function splitGross(gross, vatRate) {
+  const total = round2(gross);
+  const vat = round2(total - total / (1 + vatRate));
+  return { net: round2(total - vat), vat, total };
 }
 
 // apps/api/src/permissions.ts
@@ -44153,9 +44362,9 @@ var util3;
   };
   util4.objectKeys = typeof Object.keys === "function" ? (obj) => Object.keys(obj) : (object) => {
     const keys = [];
-    for (const key in object) {
-      if (Object.prototype.hasOwnProperty.call(object, key)) {
-        keys.push(key);
+    for (const key2 in object) {
+      if (Object.prototype.hasOwnProperty.call(object, key2)) {
+        keys.push(key2);
       }
     }
     return keys;
@@ -44555,10 +44764,10 @@ var ParseStatus = class _ParseStatus {
   static async mergeObjectAsync(status, pairs) {
     const syncPairs = [];
     for (const pair of pairs) {
-      const key = await pair.key;
+      const key2 = await pair.key;
       const value = await pair.value;
       syncPairs.push({
-        key,
+        key: key2,
         value
       });
     }
@@ -44567,17 +44776,17 @@ var ParseStatus = class _ParseStatus {
   static mergeObjectSync(status, pairs) {
     const finalObject = {};
     for (const pair of pairs) {
-      const { key, value } = pair;
-      if (key.status === "aborted")
+      const { key: key2, value } = pair;
+      if (key2.status === "aborted")
         return INVALID;
       if (value.status === "aborted")
         return INVALID;
-      if (key.status === "dirty")
+      if (key2.status === "dirty")
         status.dirty();
       if (value.status === "dirty")
         status.dirty();
-      if (key.value !== "__proto__" && (typeof value.value !== "undefined" || pair.alwaysSet)) {
-        finalObject[key.value] = value.value;
+      if (key2.value !== "__proto__" && (typeof value.value !== "undefined" || pair.alwaysSet)) {
+        finalObject[key2.value] = value.value;
       }
     }
     return { status: status.value, value: finalObject };
@@ -44602,12 +44811,12 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path3, key2) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
     this._path = path3;
-    this._key = key;
+    this._key = key2;
   }
   get path() {
     if (!this._cachedPath.length) {
@@ -46352,9 +46561,9 @@ ZodArray.create = (schema, params) => {
 function deepPartialify(schema) {
   if (schema instanceof ZodObject) {
     const newShape = {};
-    for (const key in schema.shape) {
-      const fieldSchema = schema.shape[key];
-      newShape[key] = ZodOptional.create(deepPartialify(fieldSchema));
+    for (const key2 in schema.shape) {
+      const fieldSchema = schema.shape[key2];
+      newShape[key2] = ZodOptional.create(deepPartialify(fieldSchema));
     }
     return new ZodObject({
       ...schema._def,
@@ -46405,29 +46614,29 @@ var ZodObject = class _ZodObject extends ZodType {
     const { shape, keys: shapeKeys } = this._getCached();
     const extraKeys = [];
     if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
-      for (const key in ctx.data) {
-        if (!shapeKeys.includes(key)) {
-          extraKeys.push(key);
+      for (const key2 in ctx.data) {
+        if (!shapeKeys.includes(key2)) {
+          extraKeys.push(key2);
         }
       }
     }
     const pairs = [];
-    for (const key of shapeKeys) {
-      const keyValidator = shape[key];
-      const value = ctx.data[key];
+    for (const key2 of shapeKeys) {
+      const keyValidator = shape[key2];
+      const value = ctx.data[key2];
       pairs.push({
-        key: { status: "valid", value: key },
-        value: keyValidator._parse(new ParseInputLazyPath(ctx, value, ctx.path, key)),
-        alwaysSet: key in ctx.data
+        key: { status: "valid", value: key2 },
+        value: keyValidator._parse(new ParseInputLazyPath(ctx, value, ctx.path, key2)),
+        alwaysSet: key2 in ctx.data
       });
     }
     if (this._def.catchall instanceof ZodNever) {
       const unknownKeys = this._def.unknownKeys;
       if (unknownKeys === "passthrough") {
-        for (const key of extraKeys) {
+        for (const key2 of extraKeys) {
           pairs.push({
-            key: { status: "valid", value: key },
-            value: { status: "valid", value: ctx.data[key] }
+            key: { status: "valid", value: key2 },
+            value: { status: "valid", value: ctx.data[key2] }
           });
         }
       } else if (unknownKeys === "strict") {
@@ -46444,15 +46653,15 @@ var ZodObject = class _ZodObject extends ZodType {
       }
     } else {
       const catchall = this._def.catchall;
-      for (const key of extraKeys) {
-        const value = ctx.data[key];
+      for (const key2 of extraKeys) {
+        const value = ctx.data[key2];
         pairs.push({
-          key: { status: "valid", value: key },
+          key: { status: "valid", value: key2 },
           value: catchall._parse(
-            new ParseInputLazyPath(ctx, value, ctx.path, key)
+            new ParseInputLazyPath(ctx, value, ctx.path, key2)
             //, ctx.child(key), value, getParsedType(value)
           ),
-          alwaysSet: key in ctx.data
+          alwaysSet: key2 in ctx.data
         });
       }
     }
@@ -46460,10 +46669,10 @@ var ZodObject = class _ZodObject extends ZodType {
       return Promise.resolve().then(async () => {
         const syncPairs = [];
         for (const pair of pairs) {
-          const key = await pair.key;
+          const key2 = await pair.key;
           const value = await pair.value;
           syncPairs.push({
-            key,
+            key: key2,
             value,
             alwaysSet: pair.alwaysSet
           });
@@ -46588,8 +46797,8 @@ var ZodObject = class _ZodObject extends ZodType {
   //   }) as any;
   //   return merged;
   // }
-  setKey(key, schema) {
-    return this.augment({ [key]: schema });
+  setKey(key2, schema) {
+    return this.augment({ [key2]: schema });
   }
   // merge<Incoming extends AnyZodObject>(
   //   merging: Incoming
@@ -46620,9 +46829,9 @@ var ZodObject = class _ZodObject extends ZodType {
   }
   pick(mask) {
     const shape = {};
-    for (const key of util3.objectKeys(mask)) {
-      if (mask[key] && this.shape[key]) {
-        shape[key] = this.shape[key];
+    for (const key2 of util3.objectKeys(mask)) {
+      if (mask[key2] && this.shape[key2]) {
+        shape[key2] = this.shape[key2];
       }
     }
     return new _ZodObject({
@@ -46632,9 +46841,9 @@ var ZodObject = class _ZodObject extends ZodType {
   }
   omit(mask) {
     const shape = {};
-    for (const key of util3.objectKeys(this.shape)) {
-      if (!mask[key]) {
-        shape[key] = this.shape[key];
+    for (const key2 of util3.objectKeys(this.shape)) {
+      if (!mask[key2]) {
+        shape[key2] = this.shape[key2];
       }
     }
     return new _ZodObject({
@@ -46650,12 +46859,12 @@ var ZodObject = class _ZodObject extends ZodType {
   }
   partial(mask) {
     const newShape = {};
-    for (const key of util3.objectKeys(this.shape)) {
-      const fieldSchema = this.shape[key];
-      if (mask && !mask[key]) {
-        newShape[key] = fieldSchema;
+    for (const key2 of util3.objectKeys(this.shape)) {
+      const fieldSchema = this.shape[key2];
+      if (mask && !mask[key2]) {
+        newShape[key2] = fieldSchema;
       } else {
-        newShape[key] = fieldSchema.optional();
+        newShape[key2] = fieldSchema.optional();
       }
     }
     return new _ZodObject({
@@ -46665,16 +46874,16 @@ var ZodObject = class _ZodObject extends ZodType {
   }
   required(mask) {
     const newShape = {};
-    for (const key of util3.objectKeys(this.shape)) {
-      if (mask && !mask[key]) {
-        newShape[key] = this.shape[key];
+    for (const key2 of util3.objectKeys(this.shape)) {
+      if (mask && !mask[key2]) {
+        newShape[key2] = this.shape[key2];
       } else {
-        const fieldSchema = this.shape[key];
+        const fieldSchema = this.shape[key2];
         let newField = fieldSchema;
         while (newField instanceof ZodOptional) {
           newField = newField._def.innerType;
         }
-        newShape[key] = newField;
+        newShape[key2] = newField;
       }
     }
     return new _ZodObject({
@@ -46911,30 +47120,30 @@ var ZodDiscriminatedUnion = class _ZodDiscriminatedUnion extends ZodType {
     });
   }
 };
-function mergeValues(a, b) {
-  const aType = getParsedType(a);
+function mergeValues(a2, b) {
+  const aType = getParsedType(a2);
   const bType = getParsedType(b);
-  if (a === b) {
-    return { valid: true, data: a };
+  if (a2 === b) {
+    return { valid: true, data: a2 };
   } else if (aType === ZodParsedType.object && bType === ZodParsedType.object) {
     const bKeys = util3.objectKeys(b);
-    const sharedKeys = util3.objectKeys(a).filter((key) => bKeys.indexOf(key) !== -1);
-    const newObj = { ...a, ...b };
-    for (const key of sharedKeys) {
-      const sharedValue = mergeValues(a[key], b[key]);
+    const sharedKeys = util3.objectKeys(a2).filter((key2) => bKeys.indexOf(key2) !== -1);
+    const newObj = { ...a2, ...b };
+    for (const key2 of sharedKeys) {
+      const sharedValue = mergeValues(a2[key2], b[key2]);
       if (!sharedValue.valid) {
         return { valid: false };
       }
-      newObj[key] = sharedValue.data;
+      newObj[key2] = sharedValue.data;
     }
     return { valid: true, data: newObj };
   } else if (aType === ZodParsedType.array && bType === ZodParsedType.array) {
-    if (a.length !== b.length) {
+    if (a2.length !== b.length) {
       return { valid: false };
     }
     const newArray = [];
-    for (let index = 0; index < a.length; index++) {
-      const itemA = a[index];
+    for (let index = 0; index < a2.length; index++) {
+      const itemA = a2[index];
       const itemB = b[index];
       const sharedValue = mergeValues(itemA, itemB);
       if (!sharedValue.valid) {
@@ -46943,8 +47152,8 @@ function mergeValues(a, b) {
       newArray.push(sharedValue.data);
     }
     return { valid: true, data: newArray };
-  } else if (aType === ZodParsedType.date && bType === ZodParsedType.date && +a === +b) {
-    return { valid: true, data: a };
+  } else if (aType === ZodParsedType.date && bType === ZodParsedType.date && +a2 === +b) {
+    return { valid: true, data: a2 };
   } else {
     return { valid: false };
   }
@@ -47089,11 +47298,11 @@ var ZodRecord = class _ZodRecord extends ZodType {
     const pairs = [];
     const keyType = this._def.keyType;
     const valueType = this._def.valueType;
-    for (const key in ctx.data) {
+    for (const key2 in ctx.data) {
       pairs.push({
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, key)),
-        value: valueType._parse(new ParseInputLazyPath(ctx, ctx.data[key], ctx.path, key)),
-        alwaysSet: key in ctx.data
+        key: keyType._parse(new ParseInputLazyPath(ctx, key2, ctx.path, key2)),
+        value: valueType._parse(new ParseInputLazyPath(ctx, ctx.data[key2], ctx.path, key2)),
+        alwaysSet: key2 in ctx.data
       });
     }
     if (ctx.common.async) {
@@ -47141,9 +47350,9 @@ var ZodMap = class extends ZodType {
     }
     const keyType = this._def.keyType;
     const valueType = this._def.valueType;
-    const pairs = [...ctx.data.entries()].map(([key, value], index) => {
+    const pairs = [...ctx.data.entries()].map(([key2, value], index) => {
       return {
-        key: keyType._parse(new ParseInputLazyPath(ctx, key, ctx.path, [index, "key"])),
+        key: keyType._parse(new ParseInputLazyPath(ctx, key2, ctx.path, [index, "key"])),
         value: valueType._parse(new ParseInputLazyPath(ctx, value, ctx.path, [index, "value"]))
       };
     });
@@ -47151,30 +47360,30 @@ var ZodMap = class extends ZodType {
       const finalMap = /* @__PURE__ */ new Map();
       return Promise.resolve().then(async () => {
         for (const pair of pairs) {
-          const key = await pair.key;
+          const key2 = await pair.key;
           const value = await pair.value;
-          if (key.status === "aborted" || value.status === "aborted") {
+          if (key2.status === "aborted" || value.status === "aborted") {
             return INVALID;
           }
-          if (key.status === "dirty" || value.status === "dirty") {
+          if (key2.status === "dirty" || value.status === "dirty") {
             status.dirty();
           }
-          finalMap.set(key.value, value.value);
+          finalMap.set(key2.value, value.value);
         }
         return { status: status.value, value: finalMap };
       });
     } else {
       const finalMap = /* @__PURE__ */ new Map();
       for (const pair of pairs) {
-        const key = pair.key;
+        const key2 = pair.key;
         const value = pair.value;
-        if (key.status === "aborted" || value.status === "aborted") {
+        if (key2.status === "aborted" || value.status === "aborted") {
           return INVALID;
         }
-        if (key.status === "dirty" || value.status === "dirty") {
+        if (key2.status === "dirty" || value.status === "dirty") {
           status.dirty();
         }
-        finalMap.set(key.value, value.value);
+        finalMap.set(key2.value, value.value);
       }
       return { status: status.value, value: finalMap };
     }
@@ -47897,9 +48106,9 @@ var ZodPipeline = class _ZodPipeline extends ZodType {
       }
     }
   }
-  static create(a, b) {
+  static create(a2, b) {
     return new _ZodPipeline({
-      in: a,
+      in: a2,
       out: b,
       typeName: ZodFirstPartyTypeKind.ZodPipeline
     });
@@ -48299,7 +48508,7 @@ function serializeDetail(order) {
       artworkAreaSqm: li.artworkAreaSqm,
       lineTotal: buildLineTotal(toLineItemInput(li))
     })),
-    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method }))
+    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method, reference: p.reference }))
   };
 }
 function canAccessOrder(userRole, userId, order) {
@@ -48314,6 +48523,61 @@ async function convertQuoteToInvoice(tx, order) {
   const days = order.corporateClient?.creditDays ?? 30;
   const dueDate = addDays(todayStr(), days);
   await tx.order.update({ where: { id: order.id }, data: { status: "Invoice", dueDate } });
+}
+var paymentLineSchema = external_exports.object({
+  method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]),
+  amount: external_exports.number().positive(),
+  // M-Pesa receipt code (or bank/card slip number). Entering an M-Pesa code that is already on a received-but-unmatched
+  // statement line ties the two together.
+  reference: external_exports.string().trim().max(60).optional().nullable()
+});
+var PaymentError = class extends Error {
+  constructor(message) {
+    super(message);
+  }
+};
+async function recordOrderPayments(tx, order, lines, staffId, date = todayStr()) {
+  for (const line of lines) {
+    const reference = line.reference ? line.reference.trim().toUpperCase() : null;
+    let mpesaTransactionId = line.linkedTransactionId ?? null;
+    let stkClaimed = false;
+    const linkedByEntry = mpesaTransactionId === null;
+    if (linkedByEntry && line.method === "M-Pesa" && reference) {
+      const received = await tx.mpesaTransaction.findUnique({ where: { mpesaReceipt: reference } });
+      const claimable = received?.kind === "STK" && received.status === "Success" && !received.orderId && !await tx.payment.findUnique({ where: { mpesaTransactionId: received.id } });
+      if (received && claimable) {
+        await tx.mpesaTransaction.update({ where: { id: received.id }, data: { orderId: order.id } });
+        mpesaTransactionId = received.id;
+        stkClaimed = true;
+      } else if (received) {
+        if (received.status !== "Unmatched") throw new PaymentError(`M-Pesa receipt ${reference} has already been used`);
+        if (Math.abs(received.amount - line.amount) > 1) {
+          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString("en-KE")}, not Ksh ${Math.round(line.amount).toLocaleString("en-KE")}`);
+        }
+        mpesaTransactionId = received.id;
+      }
+    }
+    await tx.payment.create({
+      data: { orderId: order.id, date, amount: line.amount, method: line.method, reference, mpesaTransactionId, staffId }
+    });
+    if (mpesaTransactionId && linkedByEntry && !stkClaimed) {
+      await tx.mpesaTransaction.update({
+        where: { id: mpesaTransactionId },
+        data: { status: "Applied", orderId: order.id, appliedAt: /* @__PURE__ */ new Date(), appliedByName: "Matched on entry" }
+      });
+    }
+  }
+  if (order.status === "Quote") {
+    await convertQuoteToInvoice(tx, order);
+  } else if (order.kind !== "corporate" && order.status === "Invoice") {
+    const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
+    const lineItems = full.lineItems.map(toLineItemInput);
+    const payments = full.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
+    const totals = computeOrderTotals({ lineItems, orderDiscountPct: full.orderDiscountPct, orderDiscountAmt: full.orderDiscountAmt }, payments);
+    if (totals.balanceDue <= 0) {
+      await tx.order.update({ where: { id: order.id }, data: { status: "Order", dueDate: null } });
+    }
+  }
 }
 ordersRouter.get("/", async (req, res) => {
   const { staffId, status, channel } = req.query;
@@ -48354,6 +48618,8 @@ var walkinSchema = external_exports.object({
   paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
   paymentAmount: external_exports.number().min(0).optional(),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
+  // Preferred: any number of payment lines, e.g. part cash and part M-Pesa.
+  payments: external_exports.array(paymentLineSchema).max(6).optional(),
   lineItems: external_exports.array(lineItemSchema).min(1),
   orderDiscountPct: external_exports.number().min(0).max(100).default(0),
   orderDiscountAmt: external_exports.number().min(0).default(0)
@@ -48362,11 +48628,14 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
   const parsed = walkinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const form = parsed.data;
-  const paymentAmount = form.paymentTiming === "onAcceptance" ? form.paymentAmount ?? 0 : 0;
+  const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
   const totals = computeOrderTotals(
     { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
-    paymentAmount > 0 ? [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? "Cash" }] : []
+    paymentLines.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method }))
   );
+  if (paymentLines.reduce((a2, p) => a2 + p.amount, 0) > totals.grandTotal + 0.01) {
+    return res.status(400).json({ error: "The payments add up to more than the order total" });
+  }
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
   const order = await prisma.$transaction(async (tx) => {
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
@@ -48386,11 +48655,14 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
         paymentTiming: form.paymentTiming,
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
-        payments: paymentAmount > 0 ? { create: [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? "Cash", staffId: form.staffId }] } : void 0
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
       },
       include: orderInclude
     });
+    if (paymentLines.length) {
+      await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, form.staffId);
+      return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
+    }
     return created;
   });
   res.status(201).json(serializeDetail(order));
@@ -48459,29 +48731,31 @@ ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req,
   });
   res.status(201).json(serializeDetail(order));
 });
-var paymentSchema = external_exports.object({ amount: external_exports.number().positive(), method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]) });
+var paymentSchema = external_exports.object({
+  amount: external_exports.number().positive().optional(),
+  method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
+  reference: external_exports.string().trim().max(60).optional().nullable(),
+  payments: external_exports.array(paymentLineSchema).min(1).max(6).optional()
+}).refine((b) => b.payments && b.payments.length > 0 || b.amount && b.method, { message: "Enter at least one payment" });
 ordersRouter.post("/:id/payments", async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.create({
-      data: { orderId: order.id, date: todayStr(), amount: parsed.data.amount, method: parsed.data.method, staffId: req.user.id }
-    });
-    if (order.status === "Quote") {
-      await convertQuoteToInvoice(tx, order);
-    } else if (order.kind !== "corporate" && order.status === "Invoice") {
-      const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
-      const lineItems = full.lineItems.map(toLineItemInput);
-      const payments = full.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-      const totals = computeOrderTotals({ lineItems, orderDiscountPct: full.orderDiscountPct, orderDiscountAmt: full.orderDiscountAmt }, payments);
-      if (totals.balanceDue <= 0) {
-        await tx.order.update({ where: { id: order.id }, data: { status: "Order", dueDate: null } });
-      }
-    }
-  });
+  const lines = parsed.data.payments?.length ? parsed.data.payments : [{ method: parsed.data.method, amount: parsed.data.amount, reference: parsed.data.reference ?? null }];
+  const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  const before = serializeSummary(current).totals;
+  const paying = lines.reduce((a2, p) => a2 + p.amount, 0);
+  if (paying > before.balanceDue + 0.01) {
+    return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString("en-KE")}, but only Ksh ${Math.round(before.balanceDue).toLocaleString("en-KE")} is outstanding` });
+  }
+  try {
+    await prisma.$transaction((tx) => recordOrderPayments(tx, order, lines, req.user.id));
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
   const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
   res.json(serializeDetail(updated));
 });
@@ -48555,8 +48829,8 @@ function computeAgg(orders, expenses, payroll, cogsPct, from, to) {
   const grossProfit = revAccrual - cogs;
   const expensesInRange = expenses.filter((e) => inRange(e.date, from, to));
   const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
-  const salariesTotal = payrollInRange.reduce((a, p) => a + p.grossPay, 0);
-  const totalExpenses = expensesInRange.reduce((a, e) => a + e.amount, 0) + salariesTotal;
+  const salariesTotal = payrollInRange.reduce((a2, p) => a2 + p.grossPay, 0);
+  const totalExpenses = expensesInRange.reduce((a2, e) => a2 + e.amount, 0) + salariesTotal;
   const netProfit = grossProfit - totalExpenses;
   const byCategory = {};
   for (const e of expensesInRange) byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
@@ -48597,8 +48871,8 @@ pnlRouter.get("/", async (req, res) => {
   for (let i = 5; i >= 0; i--) {
     const d = new Date(toDateObj.getFullYear(), toDateObj.getMonth() - i, 1);
     const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-    const monthEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const mTo = monthEnd.toISOString().slice(0, 10);
+    const monthEnd2 = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const mTo = monthEnd2.toISOString().slice(0, 10);
     const mAgg = computeAgg(orders, allExpenses, allPayroll, cogsPct, mFrom, mTo);
     trend.push({ label: `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
   }
@@ -48638,6 +48912,323 @@ pnlRouter.put("/cogs-pct", async (req, res) => {
 
 // apps/api/src/routes/finance.ts
 var import_express5 = __toESM(require_express2());
+
+// apps/api/src/accounting/chart.ts
+var CUSTOM_EXPENSE_START = 5300;
+var CUSTOM_EXPENSE_CEILING = 5999;
+async function nextCustomExpenseCode() {
+  const rows = await prisma.account.findMany({ where: { type: "Expense" }, select: { code: true } });
+  let max = CUSTOM_EXPENSE_START - 10;
+  for (const r of rows) {
+    const n = Number(r.code);
+    if (Number.isFinite(n) && n >= CUSTOM_EXPENSE_START && n <= CUSTOM_EXPENSE_CEILING && n > max) max = n;
+  }
+  return String(max + 10);
+}
+async function accountIdForNewExpenseHead(name2) {
+  const standardCode = EXPENSE_HEAD_ACCOUNT_CODES[name2];
+  if (standardCode) {
+    const acc = await prisma.account.findUnique({ where: { code: standardCode } });
+    if (acc && acc.type === "Expense") return acc.id;
+  }
+  const created = await prisma.account.create({
+    data: { code: await nextCustomExpenseCode(), name: name2, type: "Expense", description: `Auto-created for the \u201C${name2}\u201D expense head.` }
+  });
+  return created.id;
+}
+async function ensureChartOfAccounts() {
+  const existing = await prisma.account.findMany({ select: { code: true } });
+  const have = new Set(existing.map((a2) => a2.code));
+  for (const def of DEFAULT_CHART) {
+    if (have.has(def.code)) continue;
+    await prisma.account.create({
+      data: { code: def.code, name: def.name, type: def.type, subtype: def.subtype, description: def.description || "", system: SYSTEM_ACCOUNT_CODES.includes(def.code) }
+    });
+  }
+  for (const name2 of EXPENSE_CATEGORIES) {
+    const head = await prisma.expenseHead.findUnique({ where: { name: name2 } });
+    if (!head) await prisma.expenseHead.create({ data: { name: name2, accountId: await accountIdForNewExpenseHead(name2) } });
+  }
+  const used = await prisma.expense.findMany({ distinct: ["category"], select: { category: true } });
+  for (const { category } of used) {
+    if (!await prisma.expenseHead.findUnique({ where: { name: category } })) {
+      await prisma.expenseHead.create({ data: { name: category, accountId: await accountIdForNewExpenseHead(category) } });
+    }
+  }
+  for (const head of await prisma.expenseHead.findMany({ where: { accountId: null } })) {
+    await prisma.expenseHead.update({ where: { id: head.id }, data: { accountId: await accountIdForNewExpenseHead(head.name) } });
+  }
+  const byCode = new Map((await prisma.account.findMany()).map((x) => [x.code, x.id]));
+  for (const s of await prisma.service.findMany({ where: { accountId: null } })) {
+    const id = byCode.get(defaultServiceIncomeCode(s.name)) ?? byCode.get(ACCT.printingIncome);
+    if (id) await prisma.service.update({ where: { id: s.id }, data: { accountId: id } });
+  }
+  if (await prisma.role.count({ where: { canAccessAccounting: true } }) === 0) {
+    await prisma.role.updateMany({ where: { name: { in: ["Finance Manager", "General Manager"] } }, data: { canAccessAccounting: true } });
+  }
+}
+var ensured = null;
+function ensureChartOnce() {
+  if (!ensured) {
+    ensured = ensureChartOfAccounts().finally(() => {
+      ensured = null;
+    });
+  }
+  return ensured;
+}
+async function validateAccountChoice(requested, type) {
+  if (requested === void 0 || requested === null || requested === "") return null;
+  const acc = await prisma.account.findUnique({ where: { id: Number(requested) } });
+  if (!acc || !acc.active) throw new Error("Choose an existing, active account");
+  if (acc.type !== type) throw new Error(`That head must be linked to an ${type} account`);
+  return acc.id;
+}
+
+// apps/api/src/accounting/ledger.ts
+async function loadCtx() {
+  const [accounts, heads] = await Promise.all([prisma.account.findMany(), prisma.expenseHead.findMany()]);
+  return {
+    byId: new Map(accounts.map((a2) => [a2.id, a2])),
+    byCode: new Map(accounts.map((a2) => [a2.code, a2])),
+    expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId]))
+  };
+}
+function idOf(ctx, code) {
+  const a2 = ctx.byCode.get(code);
+  if (!a2) throw new Error(`Chart of accounts is missing account ${code}`);
+  return a2.id;
+}
+var Book = class {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.postings = [];
+  }
+  push(date, accountId, debit, credit, source, ref, memo) {
+    if (!(debit > 0 || credit > 0)) return;
+    this.postings.push({ date, accountId, debit: round2(debit), credit: round2(credit), source, ref, memo });
+  }
+  dr(date, code, amount, source, ref, memo) {
+    this.push(date, idOf(this.ctx, code), amount, 0, source, ref, memo);
+  }
+  cr(date, code, amount, source, ref, memo) {
+    this.push(date, idOf(this.ctx, code), 0, amount, source, ref, memo);
+  }
+  drId(date, accountId, amount, source, ref, memo) {
+    this.push(date, accountId, amount, 0, source, ref, memo);
+  }
+  crId(date, accountId, amount, source, ref, memo) {
+    this.push(date, accountId, 0, amount, source, ref, memo);
+  }
+};
+function expenseAcctId(ctx, head) {
+  return ctx.expenseHeadAcct.get(head) || idOf(ctx, ACCT.uncategorised);
+}
+async function journalPostings(book) {
+  const entries = await prisma.journalEntry.findMany({ include: { lines: true } });
+  for (const e of entries) {
+    for (const l of e.lines) {
+      book.postings.push({ date: e.date, accountId: l.accountId, debit: l.debit, credit: l.credit, memo: l.memo || e.memo, source: e.source, ref: e.ref });
+    }
+  }
+}
+async function expensePostings(book, ctx) {
+  for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
+    const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
+    const ref = e.invoiceNumber || `EXP-${e.id}`;
+    book.drId(e.date, expenseAcctId(ctx, e.category), e.amount, "Expense", ref, memo);
+    if (e.paid) {
+      book.cr(e.date, methodAccountCode(e.method), e.amount, "Expense", ref, memo);
+      continue;
+    }
+    book.cr(e.date, ACCT.payables, e.amount, "Expense", ref, memo);
+    for (const p of e.payments) {
+      book.dr(p.date, ACCT.payables, p.amount, "Expense", ref, `Payment \u2014 ${memo}`);
+      book.cr(p.date, methodAccountCode(p.method), p.amount, "Expense", ref, `Payment \u2014 ${memo}`);
+    }
+  }
+}
+async function payrollPostings(book) {
+  for (const p of await prisma.payrollEntry.findMany({ include: { staff: true } })) {
+    const pay = computePay(p.grossPay, p.employeeType);
+    const ref = `WAGE-${p.id}`;
+    const memo = `${p.staff.name} (${p.employeeType}${p.department ? `, ${p.department}` : ""})`;
+    const gross = round2(pay.grossPay);
+    const paye = round2(pay.paye);
+    const nssf = round2(pay.nssf);
+    const shif = round2(pay.shif);
+    const housing = round2(pay.housingLevy);
+    const net8 = round2(gross - paye - nssf - shif - housing);
+    book.dr(p.date, p.employeeType === "Casual" ? "5110" : ACCT.salaries, gross, "Wages", ref, memo);
+    book.cr(p.date, methodAccountCode(p.paymentSource), net8, "Wages", ref, memo);
+    book.cr(p.date, ACCT.payePayable, paye, "Wages", ref, memo);
+    book.cr(p.date, ACCT.nssfPayable, nssf, "Wages", ref, memo);
+    book.cr(p.date, ACCT.shifPayable, shif, "Wages", ref, memo);
+    book.cr(p.date, ACCT.housingLevyPayable, housing, "Wages", ref, memo);
+  }
+}
+var TOP_UP_FUNDING = {
+  "Bank Withdrawal": ACCT.bank,
+  "Cash Sales Allocation": ACCT.cash,
+  "Owner Injection": ACCT.capital
+};
+async function pettyCashTopUpPostings(book) {
+  for (const t of await prisma.pettyCashTopUp.findMany()) {
+    const ref = `PCT-${t.id}`;
+    const memo = `Petty cash top-up \u2014 ${t.source}${t.note ? ` (${t.note})` : ""}`;
+    book.dr(t.date, ACCT.pettyCash, t.amount, "Petty cash top-up", ref, memo);
+    book.cr(t.date, TOP_UP_FUNDING[t.source] || ACCT.cash, t.amount, "Petty cash top-up", ref, memo);
+  }
+}
+async function orderPostings(book, ctx) {
+  const merchandise = idOf(ctx, ACCT.merchandiseIncome);
+  const orders = await prisma.order.findMany({
+    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true }
+  });
+  for (const o of orders) {
+    const party = o.customerName || o.corporateClient?.name || "Customer";
+    const memo = `${o.orderNo} \u2014 ${party}`;
+    const lines = o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    }));
+    const totals = computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+    const total = round2(totals.grandTotal);
+    const recognised = o.kind === "walkin" || o.status !== "Quote";
+    if (recognised && total > 0) {
+      const { net: net8, vat } = splitGross(total, VAT_RATE);
+      book.dr(o.createdDate, ACCT.receivables, total, "Order", o.orderNo, memo);
+      const weights = o.lineItems.map((li, i) => ({ li, w: buildLineTotal(lines[i]) }));
+      const wSum = weights.reduce((a2, x) => a2 + x.w, 0) || 1;
+      let allocated = 0;
+      weights.forEach(({ li, w }, i) => {
+        const share = i === weights.length - 1 ? round2(net8 - allocated) : round2(net8 * w / wSum);
+        allocated += share;
+        const accountId = li.itemType === "material" ? li.material?.accountId ?? merchandise : li.service?.accountId ?? idOf(ctx, defaultServiceIncomeCode(li.service?.name ?? ""));
+        book.crId(o.createdDate, accountId, share, "Order", o.orderNo, memo);
+      });
+      book.cr(o.createdDate, ACCT.vatPayable, vat, "Order", o.orderNo, memo);
+    }
+    for (const p of o.payments) {
+      const received = !!p.mpesaTransaction && p.mpesaTransaction.kind !== "STK";
+      const label = `Payment (${p.method}${p.reference ? ` ${p.reference}` : ""}) \u2014 ${memo}`;
+      if (received) {
+        book.dr(p.date, ACCT.unallocatedMpesa, p.amount, "Payment", o.orderNo, label);
+      } else {
+        book.dr(p.date, methodAccountCode(p.method), p.amount, "Payment", o.orderNo, label);
+      }
+      book.cr(p.date, recognised ? ACCT.receivables : ACCT.customerCredits, p.amount, "Payment", o.orderNo, label);
+    }
+  }
+}
+async function mpesaPostings(book) {
+  for (const t of await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: { in: ["Unmatched", "Applied"] } } })) {
+    const date = t.receivedOn || t.createdAt.toISOString().slice(0, 10);
+    const ref = t.mpesaReceipt || `MPESA-${t.id}`;
+    const memo = `M-Pesa receipt ${t.mpesaReceipt || ""} \u2014 ${t.payerName || t.phone}`.trim();
+    book.dr(date, ACCT.mpesa, t.amount, "M-Pesa receipt", ref, memo);
+    book.cr(date, ACCT.unallocatedMpesa, t.amount, "M-Pesa receipt", ref, memo);
+  }
+}
+async function notePostings(book, ctx) {
+  for (const n of await prisma.adjustmentNote.findMany({ include: { expense: true } })) {
+    const memo = `${n.number} \u2014 ${n.party} \u2014 ${n.reason}`;
+    if (n.type === "Credit") {
+      book.dr(n.date, ACCT.salesReturns, n.net, "Credit note", n.number, memo);
+      book.dr(n.date, ACCT.vatPayable, n.vat, "Credit note", n.number, memo);
+      book.cr(n.date, ACCT.receivables, n.receivableAmt, "Credit note", n.number, memo);
+      book.cr(n.date, ACCT.customerCredits, n.creditAmt, "Credit note", n.number, memo);
+      if (n.refundAmt > 0 && n.refundMethod) {
+        book.dr(n.date, ACCT.customerCredits, n.refundAmt, "Credit note", n.number, `Refund \u2014 ${memo}`);
+        book.cr(n.date, methodAccountCode(n.refundMethod), n.refundAmt, "Credit note", n.number, `Refund \u2014 ${memo}`);
+      }
+    } else if (n.type === "Debit") {
+      book.dr(n.date, ACCT.receivables, n.total, "Debit note", n.number, memo);
+      if (n.incomeAccountId) book.crId(n.date, n.incomeAccountId, n.net, "Debit note", n.number, memo);
+      else book.cr(n.date, ACCT.otherIncome, n.net, "Debit note", n.number, memo);
+      book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
+    } else {
+      book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
+      book.crId(n.date, n.expense ? expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), n.total, "Supplier debit note", n.number, memo);
+    }
+  }
+}
+var ASSET_FUNDING = {
+  Bank: ACCT.bank,
+  Cash: ACCT.cash,
+  "M-Pesa": ACCT.mpesa,
+  "Petty Cash": ACCT.pettyCash,
+  "Owner Capital": ACCT.capital,
+  "Opening Balance": ACCT.retainedEarnings
+};
+async function assetPostings(book) {
+  for (const a2 of await prisma.asset.findMany({ include: { depreciations: true } })) {
+    const cost = round2(a2.value ?? 0);
+    if (cost > 0 && a2.purchaseDate) {
+      const memo = `${a2.tag} ${a2.name}`;
+      book.dr(a2.purchaseDate, ACCT.fixedAssets, cost, "Asset purchase", a2.tag, memo);
+      book.cr(a2.purchaseDate, ASSET_FUNDING[a2.fundedBy] || ACCT.capital, cost, "Asset purchase", a2.tag, `Funded by ${a2.fundedBy} \u2014 ${memo}`);
+    }
+    for (const d of a2.depreciations) {
+      const memo = `Depreciation ${d.period} \u2014 ${a2.tag} ${a2.name}`;
+      book.dr(d.date, ACCT.depreciation, d.amount, "Depreciation", `${a2.tag}@${d.period}`, memo);
+      book.cr(d.date, ACCT.accumDepreciation, d.amount, "Depreciation", `${a2.tag}@${d.period}`, memo);
+    }
+  }
+}
+async function loadLedger() {
+  const ctx = await loadCtx();
+  const book = new Book(ctx);
+  await journalPostings(book);
+  await orderPostings(book, ctx);
+  await mpesaPostings(book);
+  await expensePostings(book, ctx);
+  await payrollPostings(book);
+  await pettyCashTopUpPostings(book);
+  await notePostings(book, ctx);
+  await assetPostings(book);
+  return { accounts: [...ctx.byId.values()], byId: ctx.byId, byCode: ctx.byCode, postings: book.postings };
+}
+async function pettyCashBalance(asOf) {
+  const ctx = await loadCtx();
+  const book = new Book(ctx);
+  await expensePostings(book, ctx);
+  await payrollPostings(book);
+  await pettyCashTopUpPostings(book);
+  await notePostings(book, ctx);
+  await journalPostings(book);
+  const petty = idOf(ctx, ACCT.pettyCash);
+  return round2(
+    book.postings.filter((p) => p.accountId === petty && (!asOf || p.date <= asOf)).reduce((a2, p) => a2 + p.debit - p.credit, 0)
+  );
+}
+async function pettyCashShortfall(amount, date) {
+  const [atDate, now] = await Promise.all([pettyCashBalance(date), pettyCashBalance()]);
+  const available = Math.min(atDate, now);
+  return { short: amount > available + 5e-3, available };
+}
+function sumByAccount(postings, filter) {
+  const out = /* @__PURE__ */ new Map();
+  for (const p of postings) {
+    if (filter && !filter(p)) continue;
+    const cur = out.get(p.accountId) || { debit: 0, credit: 0 };
+    cur.debit += p.debit;
+    cur.credit += p.credit;
+    out.set(p.accountId, cur);
+  }
+  return out;
+}
+function naturalBalance(type, b) {
+  if (!b) return 0;
+  return round2(isDebitNormal(type) ? b.debit - b.credit : b.credit - b.debit);
+}
+
+// apps/api/src/routes/finance.ts
 var financeRouter = (0, import_express5.Router)();
 financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
 function inRange2(d, from, to) {
@@ -48650,22 +49241,16 @@ function parseRange(req) {
   return { from, to };
 }
 async function computePettyCashBalance(asOfDate) {
-  const [topUps, expenses, pettyPayroll] = await Promise.all([
-    prisma.pettyCashTopUp.findMany(),
-    prisma.expense.findMany(),
-    prisma.payrollEntry.findMany({ where: { paymentSource: "Petty Cash" } })
-  ]);
-  const cutoff = asOfDate ?? "9999-12-31";
-  const topUpsTotal = topUps.filter((t) => t.date <= cutoff).reduce((a, t) => a + t.amount, 0);
-  const expensesTotal = expenses.filter((e) => e.date <= cutoff).reduce((a, e) => a + e.amount, 0);
-  const payrollTotal = pettyPayroll.filter((p) => p.date <= cutoff).reduce((a, p) => a + computePay(p.grossPay, p.employeeType).netPay, 0);
-  return topUpsTotal - expensesTotal - payrollTotal;
+  return pettyCashBalance(asOfDate);
+}
+function shortMessage(available, needed) {
+  return `Insufficient petty cash balance (Ksh ${Math.round(available).toLocaleString("en-KE")} available, Ksh ${Math.round(needed).toLocaleString("en-KE")} needed)`;
 }
 financeRouter.get("/payroll", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const range2 = parseRange(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
   const entries = await prisma.payrollEntry.findMany({
-    where: { date: { gte: range.from, lte: range.to } },
+    where: { date: { gte: range2.from, lte: range2.to } },
     include: { staff: true },
     orderBy: { date: "desc" }
   });
@@ -48686,18 +49271,18 @@ financeRouter.get("/payroll", async (req, res) => {
     };
   });
   const totals = rows.reduce(
-    (a, r) => ({
-      grossPayroll: a.grossPayroll + r.grossPay,
-      totalStatutory: a.totalStatutory + r.totalDeductions,
-      netPayroll: a.netPayroll + r.netPay,
-      totalPaye: a.totalPaye + r.paye,
-      totalNssf: a.totalNssf + r.nssf,
-      totalShif: a.totalShif + r.shif,
-      totalHousingLevy: a.totalHousingLevy + r.housingLevy
+    (a2, r) => ({
+      grossPayroll: a2.grossPayroll + r.grossPay,
+      totalStatutory: a2.totalStatutory + r.totalDeductions,
+      netPayroll: a2.netPayroll + r.netPay,
+      totalPaye: a2.totalPaye + r.paye,
+      totalNssf: a2.totalNssf + r.nssf,
+      totalShif: a2.totalShif + r.shif,
+      totalHousingLevy: a2.totalHousingLevy + r.housingLevy
     }),
     { grossPayroll: 0, totalStatutory: 0, netPayroll: 0, totalPaye: 0, totalNssf: 0, totalShif: 0, totalHousingLevy: 0 }
   );
-  res.json({ fromDate: range.from, toDate: range.to, rows, ...totals });
+  res.json({ fromDate: range2.from, toDate: range2.to, rows, ...totals });
 });
 var payrollSchema = external_exports.discriminatedUnion("employeeType", [
   external_exports.object({
@@ -48706,7 +49291,8 @@ var payrollSchema = external_exports.discriminatedUnion("employeeType", [
     staffId: external_exports.number().int(),
     department: external_exports.string().max(100).optional(),
     grossPay: external_exports.number().positive(),
-    paymentSource: external_exports.enum(PAYROLL_PAYMENT_SOURCES)
+    paymentSource: external_exports.string().optional()
+    // ignored: wages are always paid from petty cash
   }),
   external_exports.object({
     employeeType: external_exports.literal("Casual"),
@@ -48715,7 +49301,8 @@ var payrollSchema = external_exports.discriminatedUnion("employeeType", [
     department: external_exports.string().max(100).optional(),
     daysWorked: external_exports.number().positive(),
     rate: external_exports.number().positive(),
-    paymentSource: external_exports.enum(PAYROLL_PAYMENT_SOURCES)
+    paymentSource: external_exports.string().optional()
+    // ignored: wages are always paid from petty cash
   })
 ]);
 financeRouter.post("/payroll", async (req, res) => {
@@ -48725,13 +49312,9 @@ financeRouter.post("/payroll", async (req, res) => {
   const staff = await prisma.user.findUnique({ where: { id: data.staffId } });
   if (!staff) return res.status(400).json({ error: "Selected staff member not found" });
   const grossPay = data.employeeType === "Employee" ? data.grossPay : data.daysWorked * data.rate;
-  if (data.paymentSource === "Petty Cash") {
-    const netPay = computePay(grossPay, data.employeeType).netPay;
-    const balance = await computePettyCashBalance();
-    if (netPay > balance) {
-      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(netPay).toLocaleString("en-KE")} needed)` });
-    }
-  }
+  const netPay = computePay(grossPay, data.employeeType).netPay;
+  const check = await pettyCashShortfall(netPay, data.date);
+  if (check.short) return res.status(400).json({ error: shortMessage(check.available, netPay) });
   const entry = await prisma.payrollEntry.create({
     data: {
       date: data.date,
@@ -48741,15 +49324,15 @@ financeRouter.post("/payroll", async (req, res) => {
       daysWorked: data.employeeType === "Casual" ? data.daysWorked : null,
       rate: data.employeeType === "Casual" ? data.rate : null,
       grossPay,
-      paymentSource: data.paymentSource,
+      paymentSource: PETTY_CASH_METHOD,
       capturedByName: req.user.name
     }
   });
   res.status(201).json({ ...entry, name: staff.name });
 });
 financeRouter.get("/vat", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const range2 = parseRange(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
   const orders = await prisma.order.findMany({ include: { lineItems: true } });
   const forVat = orders.map((o) => ({
     kind: o.kind,
@@ -48772,7 +49355,7 @@ financeRouter.get("/vat", async (req, res) => {
   let corporateSales = 0;
   for (const o of forVat) {
     const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
-    if (isRevenueOrder && inRange2(o.createdDate, range.from, range.to)) {
+    if (isRevenueOrder && inRange2(o.createdDate, range2.from, range2.to)) {
       const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
       if (o.kind === "walkin") walkinSales += totals.grandTotal;
       else corporateSales += totals.grandTotal;
@@ -48780,39 +49363,98 @@ financeRouter.get("/vat", async (req, res) => {
   }
   const totalSales = walkinSales + corporateSales;
   const { net: netSales, vat: outputVat } = splitVatInclusive(totalSales);
-  res.json({ fromDate: range.from, toDate: range.to, walkinSales, corporateSales, totalSales, netSales, outputVat });
+  res.json({ fromDate: range2.from, toDate: range2.to, walkinSales, corporateSales, totalSales, netSales, outputVat });
 });
+async function expenseHeadNames() {
+  await ensureChartOnce();
+  return (await prisma.expenseHead.findMany({ orderBy: { name: "asc" } })).map((h) => h.name);
+}
 financeRouter.get("/expenses", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const range2 = parseRange(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
   const rows = await prisma.expense.findMany({
-    where: { date: { gte: range.from, lte: range.to } },
+    where: { date: { gte: range2.from, lte: range2.to } },
+    include: { payments: true, notes: true },
     orderBy: { date: "desc" }
   });
-  const totalExpenses = rows.reduce((a, e) => a + e.amount, 0);
-  res.json({ fromDate: range.from, toDate: range.to, rows, totalExpenses, expenseCategories: EXPENSE_CATEGORIES });
+  const out = rows.map(({ payments, notes, ...e }) => {
+    const paidAmount = e.paid ? e.amount : payments.reduce((a2, p) => a2 + p.amount, 0);
+    const credited = notes.filter((n) => n.type === "SupplierDebit").reduce((a2, n) => a2 + n.total, 0);
+    return { ...e, paidAmount, credited, outstanding: e.paid ? 0 : Math.max(0, Math.round((e.amount - paidAmount - credited) * 100) / 100), payments };
+  });
+  const totalExpenses = rows.reduce((a2, e) => a2 + e.amount, 0);
+  res.json({ fromDate: range2.from, toDate: range2.to, rows: out, totalExpenses, expenseCategories: await expenseHeadNames(), expenseMethods: EXPENSE_METHODS });
 });
+var dateStr = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 var expenseSchema = external_exports.object({
-  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  category: external_exports.enum(EXPENSE_CATEGORIES),
+  date: dateStr,
+  category: external_exports.string().min(1).max(100),
   note: external_exports.string().max(200).optional(),
   amount: external_exports.number().positive(),
   // Optional generally, but a "Printing Materials & Consumables" expense
   // needs one on file to later be linked to a Stock purchase (see
   // routes/stock.ts).
-  invoiceNumber: external_exports.string().max(100).optional()
+  invoiceNumber: external_exports.string().max(100).optional(),
+  // How it was paid. Defaults to petty cash (the historical behaviour). `paid: false` records a bill on credit — it
+  // goes to Accounts Payable until payments are made against it (POST /expenses/:id/payments).
+  method: external_exports.enum(EXPENSE_METHODS).default(PETTY_CASH_METHOD),
+  paid: external_exports.boolean().default(true),
+  supplier: external_exports.string().max(120).optional(),
+  dueDate: dateStr.optional().nullable()
 });
 financeRouter.post("/expenses", async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const balance = await computePettyCashBalance();
-  if (parsed.data.amount > balance) {
-    return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(parsed.data.amount).toLocaleString("en-KE")} needed)` });
+  const d = parsed.data;
+  if (!(await expenseHeadNames()).includes(d.category)) return res.status(400).json({ error: "Choose one of the expense heads (add new ones under Accounting \u2192 Chart of Accounts)" });
+  if (!d.paid && !(d.supplier || "").trim()) return res.status(400).json({ error: "A supplier is required for an expense bought on credit" });
+  if (d.paid && d.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(d.amount, d.date);
+    if (check.short) return res.status(400).json({ error: shortMessage(check.available, d.amount) });
   }
   const expense = await prisma.expense.create({
-    data: { ...parsed.data, note: parsed.data.note ?? "", capturedByName: req.user.name }
+    data: {
+      date: d.date,
+      category: d.category,
+      note: d.note ?? "",
+      amount: d.amount,
+      invoiceNumber: d.invoiceNumber,
+      method: d.paid ? d.method : PETTY_CASH_METHOD,
+      paid: d.paid,
+      supplier: (d.supplier || "").trim(),
+      dueDate: d.paid ? null : d.dueDate ?? null,
+      capturedByName: req.user.name
+    }
   });
   res.status(201).json(expense);
+});
+var expensePaymentSchema = external_exports.object({ date: dateStr, amount: external_exports.number().positive(), method: external_exports.enum(EXPENSE_METHODS), note: external_exports.string().max(200).optional() });
+financeRouter.post("/expenses/:id/payments", async (req, res) => {
+  const parsed = expensePaymentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) }, include: { payments: true, notes: true } });
+  if (!expense) return res.status(404).json({ error: "Expense not found" });
+  if (expense.paid) return res.status(400).json({ error: "This expense was paid when it was recorded \u2014 there is nothing outstanding" });
+  const paidSoFar = expense.payments.reduce((a2, p) => a2 + p.amount, 0);
+  const credited = expense.notes.filter((n) => n.type === "SupplierDebit").reduce((a2, n) => a2 + n.total, 0);
+  const outstanding = Math.round((expense.amount - paidSoFar - credited) * 100) / 100;
+  if (parsed.data.amount > outstanding + 0.01) return res.status(400).json({ error: `Only Ksh ${Math.round(outstanding).toLocaleString("en-KE")} is outstanding on this bill` });
+  if (parsed.data.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(parsed.data.amount, parsed.data.date);
+    if (check.short) return res.status(400).json({ error: shortMessage(check.available, parsed.data.amount) });
+  }
+  const payment = await prisma.expensePayment.create({
+    data: { expenseId: expense.id, date: parsed.data.date, amount: parsed.data.amount, method: parsed.data.method, note: parsed.data.note ?? "", capturedByName: req.user.name }
+  });
+  res.status(201).json(payment);
+});
+financeRouter.post("/expense-heads", async (req, res) => {
+  const name2 = String(req.body.name || "").trim();
+  if (!name2 || name2.length > 100) return res.status(400).json({ error: "Enter a name for the expense head" });
+  await ensureChartOnce();
+  if (await prisma.expenseHead.findUnique({ where: { name: name2 } })) return res.status(400).json({ error: "That expense head already exists" });
+  const head = await prisma.expenseHead.create({ data: { name: name2, accountId: await accountIdForNewExpenseHead(name2) } });
+  res.status(201).json(head);
 });
 financeRouter.get("/expenses/amendments", async (req, res) => {
   const status = typeof req.query.status === "string" ? req.query.status : void 0;
@@ -48822,29 +49464,29 @@ financeRouter.get("/expenses/amendments", async (req, res) => {
     orderBy: { requestedAt: "desc" }
   });
   res.json(
-    amendments.map((a) => ({
-      id: a.id,
-      expenseId: a.expenseId,
-      currentDate: a.expense.date,
-      currentCategory: a.expense.category,
-      currentNote: a.expense.note,
-      currentAmount: a.expense.amount,
-      proposedDate: a.proposedDate,
-      proposedCategory: a.proposedCategory,
-      proposedNote: a.proposedNote,
-      proposedAmount: a.proposedAmount,
-      reason: a.reason,
-      status: a.status,
-      requestedByName: a.requestedByName,
-      requestedAt: a.requestedAt,
-      decidedByName: a.decidedByName,
-      decidedAt: a.decidedAt
+    amendments.map((a2) => ({
+      id: a2.id,
+      expenseId: a2.expenseId,
+      currentDate: a2.expense.date,
+      currentCategory: a2.expense.category,
+      currentNote: a2.expense.note,
+      currentAmount: a2.expense.amount,
+      proposedDate: a2.proposedDate,
+      proposedCategory: a2.proposedCategory,
+      proposedNote: a2.proposedNote,
+      proposedAmount: a2.proposedAmount,
+      reason: a2.reason,
+      status: a2.status,
+      requestedByName: a2.requestedByName,
+      requestedAt: a2.requestedAt,
+      decidedByName: a2.decidedByName,
+      decidedAt: a2.decidedAt
     }))
   );
 });
 var amendSchema = external_exports.object({
   date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  category: external_exports.enum(EXPENSE_CATEGORIES),
+  category: external_exports.string().min(1).max(100),
   note: external_exports.string().max(200).optional(),
   amount: external_exports.number().positive(),
   reason: external_exports.string().min(1, "A reason for the amendment is required")
@@ -48854,6 +49496,7 @@ financeRouter.post("/expenses/:id/amend", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
   if (!expense) return res.status(404).json({ error: "Expense not found" });
+  if (!(await expenseHeadNames()).includes(parsed.data.category)) return res.status(400).json({ error: "Choose one of the expense heads" });
   const amendment = await prisma.expenseAmendment.create({
     data: {
       expenseId: expense.id,
@@ -48889,59 +49532,36 @@ async function decideAmendment(req, res, approve) {
 financeRouter.post("/expenses/amendments/:id/approve", (req, res) => decideAmendment(req, res, true));
 financeRouter.post("/expenses/amendments/:id/reject", (req, res) => decideAmendment(req, res, false));
 financeRouter.get("/petty-cash", async (req, res) => {
-  const range = parseRange(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const [allTopUps, allExpenses, allPettyPayroll, cashPayments] = await Promise.all([
-    prisma.pettyCashTopUp.findMany(),
-    prisma.expense.findMany(),
-    prisma.payrollEntry.findMany({ where: { paymentSource: "Petty Cash" }, include: { staff: true } }),
-    prisma.payment.findMany({ where: { method: "Cash", date: { gte: range.from, lte: range.to } } })
+  const range2 = parseRange(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const [ledger, cashPayments] = await Promise.all([
+    loadLedger(),
+    prisma.payment.findMany({ where: { method: "Cash", date: { gte: range2.from, lte: range2.to } } })
   ]);
-  const pettyPayrollNet = allPettyPayroll.map((p) => ({ ...p, netPay: computePay(p.grossPay, p.employeeType).netPay }));
-  const balance = await computePettyCashBalance(range.to);
-  const periodTopUps = allTopUps.filter((t) => inRange2(t.date, range.from, range.to));
-  const periodExpenses = allExpenses.filter((e) => inRange2(e.date, range.from, range.to));
-  const periodPayroll = pettyPayrollNet.filter((p) => inRange2(p.date, range.from, range.to));
-  const periodTopUpsTotal = periodTopUps.reduce((a, t) => a + t.amount, 0);
-  const periodExpensesTotal = periodExpenses.reduce((a, e) => a + e.amount, 0) + periodPayroll.reduce((a, p) => a + p.netPay, 0);
-  const cashSalesInPeriod = cashPayments.reduce((a, p) => a + p.amount, 0);
-  const ledger = [
-    ...periodTopUps.map((t) => ({
-      id: "t" + t.id,
-      date: t.date,
-      type: "topup",
-      description: t.source + (t.note ? ": " + t.note : "") + ` (by ${t.authorizedByName})`,
-      amountIn: t.amount,
-      amountOut: 0,
-      topUpId: t.id
-    })),
-    ...periodExpenses.map((e) => ({
-      id: "e" + e.id,
-      date: e.date,
-      type: "expense",
-      description: e.category + (e.note ? ": " + e.note : "") + (e.capturedByName ? ` (by ${e.capturedByName})` : ""),
-      amountIn: 0,
-      amountOut: e.amount,
-      topUpId: null
-    })),
-    ...periodPayroll.map((p) => ({
-      id: "p" + p.id,
+  const petty = ledger.byCode.get("1010");
+  const mine = petty ? ledger.postings.filter((p) => p.accountId === petty.id && inRange2(p.date, range2.from, range2.to)) : [];
+  const balance = await computePettyCashBalance(range2.to);
+  const rows = mine.map((p, i) => {
+    const isTopUp = p.source === "Petty cash top-up";
+    const topUpId = isTopUp && p.ref.startsWith("PCT-") ? Number(p.ref.slice(4)) : null;
+    return {
+      id: `${p.source}:${p.ref}:${i}`,
       date: p.date,
-      type: "expense",
-      description: `Payroll: ${p.staff.name} (net pay)`,
-      amountIn: 0,
-      amountOut: p.netPay,
-      topUpId: null
-    }))
-  ].sort((a, b) => a.date < b.date ? 1 : -1);
+      type: p.debit > 0 ? "topup" : "expense",
+      description: p.memo || p.source,
+      amountIn: p.debit,
+      amountOut: p.credit,
+      topUpId
+    };
+  }).sort((a2, b) => a2.date < b.date ? 1 : -1);
   res.json({
-    fromDate: range.from,
-    toDate: range.to,
+    fromDate: range2.from,
+    toDate: range2.to,
     balance,
-    periodTopUpsTotal,
-    periodExpensesTotal,
-    cashSalesInPeriod,
-    ledger,
+    periodTopUpsTotal: rows.reduce((a2, r) => a2 + r.amountIn, 0),
+    periodExpensesTotal: rows.reduce((a2, r) => a2 + r.amountOut, 0),
+    cashSalesInPeriod: cashPayments.reduce((a2, p) => a2 + p.amount, 0),
+    ledger: rows,
     pettyCashSources: PETTY_CASH_SOURCES
   });
 });
@@ -49367,8 +49987,8 @@ function parseRange2(req) {
   return { from, to };
 }
 reportsRouter.get("/sales-by-category", async (req, res) => {
-  const range = parseRange2(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const range2 = parseRange2(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
   const orders = await prisma.order.findMany({
     where: { OR: [{ kind: "walkin" }, { status: "Invoice" }] },
     include: { lineItems: { include: { service: true } } }
@@ -49377,7 +49997,7 @@ reportsRouter.get("/sales-by-category", async (req, res) => {
   let materialsQty = 0;
   let materialsRevenue = 0;
   for (const o of orders) {
-    if (!inRange3(o.createdDate, range.from, range.to)) continue;
+    if (!inRange3(o.createdDate, range2.from, range2.to)) continue;
     for (const li of o.lineItems) {
       const input = {
         itemType: li.itemType,
@@ -49402,17 +50022,17 @@ reportsRouter.get("/sales-by-category", async (req, res) => {
       }
     }
   }
-  const categories = Array.from(byService.entries()).map(([name2, v]) => ({ name: name2, qty: v.qty, revenue: v.revenue })).sort((a, b) => b.revenue - a.revenue);
+  const categories = Array.from(byService.entries()).map(([name2, v]) => ({ name: name2, qty: v.qty, revenue: v.revenue })).sort((a2, b) => b.revenue - a2.revenue);
   res.json({
-    fromDate: range.from,
-    toDate: range.to,
+    fromDate: range2.from,
+    toDate: range2.to,
     categories,
     materials: { qty: materialsQty, revenue: materialsRevenue }
   });
 });
 reportsRouter.get("/embroidery-profitability", async (req, res) => {
-  const range = parseRange2(req);
-  if (!range) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const range2 = parseRange2(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
   const embroideryService = await prisma.service.findFirst({ where: { name: "Embroidery" } });
   let revenue = 0;
   let qtyPieces = 0;
@@ -49422,7 +50042,7 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
       include: { lineItems: { where: { serviceId: embroideryService.id } } }
     });
     for (const o of orders) {
-      if (!inRange3(o.createdDate, range.from, range.to)) continue;
+      if (!inRange3(o.createdDate, range2.from, range2.to)) continue;
       for (const li of o.lineItems) {
         const lineTotal = buildLineTotal({
           itemType: li.itemType,
@@ -49447,22 +50067,22 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
   const breakdownMap = /* @__PURE__ */ new Map();
   let consumablesCost = 0;
   for (const p of purchases) {
-    if (!inRange3(p.date, range.from, range.to)) continue;
+    if (!inRange3(p.date, range2.from, range2.to)) continue;
     consumablesCost += p.totalCost;
     const b = breakdownMap.get(p.material.name) ?? { qty: 0, totalCost: 0 };
     b.qty += p.qty;
     b.totalCost += p.totalCost;
     breakdownMap.set(p.material.name, b);
   }
-  const consumableBreakdown = Array.from(breakdownMap.entries()).map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: v.totalCost })).sort((a, b) => b.totalCost - a.totalCost);
+  const consumableBreakdown = Array.from(breakdownMap.entries()).map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: v.totalCost })).sort((a2, b) => b.totalCost - a2.totalCost);
   const grossProfit = revenue - consumablesCost;
   const marginPct = revenue > 0 ? grossProfit / revenue * 100 : null;
   const avgRevenuePerPiece = qtyPieces > 0 ? revenue / qtyPieces : null;
   const avgCostPerPiece = qtyPieces > 0 ? consumablesCost / qtyPieces : null;
   const marginPerPiece = avgRevenuePerPiece != null && avgCostPerPiece != null ? avgRevenuePerPiece - avgCostPerPiece : null;
   res.json({
-    fromDate: range.from,
-    toDate: range.to,
+    fromDate: range2.from,
+    toDate: range2.to,
     serviceFound: !!embroideryService,
     revenue,
     qtyPieces,
@@ -49511,13 +50131,13 @@ reportsRouter.get("/accounts-receivable", async (req, res) => {
       balanceDue: totals.balanceDue,
       daysOverdue
     };
-  }).filter((r) => r.balanceDue > 0).sort((a, b) => b.daysOverdue - a.daysOverdue);
+  }).filter((r) => r.balanceDue > 0).sort((a2, b) => b.daysOverdue - a2.daysOverdue);
   const bucket = (r) => r.daysOverdue <= 0 ? "current" : r.daysOverdue <= 30 ? "days1to30" : r.daysOverdue <= 60 ? "days31to60" : r.daysOverdue <= 90 ? "days61to90" : "days90plus";
   const buckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days90plus: 0 };
   for (const r of rows) buckets[bucket(r)] += r.balanceDue;
   res.json({
     asOf: today,
-    totalOutstanding: rows.reduce((a, r) => a + r.balanceDue, 0),
+    totalOutstanding: rows.reduce((a2, r) => a2 + r.balanceDue, 0),
     buckets,
     rows
   });
@@ -49557,6 +50177,398 @@ emailRouter.post("/send", async (req, res) => {
 
 // apps/api/src/routes/mpesa.ts
 var import_express9 = __toESM(require_express2());
+var import_crypto2 = require("crypto");
+
+// apps/api/src/accounting/reports.ts
+var inRange4 = (d, from, to) => d >= from && d <= to;
+function monthsOf(from, to) {
+  const out = [];
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  const endKey = to.slice(0, 7);
+  for (; ; ) {
+    const key2 = `${y}-${String(m).padStart(2, "0")}`;
+    if (key2 > endKey) break;
+    out.push(key2);
+    if (m === 12) {
+      y++;
+      m = 1;
+    } else m++;
+    if (out.length > 120) break;
+  }
+  return out;
+}
+async function buildProfitLoss(from, to) {
+  const ledger = await loadLedger();
+  const months = monthsOf(from, to);
+  const monthIndex = new Map(months.map((m, i) => [m, i]));
+  const rows = /* @__PURE__ */ new Map();
+  const outside = { before: { income: 0, expenses: 0 }, after: { income: 0, expenses: 0 } };
+  for (const p of ledger.postings) {
+    const acc = ledger.byId.get(p.accountId);
+    if (!acc || acc.type !== "Income" && acc.type !== "Expense") continue;
+    const signed = acc.type === "Income" ? p.credit - p.debit : p.debit - p.credit;
+    if (!inRange4(p.date, from, to)) {
+      const side = p.date < from ? outside.before : outside.after;
+      if (acc.type === "Income") side.income += signed;
+      else side.expenses += signed;
+      continue;
+    }
+    let row = rows.get(acc.id);
+    if (!row) {
+      row = { id: acc.id, code: acc.code, name: acc.name, amount: 0, byMonth: months.map(() => 0) };
+      rows.set(acc.id, row);
+    }
+    row.amount += signed;
+    const idx = monthIndex.get(p.date.slice(0, 7));
+    if (idx !== void 0) row.byMonth[idx] += signed;
+  }
+  const section = (type) => {
+    const list = [...rows.values()].filter((r) => ledger.byId.get(r.id).type === type && (Math.abs(r.amount) > 4e-3 || r.byMonth.some((v) => Math.abs(v) > 4e-3))).sort((a2, b) => a2.code.localeCompare(b.code)).map((r) => ({ ...r, amount: round2(r.amount), byMonth: r.byMonth.map(round2) }));
+    return { rows: list, total: round2(list.reduce((a2, r) => a2 + r.amount, 0)), byMonth: months.map((_, i) => round2(list.reduce((a2, r) => a2 + r.byMonth[i], 0))) };
+  };
+  const income = section("Income");
+  const expenses = section("Expense");
+  const netProfit = round2(income.total - expenses.total);
+  return {
+    from,
+    to,
+    months,
+    income,
+    expenses,
+    netProfit,
+    netByMonth: months.map((_, i) => round2(income.byMonth[i] - expenses.byMonth[i])),
+    margin: income.total > 0 ? round2(netProfit / income.total * 100) : null,
+    outside: {
+      before: { income: round2(outside.before.income), expenses: round2(outside.before.expenses) },
+      after: { income: round2(outside.after.income), expenses: round2(outside.after.expenses) }
+    }
+  };
+}
+async function buildBalanceSheet(asOf) {
+  const ledger = await loadLedger();
+  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
+  const line = (type) => ledger.accounts.filter((a2) => a2.type === type).sort((a2, b) => a2.code.localeCompare(b.code)).map((a2) => ({ id: a2.id, code: a2.code, name: a2.name, subtype: a2.subtype, amount: naturalBalance(a2.type, sums.get(a2.id)) })).filter((r) => Math.abs(r.amount) > 4e-3);
+  const total = (rows) => round2(rows.reduce((a2, r) => a2 + r.amount, 0));
+  const assets = line("Asset");
+  const liabilities = line("Liability");
+  const equityAccounts = line("Equity");
+  const currentEarnings = round2(total(line("Income")) - total(line("Expense")));
+  const equity = [
+    ...equityAccounts,
+    { id: 0, code: "", name: "Profit earned to date (not yet closed to retained earnings)", subtype: "CurrentEarnings", amount: currentEarnings }
+  ];
+  const totalAssets = total(assets);
+  const totalLiabilities = total(liabilities);
+  const totalEquity = total(equity);
+  return {
+    asOf,
+    assets: { rows: assets, total: totalAssets },
+    liabilities: { rows: liabilities, total: totalLiabilities },
+    equity: { rows: equity, total: totalEquity },
+    liabilitiesAndEquity: round2(totalLiabilities + totalEquity),
+    balanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
+  };
+}
+async function buildTrialBalance(asOf) {
+  const ledger = await loadLedger();
+  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
+  const rows = ledger.accounts.sort((a2, b) => a2.code.localeCompare(b.code)).map((a2) => {
+    const b = sums.get(a2.id) || { debit: 0, credit: 0 };
+    const net8 = round2(b.debit - b.credit);
+    return { id: a2.id, code: a2.code, name: a2.name, type: a2.type, debit: net8 > 0 ? net8 : 0, credit: net8 < 0 ? -net8 : 0 };
+  }).filter((r) => r.debit > 4e-3 || r.credit > 4e-3);
+  const debit = round2(rows.reduce((x, r) => x + r.debit, 0));
+  const credit = round2(rows.reduce((x, r) => x + r.credit, 0));
+  return { asOf, rows, debit, credit, balanced: Math.abs(debit - credit) < 0.01 };
+}
+async function buildAccountLedger(accountId, from, to) {
+  const ledger = await loadLedger();
+  const acc = ledger.byId.get(accountId);
+  if (!acc) return null;
+  const mine = ledger.postings.filter((p) => p.accountId === accountId).sort((a2, b) => a2.date < b.date ? -1 : a2.date > b.date ? 1 : 0);
+  const sign2 = (p) => acc.type === "Asset" || acc.type === "Expense" ? p.debit - p.credit : p.credit - p.debit;
+  const opening = round2(mine.filter((p) => p.date < from).reduce((a2, p) => a2 + sign2(p), 0));
+  let running2 = opening;
+  const rows = mine.filter((p) => inRange4(p.date, from, to)).map((p) => {
+    running2 = round2(running2 + sign2(p));
+    return { date: p.date, source: p.source, ref: p.ref, memo: p.memo, debit: p.debit, credit: p.credit, balance: running2 };
+  });
+  return { account: { id: acc.id, code: acc.code, name: acc.name, type: acc.type }, from, to, opening, closing: running2, rows };
+}
+var AGE_BUCKETS = ["Not yet due", "0\u201330 days", "31\u201360 days", "61\u201390 days", "Over 90 days"];
+function ageBucket(ageDays) {
+  return ageDays < 0 ? "Not yet due" : ageDays <= 30 ? "0\u201330 days" : ageDays <= 60 ? "31\u201360 days" : ageDays <= 90 ? "61\u201390 days" : "Over 90 days";
+}
+var daysBetween = (from, to) => Math.floor(((/* @__PURE__ */ new Date(to + "T00:00:00")).getTime() - (/* @__PURE__ */ new Date(from + "T00:00:00")).getTime()) / 864e5);
+async function buildPayablesAging(asOf) {
+  const entries = await prisma.expense.findMany({ where: { paid: false, date: { lte: asOf } }, include: { payments: true, notes: true } });
+  const rows = entries.map((e) => {
+    const paidAmount = round2(e.payments.filter((p) => p.date <= asOf).reduce((a2, p) => a2 + p.amount, 0));
+    const credited = round2(e.notes.filter((n) => n.type === "SupplierDebit" && n.date <= asOf).reduce((a2, n) => a2 + n.total, 0));
+    const outstanding = round2(e.amount - paidAmount - credited);
+    const ageDays = daysBetween(e.dueDate ?? e.date, asOf);
+    return { id: e.id, date: e.date, dueDate: e.dueDate, supplier: e.supplier, head: e.category, invoice: e.invoiceNumber, amount: e.amount, paidAmount, credited, outstanding, ageDays, bucket: ageBucket(ageDays) };
+  }).filter((r) => r.outstanding > 4e-3).sort((a2, b) => b.ageDays - a2.ageDays);
+  const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
+  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket };
+}
+async function buildReceivablesAging(asOf) {
+  const orders = await prisma.order.findMany({
+    where: { createdDate: { lte: asOf } },
+    include: { lineItems: true, payments: true, corporateClient: true, notes: true }
+  });
+  let credits = 0;
+  const rows = [];
+  for (const o of orders) {
+    if (!(o.kind === "walkin" || o.status !== "Quote")) continue;
+    const lines = o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    }));
+    const amount = round2(computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal);
+    const paid = round2(o.payments.filter((p) => p.date <= asOf).reduce((a2, p) => a2 + p.amount, 0));
+    const adjustments = round2(
+      o.notes.filter((n) => n.date <= asOf).reduce((a2, n) => a2 + (n.type === "Credit" ? -n.receivableAmt : n.type === "Debit" ? n.total : 0), 0)
+    );
+    const outstanding = round2(amount + adjustments - paid);
+    if (outstanding < -4e-3) credits += outstanding;
+    if (!(outstanding > 4e-3)) continue;
+    const ageDays = daysBetween(o.dueDate ?? o.createdDate, asOf);
+    rows.push({
+      orderId: o.id,
+      ref: o.orderNo,
+      party: o.customerName || o.corporateClient?.name || "Customer",
+      status: o.status,
+      date: o.createdDate,
+      dueDate: o.dueDate,
+      amount,
+      paid,
+      adjustments,
+      outstanding,
+      ageDays,
+      bucket: ageBucket(ageDays)
+    });
+  }
+  rows.sort((a2, b) => b.ageDays - a2.ageDays);
+  const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
+  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket, overpaidCredits: round2(credits) };
+}
+async function buildCashFlowStatement(from, to) {
+  const ledger = await loadLedger();
+  const cashIds = new Set(CASH_ACCOUNT_CODES.map((c) => ledger.byCode.get(c)?.id).filter((id) => !!id));
+  const isCash = (p) => cashIds.has(p.accountId);
+  const cashBalanceAsOf = (cutoff) => ledger.postings.filter((p) => isCash(p) && cutoff(p.date)).reduce((a2, p) => a2 + p.debit - p.credit, 0);
+  const openingCash = round2(cashBalanceAsOf((d) => d < from));
+  const closingCash = round2(cashBalanceAsOf((d) => d <= to));
+  const moves = ledger.postings.filter((p) => isCash(p) && inRange4(p.date, from, to) && p.source !== "Opening");
+  const legsByEntry = /* @__PURE__ */ new Map();
+  for (const p of ledger.postings) {
+    if (!inRange4(p.date, from, to)) continue;
+    const k = `${p.source}\0${p.ref}\0${p.date}`;
+    legsByEntry.set(k, [...legsByEntry.get(k) || [], p]);
+  }
+  const STATIC = { Capital: "Financing", Drawings: "Financing", "Asset purchase": "Investing" };
+  const bucketFor = (p) => {
+    if (STATIC[p.source]) return STATIC[p.source];
+    const legs = legsByEntry.get(`${p.source}\0${p.ref}\0${p.date}`) || [];
+    const other = legs.filter((l) => !isCash(l));
+    if (other.length === 0) return "Internal";
+    if (p.source === "Petty cash top-up") {
+      return other.some((l) => ledger.byId.get(l.accountId)?.type === "Equity") ? "Financing" : "Internal";
+    }
+    if (["Manual", "BankDeposit", "TaxPayment"].includes(p.source) || p.source === "Opening") {
+      const types = new Set(other.map((l) => ledger.byId.get(l.accountId)?.type));
+      if (types.has("Equity") || other.some((l) => ledger.byId.get(l.accountId)?.code === ACCT.loans)) return "Financing";
+      if (other.some((l) => ledger.byId.get(l.accountId)?.subtype === "FixedAsset")) return "Investing";
+    }
+    return "Operating";
+  };
+  const totals = { Operating: 0, Investing: 0, Financing: 0, Internal: 0 };
+  const bySource = /* @__PURE__ */ new Map();
+  for (const p of moves) {
+    const bucket = bucketFor(p);
+    const signed = p.debit - p.credit;
+    totals[bucket] += signed;
+    const key2 = `${bucket}:${p.source}`;
+    const row = bySource.get(key2) || { source: p.source, bucket, amount: 0 };
+    row.amount += signed;
+    bySource.set(key2, row);
+  }
+  const lines = [...bySource.values()].map((r) => ({ ...r, amount: round2(r.amount) })).filter((r) => Math.abs(r.amount) > 4e-3);
+  const section = (bucket) => ({ total: round2(totals[bucket]), lines: lines.filter((l) => l.bucket === bucket) });
+  const netChange = round2(totals.Operating + totals.Investing + totals.Financing);
+  return {
+    from,
+    to,
+    openingCash,
+    closingCash,
+    netChange,
+    operating: section("Operating"),
+    investing: section("Investing"),
+    financing: section("Financing"),
+    internalTransfers: round2(totals.Internal),
+    reconciles: Math.abs(round2(openingCash + netChange + totals.Internal) - closingCash) < 0.01
+  };
+}
+
+// apps/api/src/accounting/mpesaMatching.ts
+async function openTargets() {
+  const aging = await buildReceivablesAging("9999-12-31");
+  const orders = await prisma.order.findMany({ where: { id: { in: aging.rows.map((r) => r.orderId) } }, include: { corporateClient: true } });
+  const byId = new Map(orders.map((o) => [o.id, o]));
+  return aging.rows.map((r) => {
+    const o = byId.get(r.orderId);
+    return { orderId: r.orderId, ref: r.ref, party: r.party, phone: o?.phone || o?.corporateClient?.phone || "", balance: r.outstanding, createdDate: r.date };
+  });
+}
+function splitCsvLine(line) {
+  const out = [];
+  let cur = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') {
+        cur += '"';
+        i++;
+      } else quoted = !quoted;
+    } else if ((ch === "," || ch === "	") && !quoted) {
+      out.push(cur.trim());
+      cur = "";
+    } else cur += ch;
+  }
+  out.push(cur.trim());
+  return out;
+}
+function normaliseDate(raw) {
+  const t = raw.trim();
+  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(t);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/.exec(t);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  m = /^(\d{4})(\d{2})(\d{2})\d{6}$/.exec(t);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
+}
+var toNumber = (v) => Number(String(v).replace(/[^\d.-]/g, "")) || 0;
+function parseStatement(text) {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  let headerAt = lines.findIndex((l) => /receipt/i.test(l) && /(paid ?in|amount|credit)/i.test(l));
+  if (headerAt < 0) headerAt = lines.findIndex((l) => /receipt/i.test(l));
+  if (headerAt < 0) return { receipts: [], skipped: lines.length };
+  const head = splitCsvLine(lines[headerAt]).map((h) => h.toLowerCase());
+  const col = (...names) => head.findIndex((h) => names.some((n) => h.includes(n)));
+  const iReceipt = col("receipt");
+  const iTime = col("completion", "time", "date");
+  const iDetails = col("details", "description");
+  const iPaidIn = col("paid in", "paid_in", "paidin", "credit", "amount");
+  const iPhone = col("phone", "msisdn", "number");
+  const iName = col("name");
+  const iRef = col("reference", "account", "bill");
+  const iStatus = col("status");
+  const receipts = [];
+  let skipped = 0;
+  for (const line of lines.slice(headerAt + 1)) {
+    const c = splitCsvLine(line);
+    const receipt = (c[iReceipt] || "").toUpperCase().replace(/\s+/g, "");
+    const amount = iPaidIn >= 0 ? toNumber(c[iPaidIn] || "") : 0;
+    const status = iStatus >= 0 ? (c[iStatus] || "").toLowerCase() : "completed";
+    const date = iTime >= 0 ? normaliseDate(c[iTime] || "") : null;
+    if (!receipt || !(amount > 0) || !date || status && !status.includes("complet")) {
+      skipped++;
+      continue;
+    }
+    const details = iDetails >= 0 ? c[iDetails] || "" : "";
+    const phone = (iPhone >= 0 ? c[iPhone] : "") || /(?:\+?254|0)[17]\d{8}/.exec(details)?.[0] || "";
+    const name2 = (iName >= 0 ? c[iName] : "") || (/-\s*([A-Za-z][A-Za-z .'-]+?)(?:\s+Acc\b.*)?$/.exec(details)?.[1] ?? "");
+    const reference = [iRef >= 0 ? c[iRef] : "", details].filter(Boolean).join(" ");
+    receipts.push({ receipt, date, phone: phone.replace(/\D/g, ""), name: name2.trim(), amount, reference });
+  }
+  return { receipts, skipped };
+}
+async function storeReceipt(r, by) {
+  if (await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: r.receipt } })) return null;
+  const manual = await prisma.payment.findFirst({ where: { method: "M-Pesa", reference: r.receipt, mpesaTransactionId: null } });
+  const linkable = manual && Math.abs(manual.amount - r.amount) <= 1 ? manual : null;
+  const tx = await prisma.mpesaTransaction.create({
+    data: {
+      checkoutRequestId: `${r.kind}-${r.receipt}`,
+      merchantRequestId: "",
+      phone: r.phone,
+      amount: r.amount,
+      accountReference: r.reference,
+      status: linkable ? "Applied" : "Unmatched",
+      mpesaReceipt: r.receipt,
+      orderId: linkable?.orderId ?? null,
+      createdByName: by,
+      kind: r.kind,
+      payerName: r.name,
+      receivedOn: r.date,
+      appliedByName: linkable ? "Matched to a payment already recorded" : null,
+      appliedAt: linkable ? /* @__PURE__ */ new Date() : null,
+      rawJson: JSON.stringify(r.raw ?? {})
+    }
+  });
+  if (linkable) await prisma.payment.update({ where: { id: linkable.id }, data: { mpesaTransactionId: tx.id } });
+  return { tx, linked: !!linkable };
+}
+async function applyReceiptToOrder(txId, orderId, by) {
+  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId } });
+  if (!tx) throw new PaymentError("M-Pesa payment not found");
+  if (tx.status !== "Unmatched") throw new PaymentError("This payment has already been dealt with");
+  if (!tx.mpesaReceipt) throw new PaymentError("This payment has no M-Pesa receipt code to match on");
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { corporateClient: true } });
+  if (!order) throw new PaymentError("Order not found");
+  const targets = await openTargets();
+  const target = targets.find((t) => t.orderId === orderId);
+  if (!target) throw new PaymentError(`${order.orderNo} has nothing outstanding`);
+  if (round2(tx.amount) > round2(target.balance) + 1) {
+    throw new PaymentError(`${order.orderNo} only owes Ksh ${Math.round(target.balance).toLocaleString("en-KE")} \u2014 less than the Ksh ${Math.round(tx.amount).toLocaleString("en-KE")} received`);
+  }
+  await prisma.$transaction(async (db) => {
+    await recordOrderPayments(db, order, [{ method: "M-Pesa", amount: tx.amount, reference: tx.mpesaReceipt }], null, tx.receivedOn ?? todayStr());
+    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { appliedByName: by } });
+  });
+}
+async function autoMatch(by) {
+  const unmatched = await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: "Unmatched" }, orderBy: { id: "asc" } });
+  let applied = 0;
+  for (const t of unmatched) {
+    const targets = await openTargets();
+    const m = matchPayment({ amount: t.amount, phone: t.phone, accountReference: t.accountReference }, targets);
+    if (m.matched && m.reason === "reference") {
+      try {
+        await applyReceiptToOrder(t.id, m.target.orderId, `${by} (auto-matched on order number)`);
+        applied++;
+      } catch {
+      }
+    }
+  }
+  return applied;
+}
+async function importStatement(text, by) {
+  const { receipts, skipped } = parseStatement(text);
+  let added = 0;
+  let duplicates = 0;
+  let linked = 0;
+  for (const r of receipts) {
+    const stored = await storeReceipt({ ...r, kind: "Import" }, by);
+    if (!stored) duplicates++;
+    else if (stored.linked) linked++;
+    else added++;
+  }
+  const applied = await autoMatch(by);
+  return { read: receipts.length, added, duplicates, linkedToRecorded: linked, autoApplied: applied, skipped };
+}
+
+// apps/api/src/routes/mpesa.ts
 var mpesaRouter = (0, import_express9.Router)();
 function darajaBaseUrl() {
   return process.env.MPESA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
@@ -49648,7 +50660,12 @@ async function markSuccess(tx, mpesaReceipt) {
     data: { status: "Success", resultCode: 0, mpesaReceipt }
   });
   if (tx.orderId) {
-    await prisma.payment.create({ data: { orderId: tx.orderId, date: todayStr(), amount: tx.amount, method: "M-Pesa" } });
+    const order = await prisma.order.findUnique({ where: { id: tx.orderId }, include: { corporateClient: true } });
+    if (order) {
+      await prisma.$transaction(
+        (db) => recordOrderPayments(db, order, [{ method: "M-Pesa", amount: tx.amount, reference: mpesaReceipt, linkedTransactionId: tx.id }], null)
+      );
+    }
   }
 }
 mpesaRouter.post("/callback", async (req, res) => {
@@ -49680,9 +50697,69 @@ mpesaRouter.post("/:checkoutRequestId/confirm-manually", requireAuth, async (req
   await markSuccess(tx, null);
   res.json({ ok: true });
 });
+var ACK = { ResultCode: 0, ResultDesc: "Accepted" };
+function secretOk(given) {
+  const want = process.env.MPESA_C2B_SECRET || "";
+  const a2 = Buffer.from(given);
+  const b = Buffer.from(want);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto2.timingSafeEqual)(a2, b);
+}
+mpesaRouter.post("/c2b/:secret/validation", (_req, res) => res.json(ACK));
+mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
+  if (!secretOk(req.params.secret)) return res.json(ACK);
+  try {
+    const b = req.body;
+    const receipt = String(b.TransID || "").toUpperCase();
+    const amount = Number(b.TransAmount);
+    if (receipt && amount > 0) {
+      await storeReceipt(
+        {
+          kind: "C2B",
+          receipt,
+          amount,
+          date: normaliseDate(String(b.TransTime || "")) ?? todayStr(),
+          phone: String(b.MSISDN || ""),
+          name: [b.FirstName, b.MiddleName, b.LastName].filter(Boolean).join(" "),
+          reference: String(b.BillRefNumber || ""),
+          raw: b
+        },
+        "M-Pesa (Paybill/Till)"
+      );
+      await autoMatch("M-Pesa (Paybill/Till)");
+    }
+  } catch (err) {
+    console.error("C2B confirmation failed", err);
+  }
+  res.json(ACK);
+});
+mpesaRouter.post("/c2b/register", requireAuth, requireRole("Admin"), async (_req, res) => {
+  if (!isConfigured()) return res.status(501).json({ error: "M-Pesa isn't configured yet \u2014 set MPESA_* in the API environment" });
+  const secret = process.env.MPESA_C2B_SECRET || "";
+  const base2 = (process.env.MPESA_PUBLIC_URL || new URL(process.env.MPESA_CALLBACK_URL).origin).replace(/\/$/, "");
+  if (secret.length < 16) return res.status(400).json({ error: "Set MPESA_C2B_SECRET to a long random string (16+ characters) first" });
+  try {
+    const token = await getAccessToken();
+    const r = await fetch(`${darajaBaseUrl()}/mpesa/c2b/v1/registerurl`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ShortCode: process.env.MPESA_SHORTCODE,
+        ResponseType: "Completed",
+        ConfirmationURL: `${base2}/api/mpesa/c2b/${secret}/confirmation`,
+        ValidationURL: `${base2}/api/mpesa/c2b/${secret}/validation`
+      })
+    });
+    const data = await r.json();
+    if (!r.ok) return res.status(502).json({ error: data.errorMessage || data.ResponseDescription || "Safaricom rejected the registration" });
+    res.json({ ok: true, message: data.ResponseDescription || "Registered" });
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : "Failed to reach M-Pesa" });
+  }
+});
 
 // apps/api/src/routes/assets.ts
 var import_express10 = __toESM(require_express2());
+var ASSET_FUNDING2 = ["Bank", "Cash", "M-Pesa", "Owner Capital", "Opening Balance"];
 var assetsRouter = (0, import_express10.Router)();
 assetsRouter.use(requireAuth, requirePermission("canAccessFinance"));
 assetsRouter.get("/", async (req, res) => {
@@ -49690,8 +50767,13 @@ assetsRouter.get("/", async (req, res) => {
   const where = {};
   if (category) where.category = category;
   if (condition) where.condition = condition;
-  const assets = await prisma.asset.findMany({ where, orderBy: { name: "asc" } });
-  res.json(assets);
+  const assets = await prisma.asset.findMany({ where, orderBy: { name: "asc" }, include: { depreciations: true } });
+  res.json(
+    assets.map(({ depreciations, ...a2 }) => {
+      const accumulatedDepreciation = Math.round(depreciations.reduce((x, d) => x + d.amount, 0) * 100) / 100;
+      return { ...a2, accumulatedDepreciation, bookValue: a2.value != null ? Math.round((a2.value - accumulatedDepreciation) * 100) / 100 : null };
+    })
+  );
 });
 var assetSchema = external_exports.object({
   tag: external_exports.string().min(1, "Asset tag is required"),
@@ -49701,13 +50783,33 @@ var assetSchema = external_exports.object({
   location: external_exports.string().max(200).optional(),
   purchaseDate: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   value: external_exports.number().min(0).optional(),
-  notes: external_exports.string().max(500).optional()
+  notes: external_exports.string().max(500).optional(),
+  depreciationMethod: external_exports.enum(DEPRECIATION_METHODS).optional(),
+  usefulLifeYears: external_exports.number().positive().max(100).nullable().optional(),
+  depreciationRatePct: external_exports.number().positive().max(100).nullable().optional(),
+  salvageValue: external_exports.number().min(0).optional(),
+  fundedBy: external_exports.enum(ASSET_FUNDING2).optional()
 });
+function depreciationProblem(d) {
+  if (d.depreciationMethod === "Straight-line" && !d.usefulLifeYears) return "Straight-line depreciation needs a useful life (years)";
+  if (d.depreciationMethod === "Reducing balance" && !d.depreciationRatePct) return "Reducing-balance depreciation needs an annual rate (%)";
+  if ((d.depreciationMethod ?? "None") !== "None" && !(d.value && d.value > 0)) return "Depreciation needs the asset's cost (Value)";
+  if (d.salvageValue && d.value != null && d.salvageValue > d.value) return "Salvage value cannot be more than the cost";
+  return null;
+}
 assetsRouter.post("/", async (req, res) => {
   const parsed = assetSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const problem = depreciationProblem({ ...parsed.data, value: parsed.data.value ?? null });
+  if (problem) return res.status(400).json({ error: problem });
+  if ((parsed.data.depreciationMethod ?? "None") !== "None" && !parsed.data.purchaseDate) return res.status(400).json({ error: "Depreciation needs a purchase date" });
   const asset = await prisma.asset.create({
     data: {
+      depreciationMethod: parsed.data.depreciationMethod ?? "None",
+      usefulLifeYears: parsed.data.usefulLifeYears ?? null,
+      depreciationRatePct: parsed.data.depreciationRatePct ?? null,
+      salvageValue: parsed.data.salvageValue ?? 0,
+      fundedBy: parsed.data.fundedBy ?? "Owner Capital",
       tag: parsed.data.tag.trim(),
       name: parsed.data.name.trim(),
       category: parsed.data.category,
@@ -49730,7 +50832,12 @@ var assetUpdateSchema = external_exports.object({
   location: external_exports.string().max(200).optional(),
   purchaseDate: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   value: external_exports.number().min(0).nullable().optional(),
-  notes: external_exports.string().max(500).optional()
+  notes: external_exports.string().max(500).optional(),
+  depreciationMethod: external_exports.enum(DEPRECIATION_METHODS).optional(),
+  usefulLifeYears: external_exports.number().positive().max(100).nullable().optional(),
+  depreciationRatePct: external_exports.number().positive().max(100).nullable().optional(),
+  salvageValue: external_exports.number().min(0).optional(),
+  fundedBy: external_exports.enum(ASSET_FUNDING2).optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 assetsRouter.put("/:id", async (req, res) => {
   const parsed = assetUpdateSchema.safeParse(req.body);
@@ -49738,6 +50845,12 @@ assetsRouter.put("/:id", async (req, res) => {
   const data = { ...parsed.data };
   if (data.tag) data.tag = data.tag.trim();
   if (data.name) data.name = data.name.trim();
+  const current = await prisma.asset.findUnique({ where: { id: Number(req.params.id) } });
+  if (!current) return res.status(404).json({ error: "Asset not found" });
+  const merged = { ...current, ...data };
+  const problem = depreciationProblem({ depreciationMethod: merged.depreciationMethod, usefulLifeYears: merged.usefulLifeYears, depreciationRatePct: merged.depreciationRatePct, salvageValue: merged.salvageValue, value: merged.value });
+  if (problem) return res.status(400).json({ error: problem });
+  if (merged.depreciationMethod !== "None" && !merged.purchaseDate) return res.status(400).json({ error: "Depreciation needs a purchase date" });
   const asset = await prisma.asset.update({ where: { id: Number(req.params.id) }, data }).catch(() => null);
   if (!asset) return res.status(404).json({ error: "Asset not found (or that tag is already in use)" });
   res.json(asset);
@@ -49750,7 +50863,7 @@ assetsRouter.post("/:id/condition", async (req, res) => {
   const asset = await prisma.asset.findUnique({ where: { id: Number(req.params.id) } });
   if (!asset) return res.status(404).json({ error: "Asset not found" });
   if (asset.condition === condition) return res.status(400).json({ error: `Asset is already ${condition}` });
-  const updated = await prisma.asset.update({ where: { id: asset.id }, data: { condition } });
+  const updated = await prisma.asset.update({ where: { id: asset.id }, data: { condition, retiredOn: condition === "Retired" ? todayStr() : null } });
   res.json(updated);
 });
 assetsRouter.delete("/:id", requireRole("Admin"), async (req, res) => {
@@ -49764,7 +50877,7 @@ var import_client3 = require("@prisma/client");
 var dtfRouter = (0, import_express11.Router)();
 dtfRouter.use(requireAuth, requirePermission("canAccessDtf", "canManageDtf"));
 var manageOnly = requirePermission("canManageDtf");
-var dateStr = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
+var dateStr2 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
 async function getSettings() {
   return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
 }
@@ -49792,6 +50905,10 @@ async function materialLineItems(tx, lines) {
   }
   return items;
 }
+function resolvePaymentLines(d) {
+  const lines = d.payments && d.payments.length ? d.payments : d.amountPaid > 0 ? [{ method: d.paymentMethod, amount: d.amountPaid }] : [];
+  return { lines, paid: lines.reduce((a2, p) => a2 + p.amount, 0) };
+}
 async function createDtfOrder(tx, opts) {
   const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
   if (!staffExists) throw new Error("Your session is out of date (the underlying user record no longer exists) \u2014 please log out and log back in, then try again.");
@@ -49802,7 +50919,7 @@ async function createDtfOrder(tx, opts) {
   ];
   const totals = computeOrderTotals(
     { lineItems: lineItemInputs, orderDiscountPct: 0, orderDiscountAmt: 0 },
-    opts.amountPaid > 0 ? [{ date: todayStr(), amount: opts.amountPaid, method: opts.paymentMethod }] : []
+    opts.payments.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method }))
   );
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
   const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
@@ -49825,11 +50942,14 @@ async function createDtfOrder(tx, opts) {
           { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null },
           ...materialItems
         ]
-      },
-      payments: opts.amountPaid > 0 ? { create: [{ date: todayStr(), amount: opts.amountPaid, method: opts.paymentMethod, staffId: opts.staffId }] } : void 0
+      }
     },
     include: orderInclude
   });
+  if (opts.payments.length) {
+    await recordOrderPayments(tx, { id: order.id, kind: "walkin", status, corporateClient: null }, opts.payments, opts.staffId);
+    return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
+  }
   return order;
 }
 dtfRouter.get("/data", async (req, res) => {
@@ -49900,7 +51020,7 @@ dtfRouter.put("/settings", manageOnly, async (req, res) => {
   res.json(parsed.data);
 });
 var rollSchema = external_exports.object({
-  installedOn: dateStr.optional(),
+  installedOn: dateStr2.optional(),
   filmCost: external_exports.number().min(0).default(0),
   inkPowderCost: external_exports.number().min(0).default(0)
 });
@@ -49922,7 +51042,7 @@ dtfRouter.post("/rolls", manageOnly, async (req, res) => {
   if (!roll) return res.status(409).json({ error: "Another roll was just installed \u2014 try again" });
   res.status(201).json(roll);
 });
-var rollUpdateSchema = external_exports.object({ installedOn: dateStr, filmCost: external_exports.number().min(0), inkPowderCost: external_exports.number().min(0) }).partial().refine((o) => Object.keys(o).length > 0, { message: "No fields to update" });
+var rollUpdateSchema = external_exports.object({ installedOn: dateStr2, filmCost: external_exports.number().min(0), inkPowderCost: external_exports.number().min(0) }).partial().refine((o) => Object.keys(o).length > 0, { message: "No fields to update" });
 dtfRouter.put("/rolls/:id", manageOnly, async (req, res) => {
   const parsed = rollUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
@@ -49950,7 +51070,7 @@ async function openRoll(rollId) {
 }
 var saleSchema = external_exports.object({
   rollId: external_exports.string().min(1),
-  soldOn: dateStr.optional(),
+  soldOn: dateStr2.optional(),
   client: external_exports.string().max(200).default(""),
   phone: external_exports.string().max(40).default(""),
   metres: external_exports.number().positive("Metres must be greater than 0"),
@@ -49958,6 +51078,8 @@ var saleSchema = external_exports.object({
   // blank ⇒ standard price
   amountPaid: external_exports.number().min(0).default(0),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
+  // Preferred: any mix of methods, e.g. part cash and part M-Pesa. Overrides amountPaid/paymentMethod.
+  payments: external_exports.array(paymentLineSchema).max(6).optional(),
   materialLines: external_exports.array(materialLineSchema).default([])
 });
 dtfRouter.post("/sales", async (req, res) => {
@@ -49967,11 +51089,12 @@ dtfRouter.post("/sales", async (req, res) => {
   const found = await openRoll(d.rollId);
   if ("error" in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
-  const c = saleCalc(settings, d.metres, d.pricePerM ?? null, d.amountPaid);
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
+  const c = saleCalc(settings, d.metres, d.pricePerM ?? null, paid);
   if (!c.valid) {
     return res.status(400).json({ error: `Price must be between ${settings.minPricePerM} and ${settings.stdPricePerM} KES/m` });
   }
-  if (d.amountPaid > c.total) return res.status(400).json({ error: "Amount paid cannot exceed the sale total" });
+  if (paid > c.total) return res.status(400).json({ error: "Amount paid cannot exceed the sale total" });
   try {
     const { sale, order } = await prisma.$transaction(async (tx) => {
       const service = await tx.service.findFirst({ where: { name: "DTF Sheet (per metre)" } });
@@ -49982,8 +51105,7 @@ dtfRouter.post("/sales", async (req, res) => {
         staffId: req.user.id,
         serviceLine: { itemType: "per-metre", serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
-        amountPaid: d.amountPaid,
-        paymentMethod: d.paymentMethod
+        payments: paymentLines
       });
       const sale2 = await tx.dtfFilmSale.create({
         data: {
@@ -49994,7 +51116,7 @@ dtfRouter.post("/sales", async (req, res) => {
           pricePerM: c.price,
           stdPriceAtSale: settings.stdPricePerM,
           minPriceAtSale: settings.minPricePerM,
-          amountPaid: d.amountPaid,
+          amountPaid: paid,
           capturedByName: req.user.name,
           orderId: order2.id
         }
@@ -50048,7 +51170,7 @@ dtfRouter.delete("/sales/:id", requireRole("Admin"), async (req, res) => {
 });
 var jobSchema = external_exports.object({
   rollId: external_exports.string().min(1),
-  jobOn: dateStr.optional(),
+  jobOn: dateStr2.optional(),
   client: external_exports.string().max(200).default(""),
   phone: external_exports.string().max(40).default(""),
   runningMetres: external_exports.number().positive("Running metres must be greater than 0"),
@@ -50057,6 +51179,7 @@ var jobSchema = external_exports.object({
   // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
   amountPaid: external_exports.number().min(0).default(0),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
+  payments: external_exports.array(paymentLineSchema).max(6).optional(),
   materialLines: external_exports.array(materialLineSchema).default([])
 });
 dtfRouter.post("/jobs", async (req, res) => {
@@ -50068,7 +51191,8 @@ dtfRouter.post("/jobs", async (req, res) => {
   const settings = await getSettings();
   const c = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
-  if (d.amountPaid > jobTotal) return res.status(400).json({ error: "Amount paid cannot exceed the job total" });
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
+  if (paid > jobTotal) return res.status(400).json({ error: "Amount paid cannot exceed the job total" });
   try {
     const { job, order } = await prisma.$transaction(async (tx) => {
       const service = await tx.service.findFirst({ where: { name: "DTF Printing" } });
@@ -50079,8 +51203,7 @@ dtfRouter.post("/jobs", async (req, res) => {
         staffId: req.user.id,
         serviceLine: { itemType: "service", serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
         materialLines: d.materialLines,
-        amountPaid: d.amountPaid,
-        paymentMethod: d.paymentMethod
+        payments: paymentLines
       });
       const job2 = await tx.dtfArtworkJob.create({
         data: {
@@ -50107,11 +51230,761 @@ dtfRouter.delete("/jobs/:id", requireRole("Admin"), async (req, res) => {
   res.status(204).end();
 });
 
+// apps/api/src/routes/accounting.ts
+var import_express12 = __toESM(require_express2());
+
+// apps/api/src/accounting/reconcile.ts
+var key = (source, ref) => `${source}\0${ref}`;
+var fmt = (n) => `Ksh ${Math.round(n).toLocaleString("en-KE")}`;
+async function reconcile(from, to, asOf) {
+  const ledger = await loadLedger();
+  const inWindow = (d) => d >= from && d <= to;
+  const salesPosted = /* @__PURE__ */ new Map();
+  const expensePosted = /* @__PURE__ */ new Map();
+  const cashPosted = /* @__PURE__ */ new Map();
+  const add = (m, k, v) => m.set(k, round2((m.get(k) || 0) + v));
+  const cashIds = new Set([ACCT.cash, ACCT.mpesa, ACCT.card, ACCT.bank, ACCT.pettyCash].map((c) => ledger.byCode.get(c)?.id));
+  for (const p of ledger.postings) {
+    const a2 = ledger.byId.get(p.accountId);
+    if (!a2) continue;
+    const k = key(p.source, p.ref);
+    if (p.source === "Order" && (a2.type === "Income" || a2.code === ACCT.vatPayable)) add(salesPosted, k, p.credit - p.debit);
+    if (a2.type === "Expense") add(expensePosted, k, p.debit - p.credit);
+    if (p.source === "Payment" && cashIds.has(a2.id)) add(cashPosted, k, p.debit - p.credit);
+    if (p.source === "Payment" && a2.code === ACCT.unallocatedMpesa) add(cashPosted, k, p.debit - p.credit);
+  }
+  const expected = [];
+  const bucket = (source, label, side) => {
+    const b = { source, label, side, items: /* @__PURE__ */ new Map() };
+    expected.push(b);
+    return b;
+  };
+  const put = (b, ref, amount) => b.items.set(ref, round2((b.items.get(ref) || 0) + amount));
+  const orders = await prisma.order.findMany({ include: { lineItems: true, payments: true } });
+  const orderSales = bucket("Order", "Orders (invoiced / walk-in)", "sales");
+  const orderPayments = bucket("Payment", "Order payments received", "cash");
+  const overpaid = [];
+  for (const o of orders) {
+    const lines = o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    }));
+    const total = round2(computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal);
+    if ((o.kind === "walkin" || o.status !== "Quote") && total > 0) put(orderSales, o.orderNo, total);
+    const paid = round2(o.payments.reduce((a2, p) => a2 + p.amount, 0));
+    if (paid > 0) put(orderPayments, o.orderNo, paid);
+    if (paid > total + 0.5 && (o.kind === "walkin" || o.status !== "Quote")) {
+      overpaid.push({ source: "Order payments received", ref: o.orderNo, expected: total, posted: paid, problem: "Paid more than the order is worth \u2014 the extra sits as a credit owed to the customer" });
+    }
+  }
+  const expenses = bucket("Expense", "Expense entries", "expenses");
+  for (const e of await prisma.expense.findMany()) put(expenses, e.invoiceNumber || `EXP-${e.id}`, e.amount);
+  const wages = bucket("Wages", "Wages & salaries (gross)", "expenses");
+  for (const p of await prisma.payrollEntry.findMany()) put(wages, `WAGE-${p.id}`, p.grossPay);
+  const dep = bucket("Depreciation", "Asset depreciation", "expenses");
+  for (const d of await prisma.assetDepreciation.findMany({ include: { asset: true } })) put(dep, `${d.asset.tag}@${d.period}`, d.amount);
+  const sources = [];
+  const issues = [...overpaid];
+  for (const b of expected) {
+    const posted = b.side === "sales" ? salesPosted : b.side === "cash" ? cashPosted : expensePosted;
+    let expectedTotal = 0;
+    let postedTotal = 0;
+    for (const [ref, exp] of b.items) {
+      expectedTotal += exp;
+      const got = posted.get(key(b.source, ref)) || 0;
+      postedTotal += got;
+      if (Math.abs(exp - got) > 0.02) {
+        issues.push({ source: b.label, ref, expected: round2(exp), posted: round2(got), problem: got === 0 ? "Not posted to the books" : "Posted for a different amount" });
+      }
+    }
+    for (const [k, v] of posted) {
+      const [source, ref] = k.split("\0");
+      if (source === b.source && !b.items.has(ref) && Math.abs(v) > 0.02) {
+        issues.push({ source: b.label, ref, expected: 0, posted: round2(v), problem: "Posted, but the record itself shows nothing to book" });
+      }
+    }
+    sources.push({ source: b.source, label: b.label, side: b.side, records: b.items.size, expected: round2(expectedTotal), posted: round2(postedTotal), difference: round2(postedTotal - expectedTotal) });
+  }
+  const integrity = [];
+  const tb = await buildTrialBalance(asOf);
+  integrity.push({ name: "Debits equal credits (trial balance)", ok: tb.balanced, detail: tb.balanced ? `Both sides total ${fmt(tb.debit)}` : `Debits ${fmt(tb.debit)} vs credits ${fmt(tb.credit)} \u2014 out by ${fmt(Math.abs(tb.debit - tb.credit))}` });
+  const bs = await buildBalanceSheet(asOf);
+  integrity.push({ name: "Balance sheet balances (assets = liabilities + equity)", ok: bs.balanced, detail: bs.balanced ? `Assets ${fmt(bs.assets.total)}` : `Assets ${fmt(bs.assets.total)} vs liabilities + equity ${fmt(bs.liabilitiesAndEquity)}` });
+  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
+  const bal = (code) => {
+    const a2 = ledger.byCode.get(code);
+    return a2 ? naturalBalance(a2.type, sums.get(a2.id)) : 0;
+  };
+  const ar = await buildReceivablesAging(asOf);
+  const arLedger = bal(ACCT.receivables);
+  const arExpected = round2(ar.total + ar.overpaidCredits);
+  integrity.push({ name: "Accounts Receivable agrees with the receivables ageing", ok: Math.abs(arLedger - arExpected) < 0.02, detail: `Ledger ${fmt(arLedger)} vs ageing ${fmt(arExpected)}` });
+  const ap = await buildPayablesAging(asOf);
+  const apLedger = bal(ACCT.payables);
+  const unpaidIds = new Set((await prisma.expense.findMany({ where: { paid: false }, select: { id: true } })).map((e) => e.id));
+  const looseSupplierNotes = (await prisma.adjustmentNote.findMany({ where: { type: "SupplierDebit", date: { lte: asOf } } })).filter((n) => !n.expenseId || !unpaidIds.has(n.expenseId)).reduce((a2, n) => a2 + n.total, 0);
+  const apExpected = round2(ap.total - looseSupplierNotes);
+  integrity.push({ name: "Accounts Payable agrees with the payables ageing", ok: Math.abs(apLedger - apExpected) < 0.02, detail: `Ledger ${fmt(apLedger)} vs ageing ${fmt(apExpected)}` });
+  const petty = ledger.byCode.get(ACCT.pettyCash);
+  let pettyLow = null;
+  if (petty) {
+    const byDay = /* @__PURE__ */ new Map();
+    for (const p of ledger.postings.filter((x) => x.accountId === petty.id)) byDay.set(p.date, (byDay.get(p.date) || 0) + p.debit - p.credit);
+    let run = 0;
+    for (const d of [...byDay.keys()].sort()) {
+      run = round2(run + byDay.get(d));
+      if (run < -5e-3 && (!pettyLow || run < pettyLow.balance)) pettyLow = { date: d, balance: run };
+    }
+  }
+  integrity.push({ name: "Petty cash was never overdrawn", ok: !pettyLow, detail: pettyLow ? `Went to ${fmt(pettyLow.balance)} on ${pettyLow.date}` : `Float now ${fmt(bal(ACCT.pettyCash))}` });
+  const cf = await buildCashFlowStatement(from, to);
+  integrity.push({ name: "Cash flow statement reconciles to the cash accounts", ok: cf.reconciles, detail: `Opening ${fmt(cf.openingCash)} \u2192 closing ${fmt(cf.closingCash)}` });
+  const unmatched = await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: "Unmatched" } });
+  const unmatchedTotal = round2(unmatched.reduce((a2, t) => a2 + t.amount, 0));
+  integrity.push({ name: "No M-Pesa receipts waiting to be matched", ok: unmatched.length === 0, detail: unmatched.length ? `${unmatched.length} receipt(s), ${fmt(unmatchedTotal)}, held in Unallocated M-Pesa Receipts` : "Every M-Pesa receipt is matched or dismissed" });
+  const unallocated = bal(ACCT.unallocatedMpesa);
+  integrity.push({ name: "Unallocated M-Pesa account equals the unmatched receipts", ok: Math.abs(unallocated - unmatchedTotal) < 0.02, detail: `Account ${fmt(unallocated)} vs receipts ${fmt(unmatchedTotal)}` });
+  const catchAll = [];
+  const heads = await prisma.expenseHead.findMany();
+  const linkedHeads = new Set(heads.filter((h) => h.accountId).map((h) => h.name));
+  for (const e of await prisma.expense.findMany()) {
+    if (!linkedHeads.has(e.category)) catchAll.push({ kind: "expense", ref: e.invoiceNumber || `EXP-${e.id}`, head: e.category, amount: e.amount, account: "6999 Uncategorised Expenses" });
+  }
+  const notInBooks = [];
+  const purchases = (await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } } })).filter((p) => inWindow(p.date));
+  notInBooks.push({
+    label: "Stock purchases with no linked expense",
+    amount: round2(purchases.reduce((a2, p) => a2 + p.totalCost, 0)),
+    count: purchases.length,
+    note: "A purchase only reaches the books through the expense it is linked to. Link or log the supplier invoice under Finance \u2192 Expenses."
+  });
+  const assets = (await prisma.asset.findMany({ where: { OR: [{ purchaseDate: null }, { value: null }] } })).filter((a2) => a2.condition !== "Retired");
+  notInBooks.push({
+    label: "Assets with no purchase date or value (not on the balance sheet)",
+    amount: 0,
+    count: assets.length,
+    note: "Give each asset a purchase date and cost in the Asset Register so it is capitalised and can depreciate."
+  });
+  const undepreciated = await prisma.asset.findMany({ where: { depreciationMethod: "None", value: { gt: 0 }, condition: { not: "Retired" } } });
+  notInBooks.push({
+    label: "Assets with no depreciation method set",
+    amount: round2(undepreciated.reduce((a2, x) => a2 + (x.value ?? 0), 0)),
+    count: undepreciated.length,
+    note: "These stay on the balance sheet at full cost. Set a method and useful life in the Asset Register for them to depreciate automatically."
+  });
+  const unverified = (await prisma.payment.findMany({ where: { method: "M-Pesa", reference: null } })).filter((p) => inWindow(p.date));
+  notInBooks.push({
+    label: "M-Pesa payments recorded with no M-Pesa receipt code",
+    amount: round2(unverified.reduce((a2, p) => a2 + p.amount, 0)),
+    count: unverified.length,
+    note: "Without the receipt code these cannot be matched against the M-Pesa statement. Add the code when recording an M-Pesa payment."
+  });
+  const allPosted = issues.length === 0 && catchAll.length === 0 && integrity.every((c) => c.ok);
+  return { sources, issues, integrity, catchAll, notInBooks, allPosted };
+}
+
+// apps/api/src/accounting/notes.ts
+var NoteError = class extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+};
+var PREFIX = { Credit: "CN", Debit: "DN", SupplierDebit: "SDN" };
+async function nextNoteNumber(type) {
+  const prefix = PREFIX[type];
+  const year = (/* @__PURE__ */ new Date()).getFullYear();
+  const rows = await prisma.adjustmentNote.findMany({ where: { number: { startsWith: `${prefix}-${year}-` } }, select: { number: true } });
+  let highest = 0;
+  for (const r of rows) {
+    const m = new RegExp(`^${prefix}-${year}-(\\d+)$`).exec(r.number);
+    if (m) highest = Math.max(highest, Number(m[1]));
+  }
+  return `${prefix}-${year}-${String(highest + 1).padStart(3, "0")}`;
+}
+function toLineInput(li) {
+  return {
+    itemType: li.itemType,
+    serviceId: li.serviceId,
+    materialId: li.materialId,
+    qty: li.qty,
+    unitPrice: li.unitPrice,
+    discountPct: li.discountPct,
+    discountAmt: li.discountAmt,
+    heatPressFee: li.heatPressFee
+  };
+}
+async function creditableLines(orderId) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { lineItems: { include: { service: true, material: true } }, payments: true, notes: true }
+  });
+  if (!order) return null;
+  const inputs = order.lineItems.map(toLineInput);
+  const totals = computeOrderTotals({ lineItems: inputs, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt });
+  const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
+  const scale = subtotal > 0 ? totals.grandTotal / subtotal : 0;
+  const lines = order.lineItems.map((li, i) => ({
+    lineId: li.id,
+    desc: li.material?.name ?? li.service?.name ?? "Item",
+    qty: li.qty,
+    lineQty: li.qty,
+    unitGross: li.qty > 0 ? round2(buildLineTotal(inputs[i]) * scale / li.qty) : 0,
+    amount: round2(buildLineTotal(inputs[i]) * scale),
+    material: li.itemType === "material"
+  }));
+  const alreadyCredited = round2(order.notes.filter((n) => n.type === "Credit").reduce((a2, n) => a2 + n.total, 0));
+  const debited = order.notes.filter((n) => n.type === "Debit").reduce((a2, n) => a2 + n.total, 0);
+  const paid = order.payments.reduce((a2, p) => a2 + p.amount, 0);
+  const outstanding = round2(totals.grandTotal + debited - paid - order.notes.filter((n) => n.type === "Credit").reduce((a2, n) => a2 + n.receivableAmt, 0));
+  return { lines, total: round2(totals.grandTotal), alreadyCredited, outstanding };
+}
+async function issueCreditNote(input) {
+  if (!input.reason.trim()) throw new NoteError(400, "A reason is required");
+  const info = await creditableLines(input.orderId);
+  if (!info) throw new NoteError(404, "Order not found");
+  const order = await prisma.order.findUniqueOrThrow({ where: { id: input.orderId }, include: { corporateClient: true } });
+  if (order.kind === "corporate" && order.status === "Quote") throw new NoteError(400, "A quotation is only an offer \u2014 nothing has been sold to credit");
+  let gross = 0;
+  const picked = [];
+  if (input.items && input.items.length) {
+    for (const it of input.items) {
+      const line = info.lines.find((l) => l.lineId === it.lineId);
+      if (!line) throw new NoteError(400, "A chosen line does not belong to this order");
+      if (!(it.qty > 0) || it.qty > line.lineQty + 1e-9) throw new NoteError(400, `Quantity for \u201C${line.desc}\u201D must be between 0 and ${line.lineQty}`);
+      const amount = round2(line.unitGross * it.qty);
+      picked.push({ lineId: line.lineId, desc: line.desc, qty: it.qty, amount, material: line.material });
+      gross += amount;
+    }
+  } else if (input.amount && input.amount > 0) {
+    gross = input.amount;
+  } else {
+    throw new NoteError(400, "Choose the items being credited, or enter an amount");
+  }
+  gross = round2(gross);
+  if (gross <= 0) throw new NoteError(400, "The amount must be greater than zero");
+  if (gross > round2(info.total - info.alreadyCredited) + 0.01) {
+    throw new NoteError(400, `This order is only worth Ksh ${Math.round(info.total - info.alreadyCredited).toLocaleString("en-KE")} after earlier credit notes`);
+  }
+  const { net: net8, vat, total } = splitGross(gross, VAT_RATE);
+  const receivableAmt = round2(Math.min(total, Math.max(0, info.outstanding)));
+  const creditAmt = round2(total - receivableAmt);
+  let refundAmt = 0;
+  let refundMethod = null;
+  if (input.refund && input.refund.amount > 0) {
+    if (input.refund.amount > creditAmt + 0.01) throw new NoteError(400, `Only Ksh ${Math.round(creditAmt).toLocaleString("en-KE")} of this note can be refunded \u2014 the rest reduces what the customer still owes`);
+    refundAmt = round2(input.refund.amount);
+    refundMethod = input.refund.method;
+  }
+  const note = await prisma.$transaction(async (tx) => {
+    if (input.restock) {
+      for (const p of picked.filter((x) => x.material)) {
+        const li = await tx.orderLineItem.findUnique({ where: { id: p.lineId } });
+        if (li?.materialId) await tx.material.update({ where: { id: li.materialId }, data: { stockQty: { increment: p.qty } } });
+      }
+    }
+    return tx.adjustmentNote.create({
+      data: {
+        number: await nextNoteNumber("Credit"),
+        type: "Credit",
+        date: input.date,
+        party: order.customerName || order.corporateClient?.name || "Customer",
+        orderId: order.id,
+        reason: input.reason.trim().slice(0, 300),
+        itemsJson: picked.length ? JSON.stringify(picked) : null,
+        net: net8,
+        vat,
+        total,
+        receivableAmt,
+        creditAmt,
+        refundAmt,
+        refundMethod,
+        restocked: !!input.restock && picked.some((p) => p.material),
+        createdByName: input.createdBy
+      }
+    });
+  });
+  return note;
+}
+async function issueDebitNote(input) {
+  if (!input.reason.trim()) throw new NoteError(400, "A reason is required");
+  if (!(input.amount > 0)) throw new NoteError(400, "The amount must be greater than zero");
+  let party = (input.party || "").trim();
+  if (input.orderId) {
+    const order = await prisma.order.findUnique({ where: { id: input.orderId }, include: { corporateClient: true } });
+    if (!order) throw new NoteError(404, "Order not found");
+    if (order.kind === "corporate" && order.status === "Quote") throw new NoteError(400, "A quotation is only an offer \u2014 invoice it first");
+    party = order.customerName || order.corporateClient?.name || party || "Customer";
+  } else {
+    throw new NoteError(400, "Choose the order this extra charge belongs to (so it appears in Accounts Receivable)");
+  }
+  const { net: net8, vat, total } = splitGross(input.amount, VAT_RATE);
+  return prisma.adjustmentNote.create({
+    data: {
+      number: await nextNoteNumber("Debit"),
+      type: "Debit",
+      date: input.date,
+      party,
+      orderId: input.orderId,
+      reason: input.reason.trim().slice(0, 300),
+      net: net8,
+      vat,
+      total,
+      incomeAccountId: input.incomeAccountId ?? null,
+      createdByName: input.createdBy
+    }
+  });
+}
+async function issueSupplierDebitNote(input) {
+  if (!input.reason.trim()) throw new NoteError(400, "A reason is required");
+  if (!(input.amount > 0)) throw new NoteError(400, "The amount must be greater than zero");
+  let supplier = (input.supplier || "").trim();
+  if (input.expenseId) {
+    const e = await prisma.expense.findUnique({ where: { id: input.expenseId }, include: { notes: true } });
+    if (!e) throw new NoteError(404, "Expense not found");
+    const already = e.notes.filter((n) => n.type === "SupplierDebit").reduce((a2, n) => a2 + n.total, 0);
+    if (input.amount + already > e.amount + 0.01) throw new NoteError(400, `That expense was only Ksh ${Math.round(e.amount).toLocaleString("en-KE")}`);
+    supplier = e.supplier || supplier;
+  }
+  if (!supplier) throw new NoteError(400, "Enter the supplier this note is for");
+  const total = round2(input.amount);
+  return prisma.adjustmentNote.create({
+    data: {
+      number: await nextNoteNumber("SupplierDebit"),
+      type: "SupplierDebit",
+      date: input.date,
+      party: supplier,
+      expenseId: input.expenseId ?? null,
+      reason: input.reason.trim().slice(0, 300),
+      net: total,
+      vat: 0,
+      total,
+      createdByName: input.createdBy
+    }
+  });
+}
+
+// apps/api/src/accounting/depreciation.ts
+function previousMonth(period) {
+  const [y, m] = period.split("-").map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
+}
+async function runDepreciation(today = todayStr()) {
+  const through = previousMonth(monthOf(today));
+  let created = 0;
+  const assets = await prisma.asset.findMany({
+    where: { depreciationMethod: { not: "None" }, purchaseDate: { not: null }, value: { gt: 0 } },
+    include: { depreciations: true }
+  });
+  for (const a2 of assets) {
+    const charged = new Set(a2.depreciations.map((d) => d.period));
+    let accumulated = a2.depreciations.reduce((x, d) => x + d.amount, 0);
+    for (const period of depreciationMonthsDue(a2.purchaseDate, through, charged, a2.condition === "Retired" ? a2.retiredOn : null)) {
+      const amount = monthlyDepreciation(
+        { cost: a2.value ?? 0, salvage: a2.salvageValue, method: a2.depreciationMethod, lifeYears: a2.usefulLifeYears, ratePct: a2.depreciationRatePct },
+        accumulated
+      );
+      if (amount <= 0) break;
+      try {
+        await prisma.assetDepreciation.create({ data: { assetId: a2.id, period, date: monthEnd(period), amount } });
+        accumulated += amount;
+        created++;
+      } catch {
+      }
+    }
+  }
+  return created;
+}
+var running = null;
+function runDepreciationOnce() {
+  if (!running) running = runDepreciation().finally(() => running = null);
+  return running;
+}
+function startDepreciationSchedule() {
+  const tick = () => runDepreciationOnce().catch((e) => console.error("Depreciation run failed", e));
+  tick();
+  setInterval(tick, 6 * 60 * 60 * 1e3).unref();
+}
+async function depreciationSchedule(from, to, asOf) {
+  const assets = await prisma.asset.findMany({ include: { depreciations: true }, orderBy: { tag: "asc" } });
+  return assets.map((a2) => {
+    const cost = a2.value ?? 0;
+    const chargedToDate = a2.depreciations.filter((d) => d.date <= asOf).reduce((x, d) => x + d.amount, 0);
+    const thisPeriod = a2.depreciations.filter((d) => d.date >= from && d.date <= to).reduce((x, d) => x + d.amount, 0);
+    const monthly = monthlyDepreciation(
+      { cost, salvage: a2.salvageValue, method: a2.depreciationMethod, lifeYears: a2.usefulLifeYears, ratePct: a2.depreciationRatePct },
+      chargedToDate
+    );
+    return {
+      assetId: a2.id,
+      tag: a2.tag,
+      name: a2.name,
+      category: a2.category,
+      condition: a2.condition,
+      purchaseDate: a2.purchaseDate,
+      method: a2.depreciationMethod,
+      cost,
+      salvage: a2.salvageValue,
+      lifeYears: a2.usefulLifeYears,
+      ratePct: a2.depreciationRatePct,
+      chargedToDate: Math.round(chargedToDate * 100) / 100,
+      bookValue: Math.round((cost - chargedToDate) * 100) / 100,
+      monthlyCharge: a2.condition === "Retired" ? 0 : monthly,
+      thisPeriod: Math.round(thisPeriod * 100) / 100
+    };
+  });
+}
+
+// apps/api/src/routes/accounting.ts
+var accountingRouter = (0, import_express12.Router)();
+accountingRouter.use(requireAuth);
+var dateStr3 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+var isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+async function prepare(_req, _res, next) {
+  await ensureChartOnce();
+  await runDepreciationOnce();
+  next();
+}
+var mpesaAccess = [requirePermission("canAccessAccounting", "canManagePayments"), prepare];
+var accountingOnly = [requirePermission("canAccessAccounting"), prepare];
+function range(req) {
+  const from = req.query.from;
+  const to = req.query.to;
+  return isDate(from) && isDate(to) ? { from, to } : null;
+}
+var asOfOf = (req) => isDate(req.query.asOf) ? req.query.asOf : todayStr();
+accountingRouter.get("/accounts", ...accountingOnly, async (req, res) => {
+  const asOf = asOfOf(req);
+  const ledger = await loadLedger();
+  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
+  const accounts = await prisma.account.findMany({ orderBy: { code: "asc" } });
+  res.json(accounts.map((a2) => ({ ...a2, balance: naturalBalance(a2.type, sums.get(a2.id)) })));
+});
+var accountSchema = external_exports.object({
+  code: external_exports.string().regex(/^\d{3,6}$/, "Account code must be 3 to 6 digits"),
+  name: external_exports.string().trim().min(1).max(100),
+  type: external_exports.enum(ACCOUNT_TYPES),
+  subtype: external_exports.string().max(40).optional(),
+  description: external_exports.string().max(300).optional()
+});
+accountingRouter.post("/accounts", ...accountingOnly, async (req, res) => {
+  const parsed = accountSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  if (await prisma.account.findUnique({ where: { code: parsed.data.code } })) return res.status(400).json({ error: "That account code is already in use" });
+  const acc = await prisma.account.create({ data: { ...parsed.data, subtype: parsed.data.subtype ?? "", description: parsed.data.description ?? "" } });
+  res.status(201).json(acc);
+});
+accountingRouter.put("/accounts/:id", ...accountingOnly, async (req, res) => {
+  const acc = await prisma.account.findUnique({ where: { id: Number(req.params.id) } });
+  if (!acc) return res.status(404).json({ error: "Account not found" });
+  const parsed = external_exports.object({ name: external_exports.string().trim().min(1).max(100).optional(), description: external_exports.string().max(300).optional(), active: external_exports.boolean().optional(), type: external_exports.enum(ACCOUNT_TYPES).optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  if (acc.system && (parsed.data.type && parsed.data.type !== acc.type)) return res.status(400).json({ error: "A built-in account cannot change type" });
+  if (acc.system && parsed.data.active === false) return res.status(400).json({ error: "A built-in account cannot be deactivated" });
+  res.json(await prisma.account.update({ where: { id: acc.id }, data: parsed.data }));
+});
+accountingRouter.get("/links", ...accountingOnly, async (_req, res) => {
+  const [heads, services2, materials] = await Promise.all([
+    prisma.expenseHead.findMany({ orderBy: { name: "asc" }, include: { account: true } }),
+    prisma.service.findMany({ orderBy: { name: "asc" }, include: { account: true } }),
+    prisma.material.findMany({ orderBy: { name: "asc" }, include: { account: true } })
+  ]);
+  const merch = await prisma.account.findUnique({ where: { code: ACCT.merchandiseIncome } });
+  res.json({
+    expenseHeads: heads.map((h) => ({ id: h.id, name: h.name, accountId: h.accountId, account: h.account ? `${h.account.code} ${h.account.name}` : null })),
+    services: services2.map((s) => ({ id: s.id, name: s.name, accountId: s.accountId, account: s.account ? `${s.account.code} ${s.account.name}` : null })),
+    materials: materials.map((m) => ({ id: m.id, name: m.name, accountId: m.accountId, account: m.account ? `${m.account.code} ${m.account.name}` : merch ? `${merch.code} ${merch.name} (default)` : null }))
+  });
+});
+var linkSchema = external_exports.object({ accountId: external_exports.number().int().nullable() });
+async function setLink(req, res, kind) {
+  const parsed = linkSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose an account" });
+  const id = Number(req.params.id);
+  try {
+    const accountId = await validateAccountChoice(parsed.data.accountId, kind === "expenseHead" ? "Expense" : "Income");
+    if (kind === "expenseHead") {
+      if (!accountId) return res.status(400).json({ error: "An expense head must be linked to an Expense account" });
+      await prisma.expenseHead.update({ where: { id }, data: { accountId } });
+    } else if (kind === "service") {
+      if (!accountId) return res.status(400).json({ error: "A service must be linked to an Income account" });
+      await prisma.service.update({ where: { id }, data: { accountId } });
+    } else {
+      await prisma.material.update({ where: { id }, data: { accountId } });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Could not link" });
+  }
+}
+accountingRouter.put("/links/expense-head/:id", ...accountingOnly, (req, res) => setLink(req, res, "expenseHead"));
+accountingRouter.put("/links/service/:id", ...accountingOnly, (req, res) => setLink(req, res, "service"));
+accountingRouter.put("/links/material/:id", ...accountingOnly, (req, res) => setLink(req, res, "material"));
+var JOURNAL_SOURCES = ["Manual", "Opening", "Capital", "Drawings", "BankDeposit", "TaxPayment"];
+accountingRouter.get("/journals", ...accountingOnly, async (req, res) => {
+  const r = range(req);
+  const entries = await prisma.journalEntry.findMany({
+    where: r ? { date: { gte: r.from, lte: r.to } } : void 0,
+    include: { lines: { include: { account: true } } },
+    orderBy: [{ date: "desc" }, { id: "desc" }]
+  });
+  res.json(entries.map((e) => ({ ...e, lines: e.lines.map((l) => ({ id: l.id, accountId: l.accountId, account: `${l.account.code} ${l.account.name}`, debit: l.debit, credit: l.credit, memo: l.memo })) })));
+});
+var journalSchema = external_exports.object({
+  date: dateStr3,
+  memo: external_exports.string().trim().min(1).max(200),
+  source: external_exports.enum(JOURNAL_SOURCES).default("Manual"),
+  lines: external_exports.array(external_exports.object({ accountId: external_exports.number().int(), debit: external_exports.number().min(0).default(0), credit: external_exports.number().min(0).default(0), memo: external_exports.string().max(200).optional() })).min(2)
+});
+accountingRouter.post("/journals", ...accountingOnly, async (req, res) => {
+  const parsed = journalSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const lines = d.lines.filter((l) => l.debit > 0 || l.credit > 0);
+  if (lines.length < 2) return res.status(400).json({ error: "A journal needs at least two lines with an amount" });
+  if (lines.some((l) => l.debit > 0 && l.credit > 0)) return res.status(400).json({ error: "A line is either a debit or a credit, not both" });
+  const debit = round2(lines.reduce((a2, l) => a2 + l.debit, 0));
+  const credit = round2(lines.reduce((a2, l) => a2 + l.credit, 0));
+  if (Math.abs(debit - credit) > 5e-3) return res.status(400).json({ error: `Debits (${debit}) and credits (${credit}) must be equal` });
+  const accounts = await prisma.account.findMany({ where: { id: { in: lines.map((l) => l.accountId) } } });
+  if (accounts.length !== new Set(lines.map((l) => l.accountId)).size) return res.status(400).json({ error: "A chosen account does not exist" });
+  if (accounts.some((a2) => !a2.active)) return res.status(400).json({ error: "A chosen account is inactive" });
+  if (accounts.some((a2) => a2.code === ACCT.pettyCash)) {
+    return res.status(400).json({ error: "Petty cash is only moved by a top-up (Finance \u2192 Petty Cash) and by expenses and wages \u2014 it cannot be journalled directly" });
+  }
+  if (accounts.some((a2) => a2.code === ACCT.receivables || a2.code === ACCT.payables || a2.code === ACCT.unallocatedMpesa)) {
+    return res.status(400).json({ error: "Receivables, payables and unallocated M-Pesa move only through orders, bills, notes and M-Pesa matching \u2014 not by journal" });
+  }
+  const count = await prisma.journalEntry.count();
+  const entry = await prisma.journalEntry.create({
+    data: {
+      ref: `JV-${(/* @__PURE__ */ new Date()).getFullYear()}-${String(count + 1).padStart(4, "0")}-${Date.now().toString(36).slice(-3).toUpperCase()}`,
+      date: d.date,
+      memo: d.memo,
+      source: d.source,
+      createdByName: req.user.name,
+      lines: { create: lines.map((l) => ({ accountId: l.accountId, debit: round2(l.debit), credit: round2(l.credit), memo: l.memo ?? "" })) }
+    },
+    include: { lines: true }
+  });
+  res.status(201).json(entry);
+});
+accountingRouter.delete("/journals/:id", requireRole("Admin"), prepare, async (req, res) => {
+  await prisma.journalEntry.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
+  res.status(204).end();
+});
+accountingRouter.get("/ledger", ...accountingOnly, async (req, res) => {
+  const r = range(req);
+  if (!r) return res.status(400).json({ error: "from and to are required (YYYY-MM-DD)" });
+  const out = await buildAccountLedger(Number(req.query.accountId), r.from, r.to);
+  if (!out) return res.status(404).json({ error: "Account not found" });
+  res.json(out);
+});
+accountingRouter.get("/profit-loss", ...accountingOnly, async (req, res) => {
+  const r = range(req);
+  if (!r) return res.status(400).json({ error: "from and to are required (YYYY-MM-DD)" });
+  res.json(await buildProfitLoss(r.from, r.to));
+});
+accountingRouter.get("/balance-sheet", ...accountingOnly, async (req, res) => res.json(await buildBalanceSheet(asOfOf(req))));
+accountingRouter.get("/trial-balance", ...accountingOnly, async (req, res) => res.json(await buildTrialBalance(asOfOf(req))));
+accountingRouter.get("/cash-flow", ...accountingOnly, async (req, res) => {
+  const r = range(req);
+  if (!r) return res.status(400).json({ error: "from and to are required (YYYY-MM-DD)" });
+  res.json(await buildCashFlowStatement(r.from, r.to));
+});
+accountingRouter.get("/receivables", ...accountingOnly, async (req, res) => res.json(await buildReceivablesAging(asOfOf(req))));
+accountingRouter.get("/payables", ...accountingOnly, async (req, res) => res.json(await buildPayablesAging(asOfOf(req))));
+accountingRouter.get("/reconcile", ...accountingOnly, async (req, res) => {
+  const r = range(req);
+  if (!r) return res.status(400).json({ error: "from and to are required (YYYY-MM-DD)" });
+  res.json(await reconcile(r.from, r.to, asOfOf(req)));
+});
+accountingRouter.get("/depreciation", ...accountingOnly, async (req, res) => {
+  const r = range(req) ?? { from: `${todayStr().slice(0, 4)}-01-01`, to: todayStr() };
+  const rows = await depreciationSchedule(r.from, r.to, asOfOf(req));
+  res.json({
+    from: r.from,
+    to: r.to,
+    rows,
+    totals: {
+      cost: round2(rows.reduce((a2, x) => a2 + x.cost, 0)),
+      chargedToDate: round2(rows.reduce((a2, x) => a2 + x.chargedToDate, 0)),
+      bookValue: round2(rows.reduce((a2, x) => a2 + x.bookValue, 0)),
+      thisPeriod: round2(rows.reduce((a2, x) => a2 + x.thisPeriod, 0))
+    },
+    methods: DEPRECIATION_METHODS
+  });
+});
+accountingRouter.post("/depreciation/run", ...accountingOnly, async (_req, res) => {
+  res.json({ created: await runDepreciationOnce() });
+});
+accountingRouter.get("/notes", ...accountingOnly, async (req, res) => {
+  const r = range(req);
+  const notes = await prisma.adjustmentNote.findMany({
+    where: r ? { date: { gte: r.from, lte: r.to } } : void 0,
+    include: { order: true, expense: true },
+    orderBy: [{ date: "desc" }, { id: "desc" }]
+  });
+  res.json(
+    notes.map((n) => ({
+      id: n.id,
+      number: n.number,
+      type: n.type,
+      date: n.date,
+      party: n.party,
+      reason: n.reason,
+      net: n.net,
+      vat: n.vat,
+      total: n.total,
+      receivableAmt: n.receivableAmt,
+      creditAmt: n.creditAmt,
+      refundAmt: n.refundAmt,
+      refundMethod: n.refundMethod,
+      restocked: n.restocked,
+      createdByName: n.createdByName,
+      against: n.order ? n.order.orderNo : n.expense ? `${n.expense.invoiceNumber || `EXP-${n.expense.id}`} (${n.expense.category})` : "",
+      items: n.itemsJson ? JSON.parse(n.itemsJson) : null
+    }))
+  );
+});
+accountingRouter.get("/notes/sources", ...accountingOnly, async (_req, res) => {
+  const [orders, expenses] = await Promise.all([
+    prisma.order.findMany({ where: { OR: [{ kind: "walkin" }, { status: { not: "Quote" } }] }, include: { corporateClient: true }, orderBy: { id: "desc" }, take: 300 }),
+    prisma.expense.findMany({ orderBy: { id: "desc" }, take: 300 })
+  ]);
+  res.json({
+    orders: orders.map((o) => ({ id: o.id, orderNo: o.orderNo, party: o.customerName || o.corporateClient?.name || "Customer", date: o.createdDate, status: o.status })),
+    expenses: expenses.map((e) => ({ id: e.id, ref: e.invoiceNumber || `EXP-${e.id}`, supplier: e.supplier, category: e.category, amount: e.amount, date: e.date }))
+  });
+});
+accountingRouter.get("/notes/order/:id", ...accountingOnly, async (req, res) => {
+  const info = await creditableLines(Number(req.params.id));
+  if (!info) return res.status(404).json({ error: "Order not found" });
+  res.json(info);
+});
+function noteError(res, e) {
+  if (e instanceof NoteError) return res.status(e.status).json({ error: e.message });
+  throw e;
+}
+var creditSchema = external_exports.object({
+  orderId: external_exports.number().int(),
+  reason: external_exports.string().min(1),
+  items: external_exports.array(external_exports.object({ lineId: external_exports.number().int(), qty: external_exports.number().positive() })).optional(),
+  amount: external_exports.number().positive().optional(),
+  restock: external_exports.boolean().optional(),
+  refund: external_exports.object({ method: external_exports.enum(PAYOUT_METHODS), amount: external_exports.number().positive() }).nullable().optional(),
+  date: dateStr3.optional()
+});
+accountingRouter.post("/notes/credit", ...accountingOnly, async (req, res) => {
+  const parsed = creditSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  try {
+    res.status(201).json(await issueCreditNote({ ...parsed.data, date: parsed.data.date ?? todayStr(), createdBy: req.user.name }));
+  } catch (e) {
+    noteError(res, e);
+  }
+});
+var debitSchema = external_exports.object({ orderId: external_exports.number().int(), reason: external_exports.string().min(1), amount: external_exports.number().positive(), incomeAccountId: external_exports.number().int().nullable().optional(), date: dateStr3.optional() });
+accountingRouter.post("/notes/debit", ...accountingOnly, async (req, res) => {
+  const parsed = debitSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  try {
+    res.status(201).json(await issueDebitNote({ ...parsed.data, date: parsed.data.date ?? todayStr(), createdBy: req.user.name }));
+  } catch (e) {
+    noteError(res, e);
+  }
+});
+var supplierSchema = external_exports.object({ expenseId: external_exports.number().int().nullable().optional(), supplier: external_exports.string().optional(), reason: external_exports.string().min(1), amount: external_exports.number().positive(), date: dateStr3.optional() });
+accountingRouter.post("/notes/supplier", ...accountingOnly, async (req, res) => {
+  const parsed = supplierSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  try {
+    res.status(201).json(await issueSupplierDebitNote({ ...parsed.data, date: parsed.data.date ?? todayStr(), createdBy: req.user.name }));
+  } catch (e) {
+    noteError(res, e);
+  }
+});
+accountingRouter.get("/mpesa", ...mpesaAccess, async (req, res) => {
+  const status = typeof req.query.status === "string" && req.query.status !== "all" ? req.query.status : void 0;
+  const [txs, targets] = await Promise.all([
+    prisma.mpesaTransaction.findMany({
+      where: { kind: { in: ["C2B", "Import"] }, ...status ? { status } : {} },
+      include: { order: true },
+      orderBy: [{ receivedOn: "desc" }, { id: "desc" }],
+      take: 500
+    }),
+    openTargets()
+  ]);
+  const rows = txs.map((t) => {
+    const incoming = { amount: t.amount, phone: t.phone, accountReference: t.accountReference };
+    const m = t.status === "Unmatched" ? matchPayment(incoming, targets) : null;
+    return {
+      id: t.id,
+      receipt: t.mpesaReceipt,
+      kind: t.kind,
+      status: t.status,
+      amount: t.amount,
+      phone: t.phone,
+      payerName: t.payerName,
+      reference: t.accountReference,
+      receivedOn: t.receivedOn,
+      appliedTo: t.order?.orderNo ?? null,
+      appliedByName: t.appliedByName,
+      dismissedNote: t.dismissedNote,
+      suggestions: t.status === "Unmatched" ? suggestionsFor(incoming, targets).map((s) => ({ ...s, best: m?.matched ? m.target.orderId === s.orderId : false })) : [],
+      note: m && !m.matched ? m.reason : null
+    };
+  });
+  const unmatched = rows.filter((r) => r.status === "Unmatched");
+  const unverified = await prisma.payment.findMany({ where: { method: "M-Pesa", reference: null }, include: { order: true }, orderBy: { id: "desc" }, take: 200 });
+  res.json({
+    rows,
+    summary: { unmatchedCount: unmatched.length, unmatchedTotal: round2(unmatched.reduce((a2, r) => a2 + r.amount, 0)) },
+    openOrders: targets.map((t) => ({ orderId: t.orderId, ref: t.ref, party: t.party, balance: t.balance })),
+    unverifiedPayments: unverified.map((p) => ({ id: p.id, orderNo: p.order.orderNo, date: p.date, amount: p.amount }))
+  });
+});
+accountingRouter.post("/mpesa/import", ...mpesaAccess, async (req, res) => {
+  const text = String(req.body.text || "");
+  if (text.trim().length < 10) return res.status(400).json({ error: "Paste the M-Pesa statement (CSV) first" });
+  const result = await importStatement(text, req.user.name);
+  if (result.read === 0) return res.status(400).json({ error: 'No incoming payments were found. Check the file has a "Receipt No." column and Paid In amounts.' });
+  res.json(result);
+});
+accountingRouter.post("/mpesa/auto-match", ...mpesaAccess, async (req, res) => {
+  res.json({ applied: await autoMatch(req.user.name) });
+});
+accountingRouter.post("/mpesa/:id/apply", ...mpesaAccess, async (req, res) => {
+  const orderId = Number(req.body.orderId);
+  if (!orderId) return res.status(400).json({ error: "Choose the order this payment is for" });
+  try {
+    await applyReceiptToOrder(Number(req.params.id), orderId, req.user.name);
+    res.json({ ok: true });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => {
+  const note = String(req.body.note || "").trim();
+  if (!note) return res.status(400).json({ error: "Say why this payment is being dismissed" });
+  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: Number(req.params.id) } });
+  if (!tx || tx.status !== "Unmatched") return res.status(400).json({ error: "Only an unmatched payment can be dismissed" });
+  await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Dismissed", dismissedNote: note.slice(0, 200), appliedByName: req.user.name, appliedAt: /* @__PURE__ */ new Date() } });
+  res.json({ ok: true });
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express12.default)();
+var app = (0, import_express13.default)();
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express12.default.json({ limit: "5mb" }));
+app.use(import_express13.default.json({ limit: "5mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
 app.use("/api/master-data", masterDataRouter);
@@ -50124,6 +51997,7 @@ app.use("/api/email", emailRouter);
 app.use("/api/mpesa", mpesaRouter);
 app.use("/api/assets", assetsRouter);
 app.use("/api/dtf", dtfRouter);
+app.use("/api/accounting", accountingRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });
@@ -50133,4 +52007,5 @@ app.use((err, _req, res, _next) => {
 var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
   console.log(`GLM Branding POS API listening on :${port}`);
+  ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
 });

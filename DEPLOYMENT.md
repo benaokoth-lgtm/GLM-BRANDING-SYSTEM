@@ -41,7 +41,7 @@ cPanel → **Setup Node.js App** → Create (or edit) the application:
 | `JWT_SECRET` | a long random string — generate once with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and keep it; changing it logs everyone out |
 | `CORS_ORIGINS` | `https://pos.glmgroup.co.ke` |
 
-No `PORT` — Passenger assigns it. Optional (each feature disables itself cleanly if unset): `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (invoice emails and the Admin's emailed PIN reset), and the `MPESA_*` set (see `apps/api/.env.example`; `MPESA_CALLBACK_URL` must be `https://api.glmgroup.co.ke/api/mpesa/callback`).
+No `PORT` — Passenger assigns it. Optional (each feature disables itself cleanly if unset): `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (invoice emails and the Admin's emailed PIN reset), and the `MPESA_*` set including `MPESA_C2B_SECRET` for live Paybill/Till matching (see `apps/api/.env.example`; `MPESA_CALLBACK_URL` must be `https://api.glmgroup.co.ke/api/mpesa/callback`).
 
 Save, then click **Run NPM Install** (this installs Prisma and generates its client), then **Restart**.
 
@@ -62,6 +62,14 @@ node seed-admin.js "Your Name"
 ```
 
 `seed-admin.js` prints one random Admin PIN, once — keep it. Do **not** run the dev seed (`apps/api/prisma/seed.ts`) in production: it wipes every table and creates demo users with hard-coded PINs. Log in, then set up Company Info, Staff, Services and Materials under Master Data.
+
+**The books (Accounting module).** After the first deploy that includes Accounting, `npm run db:push` (step 6) adds its tables — it only adds, nothing is lost. The chart of accounts builds itself the first time anyone opens Accounting (or when the API starts), and asset depreciation runs on its own each month. To start the books properly, an Admin enters **opening balances** (bank, cash on hand, M-Pesa float, owner's capital) once under Accounting → Journals → *Opening balance*, and tops up the petty-cash float under Finance → Petty Cash. Check the books at any time with Accounting → Books Check, or from the Terminal:
+
+```bash
+node books-check.js
+```
+
+**M-Pesa matching.** Always available by uploading the M-Pesa statement (Accounting → M-Pesa Matching). To also catch Paybill/Till payments live, set `MPESA_C2B_SECRET` (a long random string) and, if the API's public address differs from `MPESA_CALLBACK_URL`, `MPESA_PUBLIC_URL`; restart; then, signed in as Admin, call `POST /api/mpesa/c2b/register` once.
 
 **Forgot a PIN, or a correct PIN "doesn't work"?** Five wrong attempts lock a user for 15 minutes. From the same folder and environment as above:
 

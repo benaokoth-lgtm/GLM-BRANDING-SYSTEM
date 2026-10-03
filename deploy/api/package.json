@@ -8,7 +8,8 @@
     "postinstall": "prisma generate --schema=prisma/schema.prisma",
     "db:push": "prisma db push --schema=prisma/schema.prisma",
     "db:seed-admin": "node seed-admin.js",
-    "db:reset-pin": "node reset-pin.js"
+    "db:reset-pin": "node reset-pin.js",
+    "db:books-check": "node books-check.js"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

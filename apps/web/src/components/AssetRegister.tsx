@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ASSET_CATEGORIES, ASSET_CONDITIONS, fmtDate, fmtKsh } from '@glm/shared';
+import { ASSET_CATEGORIES, ASSET_CONDITIONS, DEFAULT_USEFUL_LIFE_YEARS, DEPRECIATION_METHODS, fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
 import type { AssetRow } from '../api/models';
 import { useAuth } from '../state/AuthContext';
@@ -13,7 +13,15 @@ const emptyForm = {
   purchaseDate: '',
   value: '',
   notes: '',
+  // Automatic depreciation (charged monthly from the month after purchase) and how the purchase was paid.
+  depreciationMethod: 'None' as string,
+  usefulLifeYears: '',
+  depreciationRatePct: '',
+  salvageValue: '',
+  fundedBy: 'Owner Capital',
 };
+
+const FUNDED_BY = ['Owner Capital', 'Bank', 'Cash', 'M-Pesa', 'Opening Balance'] as const;
 
 // Fixed-asset tracking (machines, vehicles, computers, furniture) — modeled
 // on the Olerai Hotel System's own Asset Register (same machine, sibling
@@ -58,6 +66,11 @@ export default function AssetRegister() {
       purchaseDate: a.purchaseDate ?? '',
       value: a.value != null ? String(a.value) : '',
       notes: a.notes,
+      depreciationMethod: a.depreciationMethod,
+      usefulLifeYears: a.usefulLifeYears != null ? String(a.usefulLifeYears) : '',
+      depreciationRatePct: a.depreciationRatePct != null ? String(a.depreciationRatePct) : '',
+      salvageValue: a.salvageValue ? String(a.salvageValue) : '',
+      fundedBy: a.fundedBy,
     });
     setError(null);
   }
@@ -81,6 +94,11 @@ export default function AssetRegister() {
       purchaseDate: form.purchaseDate || undefined,
       value: form.value ? Number(form.value) : undefined,
       notes: form.notes,
+      depreciationMethod: form.depreciationMethod,
+      usefulLifeYears: form.depreciationMethod === 'Straight-line' && form.usefulLifeYears ? Number(form.usefulLifeYears) : null,
+      depreciationRatePct: form.depreciationMethod === 'Reducing balance' && form.depreciationRatePct ? Number(form.depreciationRatePct) : null,
+      salvageValue: form.salvageValue ? Number(form.salvageValue) : 0,
+      fundedBy: form.fundedBy,
     };
     try {
       if (editingId) {
@@ -125,6 +143,7 @@ export default function AssetRegister() {
 
   const counts = ASSET_CONDITIONS.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c]: assets.filter((a) => a.condition === c).length }), {});
   const totalValue = assets.reduce((a, r) => a + (r.value ?? 0), 0);
+  const totalBook = assets.reduce((a, r) => a + (r.bookValue ?? r.value ?? 0), 0);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
@@ -144,8 +163,10 @@ export default function AssetRegister() {
           <i className="corner tr"></i>
           <i className="corner bl"></i>
           <i className="corner br"></i>
-          <div className="card-kicker">Total recorded value</div>
-          <div className="card-title">{fmtKsh(totalValue)}</div>
+          <div className="card-kicker">Cost / book value</div>
+          <div className="card-title">
+            {fmtKsh(totalValue)} <span className="text-muted" style={{ fontSize: 13 }}>/ {fmtKsh(totalBook)}</span>
+          </div>
         </div>
       </div>
 
@@ -197,12 +218,65 @@ export default function AssetRegister() {
             <input className="input" type="date" value={form.purchaseDate} onChange={(e) => setForm((f) => ({ ...f, purchaseDate: e.target.value }))} />
           </div>
           <div className="field">
-            <label>Value (Ksh)</label>
-            <input className="input" value={form.value} onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))} placeholder="Optional" />
+            <label>Cost (Ksh)</label>
+            <input className="input" value={form.value} onChange={(e) => setForm((f) => ({ ...f, value: e.target.value }))} placeholder="What it cost" />
           </div>
           <div className="field">
             <label>Notes</label>
             <input className="input" value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Optional" />
+          </div>
+        </div>
+        <div className="card-kicker" style={{ margin: 'var(--space-3) 0 var(--space-2)' }}>
+          Accounting — depreciation runs automatically each month, from the month after purchase
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.2fr', gap: 'var(--space-3)', alignItems: 'end', marginBottom: 'var(--space-3)' }}>
+          <div className="field">
+            <label>Depreciation method</label>
+            <select
+              className="input"
+              value={form.depreciationMethod}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  depreciationMethod: e.target.value,
+                  usefulLifeYears: e.target.value === 'Straight-line' && !f.usefulLifeYears ? String(DEFAULT_USEFUL_LIFE_YEARS[f.category] ?? 5) : f.usefulLifeYears,
+                  depreciationRatePct: e.target.value === 'Reducing balance' && !f.depreciationRatePct ? '25' : f.depreciationRatePct,
+                }))
+              }
+            >
+              {DEPRECIATION_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m === 'None' ? 'None (keep at cost)' : m}
+                </option>
+              ))}
+            </select>
+          </div>
+          {form.depreciationMethod === 'Straight-line' ? (
+            <div className="field">
+              <label>Useful life (years)</label>
+              <input className="input" value={form.usefulLifeYears} onChange={(e) => setForm((f) => ({ ...f, usefulLifeYears: e.target.value }))} />
+            </div>
+          ) : form.depreciationMethod === 'Reducing balance' ? (
+            <div className="field">
+              <label>Rate (% a year)</label>
+              <input className="input" value={form.depreciationRatePct} onChange={(e) => setForm((f) => ({ ...f, depreciationRatePct: e.target.value }))} />
+            </div>
+          ) : (
+            <span />
+          )}
+          <div className="field">
+            <label>Salvage value (Ksh)</label>
+            <input className="input" value={form.salvageValue} onChange={(e) => setForm((f) => ({ ...f, salvageValue: e.target.value }))} placeholder="0" disabled={form.depreciationMethod === 'None'} />
+          </div>
+          <div className="field">
+            <label>Paid for by</label>
+            <select className="input" value={form.fundedBy} onChange={(e) => setForm((f) => ({ ...f, fundedBy: e.target.value }))}>
+              {FUNDED_BY.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -256,7 +330,8 @@ export default function AssetRegister() {
                 <th>Category</th>
                 <th>Location</th>
                 <th style={{ textAlign: 'right' }}>Qty</th>
-                <th style={{ textAlign: 'right' }}>Value</th>
+                <th style={{ textAlign: 'right' }}>Cost</th>
+                <th style={{ textAlign: 'right' }}>Book value</th>
                 <th>Purchased</th>
                 <th>Condition</th>
                 <th className="no-print"></th>
@@ -278,6 +353,10 @@ export default function AssetRegister() {
                   <td className="text-muted">{a.location || '—'}</td>
                   <td style={{ textAlign: 'right' }}>{a.quantity}</td>
                   <td style={{ textAlign: 'right' }}>{a.value != null ? fmtKsh(a.value) : '—'}</td>
+                  <td style={{ textAlign: 'right' }} title={a.depreciationMethod === 'None' ? 'Not depreciating' : `Depreciated ${fmtKsh(a.accumulatedDepreciation)} so far (${a.depreciationMethod})`}>
+                    {a.bookValue != null ? fmtKsh(a.bookValue) : '—'}
+                    {a.depreciationMethod === 'None' && a.value ? <span className="text-muted" style={{ fontSize: 10 }}> (not depreciating)</span> : null}
+                  </td>
                   <td className="text-muted">{a.purchaseDate ? fmtDate(a.purchaseDate) : '—'}</td>
                   <td>
                     <span className={a.condition === 'Active' ? 'tag tag-accent' : a.condition === 'Retired' ? 'tag tag-neutral' : 'tag tag-outline'}>{a.condition}</span>

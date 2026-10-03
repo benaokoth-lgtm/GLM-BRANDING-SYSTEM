@@ -61,6 +61,7 @@ model Role {
   canAccessReports  Boolean @default(false)
   canAccessDtf      Boolean @default(false) // DTF tracker: record film sales & artwork jobs
   canManageDtf      Boolean @default(false) // DTF tracker: roll costs, Setup, profit/wastage dashboard
+  canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
 }
 
 model Service {
@@ -87,6 +88,10 @@ model Service {
   // keep grouping by service name correctly. Not exposed as a Master Data
   // toggle — set once via seed, since there are exactly two such rows.
   soldViaDtfModule    Boolean @default(false)
+  // The Income account this service's sales post to (null = a default picked by
+  // name when the chart is built — see accounting/chart.ts).
+  accountId           Int?
+  account             Account? @relation("ServiceAccount", fields: [accountId], references: [id])
   lineItems           OrderLineItem[]
 }
 
@@ -96,6 +101,9 @@ model Material {
   price        Float
   stockQty     Float  @default(0)
   reorderLevel Float  @default(0)
+  // Income account for sales of this material (null = Merchandise & Materials Sales).
+  accountId    Int?
+  account      Account? @relation("MaterialAccount", fields: [accountId], references: [id])
   lineItems    OrderLineItem[]
   requisitions StockRequisition[]
   stockTakes   StockTake[]
@@ -173,8 +181,37 @@ model Expense {
   // capturing a purchase.
   invoiceNumber   String?
   capturedByName  String   @default("")
+  // How it was paid. Every expense used to come out of petty cash, so that is the default for rows
+  // that pre-date this field. paid = false means bought on credit: it sits in Accounts Payable
+  // until ExpensePayment rows settle it.
+  method          String   @default("Petty Cash")
+  paid            Boolean  @default(true)
+  supplier        String   @default("")
+  dueDate         String?
   amendments      ExpenseAmendment[]
   purchase        Purchase?
+  payments        ExpensePayment[]
+  notes           AdjustmentNote[]
+}
+
+// A payment made against an expense bought on credit (partial payments allowed).
+model ExpensePayment {
+  id             Int     @id @default(autoincrement())
+  expenseId      Int
+  expense        Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  date           String // 'YYYY-MM-DD'
+  amount         Float
+  method         String
+  note           String  @default("")
+  capturedByName String  @default("")
+}
+
+// An expense head (the old fixed EXPENSE_CATEGORIES list, now editable) and the Expense account it posts to.
+model ExpenseHead {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  accountId Int?
+  account   Account? @relation("ExpenseHeadAccount", fields: [accountId], references: [id])
 }
 
 // A correction request against an existing Expense — never edits the row
@@ -356,6 +393,7 @@ model Order {
   mpesaTransactions MpesaTransaction[]
   dtfFilmSale       DtfFilmSale?
   dtfArtworkJob     DtfArtworkJob?
+  notes             AdjustmentNote[]
 }
 
 // A line item is either a standalone material sale (Cap, Polo Shirt, canvas,
@@ -397,6 +435,11 @@ model Payment {
   date     String
   amount   Float
   method   String
+  // M-Pesa receipt code / bank or card reference, when there is one — what makes a payment
+  // matchable against the M-Pesa statement.
+  reference String?
+  mpesaTransactionId Int? @unique
+  mpesaTransaction   MpesaTransaction? @relation(fields: [mpesaTransactionId], references: [id])
   staffId  Int?
   staff    User?  @relation(fields: [staffId], references: [id])
 }
@@ -420,12 +463,22 @@ model MpesaTransaction {
   status            String   @default("Pending") // Pending | Success | Failed | Cancelled
   resultCode        Int?
   resultDesc        String?
-  mpesaReceipt      String?
+  mpesaReceipt      String?   @unique
   orderId           Int?
   order             Order?   @relation(fields: [orderId], references: [id])
   confirmedManually Boolean  @default(false)
   createdByName     String
   createdAt         DateTime @default(now())
+  // 'STK' = a push we sent; 'C2B' = a Paybill/Till payment Safaricom told us about; 'Import' = a line
+  // from an uploaded M-Pesa statement. For the last two, status runs Unmatched -> Applied | Dismissed.
+  kind              String   @default("STK")
+  payerName         String   @default("")
+  receivedOn        String? // 'YYYY-MM-DD' the money arrived (C2B / Import)
+  appliedByName     String?
+  appliedAt         DateTime?
+  dismissedNote     String?
+  rawJson           String   @default("{}")
+  payment           Payment?
 }
 
 // Finance > Asset Register — fixed-asset tracking (machines, vehicles,
@@ -454,6 +507,102 @@ model Asset {
   createdByName String   @default("")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  // Automatic depreciation (accounting/depreciation.ts runs it monthly): value is the cost.
+  depreciationMethod  String  @default("None") // None | Straight-line | Reducing balance
+  usefulLifeYears     Float? // straight-line
+  depreciationRatePct Float? // reducing balance, % of the opening book value per year
+  salvageValue        Float   @default(0)
+  // How the purchase was paid: Bank | Cash | M-Pesa | Petty Cash | On credit | Owner Capital (default for
+  // assets recorded before this field — treated as already contributed by the owner).
+  fundedBy            String  @default("Owner Capital")
+  retiredOn           String?
+  depreciations       AssetDepreciation[]
+}
+
+// One month's depreciation charge for one asset. (assetId, period) is unique, so the monthly job can be
+// re-run any number of times without double-charging.
+model AssetDepreciation {
+  id        Int      @id @default(autoincrement())
+  assetId   Int
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  period    String // 'YYYY-MM'
+  date      String // last day of that month
+  amount    Float
+  createdAt DateTime @default(now())
+
+  @@unique([assetId, period])
+}
+
+// ── Accounting ──────────────────────────────────────────────────────────
+// A double-entry ledger. Day-to-day activity (orders, payments, expenses, payroll, petty cash,
+// depreciation, notes) is NOT copied in here — accounting/ledger.ts derives its postings from those tables on
+// every read, so the books cannot drift from operations. Only what has no operational home is stored:
+// opening balances, owner capital/drawings, bank deposits, tax remittances and other hand-written journals.
+model Account {
+  id           Int           @id @default(autoincrement())
+  code         String        @unique
+  name         String
+  type         String // Asset | Liability | Equity | Income | Expense
+  subtype      String        @default("")
+  description  String        @default("")
+  system       Boolean       @default(false) // built-in accounts the ledger posts to — can be renamed, never deleted or retyped
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  lines        JournalLine[]
+  expenseHeads ExpenseHead[] @relation("ExpenseHeadAccount")
+  services     Service[]     @relation("ServiceAccount")
+  materials    Material[]    @relation("MaterialAccount")
+}
+
+model JournalEntry {
+  id              Int           @id @default(autoincrement())
+  ref             String        @unique
+  date            String // 'YYYY-MM-DD'
+  memo            String
+  source          String // Manual | Opening | Capital | Drawings | BankDeposit | TaxPayment
+  createdByName   String        @default("")
+  createdAt       DateTime      @default(now())
+  lines           JournalLine[]
+}
+
+model JournalLine {
+  id        Int          @id @default(autoincrement())
+  entryId   Int
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId Int
+  account   Account      @relation(fields: [accountId], references: [id])
+  debit     Float        @default(0)
+  credit    Float        @default(0)
+  memo      String       @default("")
+}
+
+// Credit / debit notes. 'Credit' takes a sale (and its VAT) back from a customer and reduces what they owe — or,
+// for the part they had already paid, leaves them a credit (optionally refunded straight away). 'Debit' charges
+// a customer more. 'SupplierDebit' is a note sent to a supplier (goods returned, a pricing error): it reduces what
+// we owe them (or leaves them owing us) and reduces the expense it was booked to.
+model AdjustmentNote {
+  id              Int      @id @default(autoincrement())
+  number          String   @unique // CN-yyyy-nnn | DN-yyyy-nnn | SDN-yyyy-nnn
+  type            String // Credit | Debit | SupplierDebit
+  date            String // 'YYYY-MM-DD'
+  party           String
+  orderId         Int?
+  order           Order?   @relation(fields: [orderId], references: [id])
+  expenseId       Int?
+  expense         Expense? @relation(fields: [expenseId], references: [id])
+  reason          String
+  itemsJson       String? // the lines this note was raised for: [{lineId?, desc, qty, amount}]
+  net             Float
+  vat             Float    @default(0)
+  total           Float
+  receivableAmt   Float    @default(0) // credit note: the part that reduced Accounts Receivable
+  creditAmt       Float    @default(0) // credit note: the part the customer had already paid (owed back to them)
+  refundAmt       Float    @default(0) // credit note: of creditAmt, what was refunded on the day
+  refundMethod    String?
+  incomeAccountId Int? // debit note: the Income account the extra charge posts to
+  restocked       Boolean  @default(false)
+  createdByName   String   @default("")
+  createdAt       DateTime @default(now())
 }
 
 // ── DTF Sales & Roll Tracker ────────────────────────────────────────────

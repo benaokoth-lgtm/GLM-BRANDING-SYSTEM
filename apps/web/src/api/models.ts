@@ -80,6 +80,7 @@ export interface PaymentView {
   date: string;
   amount: number;
   method: PaymentMethod;
+  reference?: string | null;
 }
 
 export interface OrderDetail extends OrderSummary {
@@ -98,6 +99,13 @@ export interface ExpenseRow {
   amount: number;
   invoiceNumber: string | null;
   capturedByName: string;
+  method: string; // 'Petty Cash' | 'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'
+  paid: boolean; // false = bought on credit (sits in Accounts Payable)
+  supplier: string;
+  dueDate: string | null;
+  paidAmount: number;
+  credited: number; // supplier debit notes against it
+  outstanding: number;
 }
 
 export interface ExpenseAmendment {
@@ -160,6 +168,7 @@ export interface PnlData {
   priorTo: string;
   trend: PnlTrendPoint[];
   expenseCategories: readonly string[];
+  expenseMethods?: readonly string[];
 }
 
 export interface PayrollRow {
@@ -303,6 +312,13 @@ export interface AssetRow {
   createdByName: string;
   createdAt: string;
   updatedAt: string;
+  depreciationMethod: 'None' | 'Straight-line' | 'Reducing balance';
+  usefulLifeYears: number | null;
+  depreciationRatePct: number | null;
+  salvageValue: number;
+  fundedBy: string;
+  accumulatedDepreciation: number;
+  bookValue: number | null;
 }
 
 export interface PurchaseRow {

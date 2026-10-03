@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
+import { timingSafeEqual } from 'crypto';
+import { autoMatch, normaliseDate, storeReceipt } from '../accounting/mpesaMatching';
 import { todayStr } from '@glm/shared';
+import { recordOrderPayments } from './orders';
 
 export const mpesaRouter = Router();
 
@@ -126,7 +129,12 @@ async function markSuccess(tx: { id: number; orderId: number | null; amount: num
   // order's initial payment by the frontend once it creates the order (see
   // NewWalkinOrder.tsx).
   if (tx.orderId) {
-    await prisma.payment.create({ data: { orderId: tx.orderId, date: todayStr(), amount: tx.amount, method: 'M-Pesa' } });
+    const order = await prisma.order.findUnique({ where: { id: tx.orderId }, include: { corporateClient: true } });
+    if (order) {
+      await prisma.$transaction((db) =>
+        recordOrderPayments(db, order, [{ method: 'M-Pesa', amount: tx.amount, reference: mpesaReceipt, linkedTransactionId: tx.id }], null),
+      );
+    }
   }
 }
 
@@ -183,4 +191,76 @@ mpesaRouter.post('/:checkoutRequestId/confirm-manually', requireAuth, async (req
   await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { confirmedManually: true } });
   await markSuccess(tx, null);
   res.json({ ok: true });
+});
+
+// ── Paybill / Till payments made WITHOUT a prompt (C2B) ────────────────────
+// Safaricom calls these two URLs for every payment to the shortcode. They can't sign in as staff, so the URL itself
+// carries a long random secret (MPESA_C2B_SECRET) as the only proof the call is genuine. Both always answer 200 "Accepted":
+// Safaricom retries anything else, and a payment already taken from the customer can't be un-taken by refusing to
+// acknowledge it. Each received payment is stored Unmatched (and booked to Unallocated M-Pesa Receipts), then matched to an
+// order automatically when the customer typed the order number as the account reference — see accounting/mpesaMatching.ts.
+// (Safaricom hashes the customer's phone number on production, so matching is by order number, not phone.)
+const ACK = { ResultCode: 0, ResultDesc: 'Accepted' };
+
+function secretOk(given: string): boolean {
+  const want = process.env.MPESA_C2B_SECRET || '';
+  const a = Buffer.from(given);
+  const b = Buffer.from(want);
+  return want.length >= 16 && a.length === b.length && timingSafeEqual(a, b);
+}
+
+mpesaRouter.post('/c2b/:secret/validation', (_req, res) => res.json(ACK));
+
+mpesaRouter.post('/c2b/:secret/confirmation', async (req, res) => {
+  if (!secretOk(req.params.secret)) return res.json(ACK);
+  try {
+    const b = req.body as Record<string, string | number | undefined>;
+    const receipt = String(b.TransID || '').toUpperCase();
+    const amount = Number(b.TransAmount);
+    if (receipt && amount > 0) {
+      await storeReceipt(
+        {
+          kind: 'C2B',
+          receipt,
+          amount,
+          date: normaliseDate(String(b.TransTime || '')) ?? todayStr(),
+          phone: String(b.MSISDN || ''),
+          name: [b.FirstName, b.MiddleName, b.LastName].filter(Boolean).join(' '),
+          reference: String(b.BillRefNumber || ''),
+          raw: b,
+        },
+        'M-Pesa (Paybill/Till)',
+      );
+      await autoMatch('M-Pesa (Paybill/Till)');
+    }
+  } catch (err) {
+    console.error('C2B confirmation failed', err);
+  }
+  res.json(ACK);
+});
+
+// Admin: tell Safaricom where to send those two callbacks (once, after setting MPESA_C2B_SECRET and MPESA_PUBLIC_URL).
+mpesaRouter.post('/c2b/register', requireAuth, requireRole('Admin'), async (_req, res) => {
+  if (!isConfigured()) return res.status(501).json({ error: "M-Pesa isn't configured yet — set MPESA_* in the API environment" });
+  const secret = process.env.MPESA_C2B_SECRET || '';
+  const base = (process.env.MPESA_PUBLIC_URL || new URL(process.env.MPESA_CALLBACK_URL!).origin).replace(/\/$/, '');
+  if (secret.length < 16) return res.status(400).json({ error: 'Set MPESA_C2B_SECRET to a long random string (16+ characters) first' });
+  try {
+    const token = await getAccessToken();
+    const r = await fetch(`${darajaBaseUrl()}/mpesa/c2b/v1/registerurl`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ShortCode: process.env.MPESA_SHORTCODE,
+        ResponseType: 'Completed',
+        ConfirmationURL: `${base}/api/mpesa/c2b/${secret}/confirmation`,
+        ValidationURL: `${base}/api/mpesa/c2b/${secret}/validation`,
+      }),
+    });
+    const data = (await r.json()) as { ResponseDescription?: string; errorMessage?: string };
+    if (!r.ok) return res.status(502).json({ error: data.errorMessage || data.ResponseDescription || 'Safaricom rejected the registration' });
+    res.json({ ok: true, message: data.ResponseDescription || 'Registered' });
+  } catch (err) {
+    res.status(502).json({ error: err instanceof Error ? err.message : 'Failed to reach M-Pesa' });
+  }
 });

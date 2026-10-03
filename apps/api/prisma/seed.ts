@@ -9,8 +9,14 @@ async function pin(p: string) {
 }
 
 async function main() {
-  await prisma.mpesaTransaction.deleteMany();
+  // Accounting tables first (notes/journals reference orders, expenses and accounts), and payments before the M-Pesa
+  // receipts they may be linked to.
+  await prisma.adjustmentNote.deleteMany();
+  await prisma.journalLine.deleteMany();
+  await prisma.journalEntry.deleteMany();
+  await prisma.expensePayment.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.mpesaTransaction.deleteMany();
   await prisma.orderLineItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.expenseAmendment.deleteMany();
@@ -23,6 +29,9 @@ async function main() {
   await prisma.corporateClient.deleteMany();
   await prisma.material.deleteMany();
   await prisma.service.deleteMany();
+  // The chart of accounts is rebuilt (with its head/service links) on first use — see accounting/chart.ts.
+  await prisma.expenseHead.deleteMany();
+  await prisma.account.deleteMany();
   await prisma.user.deleteMany();
   await prisma.setting.deleteMany();
   await prisma.role.deleteMany();

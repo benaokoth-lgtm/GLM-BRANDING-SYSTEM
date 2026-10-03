@@ -87,7 +87,7 @@ export function serializeDetail(order: FullOrder) {
       artworkAreaSqm: li.artworkAreaSqm,
       lineTotal: buildLineTotal(toLineItemInput(li)),
     })),
-    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method })),
+    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method, reference: p.reference })),
   };
 }
 
@@ -118,6 +118,85 @@ async function convertQuoteToInvoice(
   const days = order.corporateClient?.creditDays ?? 30;
   const dueDate = addDays(todayStr(), days);
   await tx.order.update({ where: { id: order.id }, data: { status: 'Invoice', dueDate } });
+}
+
+// ── Payments ──────────────────────────────────────────────────────────────
+// One line of a (possibly split) payment: an order can be settled with any mix of methods — say KES 2,000 cash and
+// KES 3,000 M-Pesa — each recorded as its own Payment so every method reconciles to its own account.
+export const paymentLineSchema = z.object({
+  method: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']),
+  amount: z.number().positive(),
+  // M-Pesa receipt code (or bank/card slip number). Entering an M-Pesa code that is already on a received-but-unmatched
+  // statement line ties the two together.
+  reference: z.string().trim().max(60).optional().nullable(),
+});
+export type PaymentLine = z.infer<typeof paymentLineSchema>;
+/** Internal: a line already tied to an M-Pesa transaction (an STK push that just succeeded) — no receipt lookup needed. */
+export type LinkedPaymentLine = PaymentLine & { linkedTransactionId?: number };
+
+export class PaymentError extends Error {
+  constructor(message: string) {
+    super(message);
+  }
+}
+
+/**
+ * Records one or more payments against an order inside a transaction, and moves the order along: a payment of any
+ * size against a quote converts it to an invoice (the client has accepted); a walk-in/DTF order sitting at 'Invoice'
+ * settles back to 'Order' once the balance is cleared. An M-Pesa reference that matches a received statement line
+ * (Paybill/Till or an uploaded statement) is linked to it, so the money is matched rather than counted twice.
+ */
+export async function recordOrderPayments(
+  tx: Prisma.TransactionClient,
+  order: { id: number; kind: string; status: string; corporateClient: { creditDays: number } | null },
+  lines: LinkedPaymentLine[],
+  staffId: number | null,
+  date: string = todayStr(),
+) {
+  for (const line of lines) {
+    const reference = line.reference ? line.reference.trim().toUpperCase() : null;
+    let mpesaTransactionId: number | null = line.linkedTransactionId ?? null;
+    let stkClaimed = false;
+    const linkedByEntry = mpesaTransactionId === null;
+    if (linkedByEntry && line.method === 'M-Pesa' && reference) {
+      const received = await tx.mpesaTransaction.findUnique({ where: { mpesaReceipt: reference } });
+      // An STK push that succeeded before this order existed (walk-in capture) is claimed by the order it paid for.
+      const claimable =
+        received?.kind === 'STK' && received.status === 'Success' && !received.orderId && !(await tx.payment.findUnique({ where: { mpesaTransactionId: received.id } }));
+      if (received && claimable) {
+        await tx.mpesaTransaction.update({ where: { id: received.id }, data: { orderId: order.id } });
+        mpesaTransactionId = received.id;
+        stkClaimed = true;
+      } else if (received) {
+        if (received.status !== 'Unmatched') throw new PaymentError(`M-Pesa receipt ${reference} has already been used`);
+        if (Math.abs(received.amount - line.amount) > 1) {
+          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString('en-KE')}, not Ksh ${Math.round(line.amount).toLocaleString('en-KE')}`);
+        }
+        mpesaTransactionId = received.id;
+      }
+    }
+    await tx.payment.create({
+      data: { orderId: order.id, date, amount: line.amount, method: line.method, reference, mpesaTransactionId, staffId },
+    });
+    if (mpesaTransactionId && linkedByEntry && !stkClaimed) {
+      await tx.mpesaTransaction.update({
+        where: { id: mpesaTransactionId },
+        data: { status: 'Applied', orderId: order.id, appliedAt: new Date(), appliedByName: 'Matched on entry' },
+      });
+    }
+  }
+
+  if (order.status === 'Quote') {
+    await convertQuoteToInvoice(tx, order);
+  } else if (order.kind !== 'corporate' && order.status === 'Invoice') {
+    const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
+    const lineItems = full!.lineItems.map(toLineItemInput);
+    const payments: PaymentRecord[] = full!.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
+    const totals = computeOrderTotals({ lineItems, orderDiscountPct: full!.orderDiscountPct, orderDiscountAmt: full!.orderDiscountAmt }, payments);
+    if (totals.balanceDue <= 0) {
+      await tx.order.update({ where: { id: order.id }, data: { status: 'Order', dueDate: null } });
+    }
+  }
 }
 
 // ── List ─────────────────────────────────────────────────────────────────
@@ -171,6 +250,8 @@ const walkinSchema = z.object({
   paymentTiming: z.enum(['onAcceptance', 'onCompletion']),
   paymentAmount: z.number().min(0).optional(),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).optional(),
+  // Preferred: any number of payment lines, e.g. part cash and part M-Pesa.
+  payments: z.array(paymentLineSchema).max(6).optional(),
   lineItems: z.array(lineItemSchema).min(1),
   orderDiscountPct: z.number().min(0).max(100).default(0),
   orderDiscountAmt: z.number().min(0).default(0),
@@ -182,11 +263,22 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
 
-  const paymentAmount = form.paymentTiming === 'onAcceptance' ? form.paymentAmount ?? 0 : 0;
+  // Payments taken at capture: the new list form, or the older single amount + method.
+  const paymentLines: PaymentLine[] =
+    form.paymentTiming !== 'onAcceptance'
+      ? []
+      : form.payments && form.payments.length
+        ? form.payments
+        : (form.paymentAmount ?? 0) > 0
+          ? [{ method: form.paymentMethod ?? 'Cash', amount: form.paymentAmount! }]
+          : [];
   const totals = computeOrderTotals(
     { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
-    paymentAmount > 0 ? [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? 'Cash' }] : [],
+    paymentLines.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method })),
   );
+  if (paymentLines.reduce((a, p) => a + p.amount, 0) > totals.grandTotal + 0.01) {
+    return res.status(400).json({ error: 'The payments add up to more than the order total' });
+  }
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
 
   const order = await prisma.$transaction(async (tx) => {
@@ -209,11 +301,13 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
         lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
-        payments: paymentAmount > 0 ? { create: [{ date: todayStr(), amount: paymentAmount, method: form.paymentMethod ?? 'Cash', staffId: form.staffId }] } : undefined,
       },
       include: orderInclude,
     });
-
+    if (paymentLines.length) {
+      await recordOrderPayments(tx, { id: created.id, kind: 'walkin', status, corporateClient: null }, paymentLines, form.staffId);
+      return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
+    }
     return created;
   });
 
@@ -303,8 +397,15 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
   res.status(201).json(serializeDetail(order));
 });
 
-// ── Record a payment ────────────────────────────────────────────────────
-const paymentSchema = z.object({ amount: z.number().positive(), method: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']) });
+// ── Record a payment (one method, or several — "split" — in one go) ──────
+const paymentSchema = z
+  .object({
+    amount: z.number().positive().optional(),
+    method: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).optional(),
+    reference: z.string().trim().max(60).optional().nullable(),
+    payments: z.array(paymentLineSchema).min(1).max(6).optional(),
+  })
+  .refine((b) => (b.payments && b.payments.length > 0) || (b.amount && b.method), { message: 'Enter at least one payment' });
 
 ordersRouter.post('/:id/payments', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
@@ -313,33 +414,23 @@ ordersRouter.post('/:id/payments', async (req, res) => {
 
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const lines: PaymentLine[] = parsed.data.payments?.length
+    ? parsed.data.payments
+    : [{ method: parsed.data.method!, amount: parsed.data.amount!, reference: parsed.data.reference ?? null }];
 
-  await prisma.$transaction(async (tx) => {
-    await tx.payment.create({
-      data: { orderId: order.id, date: todayStr(), amount: parsed.data.amount, method: parsed.data.method, staffId: req.user!.id },
-    });
-    // A payment against a quote — of any size — is a deposit: the client
-    // has accepted it, so it converts to an invoice right here rather than
-    // needing a separate manual "Convert quotation to invoice" click. A
-    // quote accepted with no money down still uses that manual button.
-    if (order.status === 'Quote') {
-      await convertQuoteToInvoice(tx, order);
-    } else if (order.kind !== 'corporate' && order.status === 'Invoice') {
-      // Same idea for a walk-in/DTF order sitting at 'Invoice' with a
-      // balance (see resolveWalkinStatus): once this payment clears it,
-      // settle it back to 'Order' — the receipt state — same as if it had
-      // been paid in full at capture. A payment that only reduces, but
-      // doesn't clear, the balance leaves it as 'Invoice' for Accounts
-      // Receivable to keep tracking.
-      const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
-      const lineItems = full!.lineItems.map(toLineItemInput);
-      const payments: PaymentRecord[] = full!.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
-      const totals = computeOrderTotals({ lineItems, orderDiscountPct: full!.orderDiscountPct, orderDiscountAmt: full!.orderDiscountAmt }, payments);
-      if (totals.balanceDue <= 0) {
-        await tx.order.update({ where: { id: order.id }, data: { status: 'Order', dueDate: null } });
-      }
-    }
-  });
+  const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  const before = serializeSummary(current!).totals;
+  const paying = lines.reduce((a, p) => a + p.amount, 0);
+  if (paying > before.balanceDue + 0.01) {
+    return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString('en-KE')}, but only Ksh ${Math.round(before.balanceDue).toLocaleString('en-KE')} is outstanding` });
+  }
+
+  try {
+    await prisma.$transaction((tx) => recordOrderPayments(tx, order, lines, req.user!.id));
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 
   const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
   res.json(serializeDetail(updated!));

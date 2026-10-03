@@ -10,7 +10,9 @@
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-admin": "tsx prisma/seed-admin.ts",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "test": "node scripts/run-tests.mjs",
+    "db:books-check": "tsx prisma/books-check.ts"
   },
   "dependencies": {
     "@glm/shared": "0.1.0",

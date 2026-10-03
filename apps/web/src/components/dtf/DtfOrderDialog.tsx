@@ -6,6 +6,8 @@ import { useCatalog } from '../../hooks/useCatalog';
 import { printWalkinReceipt } from '../../utils/printTicket';
 import type { CompanySettings, OrderDetail } from '../../api/models';
 import { Corners, Field } from './shared';
+import SplitPayments, { newPaymentRow, paymentProblem, paymentsTotal, toApiPayments } from '../SplitPayments';
+import type { PaymentRow } from '../SplitPayments';
 
 interface MaterialLine {
   materialId: number;
@@ -36,8 +38,8 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   const [phone, setPhone] = useState('');
   const [materialLines, setMaterialLines] = useState<MaterialLine[]>([]);
   const [heatPressFee, setHeatPressFee] = useState('');
-  const [amountPaid, setAmountPaid] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
+  // Any mix of methods can pay now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
+  const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [newPaymentRow()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,8 +51,8 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
     return a + (mt ? mt.price * q : 0);
   }, 0);
   const grandTotal = Math.round((serviceLineTotal + materialsTotal) * 100) / 100;
-  const paid = Number(amountPaid) || 0;
-  const overPaid = paid > grandTotal;
+  const paid = paymentsTotal(paymentRows);
+  const payProblem = paymentProblem(paymentRows, grandTotal);
 
   function addMaterialLine() {
     const first = materials[0];
@@ -75,8 +77,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
       const payload = {
         ...basePayload,
         phone,
-        amountPaid: paid,
-        paymentMethod,
+        payments: toApiPayments(paymentRows),
         materialLines: materialLines
           .filter((l) => Number(l.qty) > 0)
           .map((l) => ({ materialId: l.materialId, qty: Number(l.qty) })),
@@ -156,28 +157,15 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
               <span>{fmtKsh(grandTotal)}</span>
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmountPaid(String(grandTotal))}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPaymentRows([{ ...paymentRows[0]!, amount: String(grandTotal) }])}>
                 Pay in full
               </button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAmountPaid('')}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPaymentRows([newPaymentRow()])}>
                 Deposit / pay later
               </button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
-              <Field label="Amount received now (Ksh)">
-                <input className="input" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} placeholder="Full or partial" />
-              </Field>
-              <Field label="Method">
-                <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            {overPaid && <p className="note">Amount paid can't exceed the order total ({fmtKsh(grandTotal)}).</p>}
+            <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={client || 'DTF order'} />
+            {payProblem && <p className="note" style={{ color: '#a33' }}>{payProblem}</p>}
           </div>
 
           {error && (
@@ -192,7 +180,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
             <Corners />
             Cancel
           </button>
-          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || overPaid}>
+          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!payProblem}>
             <Corners />
             Print
           </button>

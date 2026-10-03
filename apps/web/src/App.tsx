@@ -13,6 +13,7 @@ import MasterData from './pages/MasterData';
 import PnL from './pages/PnL';
 import Finance from './pages/Finance';
 import Compliance from './pages/Compliance';
+import Accounting from './pages/Accounting';
 import Reports from './pages/Reports';
 import Stock from './pages/Stock';
 import Dtf from './pages/Dtf';
@@ -100,6 +101,14 @@ export default function App() {
           element={
             <RequirePermission keys={['canAccessFinance']}>
               <Finance />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/accounting"
+          element={
+            <RequirePermission keys={['canAccessAccounting', 'canManagePayments']}>
+              <Accounting />
             </RequirePermission>
           }
         />

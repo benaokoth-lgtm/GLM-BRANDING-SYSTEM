@@ -56,7 +56,7 @@ export default function Compliance() {
     grossPay: '',
     daysWorked: '',
     rate: '',
-    paymentSource: 'Bank/Cheque' as PayrollPaymentSource,
+    paymentSource: 'Petty Cash' as PayrollPaymentSource, // wages are always paid from petty cash
   });
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: DeletableRecordType; id: number } | null>(null);
@@ -481,13 +481,7 @@ export default function Compliance() {
               )}
               <div className="field">
                 <label>Paid from</label>
-                <select className="input" value={newEntry.paymentSource} onChange={(e) => setNewEntry((ne) => ({ ...ne, paymentSource: e.target.value as PayrollPaymentSource }))}>
-                  {PAYROLL_PAYMENT_SOURCES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                <div className="input" style={{ display: 'flex', alignItems: 'center' }}>Petty Cash (always)</div>
               </div>
               <button type="button" className="btn btn-primary blueprint" onClick={addEntry} disabled={busy}>
                 <i className="corner tl"></i>

@@ -37,6 +37,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessReports: true,
     canAccessDtf: true,
     canManageDtf: true,
+    canAccessAccounting: true,
   },
   'General Manager': {
     ...ALL_FALSE,
@@ -49,6 +50,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessReports: true,
     canAccessDtf: true,
     canManageDtf: true,
+    canAccessAccounting: true,
   },
   Admin: ALL_TRUE,
 };
@@ -90,10 +92,10 @@ export type EmployeeType = (typeof EMPLOYEE_TYPES)[number];
 // 'Petty Cash' registers netPay as an outflow against the Petty Cash float
 // (see finance.ts's computePettyCashBalance) and is rejected if the float
 // can't cover it; 'Bank/Cheque' has no further bookkeeping here.
-export const PAYROLL_PAYMENT_SOURCES = ['Petty Cash', 'Bank/Cheque'] as const;
+export const PAYROLL_PAYMENT_SOURCES = ['Petty Cash', 'Bank/Cheque'] as const; // 'Bank/Cheque' only exists on pre-rule rows; new entries are always 'Petty Cash'
 export type PayrollPaymentSource = (typeof PAYROLL_PAYMENT_SOURCES)[number];
 
-export const PETTY_CASH_SOURCES = ['Bank Withdrawal', 'Cash Sales Allocation'] as const;
+export const PETTY_CASH_SOURCES = ['Bank Withdrawal', 'Cash Sales Allocation', 'Owner Injection'] as const;
 export type PettyCashSource = (typeof PETTY_CASH_SOURCES)[number];
 
 // Heat press fee (Ksh, per piece) — a staff-picked value, not typed freely,

@@ -5,7 +5,8 @@ import { api } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printWalkinReceipt } from '../utils/printTicket';
 import { buildCorporateDocumentHtml, printCorporateDocument } from '../utils/printInvoice';
-import MpesaStkButton from './MpesaStkButton';
+import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
+import type { PaymentRow } from './SplitPayments';
 
 interface Props {
   orderId: number;
@@ -16,8 +17,8 @@ interface Props {
 export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props) {
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [company, setCompany] = useState<CompanySettings | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'>('Cash');
+  // Payments can be split across methods (part cash, part M-Pesa…) — see components/SplitPayments.tsx.
+  const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [newPaymentRow()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,13 +41,13 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
   }, [detail]);
 
   async function recordPayment() {
-    const amt = Number(paymentAmount);
-    if (!amt || amt <= 0) return;
+    const payments = toApiPayments(paymentRows);
+    if (payments.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/orders/${orderId}/payments`, { amount: amt, method: paymentMethod });
-      setPaymentAmount('');
+      await api.post(`/orders/${orderId}/payments`, { payments });
+      setPaymentRows([newPaymentRow()]);
       load();
       onChanged();
     } catch (err) {
@@ -252,6 +253,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <th>Date</th>
                 <th>Amount</th>
                 <th>Method</th>
+                <th>Reference</th>
               </tr>
             </thead>
             <tbody>
@@ -260,6 +262,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                   <td className="text-muted">{fmtDate(p.date)}</td>
                   <td>{fmtKsh(p.amount)}</td>
                   <td>{p.method}</td>
+                  <td className="text-muted">{p.reference || (p.method === 'M-Pesa' ? 'no code' : '—')}</td>
                 </tr>
               ))}
             </tbody>
@@ -277,48 +280,37 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             </p>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-3)', alignItems: 'end' }}>
-            <div className="field">
-              <label>Record payment (Ksh)</label>
-              <input className="input" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Method</label>
-              <select className="input" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}>
-                <option value="Cash">Cash</option>
-                <option value="M-Pesa">M-Pesa</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-                <option value="Card">Card</option>
-              </select>
-            </div>
-            {paymentMethod === 'M-Pesa' ? (
-              <MpesaStkButton
+          {detail.totals.balanceDue > 0 && (
+            <div style={{ marginTop: 'var(--space-3)' }}>
+              <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
+                Record payment — split across methods if needed
+              </div>
+              <SplitPayments
+                rows={paymentRows}
+                onChange={setPaymentRows}
+                total={detail.totals.balanceDue}
                 phone={detail.phone || detail.corporateClient?.phone || ''}
-                amount={Number(paymentAmount) || 0}
                 accountReference={detail.orderNo}
-                description={`${detail.orderNo} payment`}
-                orderId={detail.id}
-                disabled={busy}
-                onSuccess={() => {
-                  setPaymentAmount('');
-                  load();
-                  onChanged();
-                }}
               />
-            ) : (
-              <button type="button" className="btn btn-secondary blueprint" onClick={recordPayment} disabled={busy}>
+              {paymentProblem(paymentRows, detail.totals.balanceDue) && (
+                <p className="note" style={{ color: '#a33' }}>
+                  {paymentProblem(paymentRows, detail.totals.balanceDue)}
+                </p>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary blueprint"
+                style={{ marginTop: 'var(--space-3)' }}
+                onClick={recordPayment}
+                disabled={busy || toApiPayments(paymentRows).length === 0 || !!paymentProblem(paymentRows, detail.totals.balanceDue)}
+              >
                 <i className="corner tl"></i>
                 <i className="corner tr"></i>
                 <i className="corner bl"></i>
                 <i className="corner br"></i>
-                Record
+                Record payment
               </button>
-            )}
-          </div>
-          {paymentMethod === 'M-Pesa' && !(detail.phone || detail.corporateClient?.phone) && (
-            <p className="note" style={{ color: '#a33' }}>
-              No phone number on file for this {detail.kind === 'walkin' ? 'customer' : 'client'} — add one before sending an STK push.
-            </p>
+            </div>
           )}
 
           {detail.status === 'Quote' && (

@@ -6,7 +6,8 @@ import type { LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
-import { orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
+import { paymentLineSchema, recordOrderPayments, PaymentError, orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
+import type { PaymentLine } from './orders';
 
 // DTF Sales & Roll Tracker. Two access levels (see Role model):
 //   canAccessDtf — record film sales / artwork jobs (roll costs are never sent)
@@ -60,6 +61,12 @@ async function materialLineItems(
   return items;
 }
 
+// The payment lines for a request: the list form, or the older single amountPaid + paymentMethod.
+function resolvePaymentLines(d: { payments?: PaymentLine[]; amountPaid: number; paymentMethod: PaymentMethod }): { lines: PaymentLine[]; paid: number } {
+  const lines: PaymentLine[] = d.payments && d.payments.length ? d.payments : d.amountPaid > 0 ? [{ method: d.paymentMethod, amount: d.amountPaid }] : [];
+  return { lines, paid: lines.reduce((a, p) => a + p.amount, 0) };
+}
+
 // Builds the Order + line items + optional Payment for a DTF Film Sale or
 // Artwork Job's "Record sale"/"Record job" popup, inside the caller's own
 // transaction — shared by both POST /sales and POST /jobs below so the
@@ -73,8 +80,7 @@ async function createDtfOrder(
     staffId: number;
     serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null };
     materialLines: { materialId: number; qty: number; unitPrice?: number }[];
-    amountPaid: number;
-    paymentMethod: PaymentMethod;
+    payments: PaymentLine[];
   },
 ) {
   // The order's staffId comes straight from the caller's JWT — if the dev
@@ -93,7 +99,7 @@ async function createDtfOrder(
   ];
   const totals = computeOrderTotals(
     { lineItems: lineItemInputs, orderDiscountPct: 0, orderDiscountAmt: 0 },
-    opts.amountPaid > 0 ? [{ date: todayStr(), amount: opts.amountPaid, method: opts.paymentMethod }] : [],
+    opts.payments.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method as PaymentMethod })),
   );
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
 
@@ -119,10 +125,13 @@ async function createDtfOrder(
           ...materialItems,
         ],
       },
-      payments: opts.amountPaid > 0 ? { create: [{ date: todayStr(), amount: opts.amountPaid, method: opts.paymentMethod, staffId: opts.staffId }] } : undefined,
     },
     include: orderInclude,
   });
+  if (opts.payments.length) {
+    await recordOrderPayments(tx, { id: order.id, kind: 'walkin', status, corporateClient: null }, opts.payments, opts.staffId);
+    return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
+  }
 
   return order;
 }
@@ -275,6 +284,8 @@ const saleSchema = z.object({
   pricePerM: z.number().nullable().optional(), // blank ⇒ standard price
   amountPaid: z.number().min(0).default(0),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
+  // Preferred: any mix of methods, e.g. part cash and part M-Pesa. Overrides amountPaid/paymentMethod.
+  payments: z.array(paymentLineSchema).max(6).optional(),
   materialLines: z.array(materialLineSchema).default([]),
 });
 
@@ -290,12 +301,13 @@ dtfRouter.post('/sales', async (req, res) => {
   const found = await openRoll(d.rollId);
   if ('error' in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
   // The price band is enforced here, not just in the form.
-  const c = saleCalc(settings, d.metres, d.pricePerM ?? null, d.amountPaid);
+  const c = saleCalc(settings, d.metres, d.pricePerM ?? null, paid);
   if (!c.valid) {
     return res.status(400).json({ error: `Price must be between ${settings.minPricePerM} and ${settings.stdPricePerM} KES/m` });
   }
-  if (d.amountPaid > c.total) return res.status(400).json({ error: 'Amount paid cannot exceed the sale total' });
+  if (paid > c.total) return res.status(400).json({ error: 'Amount paid cannot exceed the sale total' });
 
   try {
     const { sale, order } = await prisma.$transaction(async (tx) => {
@@ -307,8 +319,7 @@ dtfRouter.post('/sales', async (req, res) => {
         staffId: req.user!.id,
         serviceLine: { itemType: 'per-metre', serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
-        amountPaid: d.amountPaid,
-        paymentMethod: d.paymentMethod,
+        payments: paymentLines,
       });
       const sale = await tx.dtfFilmSale.create({
         data: {
@@ -319,7 +330,7 @@ dtfRouter.post('/sales', async (req, res) => {
           pricePerM: c.price,
           stdPriceAtSale: settings.stdPricePerM,
           minPriceAtSale: settings.minPricePerM,
-          amountPaid: d.amountPaid,
+          amountPaid: paid,
           capturedByName: req.user!.name,
           orderId: order.id,
         },
@@ -399,6 +410,7 @@ const jobSchema = z.object({
   heatPressFee: z.number().positive().nullable().optional(), // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
   amountPaid: z.number().min(0).default(0),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
+  payments: z.array(paymentLineSchema).max(6).optional(),
   materialLines: z.array(materialLineSchema).default([]),
 });
 
@@ -415,7 +427,8 @@ dtfRouter.post('/jobs', async (req, res) => {
   const settings = await getSettings();
   const c = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
-  if (d.amountPaid > jobTotal) return res.status(400).json({ error: 'Amount paid cannot exceed the job total' });
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
+  if (paid > jobTotal) return res.status(400).json({ error: 'Amount paid cannot exceed the job total' });
 
   try {
     const { job, order } = await prisma.$transaction(async (tx) => {
@@ -427,8 +440,7 @@ dtfRouter.post('/jobs', async (req, res) => {
         staffId: req.user!.id,
         serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
         materialLines: d.materialLines,
-        amountPaid: d.amountPaid,
-        paymentMethod: d.paymentMethod,
+        payments: paymentLines,
       });
       const job = await tx.dtfArtworkJob.create({
         data: {

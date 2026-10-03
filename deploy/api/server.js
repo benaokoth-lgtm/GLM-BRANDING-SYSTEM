@@ -107,7 +107,7 @@ var require_main = __commonJS({
     var fs4 = require("fs");
     var path3 = require("path");
     var os3 = require("os");
-    var crypto9 = require("crypto");
+    var crypto10 = require("crypto");
     var packageJson = require_package();
     var version2 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -326,7 +326,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto9.createDecipheriv("aes-256-gcm", key2, nonce);
+        const aesgcm = crypto10.createDecipheriv("aes-256-gcm", key2, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error2) {
@@ -21440,14 +21440,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto9 = require("crypto");
+    var crypto10 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto9.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto10.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -24340,11 +24340,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports2) {
-    var crypto9 = require("crypto");
+    var crypto10 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto9.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto10.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -24353,7 +24353,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto9.createHash("sha1").update(str).digest("hex");
+      return crypto10.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -27667,14 +27667,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports2, module2) {
     var Buffer3 = require_safe_buffer().Buffer;
-    var crypto9 = require("crypto");
+    var crypto10 = require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util4 = require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto9.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto10.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -27764,17 +27764,17 @@ var require_jwa = __commonJS({
       return function sign2(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac = crypto9.createHmac("sha" + bits, secret);
+        var hmac = crypto10.createHmac("sha" + bits, secret);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
     }
     var bufferEqual;
-    var timingSafeEqual2 = "timingSafeEqual" in crypto9 ? function timingSafeEqual3(a2, b) {
+    var timingSafeEqual2 = "timingSafeEqual" in crypto10 ? function timingSafeEqual3(a2, b) {
       if (a2.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto9.timingSafeEqual(a2, b);
+      return crypto10.timingSafeEqual(a2, b);
     } : function timingSafeEqual3(a2, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -27791,7 +27791,7 @@ var require_jwa = __commonJS({
       return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto9.createSign("RSA-SHA" + bits);
+        var signer = crypto10.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig);
       };
@@ -27801,7 +27801,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto9.createVerify("RSA-SHA" + bits);
+        var verifier = crypto10.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -27810,11 +27810,11 @@ var require_jwa = __commonJS({
       return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto9.createSign("RSA-SHA" + bits);
+        var signer = crypto10.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto9.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto9.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto10.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto10.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig);
       };
@@ -27824,12 +27824,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto9.createVerify("RSA-SHA" + bits);
+        var verifier = crypto10.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto9.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto9.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto10.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto10.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -43631,18 +43631,56 @@ var nodemailer = {
 var nodemailer_default = nodemailer;
 
 // apps/api/src/mailer.ts
-function buildTransport() {
-  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS } = process.env;
+async function getMailSettingsRow() {
+  return prisma.mailSettings.findUnique({ where: { id: 1 } });
+}
+async function loadMailConfig() {
+  const row = await getMailSettingsRow();
+  if (row && row.outgoingHost && row.username && row.password) {
+    return { source: "settings", username: row.username, password: row.password, outgoingHost: row.outgoingHost, smtpPort: row.smtpPort, incomingHost: row.incomingHost, imapPort: row.imapPort, pop3Port: row.pop3Port, fromName: row.fromName, loginUrl: row.loginUrl };
+  }
+  const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
+  return {
+    source: "env",
+    username: SMTP_USER,
+    password: SMTP_PASS,
+    outgoingHost: SMTP_HOST,
+    smtpPort: Number(SMTP_PORT),
+    incomingHost: "",
+    imapPort: 993,
+    pop3Port: 995,
+    fromName: SMTP_FROM && !SMTP_FROM.includes("@") ? SMTP_FROM : "",
+    loginUrl: ""
+  };
+}
+function createTransport2(c) {
   return nodemailer_default.createTransport({
-    host: SMTP_HOST,
-    port: Number(SMTP_PORT),
-    secure: Number(SMTP_PORT) === 465,
-    auth: { user: SMTP_USER, pass: SMTP_PASS }
+    host: c.outgoingHost,
+    port: c.smtpPort,
+    secure: c.smtpPort === 465,
+    // SSL/TLS on 465; any other port (587) upgrades with STARTTLS
+    auth: { user: c.username, pass: c.password },
+    connectionTimeout: 15e3,
+    greetingTimeout: 15e3,
+    socketTimeout: 2e4
   });
 }
-function mailFrom() {
-  return process.env.SMTP_FROM || process.env.SMTP_USER;
+async function getMailer() {
+  const config = await loadMailConfig();
+  if (!config) return null;
+  const transport = createTransport2(config);
+  const from = config.fromName ? { name: config.fromName, address: config.username } : config.username;
+  return { config, sendMail: (msg) => transport.sendMail({ from, ...msg }) };
+}
+function explainMailError(e, c) {
+  const err = e;
+  if (err.code === "EAUTH" || err.responseCode === 535) return "The mail server rejected the username or password.";
+  if (err.code === "ECONNECTION" || err.code === "ECONNREFUSED" || err.code === "ETIMEDOUT" || err.code === "ESOCKET" || err.code === "ENOTFOUND" || err.code === "EDNS") {
+    return `Could not connect to ${c.outgoingHost} on port ${c.smtpPort}. Check the outgoing server name and port (465 for SSL/TLS).`;
+  }
+  if (err.code === "ECERTIFICATE" || /certificate/i.test(err.message ?? "")) return "The mail server\u2019s security certificate was not accepted. Use the exact mail server name shown in your mail account\u2019s settings.";
+  return err.message || "The email could not be sent.";
 }
 
 // apps/api/src/middleware/auth.ts
@@ -44224,7 +44262,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   const authedUser = { id: user.id, name: user.name, role: user.role };
   const token = signToken(authedUser);
   const permissions = await permissionsForRole(user.role);
-  res.json({ token, user: { ...authedUser, permissions } });
+  res.json({ token, user: { ...authedUser, permissions, mustChangePin: user.mustChangePin } });
 });
 var RESET_CODE_MINUTES = 15;
 var RESET_MAX_ATTEMPTS = 5;
@@ -44236,9 +44274,9 @@ function normalizeEmail(v) {
 authRouter.post("/forgot-pin", resetLimiter, async (req, res) => {
   const email = normalizeEmail(req.body.email);
   if (!email) return res.status(400).json({ error: "Email is required" });
-  const transport = buildTransport();
-  if (!transport) {
-    return res.status(501).json({ error: "Email isn't configured on the server yet (SMTP settings). Ask whoever manages the hosting, or use reset-pin.js on the server." });
+  const mailer = await getMailer();
+  if (!mailer) {
+    return res.status(501).json({ error: "Email isn't set up yet. An Admin can set it up under Master Data \u2192 Email, or use reset-pin.js on the server." });
   }
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || user.role !== "Admin") return res.json(GENERIC_FORGOT_REPLY);
@@ -44252,16 +44290,15 @@ authRouter.post("/forgot-pin", resetLimiter, async (req, res) => {
     }
   });
   try {
-    await transport.sendMail({
-      from: mailFrom(),
+    await mailer.sendMail({
       to: email,
       subject: "GLM Branding POS \u2014 PIN reset code",
       text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.
 
 If you didn't ask for this, ignore this email \u2014 your PIN has not changed.`
     });
-  } catch {
-    return res.status(502).json({ error: "The reset email could not be sent. Check the server's SMTP settings." });
+  } catch (e) {
+    return res.status(502).json({ error: `The reset email could not be sent. ${explainMailError(e, mailer.config)}` });
   }
   res.json(GENERIC_FORGOT_REPLY);
 });
@@ -44292,7 +44329,8 @@ authRouter.post("/reset-pin", resetLimiter, async (req, res) => {
       lockedUntil: null,
       resetCodeHash: null,
       resetCodeExpires: null,
-      resetAttempts: 0
+      resetAttempts: 0,
+      mustChangePin: false
     }
   });
   res.json({ ok: true });
@@ -44305,7 +44343,7 @@ authRouter.post("/change-pin", requireAuth, async (req, res) => {
   const ok = await import_bcryptjs.default.compare(currentPin || "", user.pinHash);
   if (!ok) return res.status(400).json({ error: "Current PIN is incorrect" });
   const pinHash = await import_bcryptjs.default.hash(newPin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash, mustChangePin: false } });
   res.json({ ok: true });
 });
 
@@ -48355,6 +48393,7 @@ var coerce = {
 var NEVER = INVALID;
 
 // apps/api/src/routes/masterdata.ts
+var import_crypto2 = __toESM(require("crypto"));
 var masterDataRouter = (0, import_express2.Router)();
 masterDataRouter.use(requireAuth);
 masterDataRouter.get("/staff", async (_req, res) => {
@@ -48364,19 +48403,168 @@ masterDataRouter.get("/staff", async (_req, res) => {
 var staffSchema = external_exports.object({
   name: external_exports.string().min(1),
   role: external_exports.string().min(1),
-  pin: external_exports.string().regex(/^\d{4}$/)
+  pin: external_exports.string().regex(/^\d{4}$/),
+  email: external_exports.string().trim().toLowerCase().email().optional().or(external_exports.literal("")),
+  // Email them their login details now (needs an email and a mail account set up under Master Data → Email).
+  emailPin: external_exports.boolean().optional()
 });
 masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const { name: name2, role, pin } = parsed.data;
+  const email = parsed.data.email || null;
+  if (parsed.data.emailPin && !email) return res.status(400).json({ error: "Enter their email address to email them the PIN" });
+  if (email && await prisma.user.findUnique({ where: { email } })) return res.status(400).json({ error: "That email address is already used by someone else" });
   if (role !== "Admin") {
     const roleExists = await prisma.role.findUnique({ where: { name: role } });
     if (!roleExists) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
   }
   const pinHash = await import_bcryptjs2.default.hash(pin, 10);
-  const user = await prisma.user.create({ data: { name: name2, role, pinHash } });
-  res.status(201).json({ id: user.id, name: user.name, role: user.role });
+  const user = await prisma.user.create({ data: { name: name2, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  let emailed;
+  if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
+  res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
+});
+async function emailPin(name2, to, pin) {
+  const mailer = await getMailer();
+  if (!mailer) return { ok: false, error: "Email isn't set up yet \u2014 set it up under Master Data \u2192 Email first" };
+  const url = mailer.config.loginUrl ? `
+Sign in at: ${mailer.config.loginUrl}
+` : "";
+  try {
+    await mailer.sendMail({
+      to,
+      subject: "Your GLM Branding POS login",
+      text: `Hello ${name2},
+
+You can now sign in to the GLM Branding POS system.
+${url}
+Choose your name on the sign-in screen and enter this PIN:
+
+    ${pin}
+
+You will be asked to choose your own 4-digit PIN the first time you sign in. Please do that straight away, and delete this email afterwards.
+
+If you were not expecting this message, tell your manager.`
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: explainMailError(e, mailer.config) };
+  }
+}
+masterDataRouter.get("/staff-details", requireRole("Admin"), async (_req, res) => {
+  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
+  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role, email: u.email, mustChangePin: u.mustChangePin })));
+});
+masterDataRouter.put("/staff/:id/email", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ email: external_exports.string().trim().toLowerCase().email().or(external_exports.literal("")) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter a valid email address (or leave it blank to remove it)" });
+  const email = parsed.data.email || null;
+  if (email) {
+    const other = await prisma.user.findUnique({ where: { email } });
+    if (other && other.id !== Number(req.params.id)) return res.status(400).json({ error: "That email address is already used by someone else" });
+  }
+  const user = await prisma.user.update({ where: { id: Number(req.params.id) }, data: { email } }).catch(() => null);
+  if (!user) return res.status(404).json({ error: "Staff member not found" });
+  res.json({ id: user.id, email: user.email });
+});
+masterDataRouter.post("/staff/:id/send-pin", requireRole("Admin"), async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: Number(req.params.id) } });
+  if (!user) return res.status(404).json({ error: "Staff member not found" });
+  if (!user.email) return res.status(400).json({ error: `${user.name} has no email address yet \u2014 add one first` });
+  if (!await loadMailConfig()) return res.status(400).json({ error: "Email isn't set up yet \u2014 set it up under Master Data \u2192 Email first" });
+  const pin = String(import_crypto2.default.randomInt(0, 1e4)).padStart(4, "0");
+  const previous = { pinHash: user.pinHash, mustChangePin: user.mustChangePin };
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await import_bcryptjs2.default.hash(pin, 10), mustChangePin: true, failedLoginCount: 0, lockedUntil: null } });
+  const sent = await emailPin(user.name, user.email, pin);
+  if (!sent.ok) {
+    await prisma.user.update({ where: { id: user.id }, data: previous });
+    return res.status(502).json({ error: `The email could not be sent, so their PIN was left unchanged. ${sent.error}` });
+  }
+  res.json({ ok: true, sentTo: user.email });
+});
+function publicMail(row, source) {
+  return {
+    source,
+    configured: source !== "none",
+    username: row?.username ?? "",
+    outgoingHost: row?.outgoingHost ?? "",
+    smtpPort: row?.smtpPort ?? 465,
+    incomingHost: row?.incomingHost ?? "",
+    imapPort: row?.imapPort ?? 993,
+    pop3Port: row?.pop3Port ?? 995,
+    fromName: row?.fromName ?? "",
+    loginUrl: row?.loginUrl ?? "",
+    hasPassword: !!row?.password
+  };
+}
+masterDataRouter.get("/mail", requireRole("Admin"), async (_req, res) => {
+  const cfg = await loadMailConfig();
+  const row = await getMailSettingsRow();
+  if (cfg?.source === "env" && !row) {
+    return res.json({ ...publicMail(null, "env"), username: cfg.username, outgoingHost: cfg.outgoingHost, smtpPort: cfg.smtpPort, hasPassword: true, fromName: cfg.fromName });
+  }
+  res.json(publicMail(row, cfg ? "settings" : "none"));
+});
+var mailSchema = external_exports.object({
+  username: external_exports.string().trim().max(200).optional(),
+  password: external_exports.string().max(200).optional(),
+  // blank = keep what is saved
+  outgoingHost: external_exports.string().trim().max(200).optional(),
+  smtpPort: external_exports.number().int().min(1).max(65535).optional(),
+  incomingHost: external_exports.string().trim().max(200).optional(),
+  imapPort: external_exports.number().int().min(1).max(65535).optional(),
+  pop3Port: external_exports.number().int().min(1).max(65535).optional(),
+  fromName: external_exports.string().trim().max(80).optional(),
+  loginUrl: external_exports.string().trim().max(200).optional()
+});
+masterDataRouter.put("/mail", requireRole("Admin"), async (req, res) => {
+  const parsed = mailSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const b = parsed.data;
+  const cfg = await loadMailConfig();
+  const row = await getMailSettingsRow();
+  const carried = !row && cfg?.source === "env" ? cfg : null;
+  const username = b.username ?? row?.username ?? carried?.username ?? "";
+  if (username && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username)) return res.status(400).json({ error: "The username is the full email address, e.g. admin@glmgroup.co.ke" });
+  if (b.loginUrl && !/^https?:\/\//.test(b.loginUrl)) return res.status(400).json({ error: "The sign-in address must start with https://" });
+  const data = {
+    username,
+    password: b.password ? b.password : row?.password ?? carried?.password ?? "",
+    outgoingHost: b.outgoingHost ?? row?.outgoingHost ?? carried?.outgoingHost ?? "",
+    smtpPort: b.smtpPort ?? row?.smtpPort ?? carried?.smtpPort ?? 465,
+    incomingHost: b.incomingHost ?? row?.incomingHost ?? "",
+    imapPort: b.imapPort ?? row?.imapPort ?? 993,
+    pop3Port: b.pop3Port ?? row?.pop3Port ?? 995,
+    fromName: b.fromName ?? row?.fromName ?? carried?.fromName ?? "",
+    loginUrl: (b.loginUrl ?? row?.loginUrl ?? "").replace(/\/+$/, "")
+  };
+  const saved = await prisma.mailSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  const complete = !!(saved.outgoingHost && saved.username && saved.password);
+  res.json(publicMail(saved, complete ? "settings" : "none"));
+});
+masterDataRouter.post("/mail/test", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ to: external_exports.string().trim().email() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter the email address to send the test to" });
+  const cfg = await loadMailConfig();
+  if (!cfg) return res.status(400).json({ error: "Save the username, password and outgoing server first" });
+  const transport = createTransport2(cfg);
+  try {
+    await transport.verify();
+  } catch (e) {
+    return res.status(400).json({ error: explainMailError(e, cfg) });
+  }
+  try {
+    await transport.sendMail({
+      from: cfg.fromName ? { name: cfg.fromName, address: cfg.username } : cfg.username,
+      to: parsed.data.to,
+      subject: "GLM Branding POS \u2014 test email",
+      text: "This is a test message from the GLM Branding POS system. If you can read it, your mail settings work."
+    });
+  } catch (e) {
+    return res.status(400).json({ error: explainMailError(e, cfg) });
+  }
+  res.json({ ok: true, sentTo: parsed.data.to, from: cfg.username });
 });
 masterDataRouter.get("/roles", requireRole("Admin"), async (_req, res) => {
   const roles = await prisma.role.findMany({ orderBy: { name: "asc" } });
@@ -50348,28 +50536,27 @@ var sendSchema = external_exports.object({
   html: external_exports.string().min(1)
 });
 emailRouter.post("/send", async (req, res) => {
-  const transport = buildTransport();
-  if (!transport) {
-    return res.status(501).json({ error: "Email isn't configured yet \u2014 set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS in apps/api/.env" });
+  const mailer = await getMailer();
+  if (!mailer) {
+    return res.status(501).json({ error: "Email isn't set up yet \u2014 an Admin can set it up under Master Data \u2192 Email" });
   }
   const parsed = sendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   try {
-    await transport.sendMail({
-      from: mailFrom(),
+    await mailer.sendMail({
       to: parsed.data.to,
       subject: parsed.data.subject,
       html: parsed.data.html
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(502).json({ error: err instanceof Error ? err.message : "Failed to send email" });
+    res.status(502).json({ error: explainMailError(err, mailer.config) });
   }
 });
 
 // apps/api/src/routes/mpesa.ts
 var import_express9 = __toESM(require_express2());
-var import_crypto3 = require("crypto");
+var import_crypto4 = require("crypto");
 
 // apps/api/src/accounting/reports.ts
 var inRange4 = (d, from, to) => d >= from && d <= to;
@@ -50768,8 +50955,8 @@ async function importStatement(text, by) {
 }
 
 // apps/api/src/mpesaConfig.ts
-var import_crypto2 = require("crypto");
-var newCallbackSecret = () => (0, import_crypto2.randomBytes)(24).toString("hex");
+var import_crypto3 = require("crypto");
+var newCallbackSecret = () => (0, import_crypto3.randomBytes)(24).toString("hex");
 async function getSettingsRow() {
   return await prisma.mpesaSettings.findUnique({ where: { id: 1 } }) ?? prisma.mpesaSettings.create({ data: { id: 1 } });
 }
@@ -51041,7 +51228,7 @@ async function handleStkCallback(body) {
 function secretOk(given, want) {
   const a2 = Buffer.from(given);
   const b = Buffer.from(want);
-  return want.length >= 16 && a2.length === b.length && (0, import_crypto3.timingSafeEqual)(a2, b);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto4.timingSafeEqual)(a2, b);
 }
 mpesaRouter.post("/callback/:secret", async (req, res) => {
   const cfg = await loadMpesaConfig();

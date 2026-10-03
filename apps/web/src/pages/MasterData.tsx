@@ -5,8 +5,9 @@ import type { PermissionKey, RoleRow } from '@glm/shared';
 import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
 import MpesaSettingsPanel from '../components/MpesaSettingsPanel';
+import MailSettingsPanel from '../components/MailSettingsPanel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa';
+type MasterTab = 'staff' | 'roles' | 'services' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -17,6 +18,7 @@ const TABS: [MasterTab, string][] = [
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
   ['mpesa', 'M-Pesa'],
+  ['email', 'Email'],
 ];
 
 const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -62,6 +64,13 @@ export default function MasterData() {
   const [newStaffName, setNewStaffName] = useState('');
   const [newStaffRole, setNewStaffRole] = useState('Staff');
   const [newStaffPin, setNewStaffPin] = useState('');
+  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [newStaffEmailPin, setNewStaffEmailPin] = useState(false);
+  // Staff with their email, for emailing login PINs (Admin only).
+  const [staffDetails, setStaffDetails] = useState<{ id: number; name: string; role: string; email: string | null; mustChangePin: boolean }[]>([]);
+  const [emailDrafts, setEmailDrafts] = useState<Record<number, string>>({});
+  const [staffNotice, setStaffNotice] = useState<string | null>(null);
+  const [staffBusy, setStaffBusy] = useState(false);
 
   const [newServiceName, setNewServiceName] = useState('');
   const [newServiceUnit, setNewServiceUnit] = useState<'piece' | 'metre' | 'sqm'>('piece');
@@ -101,15 +110,55 @@ export default function MasterData() {
   const companyEmailValue = companyEmail ?? catalog.settings.companyEmail;
   const logoValue = logoDataUrl !== undefined ? logoDataUrl : catalog.settings.logoDataUrl;
 
+  function loadStaffDetails() {
+    api.get<typeof staffDetails>('/master-data/staff-details').then(setStaffDetails).catch(() => setStaffDetails([]));
+  }
+  useEffect(loadStaffDetails, []);
+
+  async function saveStaffEmail(id: number) {
+    setError(null);
+    setStaffNotice(null);
+    try {
+      await api.put(`/master-data/staff/${id}/email`, { email: emailDrafts[id] ?? '' });
+      setEmailDrafts((d) => {
+        const { [id]: _drop, ...rest } = d;
+        return rest;
+      });
+      loadStaffDetails();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save the email address');
+    }
+  }
+
+  async function sendPin(id: number, name: string) {
+    if (!window.confirm(`Give ${name} a new random PIN and email it to them? Their old PIN stops working, and they will choose their own the first time they sign in.`)) return;
+    setError(null);
+    setStaffNotice(null);
+    setStaffBusy(true);
+    try {
+      const r = await api.post<{ sentTo: string }>(`/master-data/staff/${id}/send-pin`, {});
+      setStaffNotice(`A new PIN was emailed to ${r.sentTo}`);
+      loadStaffDetails();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to email the PIN');
+    } finally {
+      setStaffBusy(false);
+    }
+  }
+
   async function addStaff() {
     if (!newStaffName.trim() || !/^\d{4}$/.test(newStaffPin)) return setError('Name and a 4-digit PIN are required');
     setError(null);
     try {
-      await api.post('/master-data/staff', { name: newStaffName, role: newStaffRole, pin: newStaffPin });
+      const r = await api.post<{ emailed?: { ok: boolean; error?: string } }>('/master-data/staff', { name: newStaffName, role: newStaffRole, pin: newStaffPin, email: newStaffEmail.trim(), emailPin: newStaffEmailPin && !!newStaffEmail.trim() });
+      setStaffNotice(r.emailed ? (r.emailed.ok ? `Added — their PIN was emailed to ${newStaffEmail.trim()}` : `Added, but the PIN email failed: ${r.emailed.error}`) : null);
       setNewStaffName('');
       setNewStaffPin('');
+      setNewStaffEmail('');
+      setNewStaffEmailPin(false);
       setNewStaffRole('Staff');
       catalog.reload();
+      loadStaffDetails();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add staff member');
     }
@@ -359,25 +408,63 @@ export default function MasterData() {
 
       {tab === 'staff' && (
         <>
+          {staffNotice && (
+            <p className="note" style={{ fontWeight: 700, borderLeft: '3px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
+              {staffNotice}
+            </p>
+          )}
           <table className="table">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Role</th>
+                <th>Email</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
-              {catalog.staff.map((s) => (
-                <tr key={s.id}>
-                  <td>{s.name}</td>
-                  <td>
-                    <span className="tag tag-neutral">{s.role}</span>
-                  </td>
-                </tr>
-              ))}
+              {catalog.staff.map((s) => {
+                const d = staffDetails.find((x) => x.id === s.id);
+                const editing = emailDrafts[s.id] !== undefined;
+                return (
+                  <tr key={s.id}>
+                    <td>
+                      {s.name} {d?.mustChangePin && <span className="tag tag-outline" title="They were emailed a PIN and have not chosen their own yet">PIN not changed yet</span>}
+                    </td>
+                    <td>
+                      <span className="tag tag-neutral">{s.role}</span>
+                    </td>
+                    <td>
+                      {editing ? (
+                        <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                          <input className="input" type="email" style={{ minWidth: 220 }} value={emailDrafts[s.id]} onChange={(e) => setEmailDrafts((x) => ({ ...x, [s.id]: e.target.value }))} placeholder="name@example.com" autoFocus />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => saveStaffEmail(s.id)}>
+                            Save
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEmailDrafts((x) => { const { [s.id]: _d, ...rest } = x; return rest; })}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          {d?.email || <span className="text-muted">—</span>}{' '}
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEmailDrafts((x) => ({ ...x, [s.id]: d?.email ?? '' }))}>
+                            {d?.email ? 'Change' : 'Add email'}
+                          </button>
+                        </>
+                      )}
+                    </td>
+                    <td>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={staffBusy || !d?.email} title={d?.email ? 'Give them a new random PIN and email it' : 'Add an email address first'} onClick={() => sendPin(s.id, s.name)}>
+                        Email login PIN
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 1.4fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
             <div className="field">
               <label>New staff name</label>
               <input className="input" value={newStaffName} onChange={(e) => setNewStaffName(e.target.value)} />
@@ -396,6 +483,10 @@ export default function MasterData() {
               <label>4-digit PIN</label>
               <input className="input" value={newStaffPin} maxLength={4} onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, ''))} />
             </div>
+            <div className="field">
+              <label>Email (optional)</label>
+              <input className="input" type="email" value={newStaffEmail} onChange={(e) => setNewStaffEmail(e.target.value)} placeholder="name@example.com" />
+            </div>
             <button type="button" className="btn btn-primary blueprint" onClick={addStaff}>
               <i className="corner tl"></i>
               <i className="corner tr"></i>
@@ -404,6 +495,9 @@ export default function MasterData() {
               Add
             </button>
           </div>
+          <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-2)' }}>
+            <input type="checkbox" checked={newStaffEmailPin} disabled={!newStaffEmail.trim()} onChange={(e) => setNewStaffEmailPin(e.target.checked)} /> Email them this PIN now (they will be asked to choose their own at first sign-in — set up the mail account under the Email tab first)
+          </label>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
             Roles beyond "Admin" are defined under Roles &amp; Access — add or amend one there before assigning it here.
           </p>
@@ -716,6 +810,8 @@ export default function MasterData() {
       )}
 
       {tab === 'mpesa' && <MpesaSettingsPanel />}
+
+      {tab === 'email' && <MailSettingsPanel />}
 
       {tab === 'company' && (
         <>

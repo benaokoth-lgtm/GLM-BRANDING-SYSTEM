@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth';
-import { buildTransport, mailFrom } from '../mailer';
+import { explainMailError, getMailer } from '../mailer';
 
 export const emailRouter = Router();
 emailRouter.use(requireAuth);
@@ -20,23 +20,22 @@ const sendSchema = z.object({
 // SMTP_* isn't set in apps/api/.env, rather than silently failing or
 // crashing, since a fresh install has no mail credentials yet.
 emailRouter.post('/send', async (req, res) => {
-  const transport = buildTransport();
-  if (!transport) {
-    return res.status(501).json({ error: 'Email isn\'t configured yet — set SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS in apps/api/.env' });
+  const mailer = await getMailer();
+  if (!mailer) {
+    return res.status(501).json({ error: "Email isn't set up yet — an Admin can set it up under Master Data → Email" });
   }
 
   const parsed = sendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
 
   try {
-    await transport.sendMail({
-      from: mailFrom(),
+    await mailer.sendMail({
       to: parsed.data.to,
       subject: parsed.data.subject,
       html: parsed.data.html,
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(502).json({ error: err instanceof Error ? err.message : 'Failed to send email' });
+    res.status(502).json({ error: explainMailError(err, mailer.config) });
   }
 });

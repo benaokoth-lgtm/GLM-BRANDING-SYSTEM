@@ -3,7 +3,8 @@ import { api } from '../api/client';
 
 const digits = (v: string) => v.replace(/\D/g, '').slice(0, 4);
 
-export default function ChangePinDialog({ onClose }: { onClose: () => void }) {
+// `forced`: the person was emailed a PIN and must choose their own — the dialog can't be closed until they have.
+export default function ChangePinDialog({ onClose, forced = false, onChanged }: { onClose: () => void; forced?: boolean; onChanged?: () => void }) {
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -19,7 +20,8 @@ export default function ChangePinDialog({ onClose }: { onClose: () => void }) {
     setError('');
     try {
       await api.post('/auth/change-pin', { currentPin, newPin });
-      setDone(true);
+      if (forced) onChanged?.();
+      else setDone(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not change PIN');
     } finally {
@@ -28,13 +30,14 @@ export default function ChangePinDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="dialog-backdrop" onClick={onClose}>
+    <div className="dialog-backdrop" onClick={forced ? undefined : onClose}>
       <div className="dialog blueprint" onClick={(e) => e.stopPropagation()}>
         <i className="corner tl"></i>
         <i className="corner tr"></i>
         <i className="corner bl"></i>
         <i className="corner br"></i>
-        <div className="dialog-title">Change PIN</div>
+        <div className="dialog-title">{forced ? 'Choose your own PIN' : 'Change PIN'}</div>
+        {forced && <p className="note" style={{ margin: 0 }}>You signed in with a PIN that was emailed to you. Enter it below as your current PIN, then choose a new 4-digit PIN that only you know.</p>}
         {done ? (
           <>
             <div className="dialog-body">
@@ -71,9 +74,11 @@ export default function ChangePinDialog({ onClose }: { onClose: () => void }) {
               {error && <p className="note" style={{ color: '#a33' }}>{error}</p>}
             </div>
             <div className="dialog-actions">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>
-                Cancel
-              </button>
+              {!forced && (
+                <button type="button" className="btn btn-secondary" onClick={onClose}>
+                  Cancel
+                </button>
+              )}
               <button type="submit" className="btn btn-primary" disabled={!canSave || busy}>
                 {busy ? 'Saving…' : 'Change PIN'}
               </button>

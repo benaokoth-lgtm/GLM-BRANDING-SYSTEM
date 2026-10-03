@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../db';
-import { buildTransport, mailFrom } from '../mailer';
+import { explainMailError, getMailer } from '../mailer';
 import { requireAuth, signToken } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
 
@@ -54,7 +54,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   const authedUser = { id: user.id, name: user.name, role: user.role };
   const token = signToken(authedUser);
   const permissions = await permissionsForRole(user.role);
-  res.json({ token, user: { ...authedUser, permissions } });
+  res.json({ token, user: { ...authedUser, permissions, mustChangePin: user.mustChangePin } });
 });
 
 // ── Emailed PIN reset (Admin only) ──────────────────────────────────────────
@@ -74,9 +74,9 @@ authRouter.post('/forgot-pin', resetLimiter, async (req, res) => {
   const email = normalizeEmail((req.body as { email?: string }).email);
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
-  const transport = buildTransport();
-  if (!transport) {
-    return res.status(501).json({ error: 'Email isn\'t configured on the server yet (SMTP settings). Ask whoever manages the hosting, or use reset-pin.js on the server.' });
+  const mailer = await getMailer();
+  if (!mailer) {
+    return res.status(501).json({ error: "Email isn't set up yet. An Admin can set it up under Master Data → Email, or use reset-pin.js on the server." });
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
@@ -93,14 +93,13 @@ authRouter.post('/forgot-pin', resetLimiter, async (req, res) => {
   });
 
   try {
-    await transport.sendMail({
-      from: mailFrom(),
+    await mailer.sendMail({
       to: email,
       subject: 'GLM Branding POS — PIN reset code',
       text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.\n\nIf you didn't ask for this, ignore this email — your PIN has not changed.`,
     });
-  } catch {
-    return res.status(502).json({ error: 'The reset email could not be sent. Check the server\'s SMTP settings.' });
+  } catch (e) {
+    return res.status(502).json({ error: `The reset email could not be sent. ${explainMailError(e, mailer.config)}` });
   }
   res.json(GENERIC_FORGOT_REPLY);
 });
@@ -136,6 +135,7 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
       resetCodeHash: null,
       resetCodeExpires: null,
       resetAttempts: 0,
+      mustChangePin: false,
     },
   });
   res.json({ ok: true });
@@ -153,6 +153,6 @@ authRouter.post('/change-pin', requireAuth, async (req, res) => {
   if (!ok) return res.status(400).json({ error: 'Current PIN is incorrect' });
 
   const pinHash = await bcrypt.hash(newPin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash, mustChangePin: false } });
   res.json({ ok: true });
 });

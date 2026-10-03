@@ -29,14 +29,16 @@ model User {
   lockedUntil      DateTime?
   createdAt        DateTime  @default(now())
 
-  // Only used for the Admin's emailed PIN-reset code (set out-of-band with
-  // `reset-pin.js "Name" --email ...`; there's no in-app field for it).
+  // Used for the Admin's emailed PIN-reset code and for the Admin to email anyone their login PIN (Master Data → Staff & Users).
+  // Set with `reset-pin.js "Name" --email ...` or under Master Data.
   // Stored lowercase. resetCodeHash is a bcrypt hash of a 6-digit code, never
   // the code itself.
   email            String?   @unique
   resetCodeHash    String?
   resetCodeExpires DateTime?
   resetAttempts    Int       @default(0)
+  // Set when the Admin emails someone a PIN: they must choose their own at first login.
+  mustChangePin    Boolean   @default(false)
 
   orders        Order[]
   payments      Payment[]
@@ -512,6 +514,23 @@ model MpesaTransaction {
   dismissedNote     String?
   rawJson           String   @default("{}")
   payment           Payment?
+}
+
+// Mail account the system sends email from — login PINs to staff, the Admin's PIN-reset code, invoices. Edited by the Admin under
+// Master Data → Email (one row, id = 1). Laid out like the "mail client settings" cPanel shows for a mailbox. The password is never
+// sent back to the browser once saved. When nothing is saved, the SMTP_* environment variables are still honoured (see mailer.ts).
+model MailSettings {
+  id           Int      @id @default(1)
+  username     String   @default("") // the full mailbox address, e.g. admin@glmgroup.co.ke
+  password     String   @default("")
+  outgoingHost String   @default("") // SMTP server
+  smtpPort     Int      @default(465) // 465 = SSL/TLS (recommended); 587 = STARTTLS
+  incomingHost String   @default("") // IMAP / POP3 server — recorded for reference; the system only sends
+  imapPort     Int      @default(993)
+  pop3Port     Int      @default(995)
+  fromName     String   @default("") // e.g. "GLM Branding POS"
+  loginUrl     String   @default("") // the address staff sign in at, quoted in the PIN email
+  updatedAt    DateTime @updatedAt
 }
 
 // M-Pesa (Daraja) setup, edited by the Admin under Master Data → M-Pesa. One row (id = 1). The consumer secret and passkey are

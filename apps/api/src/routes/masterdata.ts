@@ -3,7 +3,9 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
+import crypto from 'crypto';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS } from '@glm/shared';
+import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig } from '../mailer';
 
 export const masterDataRouter = Router();
 masterDataRouter.use(requireAuth);
@@ -18,19 +20,176 @@ const staffSchema = z.object({
   name: z.string().min(1),
   role: z.string().min(1),
   pin: z.string().regex(/^\d{4}$/),
+  email: z.string().trim().toLowerCase().email().optional().or(z.literal('')),
+  // Email them their login details now (needs an email and a mail account set up under Master Data → Email).
+  emailPin: z.boolean().optional(),
 });
 
 masterDataRouter.post('/staff', requireRole('Admin'), async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const { name, role, pin } = parsed.data;
+  const email = parsed.data.email || null;
+  if (parsed.data.emailPin && !email) return res.status(400).json({ error: 'Enter their email address to email them the PIN' });
+  if (email && (await prisma.user.findUnique({ where: { email } }))) return res.status(400).json({ error: 'That email address is already used by someone else' });
   if (role !== 'Admin') {
     const roleExists = await prisma.role.findUnique({ where: { name: role } });
     if (!roleExists) return res.status(400).json({ error: 'Unknown role — add it under Roles & Access first' });
   }
   const pinHash = await bcrypt.hash(pin, 10);
-  const user = await prisma.user.create({ data: { name, role, pinHash } });
-  res.status(201).json({ id: user.id, name: user.name, role: user.role });
+  const user = await prisma.user.create({ data: { name, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  let emailed: { ok: boolean; error?: string } | undefined;
+  if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
+  res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
+});
+
+// ── Emailing login details ──────────────────────────────────────────────
+// Sends someone their login PIN from the mail account set up under Master Data → Email. A PIN sent this way is a one-off: the person
+// is made to choose their own the first time they sign in (mustChangePin).
+async function emailPin(name: string, to: string, pin: string): Promise<{ ok: boolean; error?: string }> {
+  const mailer = await getMailer();
+  if (!mailer) return { ok: false, error: "Email isn't set up yet — set it up under Master Data → Email first" };
+  const url = mailer.config.loginUrl ? `\nSign in at: ${mailer.config.loginUrl}\n` : '';
+  try {
+    await mailer.sendMail({
+      to,
+      subject: 'Your GLM Branding POS login',
+      text: `Hello ${name},\n\nYou can now sign in to the GLM Branding POS system.\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nYou will be asked to choose your own 4-digit PIN the first time you sign in. Please do that straight away, and delete this email afterwards.\n\nIf you were not expecting this message, tell your manager.`,
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: explainMailError(e, mailer.config) };
+  }
+}
+
+// Staff with their email and whether they must still choose their own PIN. Admin-only (the plain /staff list is open to everyone).
+masterDataRouter.get('/staff-details', requireRole('Admin'), async (_req, res) => {
+  const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
+  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role, email: u.email, mustChangePin: u.mustChangePin })));
+});
+
+masterDataRouter.put('/staff/:id/email', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ email: z.string().trim().toLowerCase().email().or(z.literal('')) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Enter a valid email address (or leave it blank to remove it)' });
+  const email = parsed.data.email || null;
+  if (email) {
+    const other = await prisma.user.findUnique({ where: { email } });
+    if (other && other.id !== Number(req.params.id)) return res.status(400).json({ error: 'That email address is already used by someone else' });
+  }
+  const user = await prisma.user.update({ where: { id: Number(req.params.id) }, data: { email } }).catch(() => null);
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  res.json({ id: user.id, email: user.email });
+});
+
+// Gives someone a fresh random PIN and emails it to them. They must change it at first login. Clears any lockout.
+masterDataRouter.post('/staff/:id/send-pin', requireRole('Admin'), async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { id: Number(req.params.id) } });
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  if (!user.email) return res.status(400).json({ error: `${user.name} has no email address yet — add one first` });
+  if (!(await loadMailConfig())) return res.status(400).json({ error: "Email isn't set up yet — set it up under Master Data → Email first" });
+
+  const pin = String(crypto.randomInt(0, 10000)).padStart(4, '0');
+  const previous = { pinHash: user.pinHash, mustChangePin: user.mustChangePin };
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await bcrypt.hash(pin, 10), mustChangePin: true, failedLoginCount: 0, lockedUntil: null } });
+  const sent = await emailPin(user.name, user.email, pin);
+  if (!sent.ok) {
+    // Don't leave them locked out of a PIN nobody received.
+    await prisma.user.update({ where: { id: user.id }, data: previous });
+    return res.status(502).json({ error: `The email could not be sent, so their PIN was left unchanged. ${sent.error}` });
+  }
+  res.json({ ok: true, sentTo: user.email });
+});
+
+// ── Email settings (Master Data → Email) ───────────────────────────────
+// The mail account the system sends from, in the layout of a mailbox's "mail client settings". The password is never sent back.
+function publicMail(row: Awaited<ReturnType<typeof getMailSettingsRow>>, source: 'settings' | 'env' | 'none') {
+  return {
+    source,
+    configured: source !== 'none',
+    username: row?.username ?? '',
+    outgoingHost: row?.outgoingHost ?? '',
+    smtpPort: row?.smtpPort ?? 465,
+    incomingHost: row?.incomingHost ?? '',
+    imapPort: row?.imapPort ?? 993,
+    pop3Port: row?.pop3Port ?? 995,
+    fromName: row?.fromName ?? '',
+    loginUrl: row?.loginUrl ?? '',
+    hasPassword: !!row?.password,
+  };
+}
+
+masterDataRouter.get('/mail', requireRole('Admin'), async (_req, res) => {
+  const cfg = await loadMailConfig();
+  const row = await getMailSettingsRow();
+  if (cfg?.source === 'env' && !row) {
+    // Still sending from server variables: show them so the first save carries them over.
+    return res.json({ ...publicMail(null, 'env'), username: cfg.username, outgoingHost: cfg.outgoingHost, smtpPort: cfg.smtpPort, hasPassword: true, fromName: cfg.fromName });
+  }
+  res.json(publicMail(row, cfg ? 'settings' : 'none'));
+});
+
+const mailSchema = z.object({
+  username: z.string().trim().max(200).optional(),
+  password: z.string().max(200).optional(), // blank = keep what is saved
+  outgoingHost: z.string().trim().max(200).optional(),
+  smtpPort: z.number().int().min(1).max(65535).optional(),
+  incomingHost: z.string().trim().max(200).optional(),
+  imapPort: z.number().int().min(1).max(65535).optional(),
+  pop3Port: z.number().int().min(1).max(65535).optional(),
+  fromName: z.string().trim().max(80).optional(),
+  loginUrl: z.string().trim().max(200).optional(),
+});
+
+masterDataRouter.put('/mail', requireRole('Admin'), async (req, res) => {
+  const parsed = mailSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const b = parsed.data;
+  const cfg = await loadMailConfig();
+  const row = await getMailSettingsRow();
+  // First save from an install still on server variables: carry the password over so it need not be retyped.
+  const carried = !row && cfg?.source === 'env' ? cfg : null;
+  const username = b.username ?? row?.username ?? carried?.username ?? '';
+  if (username && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username)) return res.status(400).json({ error: 'The username is the full email address, e.g. admin@glmgroup.co.ke' });
+  if (b.loginUrl && !/^https?:\/\//.test(b.loginUrl)) return res.status(400).json({ error: 'The sign-in address must start with https://' });
+  const data = {
+    username,
+    password: b.password ? b.password : row?.password ?? carried?.password ?? '',
+    outgoingHost: b.outgoingHost ?? row?.outgoingHost ?? carried?.outgoingHost ?? '',
+    smtpPort: b.smtpPort ?? row?.smtpPort ?? carried?.smtpPort ?? 465,
+    incomingHost: b.incomingHost ?? row?.incomingHost ?? '',
+    imapPort: b.imapPort ?? row?.imapPort ?? 993,
+    pop3Port: b.pop3Port ?? row?.pop3Port ?? 995,
+    fromName: b.fromName ?? row?.fromName ?? carried?.fromName ?? '',
+    loginUrl: (b.loginUrl ?? row?.loginUrl ?? '').replace(/\/+$/, ''),
+  };
+  const saved = await prisma.mailSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  const complete = !!(saved.outgoingHost && saved.username && saved.password);
+  res.json(publicMail(saved, complete ? 'settings' : 'none'));
+});
+
+// Checks the connection and the login, then sends a real message so you can see it arrive.
+masterDataRouter.post('/mail/test', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ to: z.string().trim().email() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Enter the email address to send the test to' });
+  const cfg = await loadMailConfig();
+  if (!cfg) return res.status(400).json({ error: 'Save the username, password and outgoing server first' });
+  const transport = createTransport(cfg);
+  try {
+    await transport.verify();
+  } catch (e) {
+    return res.status(400).json({ error: explainMailError(e, cfg) });
+  }
+  try {
+    await transport.sendMail({
+      from: cfg.fromName ? { name: cfg.fromName, address: cfg.username } : cfg.username,
+      to: parsed.data.to,
+      subject: 'GLM Branding POS — test email',
+      text: 'This is a test message from the GLM Branding POS system. If you can read it, your mail settings work.',
+    });
+  } catch (e) {
+    return res.status(400).json({ error: explainMailError(e, cfg) });
+  }
+  res.json({ ok: true, sentTo: parsed.data.to, from: cfg.username });
 });
 
 // ── Roles & Access — Admin-only, same level as every other Master Data ──

@@ -50,7 +50,7 @@ function buildTabs(user: CurrentUser): [string, string][] {
 }
 
 export default function AppLayout() {
-  const { user, logout } = useAuth();
+  const { user, logout, clearMustChangePin } = useAuth();
   const [changingPin, setChangingPin] = useState(false);
   const tabs = user ? buildTabs(user) : [];
 
@@ -92,7 +92,7 @@ export default function AppLayout() {
       <main style={{ flex: 1, padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 1280, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
         <Outlet />
       </main>
-      {changingPin && <ChangePinDialog onClose={() => setChangingPin(false)} />}
+      {(changingPin || user?.mustChangePin) && <ChangePinDialog forced={!!user?.mustChangePin} onClose={() => setChangingPin(false)} onChanged={clearMustChangePin} />}
     </div>
   );
 }

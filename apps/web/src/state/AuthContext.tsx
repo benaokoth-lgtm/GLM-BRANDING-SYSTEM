@@ -13,6 +13,8 @@ export interface CurrentUser {
   // frontend copy (and therefore the nav/route gates built from it) only
   // refreshes the next time the affected user logs in.
   permissions: Permissions;
+  // Set when the Admin emailed this person a PIN: they must choose their own before doing anything else.
+  mustChangePin?: boolean;
 }
 
 const USER_KEY = 'glm_pos_user';
@@ -22,6 +24,7 @@ interface AuthContextValue {
   loginError: string | null;
   login: (userId: number, pin: string) => Promise<boolean>;
   logout: () => void;
+  clearMustChangePin: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -51,13 +54,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const clearMustChangePin = useCallback(() => {
+    setUser((u) => {
+      if (!u) return u;
+      const next = { ...u, mustChangePin: false };
+      localStorage.setItem(USER_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const logout = useCallback(() => {
     clearToken();
     localStorage.removeItem(USER_KEY);
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, loginError, login, logout }), [user, loginError, login, logout]);
+  const value = useMemo(() => ({ user, loginError, login, logout, clearMustChangePin }), [user, loginError, login, logout, clearMustChangePin]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

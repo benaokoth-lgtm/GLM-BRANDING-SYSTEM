@@ -16,6 +16,7 @@ var PERMISSION_KEYS = [
   "canAccessDtf",
   "canManageDtf",
   "canAccessAccounting",
+  "canSeeCosts",
   "canAccessProduction",
   "canManageProduction",
   "canAccessQuality"
@@ -77,7 +78,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessAccounting: true,
     canAccessProduction: true,
     canManageProduction: true,
-    canAccessQuality: true
+    canAccessQuality: true,
+    canSeeCosts: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -93,7 +95,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessAccounting: true,
     canAccessProduction: true,
     canManageProduction: true,
-    canAccessQuality: true
+    canAccessQuality: true,
+    canSeeCosts: true
   },
   Admin: ALL_TRUE
 };
@@ -109,7 +112,9 @@ var EXPENSE_CATEGORIES = [
   "Miscellaneous",
   "Airtime/Data",
   "Cleaning",
-  "Bank Charges"
+  "Bank Charges",
+  // Contracted-out jobs (eulogies, banners, screen printing…): the supplier's bill is the job's cost of sales.
+  "Outsourced Services"
 ];
 
 // packages/shared/src/tax.ts
@@ -254,6 +259,8 @@ var SYSTEM_ACCOUNT_CODES = [...Object.values(ACCT)];
 var EXPENSE_HEAD_ACCOUNT_CODES = {
   "Printing Materials & Consumables": "5000",
   // purchases of materials = cost of sales
+  "Outsourced Services": "5000",
+  // contracted-out jobs: the supplier's bill is cost of sales too
   "Casual Labour": "5110",
   Transport: "5120",
   Utilities: "5130",

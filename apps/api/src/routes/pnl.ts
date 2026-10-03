@@ -65,6 +65,7 @@ function inRange(d: string, from: string, to: string): boolean {
 const SALARIES_CATEGORY = 'Salaries & wages';
 // Expenses filed under this head are material purchases, i.e. cost of sales.
 const PURCHASE_CATEGORY = 'Printing Materials & Consumables';
+const COST_OF_SALES_CATEGORIES = new Set([PURCHASE_CATEGORY, 'Outsourced Services']);
 
 // Cost of sales is what was actually bought to sell and produce with — the purchases — not a percentage of revenue:
 //  • the expense behind a stock purchase (whatever head it was filed under) and the "Printing Materials & Consumables" head;
@@ -133,7 +134,7 @@ pnlRouter.get('/', async (req, res) => {
     prisma.purchase.findMany({ where: { status: { not: 'Rejected' } }, select: { date: true, totalCost: true, expenseId: true } }),
   ]);
   const purchaseExpenseIds = new Set(purchases.filter((p) => p.expenseId != null).map((p) => p.expenseId as number));
-  const cosExpenseIds = new Set(allExpenses.filter((e) => purchaseExpenseIds.has(e.id) || e.category === PURCHASE_CATEGORY).map((e) => e.id));
+  const cosExpenseIds = new Set(allExpenses.filter((e) => purchaseExpenseIds.has(e.id) || COST_OF_SALES_CATEGORIES.has(e.category)).map((e) => e.id));
   const cosItems: CostItem[] = [
     ...allExpenses.filter((e) => cosExpenseIds.has(e.id)).map((e) => ({ date: e.date, amount: e.amount })),
     ...purchases.filter((p) => p.expenseId == null).map((p) => ({ date: p.date, amount: p.totalCost })),

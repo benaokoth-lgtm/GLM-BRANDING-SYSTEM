@@ -20,6 +20,7 @@ export const PERMISSION_KEYS = [
   'canAccessDtf',
   'canManageDtf',
   'canAccessAccounting',
+  'canSeeCosts',
   'canAccessProduction',
   'canManageProduction',
   'canAccessQuality',

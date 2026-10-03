@@ -16,7 +16,7 @@ productionRouter.use(requireAuth, requirePermission('canAccessProduction', 'canM
 
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-function taskView(t: { id: number; orderId: number; status: string; isRework: boolean; assigneeId: number; assignedAt: Date; startedAt: Date | null; unitsPlanned: number; note: string; assignedByName: string; assignee: { name: string } }, summary: ReturnType<typeof productionSummary>) {
+function taskView(t: { id: number; orderId: number; status: string; isRework: boolean; assigneeId: number | null; supplierName: string | null; assignedAt: Date; startedAt: Date | null; unitsPlanned: number; note: string; assignedByName: string; assignee: { name: string } | null }, summary: ReturnType<typeof productionSummary>) {
   // The task's own fields come last so its status (Assigned / In Progress) is not hidden by the order's status.
   return {
     ...summary,
@@ -25,7 +25,9 @@ function taskView(t: { id: number; orderId: number; status: string; isRework: bo
     status: t.status,
     isRework: t.isRework,
     assigneeId: t.assigneeId,
-    assigneeName: t.assignee.name,
+    assigneeName: t.assignee?.name ?? null,
+    // A job sent to a supplier has no staff assignee; it comes back through "receive".
+    supplierName: t.supplierName,
     assignedAt: t.assignedAt,
     startedAt: t.startedAt,
     assignedByName: t.assignedByName,
@@ -112,6 +114,33 @@ productionRouter.post('/orders/:orderId/assign', async (req, res) => {
   res.status(201).json({ id: task.id });
 });
 
+// ── Send a contracted-out order to its supplier ─────────────────────────────
+// For outsourced work (eulogies, banners, screen printing…) there is no staff member to assign: the order goes to the supplier and
+// comes back through "Receive" (the same finish action, recording how many units arrived), then on to Quality Control. It is never
+// completed from here — only after QC, at handover.
+const supplierSendSchema = z.object({ supplierName: z.string().trim().min(1, 'Which supplier is it going to?').max(120), note: z.string().max(200).optional() });
+
+productionRouter.post('/orders/:orderId/send-to-supplier', async (req, res) => {
+  if (!(await isProductionManager(req.user!))) return res.status(403).json({ error: 'Only a production manager can send an order to a supplier' });
+  const parsed = supplierSendSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true } });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (order.status === 'Quote') return res.status(400).json({ error: 'A quotation has not been accepted yet — it cannot go into production' });
+  if (order.stage !== STAGE_WAITING && order.stage !== STAGE_IN_PRODUCTION) {
+    return res.status(400).json({ error: `This order is already at “${order.stage}” — it can only be sent while it is waiting or in production` });
+  }
+  const task = await prisma.$transaction(async (tx) => {
+    await tx.productionTask.updateMany({ where: { orderId: order.id, status: { in: ACTIVE_TASK_STATUSES } }, data: { status: 'Superseded' } });
+    const failedBefore = (await tx.qualityCheck.count({ where: { orderId: order.id, result: 'Failed' } })) > 0;
+    await tx.order.update({ where: { id: order.id }, data: { stage: STAGE_IN_PRODUCTION } });
+    return tx.productionTask.create({
+      data: { orderId: order.id, assigneeId: null, supplierName: parsed.data.supplierName, assignedByName: req.user!.name, unitsPlanned: orderUnits(order.lineItems), isRework: failedBefore, note: parsed.data.note ?? '' },
+    });
+  });
+  res.status(201).json({ id: task.id });
+});
+
 // ── The worker's actions ──────────────────────────────────────────────────
 async function loadTask(req: { params: { id: string }; user?: { id: number; role: string } }) {
   const task = await prisma.productionTask.findUnique({ where: { id: Number(req.params.id) }, include: { order: true } });
@@ -165,9 +194,10 @@ productionRouter.get('/productivity', async (req, res) => {
     prisma.user.findMany(),
   ]);
   const names = new Map(users.map((u) => [u.id, u]));
-  const facts = tasks.map((t) => ({
+  // Jobs sent to a supplier have no staff member behind them — they are left out of the per-person figures (but shown in recent jobs).
+  const facts = tasks.filter((t) => t.assigneeId != null).map((t) => ({
     id: t.id,
-    assigneeId: t.assigneeId,
+    assigneeId: t.assigneeId as number,
     assignedAt: t.assignedAt.toISOString(),
     startedAt: t.startedAt?.toISOString() ?? null,
     finishedAt: t.finishedAt?.toISOString() ?? null,
@@ -189,7 +219,7 @@ productionRouter.get('/productivity', async (req, res) => {
     .map((t) => ({
       id: t.id,
       orderNo: t.order.orderNo,
-      assigneeName: names.get(t.assigneeId)?.name ?? '',
+      assigneeName: t.assigneeId != null ? names.get(t.assigneeId)?.name ?? '' : `Supplier: ${t.supplierName ?? 'outsourced'}`,
       isRework: t.isRework,
       finishedAt: t.finishedAt,
       hours: t.finishedAt ? Math.round(((t.finishedAt.getTime() - (t.startedAt ?? t.assignedAt).getTime()) / 3_600_000) * 10) / 10 : null,

@@ -51,6 +51,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessProduction: true,
     canManageProduction: true,
     canAccessQuality: true,
+    canSeeCosts: true,
   },
   'General Manager': {
     ...ALL_FALSE,
@@ -67,6 +68,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessProduction: true,
     canManageProduction: true,
     canAccessQuality: true,
+    canSeeCosts: true,
   },
   Admin: ALL_TRUE,
 };
@@ -96,6 +98,8 @@ export const EXPENSE_CATEGORIES = [
   'Airtime/Data',
   'Cleaning',
   'Bank Charges',
+  // Contracted-out jobs (eulogies, banners, screen printing…): the supplier's bill is the job's cost of sales.
+  'Outsourced Services',
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];

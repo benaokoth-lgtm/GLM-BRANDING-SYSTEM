@@ -51,7 +51,7 @@ type OrderWithLines = {
   orderDiscountPct: number;
   orderDiscountAmt: number;
   corporateClient: { name: string } | null;
-  lineItems: { itemType: string; serviceId: number | null; materialId: number | null; qty: number; unitPrice: number; discountPct: number; discountAmt: number; heatPressFee: number | null; service: { name: string } | null; material: { name: string } | null }[];
+  lineItems: { itemType: string; serviceId: number | null; materialId: number | null; qty: number; unitPrice: number; discountPct: number; discountAmt: number; heatPressFee: number | null; service: { name: string; outsourced?: boolean; supplierName?: string } | null; material: { name: string } | null }[];
   payments: { date: string; amount: number; method: string }[];
 };
 
@@ -79,6 +79,9 @@ export function productionSummary(o: OrderWithLines) {
     createdDate: o.createdDate,
     dueDate: o.dueDate,
     items: o.lineItems.map((li) => ({ name: li.material?.name ?? li.service?.name ?? 'Item', qty: li.qty })),
+    // A contracted-out job (every line is an outsourced service) is sent to its supplier rather than given to a staff member.
+    outsourced: o.lineItems.length > 0 && o.lineItems.every((li) => !!li.service?.outsourced),
+    supplierHint: o.lineItems.map((li) => li.service?.supplierName).find((n) => !!n) ?? '',
     units: orderUnits(o.lineItems),
     balanceDue: Math.round(totals.balanceDue * 100) / 100,
   };

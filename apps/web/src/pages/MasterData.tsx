@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { PERMISSION_KEYS, fmtKsh } from '@glm/shared';
+import { PERMISSION_KEYS, fmtKsh, priceFromCost } from '@glm/shared';
+import { Fragment } from 'react';
 import type { PermissionKey, RoleRow } from '@glm/shared';
 import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
@@ -33,6 +34,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canAccessDtf: 'DTF: record sales & jobs',
   canManageDtf: 'DTF: rolls, costs & profit',
   canAccessAccounting: 'Accounting',
+  canSeeCosts: 'See supplier costs & mark-ups',
   canAccessProduction: 'Production: work assigned jobs',
   canManageProduction: 'Production: assign staff & productivity',
   canAccessQuality: 'Quality control: inspect orders',
@@ -143,6 +145,17 @@ export default function MasterData() {
       setError(err instanceof Error ? err.message : 'Failed to email the PIN');
     } finally {
       setStaffBusy(false);
+    }
+  }
+
+  // Contracted-out services: a generic in-place edit of the outsourced fields.
+  async function saveServiceFields(serviceId: number, patch: Record<string, unknown>) {
+    setError(null);
+    try {
+      await api.put(`/master-data/services/${serviceId}`, patch);
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update the service');
     }
   }
 
@@ -592,11 +605,13 @@ export default function MasterData() {
                 <th>Price</th>
                 <th>Artwork pricing</th>
                 <th>Charges pressing fee</th>
+                <th>Contracted out</th>
               </tr>
             </thead>
             <tbody>
               {catalog.services.map((sv) => (
-                <tr key={sv.id}>
+                <Fragment key={sv.id}>
+                <tr>
                   <td>{sv.name}</td>
                   <td>
                     <select className="input" style={{ width: 90 }} value={sv.unit} onChange={(e) => changeServiceUnit(sv.id, e.target.value as 'piece' | 'metre' | 'sqm')}>
@@ -630,7 +645,67 @@ export default function MasterData() {
                       {sv.chargesPressingFee && <span className="tag tag-accent">Heat press</span>}
                     </label>
                   </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={sv.outsourced} onChange={(e) => saveServiceFields(sv.id, { outsourced: e.target.checked })} />
+                      {sv.outsourced && <span className="tag tag-accent">Outsourced</span>}
+                    </label>
+                  </td>
                 </tr>
+                {sv.outsourced && (
+                  <tr>
+                    <td colSpan={6} style={{ background: 'var(--color-surface)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr auto', gap: 'var(--space-3)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>Supplier</label>
+                          <input className="input" defaultValue={sv.supplierName} onBlur={(e) => e.target.value !== sv.supplierName && saveServiceFields(sv.id, { supplierName: e.target.value })} placeholder="Who prints it for us" />
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>Usual supplier price per {sv.unit} (VAT incl.)</label>
+                          <input
+                            className="input"
+                            inputMode="decimal"
+                            defaultValue={sv.defaultSupplierCost ?? ''}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if ((v || null) !== (sv.defaultSupplierCost ?? null)) saveServiceFields(sv.id, { defaultSupplierCost: v > 0 ? v : null });
+                            }}
+                            placeholder="paper + service, e.g. 40"
+                          />
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>Mark-up</label>
+                          <select className="input" value={sv.markupType ?? 'percent'} onChange={(e) => saveServiceFields(sv.id, { markupType: e.target.value })}>
+                            <option value="percent">Percentage (%)</option>
+                            <option value="amount">Amount (Ksh per {sv.unit})</option>
+                          </select>
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>{(sv.markupType ?? 'percent') === 'percent' ? 'Mark-up %' : 'Mark-up Ksh'}</label>
+                          <input
+                            className="input"
+                            inputMode="decimal"
+                            defaultValue={sv.markupValue ?? 0}
+                            onBlur={(e) => Number(e.target.value) !== (sv.markupValue ?? 0) && saveServiceFields(sv.id, { markupValue: Math.max(0, Number(e.target.value) || 0) })}
+                          />
+                        </div>
+                        {(() => {
+                          const cost = sv.defaultSupplierCost ?? 0;
+                          const suggested = cost > 0 ? priceFromCost(cost, sv.markupType ?? 'percent', sv.markupValue ?? 0) : 0;
+                          return (
+                            <button type="button" className="btn btn-secondary btn-sm" disabled={suggested <= 0 || suggested === sv.price} onClick={() => saveServiceFields(sv.id, { price: suggested })}>
+                              {suggested > 0 ? `Set price to ${fmtKsh(suggested)}` : 'Set price from cost'}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                      <div className="note">
+                        The supplier quotes one price that includes paper and the service, VAT included; the mark-up gives the selling price (also VAT included). These are defaults — the real quote is entered on each job. Only people with the "See supplier costs" permission can see the supplier price and mark-up.
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>

@@ -43738,6 +43738,7 @@ var PERMISSION_KEYS = [
   "canAccessDtf",
   "canManageDtf",
   "canAccessAccounting",
+  "canSeeCosts",
   "canAccessProduction",
   "canManageProduction",
   "canAccessQuality"
@@ -43807,7 +43808,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessAccounting: true,
     canAccessProduction: true,
     canManageProduction: true,
-    canAccessQuality: true
+    canAccessQuality: true,
+    canSeeCosts: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -43823,7 +43825,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessAccounting: true,
     canAccessProduction: true,
     canManageProduction: true,
-    canAccessQuality: true
+    canAccessQuality: true,
+    canSeeCosts: true
   },
   Admin: ALL_TRUE
 };
@@ -43839,7 +43842,9 @@ var EXPENSE_CATEGORIES = [
   "Miscellaneous",
   "Airtime/Data",
   "Cleaning",
-  "Bank Charges"
+  "Bank Charges",
+  // Contracted-out jobs (eulogies, banners, screen printing…): the supplier's bill is the job's cost of sales.
+  "Outsourced Services"
 ];
 var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation", "Owner Injection"];
 var WALKIN_INVOICE_DUE_DAYS = 7;
@@ -44032,6 +44037,8 @@ var SYSTEM_ACCOUNT_CODES = [...Object.values(ACCT)];
 var EXPENSE_HEAD_ACCOUNT_CODES = {
   "Printing Materials & Consumables": "5000",
   // purchases of materials = cost of sales
+  "Outsourced Services": "5000",
+  // contracted-out jobs: the supplier's bill is cost of sales too
   "Casual Labour": "5110",
   Transport: "5120",
   Utilities: "5130",
@@ -44217,6 +44224,30 @@ function dailyOutput(tasks, from, to) {
     days.set(key2, d);
   }
   return [...days.entries()].sort(([a2], [b]) => a2 < b ? -1 : 1).map(([date, v]) => ({ date, units: round1(v.units), jobs: v.jobs }));
+}
+
+// packages/shared/src/outsourced.ts
+var MARKUP_TYPES = ["percent", "amount"];
+var round22 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+function jobMargin(sale, cost, vatRate) {
+  const s = round22(sale);
+  const c = round22(cost);
+  const saleExVat = round22(s / (1 + vatRate));
+  const gross = round22(s - c);
+  const book = round22(saleExVat - c);
+  return {
+    sale: s,
+    cost: c,
+    markupPct: c > 0 ? round22(gross / c * 100) : null,
+    marginPct: s > 0 ? round22(gross / s * 100) : null,
+    grossProfit: gross,
+    saleExVat,
+    bookProfit: book,
+    bookMarginPct: saleExVat > 0 ? round22(book / saleExVat * 100) : null
+  };
+}
+function needsCosting(line) {
+  return line.outsourced && !(Number(line.supplierCost) > 0);
 }
 
 // apps/api/src/permissions.ts
@@ -48394,6 +48425,33 @@ var NEVER = INVALID;
 
 // apps/api/src/routes/masterdata.ts
 var import_crypto2 = __toESM(require("crypto"));
+
+// apps/api/src/costs.ts
+async function canSeeCosts(role) {
+  return role === "Admin" || (await permissionsForRole(role)).canSeeCosts;
+}
+async function ensureCostAccess() {
+  if (await prisma.role.count({ where: { canSeeCosts: true } }) > 0) return;
+  for (const name2 of ["Finance Manager", "General Manager"]) {
+    if (DEFAULT_ROLE_PERMISSIONS[name2]?.canSeeCosts) await prisma.role.updateMany({ where: { name: name2 }, data: { canSeeCosts: true } });
+  }
+}
+var ensuring = null;
+function ensureCostAccessOnce() {
+  if (!ensuring) ensuring = ensureCostAccess().finally(() => ensuring = null);
+  return ensuring;
+}
+function costFieldsFor(li, allowed) {
+  if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
+  return {
+    supplierName: li.supplierName?.trim() || null,
+    supplierCost: li.supplierCost != null && li.supplierCost >= 0 ? li.supplierCost : null,
+    markupType: li.markupType === "amount" ? "amount" : li.supplierCost != null || li.markupValue != null ? "percent" : null,
+    markupValue: li.markupValue != null && li.markupValue >= 0 ? li.markupValue : null
+  };
+}
+
+// apps/api/src/routes/masterdata.ts
 var masterDataRouter = (0, import_express2.Router)();
 masterDataRouter.use(requireAuth);
 masterDataRouter.get("/staff", async (_req, res) => {
@@ -48618,14 +48676,22 @@ masterDataRouter.delete("/roles/:id", requireRole("Admin"), async (req, res) => 
   await prisma.role.delete({ where: { id: existing.id } });
   res.status(204).end();
 });
-masterDataRouter.get("/services", async (_req, res) => {
-  res.json(await prisma.service.findMany({ orderBy: { name: "asc" } }));
+masterDataRouter.get("/services", async (req, res) => {
+  const costs = await canSeeCosts(req.user.role);
+  const services2 = await prisma.service.findMany({ orderBy: { name: "asc" } });
+  res.json(services2.map(({ markupType, markupValue, defaultSupplierCost, ...s }) => costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s));
 });
 var serviceSchema = external_exports.object({
   name: external_exports.string().min(1),
   unit: external_exports.enum(["piece", "metre", "sqm"]),
   price: external_exports.number().positive(),
-  usesArtworkPricing: external_exports.boolean().optional()
+  usesArtworkPricing: external_exports.boolean().optional(),
+  // Contracted-out service: the supplier quotes one VAT-inclusive price (paper and service together); we add a mark-up.
+  outsourced: external_exports.boolean().optional(),
+  supplierName: external_exports.string().trim().max(120).optional(),
+  markupType: external_exports.enum(MARKUP_TYPES).optional(),
+  markupValue: external_exports.number().min(0).optional(),
+  defaultSupplierCost: external_exports.number().positive().nullable().optional()
 });
 masterDataRouter.post("/services", requireRole("Admin"), async (req, res) => {
   const parsed = serviceSchema.safeParse(req.body);
@@ -48636,7 +48702,12 @@ var serviceUpdateSchema = external_exports.object({
   price: external_exports.number().positive().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]).optional(),
   usesArtworkPricing: external_exports.boolean().optional(),
-  chargesPressingFee: external_exports.boolean().optional()
+  chargesPressingFee: external_exports.boolean().optional(),
+  outsourced: external_exports.boolean().optional(),
+  supplierName: external_exports.string().trim().max(120).optional(),
+  markupType: external_exports.enum(MARKUP_TYPES).optional(),
+  markupValue: external_exports.number().min(0).optional(),
+  defaultSupplierCost: external_exports.number().positive().nullable().optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => {
   const parsed = serviceUpdateSchema.safeParse(req.body);
@@ -48729,487 +48800,6 @@ masterDataRouter.put("/settings", requireRole("Admin"), async (req, res) => {
 // apps/api/src/routes/orders.ts
 var import_express3 = __toESM(require_express2());
 var import_client2 = require("@prisma/client");
-var ordersRouter = (0, import_express3.Router)();
-ordersRouter.use(requireAuth);
-var orderInclude = import_client2.Prisma.validator()({
-  staff: true,
-  corporateClient: true,
-  lineItems: { include: { service: true, material: true } },
-  payments: { orderBy: { id: "asc" } }
-});
-function toLineItemInput(li) {
-  return {
-    itemType: li.itemType,
-    serviceId: li.serviceId,
-    materialId: li.materialId,
-    qty: li.qty,
-    unitPrice: li.unitPrice,
-    discountPct: li.discountPct,
-    discountAmt: li.discountAmt,
-    heatPressFee: li.heatPressFee ?? null
-  };
-}
-function serializeSummary(order) {
-  const lineItems = order.lineItems.map(toLineItemInput);
-  const payments = order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-  const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
-  const overdue = isOverdue(order.kind, order.status, order.dueDate, totals.balanceDue, todayStr());
-  return {
-    id: order.id,
-    orderNo: order.orderNo,
-    kind: order.kind,
-    channel: order.channel,
-    customerName: order.customerName,
-    phone: order.phone,
-    corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone } : null,
-    staff: { id: order.staff.id, name: order.staff.name },
-    createdDate: order.createdDate,
-    status: order.status,
-    stage: order.stage,
-    dueDate: order.dueDate,
-    totals,
-    overdue
-  };
-}
-function serializeDetail(order) {
-  const summary = serializeSummary(order);
-  return {
-    ...summary,
-    paymentTiming: order.paymentTiming,
-    orderDiscountPct: order.orderDiscountPct,
-    orderDiscountAmt: order.orderDiscountAmt,
-    lineItems: order.lineItems.map((li) => ({
-      id: li.id,
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      serviceName: li.service?.name ?? null,
-      materialId: li.materialId,
-      materialName: li.material?.name ?? null,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee,
-      artworkAreaSqm: li.artworkAreaSqm,
-      lineTotal: buildLineTotal(toLineItemInput(li))
-    })),
-    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method, reference: p.reference }))
-  };
-}
-function canAccessOrder(userRole, userId, order) {
-  if (userRole === "Staff") return order.staffId === userId;
-  return true;
-}
-function resolveWalkinStatus(balanceDue) {
-  if (balanceDue > 0) return { status: "Invoice", dueDate: addDays(todayStr(), WALKIN_INVOICE_DUE_DAYS) };
-  return { status: "Order", dueDate: null };
-}
-async function convertQuoteToInvoice(tx, order) {
-  const days = order.corporateClient?.creditDays ?? 30;
-  const dueDate = addDays(todayStr(), days);
-  await tx.order.update({ where: { id: order.id }, data: { status: "Invoice", dueDate } });
-}
-var paymentLineSchema = external_exports.object({
-  method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]),
-  amount: external_exports.number().positive(),
-  // M-Pesa receipt code (or bank/card slip number). Entering an M-Pesa code that is already on a received-but-unmatched
-  // statement line ties the two together.
-  reference: external_exports.string().trim().max(60).optional().nullable()
-});
-var PaymentError = class extends Error {
-  constructor(message) {
-    super(message);
-  }
-};
-async function recordOrderPayments(tx, order, lines, staffId, date = todayStr()) {
-  for (const line of lines) {
-    const reference = line.reference ? line.reference.trim().toUpperCase() : null;
-    let mpesaTransactionId = line.linkedTransactionId ?? null;
-    let stkClaimed = false;
-    const linkedByEntry = mpesaTransactionId === null;
-    if (linkedByEntry && line.method === "M-Pesa" && reference) {
-      const received = await tx.mpesaTransaction.findUnique({ where: { mpesaReceipt: reference } });
-      const claimable = received?.kind === "STK" && received.status === "Success" && !received.orderId && !await tx.payment.findUnique({ where: { mpesaTransactionId: received.id } });
-      if (received && claimable) {
-        await tx.mpesaTransaction.update({ where: { id: received.id }, data: { orderId: order.id } });
-        mpesaTransactionId = received.id;
-        stkClaimed = true;
-      } else if (received) {
-        if (received.status !== "Unmatched") throw new PaymentError(`M-Pesa receipt ${reference} has already been used`);
-        if (Math.abs(received.amount - line.amount) > 1) {
-          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString("en-KE")}, not Ksh ${Math.round(line.amount).toLocaleString("en-KE")}`);
-        }
-        mpesaTransactionId = received.id;
-      }
-    }
-    await tx.payment.create({
-      data: { orderId: order.id, date, amount: line.amount, method: line.method, reference, mpesaTransactionId, staffId }
-    });
-    if (mpesaTransactionId && linkedByEntry && !stkClaimed) {
-      await tx.mpesaTransaction.update({
-        where: { id: mpesaTransactionId },
-        data: { status: "Applied", orderId: order.id, appliedAt: /* @__PURE__ */ new Date(), appliedByName: "Matched on entry" }
-      });
-    }
-  }
-  if (order.status === "Quote") {
-    await convertQuoteToInvoice(tx, order);
-  } else if (order.kind !== "corporate" && order.status === "Invoice") {
-    const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
-    const lineItems = full.lineItems.map(toLineItemInput);
-    const payments = full.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-    const totals = computeOrderTotals({ lineItems, orderDiscountPct: full.orderDiscountPct, orderDiscountAmt: full.orderDiscountAmt }, payments);
-    if (totals.balanceDue <= 0) {
-      await tx.order.update({ where: { id: order.id }, data: { status: "Order", dueDate: null } });
-    }
-  }
-}
-ordersRouter.get("/", async (req, res) => {
-  const { staffId, status, channel } = req.query;
-  const where = {};
-  if (req.user.role === "Staff") {
-    where.staffId = req.user.id;
-  } else if (staffId && staffId !== "all") {
-    where.staffId = Number(staffId);
-  }
-  if (status && status !== "all") where.status = status;
-  if (channel && channel !== "all") where.channel = channel;
-  const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: "desc" } });
-  res.json(orders.map(serializeSummary));
-});
-ordersRouter.get("/:id", async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  res.json(serializeDetail(order));
-});
-var lineItemSchema = external_exports.object({
-  itemType: external_exports.enum(["material", "service", "per-metre"]),
-  serviceId: external_exports.number().int().nullable().optional(),
-  materialId: external_exports.number().int().nullable().optional(),
-  qty: external_exports.number().positive(),
-  unitPrice: external_exports.number().nonnegative(),
-  discountPct: external_exports.number().min(0).max(100).default(0),
-  discountAmt: external_exports.number().min(0).default(0),
-  heatPressFee: external_exports.number().nonnegative().nullable().optional(),
-  artworkAreaSqm: external_exports.number().positive().nullable().optional()
-}).refine((li) => li.itemType === "material" ? !!li.materialId : !!li.serviceId, {
-  message: "A material line needs a material, a service line needs a service"
-});
-var walkinSchema = external_exports.object({
-  customerName: external_exports.string().min(1),
-  phone: external_exports.string().optional(),
-  staffId: external_exports.number().int(),
-  paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
-  paymentAmount: external_exports.number().min(0).optional(),
-  paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
-  // Preferred: any number of payment lines, e.g. part cash and part M-Pesa.
-  payments: external_exports.array(paymentLineSchema).max(6).optional(),
-  lineItems: external_exports.array(lineItemSchema).min(1),
-  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
-  orderDiscountAmt: external_exports.number().min(0).default(0)
-});
-ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, res) => {
-  const parsed = walkinSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const form = parsed.data;
-  const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
-  const totals = computeOrderTotals(
-    { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
-    paymentLines.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method }))
-  );
-  if (paymentLines.reduce((a2, p) => a2 + p.amount, 0) > totals.grandTotal + 0.01) {
-    return res.status(400).json({ error: "The payments add up to more than the order total" });
-  }
-  const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
-  const order = await prisma.$transaction(async (tx) => {
-    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = "W-" + settings.nextWalkinNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
-    const created = await tx.order.create({
-      data: {
-        orderNo,
-        kind: "walkin",
-        customerName: form.customerName,
-        phone: form.phone,
-        staffId: form.staffId,
-        createdDate: todayStr(),
-        status,
-        dueDate,
-        stage: "Order Received",
-        paymentTiming: form.paymentTiming,
-        orderDiscountPct: form.orderDiscountPct,
-        orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
-      },
-      include: orderInclude
-    });
-    if (paymentLines.length) {
-      await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, form.staffId);
-      return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
-    }
-    return created;
-  });
-  res.status(201).json(serializeDetail(order));
-});
-var quoteSchema = external_exports.object({
-  corporateClientId: external_exports.number().int(),
-  staffId: external_exports.number().int(),
-  lineItems: external_exports.array(lineItemSchema).min(1),
-  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
-  orderDiscountAmt: external_exports.number().min(0).default(0)
-});
-ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, res) => {
-  const parsed = quoteSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const form = parsed.data;
-  const order = await prisma.$transaction(async (tx) => {
-    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = "C-" + settings.nextCorpNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
-    return tx.order.create({
-      data: {
-        orderNo,
-        kind: "corporate",
-        corporateClientId: form.corporateClientId,
-        staffId: form.staffId,
-        createdDate: todayStr(),
-        status: "Quote",
-        stage: "Order Received",
-        orderDiscountPct: form.orderDiscountPct,
-        orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
-      },
-      include: orderInclude
-    });
-  });
-  res.status(201).json(serializeDetail(order));
-});
-ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req, res) => {
-  const parsed = quoteSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const form = parsed.data;
-  const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
-  if (!client) return res.status(400).json({ error: "Corporate client not found" });
-  const dueDate = addDays(todayStr(), client.creditDays);
-  const order = await prisma.$transaction(async (tx) => {
-    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = "C-" + settings.nextCorpNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
-    const created = await tx.order.create({
-      data: {
-        orderNo,
-        kind: "corporate",
-        corporateClientId: form.corporateClientId,
-        staffId: form.staffId,
-        createdDate: todayStr(),
-        status: "Invoice",
-        stage: "Order Received",
-        dueDate,
-        orderDiscountPct: form.orderDiscountPct,
-        orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) }
-      },
-      include: orderInclude
-    });
-    return created;
-  });
-  res.status(201).json(serializeDetail(order));
-});
-var paymentSchema = external_exports.object({
-  amount: external_exports.number().positive().optional(),
-  method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
-  reference: external_exports.string().trim().max(60).optional().nullable(),
-  payments: external_exports.array(paymentLineSchema).min(1).max(6).optional()
-}).refine((b) => b.payments && b.payments.length > 0 || b.amount && b.method, { message: "Enter at least one payment" });
-ordersRouter.post("/:id/payments", async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  const parsed = paymentSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const lines = parsed.data.payments?.length ? parsed.data.payments : [{ method: parsed.data.method, amount: parsed.data.amount, reference: parsed.data.reference ?? null }];
-  const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  const before = serializeSummary(current).totals;
-  const paying = lines.reduce((a2, p) => a2 + p.amount, 0);
-  if (paying > before.balanceDue + 0.01) {
-    return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString("en-KE")}, but only Ksh ${Math.round(before.balanceDue).toLocaleString("en-KE")} is outstanding` });
-  }
-  try {
-    await prisma.$transaction((tx) => recordOrderPayments(tx, order, lines, req.user.id));
-  } catch (e) {
-    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
-    throw e;
-  }
-  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  res.json(serializeDetail(updated));
-});
-var handoverSchema = external_exports.object({ onCredit: external_exports.boolean().optional() });
-ordersRouter.post("/:id/handover", async (req, res) => {
-  const parsed = handoverSchema.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
-  const onCredit = parsed.data.onCredit === true;
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  if (order.stage === "Completed") return res.status(400).json({ error: "This order has already been handed over" });
-  if (order.stage !== "Ready for Pickup/Delivery") {
-    return res.status(400).json({ error: `This order is at \u201C${order.stage}\u201D. It can only be handed over once it has been produced and has passed quality control.` });
-  }
-  const balance = serializeDetail(order).totals.balanceDue;
-  const owes = balance > 9e-3;
-  if (owes && !onCredit) {
-    return res.status(400).json({
-      error: `This order still owes Ksh ${Math.round(balance).toLocaleString("en-KE")}. Take the payment first \u2014 or hand it over on credit, which turns it into an invoice.`,
-      balanceDue: balance,
-      code: "BALANCE_DUE"
-    });
-  }
-  const data = { stage: "Completed", handedOverAt: /* @__PURE__ */ new Date(), handedOverByName: req.user.name, handedOverOnCredit: owes };
-  if (owes) {
-    const days = order.corporateClient?.creditDays ?? WALKIN_INVOICE_DUE_DAYS;
-    data.status = "Invoice";
-    if (!order.dueDate || order.dueDate < todayStr()) data.dueDate = addDays(todayStr(), days);
-  }
-  const updated = await prisma.order.update({ where: { id: order.id }, data, include: orderInclude });
-  res.json({ ...serializeDetail(updated), handedOverOnCredit: owes });
-});
-ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canViewAllOrders"), async (req, res) => {
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
-  if (order.status !== "Quote") return res.status(400).json({ error: "Only quotes can be converted" });
-  await prisma.$transaction((tx) => convertQuoteToInvoice(tx, order));
-  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  res.json(serializeDetail(updated));
-});
-
-// apps/api/src/routes/pnl.ts
-var import_express4 = __toESM(require_express2());
-var pnlRouter = (0, import_express4.Router)();
-pnlRouter.use(requireAuth, requirePermission("canAccessPnl"));
-async function loadOrdersForPnl() {
-  const orders = await prisma.order.findMany({ include: { lineItems: true, payments: true } });
-  return orders.map((o) => ({
-    kind: o.kind,
-    status: o.status,
-    createdDate: o.createdDate,
-    orderDiscountPct: o.orderDiscountPct,
-    orderDiscountAmt: o.orderDiscountAmt,
-    lineItems: o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    })),
-    payments: o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }))
-  }));
-}
-function inRange(d, from, to) {
-  return d >= from && d <= to;
-}
-var SALARIES_CATEGORY = "Salaries & wages";
-var PURCHASE_CATEGORY = "Printing Materials & Consumables";
-function computeAgg(orders, expenses, payroll, cosItems, cosExpenseIds, from, to) {
-  let revAccrualWalkin = 0;
-  let revAccrualCorp = 0;
-  let revCash = 0;
-  for (const o of orders) {
-    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
-    if (isRevenueOrder && inRange(o.createdDate, from, to)) {
-      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      if (o.kind === "walkin") revAccrualWalkin += totals.grandTotal;
-      else revAccrualCorp += totals.grandTotal;
-    }
-    for (const p of o.payments) {
-      if (inRange(p.date, from, to)) revCash += p.amount;
-    }
-  }
-  const revAccrual = revAccrualWalkin + revAccrualCorp;
-  const cogs = cosItems.filter((c) => inRange(c.date, from, to)).reduce((a2, c) => a2 + c.amount, 0);
-  const grossProfit = revAccrual - cogs;
-  const expensesInRange = expenses.filter((e) => inRange(e.date, from, to) && !cosExpenseIds.has(e.id));
-  const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
-  const salariesTotal = payrollInRange.reduce((a2, p) => a2 + p.grossPay, 0);
-  const totalExpenses = expensesInRange.reduce((a2, e) => a2 + e.amount, 0) + salariesTotal;
-  const netProfit = grossProfit - totalExpenses;
-  const byCategory = {};
-  for (const e of expensesInRange) byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
-  if (salariesTotal > 0) byCategory[SALARIES_CATEGORY] = (byCategory[SALARIES_CATEGORY] || 0) + salariesTotal;
-  return { revAccrualWalkin, revAccrualCorp, revAccrual, revCash, cogs, grossProfit, totalExpenses, netProfit, byCategory };
-}
-function priorRange(from, to) {
-  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00");
-  const toD = /* @__PURE__ */ new Date(to + "T00:00:00");
-  const lengthMs = toD.getTime() - fromD.getTime();
-  const priorTo = new Date(fromD);
-  priorTo.setDate(priorTo.getDate() - 1);
-  const priorFrom = new Date(priorTo.getTime() - lengthMs);
-  const fmtD = (d) => d.toISOString().slice(0, 10);
-  return { from: fmtD(priorFrom), to: fmtD(priorTo) };
-}
-function pctChange(cur, prev) {
-  return prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
-}
-pnlRouter.get("/", async (req, res) => {
-  const from = String(req.query.from || "");
-  const to = String(req.query.to || "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  }
-  const [orders, allExpenses, allPayroll, purchases] = await Promise.all([
-    loadOrdersForPnl(),
-    prisma.expense.findMany({ orderBy: { date: "desc" } }),
-    prisma.payrollEntry.findMany({ select: { date: true, grossPay: true } }),
-    prisma.purchase.findMany({ where: { status: { not: "Rejected" } }, select: { date: true, totalCost: true, expenseId: true } })
-  ]);
-  const purchaseExpenseIds = new Set(purchases.filter((p) => p.expenseId != null).map((p) => p.expenseId));
-  const cosExpenseIds = new Set(allExpenses.filter((e) => purchaseExpenseIds.has(e.id) || e.category === PURCHASE_CATEGORY).map((e) => e.id));
-  const cosItems = [
-    ...allExpenses.filter((e) => cosExpenseIds.has(e.id)).map((e) => ({ date: e.date, amount: e.amount })),
-    ...purchases.filter((p) => p.expenseId == null).map((p) => ({ date: p.date, amount: p.totalCost }))
-  ];
-  const agg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, from, to);
-  const prior = priorRange(from, to);
-  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, prior.from, prior.to);
-  const toDateObj = /* @__PURE__ */ new Date(to + "T00:00:00");
-  const trend = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(toDateObj.getFullYear(), toDateObj.getMonth() - i, 1);
-    const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-    const monthEnd2 = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const mTo = monthEnd2.toISOString().slice(0, 10);
-    const mAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, mFrom, mTo);
-    trend.push({ label: `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
-  }
-  res.json({
-    fromDate: from,
-    toDate: to,
-    revAccrualWalkin: agg.revAccrualWalkin,
-    revAccrualCorp: agg.revAccrualCorp,
-    revAccrual: agg.revAccrual,
-    revCash: agg.revCash,
-    cogs: agg.cogs,
-    grossProfit: agg.grossProfit,
-    byCategory: agg.byCategory,
-    totalExpenses: agg.totalExpenses,
-    netProfit: agg.netProfit,
-    netMarginPct: agg.revAccrual > 0 ? Math.round(agg.netProfit / agg.revAccrual * 1e3) / 10 : 0,
-    revChangePct: pctChange(agg.revAccrual, priorAgg.revAccrual),
-    profitChangePct: pctChange(agg.netProfit, priorAgg.netProfit),
-    priorFrom: prior.from,
-    priorTo: prior.to,
-    trend,
-    expenseCategories: [SALARIES_CATEGORY, ...EXPENSE_CATEGORIES]
-  });
-});
-
-// apps/api/src/routes/finance.ts
-var import_express5 = __toESM(require_express2());
 
 // apps/api/src/accounting/chart.ts
 var CUSTOM_EXPENSE_START = 5300;
@@ -49543,7 +49133,663 @@ function naturalBalance(type, b) {
   return round2(isDebitNormal(type) ? b.debit - b.credit : b.credit - b.debit);
 }
 
+// apps/api/src/routes/orders.ts
+var ordersRouter = (0, import_express3.Router)();
+ordersRouter.use(requireAuth, async (_req, _res, next) => {
+  await ensureCostAccessOnce();
+  next();
+});
+var orderInclude = import_client2.Prisma.validator()({
+  staff: true,
+  corporateClient: true,
+  lineItems: { include: { service: true, material: true } },
+  payments: { orderBy: { id: "asc" } }
+});
+function toLineItemInput(li) {
+  return {
+    itemType: li.itemType,
+    serviceId: li.serviceId,
+    materialId: li.materialId,
+    qty: li.qty,
+    unitPrice: li.unitPrice,
+    discountPct: li.discountPct,
+    discountAmt: li.discountAmt,
+    heatPressFee: li.heatPressFee ?? null
+  };
+}
+function serializeSummary(order) {
+  const lineItems = order.lineItems.map(toLineItemInput);
+  const payments = order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
+  const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
+  const overdue = isOverdue(order.kind, order.status, order.dueDate, totals.balanceDue, todayStr());
+  return {
+    id: order.id,
+    orderNo: order.orderNo,
+    kind: order.kind,
+    channel: order.channel,
+    customerName: order.customerName,
+    phone: order.phone,
+    corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone } : null,
+    staff: { id: order.staff.id, name: order.staff.name },
+    createdDate: order.createdDate,
+    status: order.status,
+    stage: order.stage,
+    dueDate: order.dueDate,
+    totals,
+    overdue
+  };
+}
+function serializeDetail(order, opts = {}) {
+  const summary = serializeSummary(order);
+  return {
+    ...summary,
+    paymentTiming: order.paymentTiming,
+    orderDiscountPct: order.orderDiscountPct,
+    orderDiscountAmt: order.orderDiscountAmt,
+    lineItems: order.lineItems.map((li) => ({
+      id: li.id,
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      serviceName: li.service?.name ?? null,
+      materialId: li.materialId,
+      materialName: li.material?.name ?? null,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee,
+      artworkAreaSqm: li.artworkAreaSqm,
+      outsourced: !!li.service?.outsourced,
+      needsCosting: needsCosting({ outsourced: !!li.service?.outsourced, supplierCost: li.supplierCost }),
+      ...opts.costs ? { supplierName: li.supplierName, supplierCost: li.supplierCost, markupType: li.markupType, markupValue: li.markupValue } : {},
+      lineTotal: buildLineTotal(toLineItemInput(li))
+    })),
+    payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method, reference: p.reference }))
+  };
+}
+function canAccessOrder(userRole, userId, order) {
+  if (userRole === "Staff") return order.staffId === userId;
+  return true;
+}
+function resolveWalkinStatus(balanceDue) {
+  if (balanceDue > 0) return { status: "Invoice", dueDate: addDays(todayStr(), WALKIN_INVOICE_DUE_DAYS) };
+  return { status: "Order", dueDate: null };
+}
+async function convertQuoteToInvoice(tx, order) {
+  const days = order.corporateClient?.creditDays ?? 30;
+  const dueDate = addDays(todayStr(), days);
+  await tx.order.update({ where: { id: order.id }, data: { status: "Invoice", dueDate } });
+}
+var paymentLineSchema = external_exports.object({
+  method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]),
+  amount: external_exports.number().positive(),
+  // M-Pesa receipt code (or bank/card slip number). Entering an M-Pesa code that is already on a received-but-unmatched
+  // statement line ties the two together.
+  reference: external_exports.string().trim().max(60).optional().nullable()
+});
+var PaymentError = class extends Error {
+  constructor(message) {
+    super(message);
+  }
+};
+async function recordOrderPayments(tx, order, lines, staffId, date = todayStr()) {
+  for (const line of lines) {
+    const reference = line.reference ? line.reference.trim().toUpperCase() : null;
+    let mpesaTransactionId = line.linkedTransactionId ?? null;
+    let stkClaimed = false;
+    const linkedByEntry = mpesaTransactionId === null;
+    if (linkedByEntry && line.method === "M-Pesa" && reference) {
+      const received = await tx.mpesaTransaction.findUnique({ where: { mpesaReceipt: reference } });
+      const claimable = received?.kind === "STK" && received.status === "Success" && !received.orderId && !await tx.payment.findUnique({ where: { mpesaTransactionId: received.id } });
+      if (received && claimable) {
+        await tx.mpesaTransaction.update({ where: { id: received.id }, data: { orderId: order.id } });
+        mpesaTransactionId = received.id;
+        stkClaimed = true;
+      } else if (received) {
+        if (received.status !== "Unmatched") throw new PaymentError(`M-Pesa receipt ${reference} has already been used`);
+        if (Math.abs(received.amount - line.amount) > 1) {
+          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString("en-KE")}, not Ksh ${Math.round(line.amount).toLocaleString("en-KE")}`);
+        }
+        mpesaTransactionId = received.id;
+      }
+    }
+    await tx.payment.create({
+      data: { orderId: order.id, date, amount: line.amount, method: line.method, reference, mpesaTransactionId, staffId }
+    });
+    if (mpesaTransactionId && linkedByEntry && !stkClaimed) {
+      await tx.mpesaTransaction.update({
+        where: { id: mpesaTransactionId },
+        data: { status: "Applied", orderId: order.id, appliedAt: /* @__PURE__ */ new Date(), appliedByName: "Matched on entry" }
+      });
+    }
+  }
+  if (order.status === "Quote") {
+    await convertQuoteToInvoice(tx, order);
+  } else if (order.kind !== "corporate" && order.status === "Invoice") {
+    const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
+    const lineItems = full.lineItems.map(toLineItemInput);
+    const payments = full.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
+    const totals = computeOrderTotals({ lineItems, orderDiscountPct: full.orderDiscountPct, orderDiscountAmt: full.orderDiscountAmt }, payments);
+    if (totals.balanceDue <= 0) {
+      await tx.order.update({ where: { id: order.id }, data: { status: "Order", dueDate: null } });
+    }
+  }
+}
+ordersRouter.get("/", async (req, res) => {
+  const { staffId, status, channel } = req.query;
+  const where = {};
+  if (req.user.role === "Staff") {
+    where.staffId = req.user.id;
+  } else if (staffId && staffId !== "all") {
+    where.staffId = Number(staffId);
+  }
+  if (status && status !== "all") where.status = status;
+  if (channel && channel !== "all") where.channel = channel;
+  const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: "desc" } });
+  res.json(orders.map(serializeSummary));
+});
+ordersRouter.get("/:id", async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  res.json(serializeDetail(order, { costs: await canSeeCosts(req.user.role) }));
+});
+var lineItemSchema = external_exports.object({
+  itemType: external_exports.enum(["material", "service", "per-metre"]),
+  serviceId: external_exports.number().int().nullable().optional(),
+  materialId: external_exports.number().int().nullable().optional(),
+  qty: external_exports.number().positive(),
+  unitPrice: external_exports.number().nonnegative(),
+  discountPct: external_exports.number().min(0).max(100).default(0),
+  discountAmt: external_exports.number().min(0).default(0),
+  heatPressFee: external_exports.number().nonnegative().nullable().optional(),
+  artworkAreaSqm: external_exports.number().positive().nullable().optional(),
+  // Outsourced services: the supplier's quote for this job and the mark-up behind the price. Honoured only for people who can see costs.
+  supplierName: external_exports.string().trim().max(120).nullable().optional(),
+  supplierCost: external_exports.number().min(0).nullable().optional(),
+  markupType: external_exports.enum(MARKUP_TYPES).nullable().optional(),
+  markupValue: external_exports.number().min(0).nullable().optional()
+}).refine((li) => li.itemType === "material" ? !!li.materialId : !!li.serviceId, {
+  message: "A material line needs a material, a service line needs a service"
+});
+var walkinSchema = external_exports.object({
+  customerName: external_exports.string().min(1),
+  phone: external_exports.string().optional(),
+  staffId: external_exports.number().int(),
+  paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
+  paymentAmount: external_exports.number().min(0).optional(),
+  paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
+  // Preferred: any number of payment lines, e.g. part cash and part M-Pesa.
+  payments: external_exports.array(paymentLineSchema).max(6).optional(),
+  lineItems: external_exports.array(lineItemSchema).min(1),
+  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
+  orderDiscountAmt: external_exports.number().min(0).default(0)
+});
+ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, res) => {
+  const parsed = walkinSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const form = parsed.data;
+  const costs = await canSeeCosts(req.user.role);
+  const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
+  const totals = computeOrderTotals(
+    { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
+    paymentLines.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method }))
+  );
+  if (paymentLines.reduce((a2, p) => a2 + p.amount, 0) > totals.grandTotal + 0.01) {
+    return res.status(400).json({ error: "The payments add up to more than the order total" });
+  }
+  const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
+  const order = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const orderNo = "W-" + settings.nextWalkinNo;
+    await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
+    const created = await tx.order.create({
+      data: {
+        orderNo,
+        kind: "walkin",
+        customerName: form.customerName,
+        phone: form.phone,
+        staffId: form.staffId,
+        createdDate: todayStr(),
+        status,
+        dueDate,
+        stage: "Order Received",
+        paymentTiming: form.paymentTiming,
+        orderDiscountPct: form.orderDiscountPct,
+        orderDiscountAmt: form.orderDiscountAmt,
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null, ...costFieldsFor(li, costs) })) }
+      },
+      include: orderInclude
+    });
+    if (paymentLines.length) {
+      await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, form.staffId);
+      return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
+    }
+    return created;
+  });
+  res.status(201).json(serializeDetail(order));
+});
+var quoteSchema = external_exports.object({
+  corporateClientId: external_exports.number().int(),
+  staffId: external_exports.number().int(),
+  lineItems: external_exports.array(lineItemSchema).min(1),
+  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
+  orderDiscountAmt: external_exports.number().min(0).default(0)
+});
+ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, res) => {
+  const parsed = quoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const form = parsed.data;
+  const costs = await canSeeCosts(req.user.role);
+  const order = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const orderNo = "C-" + settings.nextCorpNo;
+    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
+    return tx.order.create({
+      data: {
+        orderNo,
+        kind: "corporate",
+        corporateClientId: form.corporateClientId,
+        staffId: form.staffId,
+        createdDate: todayStr(),
+        status: "Quote",
+        stage: "Order Received",
+        orderDiscountPct: form.orderDiscountPct,
+        orderDiscountAmt: form.orderDiscountAmt,
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null, ...costFieldsFor(li, costs) })) }
+      },
+      include: orderInclude
+    });
+  });
+  res.status(201).json(serializeDetail(order));
+});
+ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req, res) => {
+  const parsed = quoteSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const form = parsed.data;
+  const costs = await canSeeCosts(req.user.role);
+  const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
+  if (!client) return res.status(400).json({ error: "Corporate client not found" });
+  const dueDate = addDays(todayStr(), client.creditDays);
+  const order = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    const orderNo = "C-" + settings.nextCorpNo;
+    await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
+    const created = await tx.order.create({
+      data: {
+        orderNo,
+        kind: "corporate",
+        corporateClientId: form.corporateClientId,
+        staffId: form.staffId,
+        createdDate: todayStr(),
+        status: "Invoice",
+        stage: "Order Received",
+        dueDate,
+        orderDiscountPct: form.orderDiscountPct,
+        orderDiscountAmt: form.orderDiscountAmt,
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null, ...costFieldsFor(li, costs) })) }
+      },
+      include: orderInclude
+    });
+    return created;
+  });
+  res.status(201).json(serializeDetail(order));
+});
+var paymentSchema = external_exports.object({
+  amount: external_exports.number().positive().optional(),
+  method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
+  reference: external_exports.string().trim().max(60).optional().nullable(),
+  payments: external_exports.array(paymentLineSchema).min(1).max(6).optional()
+}).refine((b) => b.payments && b.payments.length > 0 || b.amount && b.method, { message: "Enter at least one payment" });
+ordersRouter.post("/:id/payments", async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  const parsed = paymentSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const lines = parsed.data.payments?.length ? parsed.data.payments : [{ method: parsed.data.method, amount: parsed.data.amount, reference: parsed.data.reference ?? null }];
+  const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  const before = serializeSummary(current).totals;
+  const paying = lines.reduce((a2, p) => a2 + p.amount, 0);
+  if (paying > before.balanceDue + 0.01) {
+    return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString("en-KE")}, but only Ksh ${Math.round(before.balanceDue).toLocaleString("en-KE")} is outstanding` });
+  }
+  try {
+    await prisma.$transaction((tx) => recordOrderPayments(tx, order, lines, req.user.id));
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  res.json(serializeDetail(updated));
+});
+async function requireCosts(req, res) {
+  if (await canSeeCosts(req.user.role)) return true;
+  res.status(403).json({ error: "Not permitted for your role" });
+  return false;
+}
+var BILL_CATEGORY = "Outsourced Services";
+async function jobCosting(orderId) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { ...orderInclude, expenses: { where: { category: BILL_CATEGORY }, include: { payments: true }, orderBy: { id: "asc" } } }
+  });
+  if (!order) return null;
+  const inputs = order.lineItems.map(toLineItemInput);
+  const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
+  const totals = computeOrderTotals({ lineItems: inputs, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt });
+  const scale = subtotal > 0 ? totals.grandTotal / subtotal : 0;
+  const lines = order.lineItems.map((li, i) => ({ li, sale: round2(buildLineTotal(inputs[i]) * scale) })).filter(({ li }) => li.service?.outsourced).map(({ li, sale: sale2 }) => ({
+    lineId: li.id,
+    service: li.service.name,
+    qty: li.qty,
+    unitPrice: li.unitPrice,
+    sale: sale2,
+    supplierName: li.supplierName ?? li.service.supplierName ?? "",
+    supplierCost: li.supplierCost,
+    markupType: li.markupType,
+    markupValue: li.markupValue,
+    estimatedCost: li.supplierCost != null ? round2(li.supplierCost * li.qty) : null,
+    needsCosting: needsCosting({ outsourced: true, supplierCost: li.supplierCost })
+  }));
+  const bills = order.expenses.map((e) => {
+    const paid2 = e.paid ? e.amount : round2(e.payments.reduce((a2, p) => a2 + p.amount, 0));
+    return { id: e.id, date: e.date, supplier: e.supplier, invoiceNumber: e.invoiceNumber, note: e.note, amount: e.amount, paid: paid2, owing: round2(e.amount - paid2), dueDate: e.dueDate };
+  });
+  const sale = round2(lines.reduce((a2, l) => a2 + l.sale, 0));
+  const estimated = round2(lines.reduce((a2, l) => a2 + (l.estimatedCost ?? 0), 0));
+  const billed = round2(bills.reduce((a2, b) => a2 + b.amount, 0));
+  const paid = round2(bills.reduce((a2, b) => a2 + b.paid, 0));
+  const cost = billed > 0 ? billed : estimated;
+  return {
+    orderId: order.id,
+    orderNo: order.orderNo,
+    lines,
+    bills,
+    sale,
+    estimatedCost: estimated,
+    billed,
+    paid,
+    owing: round2(billed - paid),
+    costBasis: billed > 0 ? "supplier bills" : estimated > 0 ? "quote (no bill recorded yet)" : "not costed",
+    margin: jobMargin(sale, cost, VAT_RATE),
+    unbilledQuote: billed > 0 ? round2(Math.max(0, estimated - billed)) : estimated
+  };
+}
+ordersRouter.get("/outsourced/jobs", async (req, res) => {
+  if (!await requireCosts(req, res)) return;
+  const orders = await prisma.order.findMany({
+    where: { lineItems: { some: { service: { outsourced: true } } }, OR: [{ kind: "walkin" }, { status: { not: "Quote" } }] },
+    select: { id: true },
+    orderBy: { id: "desc" },
+    take: 300
+  });
+  const jobs = (await Promise.all(orders.map((o) => jobCosting(o.id)))).filter((j) => !!j);
+  const full = await prisma.order.findMany({ where: { id: { in: jobs.map((j) => j.orderId) } }, include: { corporateClient: true } });
+  const byId = new Map(full.map((o) => [o.id, o]));
+  res.json({
+    jobs: jobs.map((j) => {
+      const o = byId.get(j.orderId);
+      return { ...j, customer: o.customerName || o.corporateClient?.name || "Customer", date: o.createdDate, stage: o.stage, status: o.status, suppliers: [...new Set(j.lines.map((l) => l.supplierName).filter(Boolean))] };
+    }),
+    totals: {
+      sale: round2(jobs.reduce((a2, j) => a2 + j.sale, 0)),
+      billed: round2(jobs.reduce((a2, j) => a2 + j.billed, 0)),
+      owing: round2(jobs.reduce((a2, j) => a2 + j.owing, 0)),
+      needCosting: jobs.filter((j) => j.lines.some((l) => l.needsCosting)).length
+    }
+  });
+});
+ordersRouter.get("/:id/costing", async (req, res) => {
+  if (!await requireCosts(req, res)) return;
+  const costing = await jobCosting(Number(req.params.id));
+  if (!costing) return res.status(404).json({ error: "Order not found" });
+  res.json(costing);
+});
+var costingSchema = external_exports.object({
+  lines: external_exports.array(
+    external_exports.object({
+      lineId: external_exports.number().int(),
+      supplierCost: external_exports.number().min(0).nullable(),
+      markupType: external_exports.enum(MARKUP_TYPES).nullable().optional(),
+      markupValue: external_exports.number().min(0).nullable().optional(),
+      supplierName: external_exports.string().trim().max(120).nullable().optional()
+    })
+  ).min(1)
+});
+ordersRouter.put("/:id/costing", async (req, res) => {
+  if (!await requireCosts(req, res)) return;
+  const parsed = costingSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { lineItems: { include: { service: true } } } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  for (const l of parsed.data.lines) {
+    const line = order.lineItems.find((x) => x.id === l.lineId);
+    if (!line || !line.service?.outsourced) return res.status(400).json({ error: "That line is not an outsourced service on this order" });
+  }
+  await prisma.$transaction(
+    parsed.data.lines.map(
+      (l) => prisma.orderLineItem.update({
+        where: { id: l.lineId },
+        data: { supplierCost: l.supplierCost, markupType: l.supplierCost == null ? null : l.markupType ?? "percent", markupValue: l.supplierCost == null ? null : l.markupValue ?? 0, supplierName: l.supplierName || null }
+      })
+    )
+  );
+  res.json(await jobCosting(order.id));
+});
+var supplierBillSchema = external_exports.object({
+  supplierName: external_exports.string().trim().min(1, "Who is the supplier?").max(120),
+  amount: external_exports.number().positive("Enter the amount the supplier is charging (VAT included)"),
+  paidNow: external_exports.number().min(0).default(0),
+  method: external_exports.enum(EXPENSE_METHODS).default("Bank Transfer"),
+  invoiceNumber: external_exports.string().trim().max(100).optional(),
+  dueDate: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  note: external_exports.string().max(200).optional()
+});
+ordersRouter.post("/:id/supplier-bills", async (req, res) => {
+  if (!await requireCosts(req, res)) return;
+  const parsed = supplierBillSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { lineItems: { include: { service: true } } } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!order.lineItems.some((l) => l.service?.outsourced)) return res.status(400).json({ error: "This order has no outsourced service on it" });
+  if (d.paidNow > d.amount + 5e-3) return res.status(400).json({ error: "The amount paid now is more than the bill" });
+  if (d.paidNow > 0 && d.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(d.paidNow, todayStr());
+    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString("en-KE")} available, Ksh ${Math.round(d.paidNow).toLocaleString("en-KE")} needed)` });
+  }
+  await ensureChartOnce();
+  const today = todayStr();
+  const fullyPaid = d.paidNow >= d.amount - 5e-3;
+  const expense = await prisma.expense.create({
+    data: {
+      date: today,
+      category: BILL_CATEGORY,
+      amount: d.amount,
+      supplier: d.supplierName,
+      invoiceNumber: d.invoiceNumber || null,
+      note: d.note ? d.note : `${order.orderNo} \u2014 outsourced job${d.paidNow > 0 && !fullyPaid ? " (deposit paid, balance owing)" : ""}`,
+      orderId: order.id,
+      capturedByName: req.user.name,
+      // Paid in full: a plain paid expense. Otherwise it is a bill on credit, with the deposit (if any) recorded as a payment against it.
+      paid: fullyPaid,
+      method: fullyPaid ? d.method : PETTY_CASH_METHOD,
+      dueDate: fullyPaid ? null : d.dueDate ?? null
+    }
+  });
+  if (!fullyPaid && d.paidNow > 0) {
+    await prisma.expensePayment.create({ data: { expenseId: expense.id, date: today, amount: d.paidNow, method: d.method, note: "Deposit", capturedByName: req.user.name } });
+  }
+  res.status(201).json(await jobCosting(order.id));
+});
+var handoverSchema = external_exports.object({ onCredit: external_exports.boolean().optional() });
+ordersRouter.post("/:id/handover", async (req, res) => {
+  const parsed = handoverSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
+  const onCredit = parsed.data.onCredit === true;
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  if (order.stage === "Completed") return res.status(400).json({ error: "This order has already been handed over" });
+  if (order.stage !== "Ready for Pickup/Delivery") {
+    return res.status(400).json({ error: `This order is at \u201C${order.stage}\u201D. It can only be handed over once it has been produced and has passed quality control.` });
+  }
+  const balance = serializeDetail(order).totals.balanceDue;
+  const owes = balance > 9e-3;
+  if (owes && !onCredit) {
+    return res.status(400).json({
+      error: `This order still owes Ksh ${Math.round(balance).toLocaleString("en-KE")}. Take the payment first \u2014 or hand it over on credit, which turns it into an invoice.`,
+      balanceDue: balance,
+      code: "BALANCE_DUE"
+    });
+  }
+  const data = { stage: "Completed", handedOverAt: /* @__PURE__ */ new Date(), handedOverByName: req.user.name, handedOverOnCredit: owes };
+  if (owes) {
+    const days = order.corporateClient?.creditDays ?? WALKIN_INVOICE_DUE_DAYS;
+    data.status = "Invoice";
+    if (!order.dueDate || order.dueDate < todayStr()) data.dueDate = addDays(todayStr(), days);
+  }
+  const updated = await prisma.order.update({ where: { id: order.id }, data, include: orderInclude });
+  res.json({ ...serializeDetail(updated), handedOverOnCredit: owes });
+});
+ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canViewAllOrders"), async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!canAccessOrder(req.user.role, req.user.id, order)) return res.status(403).json({ error: "Not permitted" });
+  if (order.status !== "Quote") return res.status(400).json({ error: "Only quotes can be converted" });
+  await prisma.$transaction((tx) => convertQuoteToInvoice(tx, order));
+  const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  res.json(serializeDetail(updated));
+});
+
+// apps/api/src/routes/pnl.ts
+var import_express4 = __toESM(require_express2());
+var pnlRouter = (0, import_express4.Router)();
+pnlRouter.use(requireAuth, requirePermission("canAccessPnl"));
+async function loadOrdersForPnl() {
+  const orders = await prisma.order.findMany({ include: { lineItems: true, payments: true } });
+  return orders.map((o) => ({
+    kind: o.kind,
+    status: o.status,
+    createdDate: o.createdDate,
+    orderDiscountPct: o.orderDiscountPct,
+    orderDiscountAmt: o.orderDiscountAmt,
+    lineItems: o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    })),
+    payments: o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }))
+  }));
+}
+function inRange(d, from, to) {
+  return d >= from && d <= to;
+}
+var SALARIES_CATEGORY = "Salaries & wages";
+var PURCHASE_CATEGORY = "Printing Materials & Consumables";
+var COST_OF_SALES_CATEGORIES = /* @__PURE__ */ new Set([PURCHASE_CATEGORY, "Outsourced Services"]);
+function computeAgg(orders, expenses, payroll, cosItems, cosExpenseIds, from, to) {
+  let revAccrualWalkin = 0;
+  let revAccrualCorp = 0;
+  let revCash = 0;
+  for (const o of orders) {
+    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
+    if (isRevenueOrder && inRange(o.createdDate, from, to)) {
+      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+      if (o.kind === "walkin") revAccrualWalkin += totals.grandTotal;
+      else revAccrualCorp += totals.grandTotal;
+    }
+    for (const p of o.payments) {
+      if (inRange(p.date, from, to)) revCash += p.amount;
+    }
+  }
+  const revAccrual = revAccrualWalkin + revAccrualCorp;
+  const cogs = cosItems.filter((c) => inRange(c.date, from, to)).reduce((a2, c) => a2 + c.amount, 0);
+  const grossProfit = revAccrual - cogs;
+  const expensesInRange = expenses.filter((e) => inRange(e.date, from, to) && !cosExpenseIds.has(e.id));
+  const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
+  const salariesTotal = payrollInRange.reduce((a2, p) => a2 + p.grossPay, 0);
+  const totalExpenses = expensesInRange.reduce((a2, e) => a2 + e.amount, 0) + salariesTotal;
+  const netProfit = grossProfit - totalExpenses;
+  const byCategory = {};
+  for (const e of expensesInRange) byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
+  if (salariesTotal > 0) byCategory[SALARIES_CATEGORY] = (byCategory[SALARIES_CATEGORY] || 0) + salariesTotal;
+  return { revAccrualWalkin, revAccrualCorp, revAccrual, revCash, cogs, grossProfit, totalExpenses, netProfit, byCategory };
+}
+function priorRange(from, to) {
+  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00");
+  const toD = /* @__PURE__ */ new Date(to + "T00:00:00");
+  const lengthMs = toD.getTime() - fromD.getTime();
+  const priorTo = new Date(fromD);
+  priorTo.setDate(priorTo.getDate() - 1);
+  const priorFrom = new Date(priorTo.getTime() - lengthMs);
+  const fmtD = (d) => d.toISOString().slice(0, 10);
+  return { from: fmtD(priorFrom), to: fmtD(priorTo) };
+}
+function pctChange(cur, prev) {
+  return prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
+}
+pnlRouter.get("/", async (req, res) => {
+  const from = String(req.query.from || "");
+  const to = String(req.query.to || "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+    return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  }
+  const [orders, allExpenses, allPayroll, purchases] = await Promise.all([
+    loadOrdersForPnl(),
+    prisma.expense.findMany({ orderBy: { date: "desc" } }),
+    prisma.payrollEntry.findMany({ select: { date: true, grossPay: true } }),
+    prisma.purchase.findMany({ where: { status: { not: "Rejected" } }, select: { date: true, totalCost: true, expenseId: true } })
+  ]);
+  const purchaseExpenseIds = new Set(purchases.filter((p) => p.expenseId != null).map((p) => p.expenseId));
+  const cosExpenseIds = new Set(allExpenses.filter((e) => purchaseExpenseIds.has(e.id) || COST_OF_SALES_CATEGORIES.has(e.category)).map((e) => e.id));
+  const cosItems = [
+    ...allExpenses.filter((e) => cosExpenseIds.has(e.id)).map((e) => ({ date: e.date, amount: e.amount })),
+    ...purchases.filter((p) => p.expenseId == null).map((p) => ({ date: p.date, amount: p.totalCost }))
+  ];
+  const agg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, from, to);
+  const prior = priorRange(from, to);
+  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, prior.from, prior.to);
+  const toDateObj = /* @__PURE__ */ new Date(to + "T00:00:00");
+  const trend = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(toDateObj.getFullYear(), toDateObj.getMonth() - i, 1);
+    const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+    const monthEnd2 = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const mTo = monthEnd2.toISOString().slice(0, 10);
+    const mAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, mFrom, mTo);
+    trend.push({ label: `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
+  }
+  res.json({
+    fromDate: from,
+    toDate: to,
+    revAccrualWalkin: agg.revAccrualWalkin,
+    revAccrualCorp: agg.revAccrualCorp,
+    revAccrual: agg.revAccrual,
+    revCash: agg.revCash,
+    cogs: agg.cogs,
+    grossProfit: agg.grossProfit,
+    byCategory: agg.byCategory,
+    totalExpenses: agg.totalExpenses,
+    netProfit: agg.netProfit,
+    netMarginPct: agg.revAccrual > 0 ? Math.round(agg.netProfit / agg.revAccrual * 1e3) / 10 : 0,
+    revChangePct: pctChange(agg.revAccrual, priorAgg.revAccrual),
+    profitChangePct: pctChange(agg.netProfit, priorAgg.netProfit),
+    priorFrom: prior.from,
+    priorTo: prior.to,
+    trend,
+    expenseCategories: [SALARIES_CATEGORY, ...EXPENSE_CATEGORIES]
+  });
+});
+
 // apps/api/src/routes/finance.ts
+var import_express5 = __toESM(require_express2());
 var financeRouter = (0, import_express5.Router)();
 financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
 function inRange2(d, from, to) {
@@ -49981,10 +50227,10 @@ async function ensureRequisitions() {
     }
   }
 }
-var ensuring = null;
+var ensuring2 = null;
 function ensureRequisitionsOnce() {
-  if (!ensuring) ensuring = ensureRequisitions().finally(() => ensuring = null);
-  return ensuring;
+  if (!ensuring2) ensuring2 = ensureRequisitions().finally(() => ensuring2 = null);
+  return ensuring2;
 }
 
 // apps/api/src/routes/stock.ts
@@ -52513,10 +52759,10 @@ async function ensureProduction() {
     await prisma.role.updateMany({ where: { name: name2 }, data: { canAccessProduction: d.canAccessProduction, canManageProduction: d.canManageProduction, canAccessQuality: d.canAccessQuality } });
   }
 }
-var ensuring2 = null;
+var ensuring3 = null;
 function ensureProductionOnce() {
-  if (!ensuring2) ensuring2 = ensureProduction().finally(() => ensuring2 = null);
-  return ensuring2;
+  if (!ensuring3) ensuring3 = ensureProduction().finally(() => ensuring3 = null);
+  return ensuring3;
 }
 async function isProductionManager(user) {
   return user.role === "Admin" || (await permissionsForRole(user.role)).canManageProduction;
@@ -52554,6 +52800,9 @@ function productionSummary(o) {
     createdDate: o.createdDate,
     dueDate: o.dueDate,
     items: o.lineItems.map((li) => ({ name: li.material?.name ?? li.service?.name ?? "Item", qty: li.qty })),
+    // A contracted-out job (every line is an outsourced service) is sent to its supplier rather than given to a staff member.
+    outsourced: o.lineItems.length > 0 && o.lineItems.every((li) => !!li.service?.outsourced),
+    supplierHint: o.lineItems.map((li) => li.service?.supplierName).find((n) => !!n) ?? "",
     units: orderUnits(o.lineItems),
     balanceDue: Math.round(totals.balanceDue * 100) / 100
   };
@@ -52574,7 +52823,9 @@ function taskView(t, summary) {
     status: t.status,
     isRework: t.isRework,
     assigneeId: t.assigneeId,
-    assigneeName: t.assignee.name,
+    assigneeName: t.assignee?.name ?? null,
+    // A job sent to a supplier has no staff assignee; it comes back through "receive".
+    supplierName: t.supplierName,
     assignedAt: t.assignedAt,
     startedAt: t.startedAt,
     assignedByName: t.assignedByName,
@@ -52644,6 +52895,27 @@ productionRouter.post("/orders/:orderId/assign", async (req, res) => {
   });
   res.status(201).json({ id: task.id });
 });
+var supplierSendSchema = external_exports.object({ supplierName: external_exports.string().trim().min(1, "Which supplier is it going to?").max(120), note: external_exports.string().max(200).optional() });
+productionRouter.post("/orders/:orderId/send-to-supplier", async (req, res) => {
+  if (!await isProductionManager(req.user)) return res.status(403).json({ error: "Only a production manager can send an order to a supplier" });
+  const parsed = supplierSendSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (order.status === "Quote") return res.status(400).json({ error: "A quotation has not been accepted yet \u2014 it cannot go into production" });
+  if (order.stage !== STAGE_WAITING && order.stage !== STAGE_IN_PRODUCTION) {
+    return res.status(400).json({ error: `This order is already at \u201C${order.stage}\u201D \u2014 it can only be sent while it is waiting or in production` });
+  }
+  const task = await prisma.$transaction(async (tx) => {
+    await tx.productionTask.updateMany({ where: { orderId: order.id, status: { in: ACTIVE_TASK_STATUSES } }, data: { status: "Superseded" } });
+    const failedBefore = await tx.qualityCheck.count({ where: { orderId: order.id, result: "Failed" } }) > 0;
+    await tx.order.update({ where: { id: order.id }, data: { stage: STAGE_IN_PRODUCTION } });
+    return tx.productionTask.create({
+      data: { orderId: order.id, assigneeId: null, supplierName: parsed.data.supplierName, assignedByName: req.user.name, unitsPlanned: orderUnits(order.lineItems), isRework: failedBefore, note: parsed.data.note ?? "" }
+    });
+  });
+  res.status(201).json({ id: task.id });
+});
 async function loadTask(req) {
   const task = await prisma.productionTask.findUnique({ where: { id: Number(req.params.id) }, include: { order: true } });
   if (!task) return { error: { status: 404, message: "Job not found" } };
@@ -52688,7 +52960,7 @@ productionRouter.get("/productivity", async (req, res) => {
     prisma.user.findMany()
   ]);
   const names = new Map(users.map((u) => [u.id, u]));
-  const facts = tasks.map((t) => ({
+  const facts = tasks.filter((t) => t.assigneeId != null).map((t) => ({
     id: t.id,
     assigneeId: t.assigneeId,
     assignedAt: t.assignedAt.toISOString(),
@@ -52705,7 +52977,7 @@ productionRouter.get("/productivity", async (req, res) => {
   const recent = tasks.filter((t) => t.status === "Finished" && t.finishedAt && t.finishedAt >= lo && t.finishedAt <= hi).sort((a2, b) => b.finishedAt.getTime() - a2.finishedAt.getTime()).slice(0, 40).map((t) => ({
     id: t.id,
     orderNo: t.order.orderNo,
-    assigneeName: names.get(t.assigneeId)?.name ?? "",
+    assigneeName: t.assigneeId != null ? names.get(t.assigneeId)?.name ?? "" : `Supplier: ${t.supplierName ?? "outsourced"}`,
     isRework: t.isRework,
     finishedAt: t.finishedAt,
     hours: t.finishedAt ? Math.round((t.finishedAt.getTime() - (t.startedAt ?? t.assignedAt).getTime()) / 36e5 * 10) / 10 : null,
@@ -52749,7 +53021,8 @@ qualityRouter.get("/queue", async (req, res) => {
     return {
       ...productionSummary(o),
       producerId: t?.assigneeId ?? null,
-      producerName: t?.assignee.name ?? "Not recorded",
+      outsourced: !!t && t.assigneeId == null,
+      producerName: t?.assignee?.name ?? (t?.supplierName ? `Supplier: ${t.supplierName}` : "Not recorded"),
       finishedAt: t?.finishedAt ?? null,
       unitsCompleted: t?.unitsCompleted ?? null,
       isRework: t?.isRework ?? false,
@@ -52776,7 +53049,7 @@ qualityRouter.get("/queue", async (req, res) => {
       result: c.result,
       checkedAt: c.checkedAt,
       inspectorName: c.inspector.name,
-      producerName: c.task?.assignee.name ?? "",
+      producerName: c.task?.assignee?.name ?? (c.task?.supplierName ? `Supplier: ${c.task.supplierName}` : ""),
       unitsInspected: c.unitsInspected,
       unitsRejected: c.unitsRejected,
       defects: c.defects,
@@ -52835,7 +53108,9 @@ qualityRouter.post("/orders/:orderId/check", async (req, res) => {
       await tx.productionTask.create({
         data: {
           orderId: order.id,
+          // Back to the person who made it — or, for a contracted-out job, back to the supplier.
           assigneeId: task.assigneeId,
+          supplierName: task.supplierName,
           assignedByName: `Quality control (${req.user.name})`,
           isRework: true,
           unitsPlanned: rejected > 0 ? rejected : task.unitsPlanned,
@@ -52877,5 +53152,5 @@ var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
   console.log(`GLM Branding POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

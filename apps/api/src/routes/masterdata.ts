@@ -5,6 +5,8 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import crypto from 'crypto';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS } from '@glm/shared';
+import { canSeeCosts } from '../costs';
+import { MARKUP_TYPES } from '@glm/shared';
 import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig } from '../mailer';
 
 export const masterDataRouter = Router();
@@ -261,8 +263,12 @@ masterDataRouter.delete('/roles/:id', requireRole('Admin'), async (req, res) => 
 });
 
 // ── Service Price List ──────────────────────────────────────────────────
-masterDataRouter.get('/services', async (_req, res) => {
-  res.json(await prisma.service.findMany({ orderBy: { name: 'asc' } }));
+// Everyone sees the price list (selling prices). The supplier's usual price and the mark-up on a contracted-out service are costs,
+// so they are only sent to people who can see costs.
+masterDataRouter.get('/services', async (req, res) => {
+  const costs = await canSeeCosts(req.user!.role);
+  const services = await prisma.service.findMany({ orderBy: { name: 'asc' } });
+  res.json(services.map(({ markupType, markupValue, defaultSupplierCost, ...s }) => (costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s)));
 });
 
 const serviceSchema = z.object({
@@ -270,6 +276,12 @@ const serviceSchema = z.object({
   unit: z.enum(['piece', 'metre', 'sqm']),
   price: z.number().positive(),
   usesArtworkPricing: z.boolean().optional(),
+  // Contracted-out service: the supplier quotes one VAT-inclusive price (paper and service together); we add a mark-up.
+  outsourced: z.boolean().optional(),
+  supplierName: z.string().trim().max(120).optional(),
+  markupType: z.enum(MARKUP_TYPES).optional(),
+  markupValue: z.number().min(0).optional(),
+  defaultSupplierCost: z.number().positive().nullable().optional(),
 });
 
 masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
@@ -289,6 +301,11 @@ const serviceUpdateSchema = z
     unit: z.enum(['piece', 'metre', 'sqm']).optional(),
     usesArtworkPricing: z.boolean().optional(),
     chargesPressingFee: z.boolean().optional(),
+    outsourced: z.boolean().optional(),
+    supplierName: z.string().trim().max(120).optional(),
+    markupType: z.enum(MARKUP_TYPES).optional(),
+    markupValue: z.number().min(0).optional(),
+    defaultSupplierCost: z.number().positive().nullable().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 

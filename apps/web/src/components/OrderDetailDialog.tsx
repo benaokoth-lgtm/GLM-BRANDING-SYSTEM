@@ -6,6 +6,8 @@ import type { CompanySettings, OrderDetail } from '../api/models';
 import { printWalkinReceipt } from '../utils/printTicket';
 import { buildCorporateDocumentHtml, printCorporateDocument } from '../utils/printInvoice';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
+import OutsourcedCostingPanel from './OutsourcedCostingPanel';
+import { useAuth } from '../state/AuthContext';
 import type { PaymentRow } from './SplitPayments';
 
 interface Props {
@@ -15,6 +17,9 @@ interface Props {
 }
 
 export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props) {
+  const { user } = useAuth();
+  // Supplier costs and mark-ups are only for people who can see costs; the server withholds them from everyone else.
+  const seeCosts = user?.role === 'Admin' || !!user?.permissions.canSeeCosts;
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [company, setCompany] = useState<CompanySettings | null>(null);
   // Payments can be split across methods (part cash, part M-Pesa…) — see components/SplitPayments.tsx.
@@ -188,6 +193,11 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <tr key={li.id}>
                   <td>
                     {[li.serviceName, li.materialName].filter(Boolean).join(' + ')}
+                    {li.outsourced && (
+                      <div style={{ fontSize: 11 }}>
+                        <span className="tag tag-outline">Contracted out</span> {seeCosts && li.needsCosting && <span className="tag tag-outline" style={{ borderColor: '#a33', color: '#a33' }}>needs supplier quote</span>}
+                      </div>
+                    )}
                     {li.artworkAreaSqm != null && (
                       <div className="text-muted" style={{ fontSize: 11 }}>
                         Artwork: {li.artworkAreaSqm} sqm × {li.qty} pcs
@@ -215,6 +225,8 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             <div>Order discount: {fmtKsh(detail.totals.orderDiscount)}</div>
             <div>Grand total: {fmtKsh(detail.totals.grandTotal)}</div>
           </div>
+
+          {seeCosts && detail.lineItems.some((l) => l.outsourced) && <OutsourcedCostingPanel orderId={orderId} onChanged={onChanged} />}
 
           <div
             style={{

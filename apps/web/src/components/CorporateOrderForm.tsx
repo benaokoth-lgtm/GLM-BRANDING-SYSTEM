@@ -5,6 +5,7 @@ import { useCatalog } from '../hooks/useCatalog';
 import LineItemsEditor, { makeDefaultLine } from '../components/LineItemsEditor';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
+import { costPayload } from '../utils/lineCosts';
 
 interface Props {
   kind: 'quote' | 'invoice';
@@ -45,6 +46,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
     discountAmt: Number(li.discountAmt) || 0,
     heatPressFee: Number(li.heatPressFee) > 0 ? Number(li.heatPressFee) : undefined,
     artworkAreaSqm: Number(li.artworkAreaSqm) > 0 ? Number(li.artworkAreaSqm) : undefined,
+    ...costPayload(li),
   }));
   const totals = computeOrderTotals({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 });
   const discountWarning = exceedsDiscountCeiling({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 }, maxDiscountPct);

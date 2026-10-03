@@ -68,6 +68,7 @@ model Role {
   canAccessProduction Boolean @default(false) // Production: see and work the jobs assigned to you (start, finish, record output)
   canManageProduction Boolean @default(false) // Production: see every order, assign staff, track productivity and output
   canAccessQuality    Boolean @default(false) // Quality control: inspect finished orders (pass → ready, fail → back to production)
+  canSeeCosts         Boolean @default(false) // sees supplier costs and mark-ups on outsourced jobs (everyone else sees selling prices only)
   canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
 }
 
@@ -95,6 +96,15 @@ model Service {
   // keep grouping by service name correctly. Not exposed as a Master Data
   // toggle — set once via seed, since there are exactly two such rows.
   soldViaDtfModule    Boolean @default(false)
+  // Contracted-out services (e.g. eulogy printing, banners, screen printing). The supplier quotes ONE price that includes paper/material
+  // and the service, VAT included; we add a mark-up (a percentage, or a fixed amount per unit) to get the selling price (also VAT
+  // inclusive). These are defaults — the actual quote is captured per job, on the order line. Cost and mark-up are hidden from anyone
+  // without the "see costs" permission.
+  outsourced          Boolean @default(false)
+  supplierName        String  @default("")
+  markupType          String  @default("percent") // percent | amount
+  markupValue         Float   @default(0)
+  defaultSupplierCost Float? // supplier's usual price per unit, VAT included (optional)
   // The Income account this service's sales post to (null = a default picked by
   // name when the chart is built — see accounting/chart.ts).
   accountId           Int?
@@ -198,6 +208,9 @@ model Expense {
   purchase        Purchase?
   payments        ExpensePayment[]
   notes           AdjustmentNote[]
+  // Set when this is a supplier bill for an outsourced job — it is that job's cost.
+  orderId         Int?
+  order           Order?   @relation(fields: [orderId], references: [id])
 }
 
 // A payment made against an expense bought on credit (partial payments allowed).
@@ -420,6 +433,7 @@ model Order {
   dtfFilmSale       DtfFilmSale?
   dtfArtworkJob     DtfArtworkJob?
   notes             AdjustmentNote[]
+  expenses          Expense[]
   productionTasks   ProductionTask[]
   qualityChecks     QualityCheck[]
 }
@@ -454,6 +468,12 @@ model OrderLineItem {
   // service.price, the Ksh/sqm rate), computed client-side into unitPrice,
   // stored here too for traceability.
   artworkAreaSqm Float?
+  // Outsourced services only: the supplier's quote for THIS job (per unit, VAT included), the mark-up that produced the selling
+  // price, and who the supplier is. Visible only to people who can see costs; null until someone costs the job.
+  supplierName String?
+  supplierCost Float?
+  markupType   String?
+  markupValue  Float?
 }
 
 model Payment {
@@ -679,8 +699,11 @@ model ProductionTask {
   id             Int       @id @default(autoincrement())
   orderId        Int
   order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  assigneeId     Int
-  assignee       User      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  // A job is either given to a staff member (assignee) or sent to a supplier (supplierName, no assignee). Supplier jobs come back
+  // through "receive" and then go to Quality Control like any other.
+  assigneeId     Int?
+  assignee       User?     @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  supplierName   String?
   assignedByName String    @default("")
   assignedAt     DateTime  @default(now())
   startedAt      DateTime?

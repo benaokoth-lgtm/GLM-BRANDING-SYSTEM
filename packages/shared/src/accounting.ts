@@ -122,6 +122,7 @@ export const SYSTEM_ACCOUNT_CODES: string[] = [...Object.values(ACCT)];
 /** Where the standard expense heads (the old EXPENSE_CATEGORIES) land. Heads added later get an account of their own. */
 export const EXPENSE_HEAD_ACCOUNT_CODES: Record<string, string> = {
   'Printing Materials & Consumables': '5000', // purchases of materials = cost of sales
+  'Outsourced Services': '5000', // contracted-out jobs: the supplier's bill is cost of sales too
   'Casual Labour': '5110',
   Transport: '5120',
   Utilities: '5130',

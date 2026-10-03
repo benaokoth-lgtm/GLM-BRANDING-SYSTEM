@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
+import { useAuth } from '../state/AuthContext';
 import { Card, DateRangeBar, Loading, Notice, Tag, money, numStyle, useLoad, useRange } from './accounting/shared';
 import type { Range } from './accounting/shared';
 
@@ -19,13 +20,17 @@ interface OrderBits {
   items: { name: string; qty: number }[];
   units: number;
   balanceDue: number;
+  // Every line is a contracted-out service: it is sent to its supplier rather than given to a staff member.
+  outsourced: boolean;
+  supplierHint: string;
 }
 interface Task extends OrderBits {
   id: number;
   status: 'Assigned' | 'In Progress';
   isRework: boolean;
-  assigneeId: number;
-  assigneeName: string;
+  assigneeId: number | null;
+  assigneeName: string | null;
+  supplierName: string | null; // set when the job is out with a supplier (no staff member)
   assignedAt: string;
   startedAt: string | null;
   assignedByName: string;
@@ -46,8 +51,10 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB'
 export default function Production() {
   const queue = useLoad<Queue>('/production/queue');
   const range = useRange();
-  const [tab, setTab] = useState<'jobs' | 'productivity'>('jobs');
+  const [tab, setTab] = useState<'jobs' | 'productivity' | 'outsourced'>('jobs');
   const manager = queue.data?.manager ?? false;
+  const { user } = useAuth();
+  const seeCosts = user?.role === 'Admin' || !!user?.permissions.canSeeCosts;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -66,8 +73,19 @@ export default function Production() {
           <i className="corner br"></i>
           {manager ? 'Staff productivity' : 'My output'}
         </button>
+        {seeCosts && (
+          <button type="button" className={'btn blueprint ' + (tab === 'outsourced' ? 'btn-primary' : 'btn-secondary')} onClick={() => setTab('outsourced')}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            Outsourced jobs
+          </button>
+        )}
       </div>
-      {tab === 'jobs' ? <Jobs queue={queue} /> : <Productivity range={range} />}
+      {tab === 'jobs' && <Jobs queue={queue} />}
+      {tab === 'productivity' && <Productivity range={range} />}
+      {tab === 'outsourced' && seeCosts && <OutsourcedJobs />}
     </div>
   );
 }
@@ -75,6 +93,8 @@ export default function Production() {
 function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
   const { data, error, loading, reload } = queue;
   const [pick, setPick] = useState<Record<number, string>>({}); // orderId → staff chosen
+  const [supplierPick, setSupplierPick] = useState<Record<number, string>>({}); // orderId → supplier typed
+  const [supplierOpen, setSupplierOpen] = useState<number | null>(null);
   const [finishing, setFinishing] = useState<number | null>(null);
   const [units, setUnits] = useState('');
   const [note, setNote] = useState('');
@@ -101,6 +121,14 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
       await api.post(`/production/orders/${orderId}/assign`, { assigneeId });
       setPick((p) => ({ ...p, [orderId]: '' }));
       return `${orderNo} ${reassign ? 'reassigned' : 'assigned'}`;
+    });
+
+  const sendToSupplier = (o: OrderBits) =>
+    run(async () => {
+      const supplierName = (supplierPick[o.orderId] ?? o.supplierHint).trim();
+      await api.post(`/production/orders/${o.orderId}/send-to-supplier`, { supplierName });
+      setSupplierOpen(null);
+      return `${o.orderNo} sent to ${supplierName}`;
     });
 
   if (!data) return <Loading loading={loading} error={error} />;
@@ -150,7 +178,7 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
               {data.waiting.map((o) => (
                 <tr key={o.orderId}>
                   <td>
-                    <strong>{o.orderNo}</strong> {o.channel === 'dtf' && <Tag>DTF</Tag>}
+                    <strong>{o.orderNo}</strong> {o.channel === 'dtf' && <Tag>DTF</Tag>} {o.outsourced && <Tag>Outsourced</Tag>}
                   </td>
                   <td>{o.customer}</td>
                   <td className="text-muted" style={{ fontSize: 12 }}>
@@ -160,11 +188,24 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                   <td className="text-muted">{fmtDate(o.createdDate)}</td>
                   <td>{o.balanceDue > 0 ? <Tag tone="bad">owes {fmtKsh(o.balanceDue)}</Tag> : <Tag tone="good">paid</Tag>}</td>
                   <td>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+                    {(o.outsourced || supplierOpen === o.orderId) && (
+                      <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                        <input className="input" style={{ minWidth: 150 }} placeholder="Supplier" value={supplierPick[o.orderId] ?? o.supplierHint} onChange={(e) => setSupplierPick((p) => ({ ...p, [o.orderId]: e.target.value }))} />
+                        <button type="button" className={'btn btn-sm ' + (o.outsourced ? 'btn-primary' : 'btn-secondary')} disabled={busy || !(supplierPick[o.orderId] ?? o.supplierHint).trim()} onClick={() => sendToSupplier(o)}>
+                          Send to supplier
+                        </button>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
                       <StaffSelect orderId={o.orderId} />
-                      <button type="button" className="btn btn-primary btn-sm" disabled={busy || !pick[o.orderId]} onClick={() => assign(o.orderId, Number(pick[o.orderId]), o.orderNo)}>
-                        Assign
+                      <button type="button" className={'btn btn-sm ' + (o.outsourced ? 'btn-secondary' : 'btn-primary')} disabled={busy || !pick[o.orderId]} onClick={() => assign(o.orderId, Number(pick[o.orderId]), o.orderNo)}>
+                        {o.outsourced ? 'Make in-house instead' : 'Assign'}
                       </button>
+                      {!o.outsourced && supplierOpen !== o.orderId && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSupplierOpen(o.orderId)}>
+                          or send to a supplier…
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -221,15 +262,15 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                   {t.note && <div className="note">{t.note}</div>}
                 </td>
                 <td style={numStyle}>{t.unitsPlanned}</td>
-                {data.manager && <td>{t.assigneeName}</td>}
+                {data.manager && <td>{t.assigneeName ?? <em>Supplier: {t.supplierName}</em>}</td>}
                 <td>
-                  <Tag tone={t.status === 'In Progress' ? 'good' : 'neutral'}>{t.status}</Tag> {t.isRework && <Tag tone="bad">rework</Tag>}
+                  <Tag tone={t.status === 'In Progress' ? 'good' : 'neutral'}>{t.assigneeId == null ? 'At supplier' : t.status}</Tag> {t.isRework && <Tag tone="bad">rework</Tag>}
                 </td>
                 <td className="text-muted">{when(t.startedAt ?? t.assignedAt)}</td>
                 <td>
                   {finishing === t.id ? (
                     <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
-                      <input className="input" style={{ width: 90 }} inputMode="decimal" value={units} onChange={(e) => setUnits(e.target.value)} placeholder="Units made" autoFocus />
+                      <input className="input" style={{ width: 90 }} inputMode="decimal" value={units} onChange={(e) => setUnits(e.target.value)} placeholder={t.assigneeId == null ? 'Units received' : 'Units made'} autoFocus />
                       <input className="input" style={{ width: 130 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" />
                       <button
                         type="button"
@@ -239,11 +280,11 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                           run(async () => {
                             await api.post(`/production/tasks/${t.id}/finish`, { unitsCompleted: Number(units), note });
                             setFinishing(null);
-                            return `${t.orderNo} finished — sent to quality control`;
+                            return t.assigneeId == null ? `${t.orderNo} received from ${t.supplierName} — sent to quality control` : `${t.orderNo} finished — sent to quality control`;
                           })
                         }
                       >
-                        Finish → QC
+                        {t.assigneeId == null ? 'Receive → QC' : 'Finish → QC'}
                       </button>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFinishing(null)}>
                         Cancel
@@ -251,17 +292,17 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                      {t.status === 'Assigned' && (
+                      {t.status === 'Assigned' && t.assigneeId != null && (
                         <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/production/tasks/${t.id}/start`, {}); return `${t.orderNo} started`; })}>
                           Start
                         </button>
                       )}
                       <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => { setFinishing(t.id); setUnits(String(t.unitsPlanned)); setNote(''); }}>
-                        Finish
+                        {t.assigneeId == null ? 'Receive from supplier' : 'Finish'}
                       </button>
                       {data.manager && (
                         <>
-                          <StaffSelect orderId={t.orderId} current={t.assigneeId} />
+                          <StaffSelect orderId={t.orderId} current={t.assigneeId ?? undefined} />
                           <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !pick[t.orderId]} onClick={() => assign(t.orderId, Number(pick[t.orderId]), t.orderNo, true)}>
                             Reassign
                           </button>
@@ -275,6 +316,90 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
           </tbody>
         </table>
       </Card>
+    </>
+  );
+}
+
+interface OutsourcedData {
+  jobs: { orderId: number; orderNo: string; customer: string; date: string; stage: string; suppliers: string[]; sale: number; estimatedCost: number; billed: number; paid: number; owing: number; costBasis: string; lines: { needsCosting: boolean }[]; margin: { grossProfit: number; markupPct: number | null; marginPct: number | null; bookProfit: number; bookMarginPct: number | null } }[];
+  totals: { sale: number; billed: number; owing: number; needCosting: number };
+}
+
+// Contracted-out jobs with what the customer pays, what the supplier is owed and the profit — for people who can see costs.
+function OutsourcedJobs() {
+  const { data, error, loading } = useLoad<OutsourcedData>('/orders/outsourced/jobs');
+  return (
+    <>
+      <Loading loading={loading} error={error} />
+      {data && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
+            {[
+              ['Sold (VAT incl.)', fmtKsh(data.totals.sale)],
+              ['Billed by suppliers', fmtKsh(data.totals.billed)],
+              ['Still owed to suppliers', fmtKsh(data.totals.owing)],
+              ['Jobs needing a supplier quote', String(data.totals.needCosting)],
+            ].map(([k, v]) => (
+              <div key={k} className="card blueprint elev-sm">
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                <div className="card-kicker">{k}</div>
+                <div className="card-title">{v}</div>
+              </div>
+            ))}
+          </div>
+          <Card title="Contracted-out jobs" hint="Open an order (Finance → All Orders) to cost it or record a supplier bill. Profit in the books takes the VAT out of the sale; the supplier's VAT is not reclaimed.">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Customer</th>
+                  <th>Supplier</th>
+                  <th>Stage</th>
+                  <th style={numStyle}>Sold</th>
+                  <th style={numStyle}>Supplier cost</th>
+                  <th style={numStyle}>Paid</th>
+                  <th style={numStyle}>Owing</th>
+                  <th style={numStyle}>Profit (books)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.jobs.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="text-muted">
+                      No contracted-out jobs yet.
+                    </td>
+                  </tr>
+                )}
+                {data.jobs.map((j) => (
+                  <tr key={j.orderId}>
+                    <td>
+                      <strong>{j.orderNo}</strong>
+                      <div className="note">{fmtDate(j.date)}</div>
+                    </td>
+                    <td>{j.customer}</td>
+                    <td>{j.suppliers.join(', ') || '—'}</td>
+                    <td className="text-muted">{j.stage}</td>
+                    <td style={numStyle}>{money(j.sale)}</td>
+                    <td style={numStyle}>
+                      {j.lines.some((l) => l.needsCosting) && j.billed === 0 ? <Tag tone="bad">needs quote</Tag> : money(j.billed > 0 ? j.billed : j.estimatedCost)}
+                      <div className="note">{j.billed > 0 ? 'billed' : j.estimatedCost > 0 ? 'quote' : ''}</div>
+                    </td>
+                    <td style={numStyle}>{money(j.paid)}</td>
+                    <td style={{ ...numStyle, fontWeight: j.owing > 0 ? 700 : undefined }}>{money(j.owing)}</td>
+                    <td style={numStyle}>
+                      {money(j.margin.bookProfit)}
+                      <div className="note">{j.margin.bookMarginPct != null ? `${j.margin.bookMarginPct}%` : ''}</div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
+        </>
+      )}
     </>
   );
 }

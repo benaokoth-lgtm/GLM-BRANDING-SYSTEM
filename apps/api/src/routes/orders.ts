@@ -3,11 +3,17 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { addDays, buildLineTotal, computeOrderTotals, isOverdue, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
+import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
+import { ensureChartOnce } from '../accounting/chart';
+import { pettyCashShortfall } from '../accounting/ledger';
+import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
 export const ordersRouter = Router();
-ordersRouter.use(requireAuth);
+ordersRouter.use(requireAuth, async (_req, _res, next) => {
+  await ensureCostAccessOnce();
+  next();
+});
 
 export const orderInclude = Prisma.validator<Prisma.OrderInclude>()({
   staff: true,
@@ -65,7 +71,9 @@ export function serializeSummary(order: FullOrder) {
   };
 }
 
-export function serializeDetail(order: FullOrder) {
+// Cost fields (supplier quote, mark-up) are included only when `costs` is true — i.e. for people who can see costs. The default is to
+// withhold them, so every caller that doesn't think about it is safe.
+export function serializeDetail(order: FullOrder, opts: { costs?: boolean } = {}) {
   const summary = serializeSummary(order);
   return {
     ...summary,
@@ -85,6 +93,9 @@ export function serializeDetail(order: FullOrder) {
       discountAmt: li.discountAmt,
       heatPressFee: li.heatPressFee,
       artworkAreaSqm: li.artworkAreaSqm,
+      outsourced: !!li.service?.outsourced,
+      needsCosting: needsCosting({ outsourced: !!li.service?.outsourced, supplierCost: li.supplierCost }),
+      ...(opts.costs ? { supplierName: li.supplierName, supplierCost: li.supplierCost, markupType: li.markupType, markupValue: li.markupValue } : {}),
       lineTotal: buildLineTotal(toLineItemInput(li)),
     })),
     payments: order.payments.map((p) => ({ id: p.id, date: p.date, amount: p.amount, method: p.method, reference: p.reference })),
@@ -221,7 +232,7 @@ ordersRouter.get('/:id', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
-  res.json(serializeDetail(order));
+  res.json(serializeDetail(order, { costs: await canSeeCosts(req.user!.role) }));
 });
 
 // A line is either a material sale ('material': materialId set, no service)
@@ -238,6 +249,11 @@ const lineItemSchema = z
     discountAmt: z.number().min(0).default(0),
     heatPressFee: z.number().nonnegative().nullable().optional(),
     artworkAreaSqm: z.number().positive().nullable().optional(),
+    // Outsourced services: the supplier's quote for this job and the mark-up behind the price. Honoured only for people who can see costs.
+    supplierName: z.string().trim().max(120).nullable().optional(),
+    supplierCost: z.number().min(0).nullable().optional(),
+    markupType: z.enum(MARKUP_TYPES).nullable().optional(),
+    markupValue: z.number().min(0).nullable().optional(),
   })
   .refine((li) => (li.itemType === 'material' ? !!li.materialId : !!li.serviceId), {
     message: 'A material line needs a material, a service line needs a service',
@@ -262,6 +278,7 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
   const parsed = walkinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
+  const costs = await canSeeCosts(req.user!.role);
 
   // Payments taken at capture: the new list form, or the older single amount + method.
   const paymentLines: PaymentLine[] =
@@ -300,7 +317,7 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
         paymentTiming: form.paymentTiming,
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null, ...costFieldsFor(li, costs) })) },
       },
       include: orderInclude,
     });
@@ -329,6 +346,7 @@ ordersRouter.post('/quote', requirePermission('canAccessFinance'), async (req, r
   const parsed = quoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
+  const costs = await canSeeCosts(req.user!.role);
 
   const order = await prisma.$transaction(async (tx) => {
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
@@ -346,7 +364,7 @@ ordersRouter.post('/quote', requirePermission('canAccessFinance'), async (req, r
         stage: 'Order Received',
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null, ...costFieldsFor(li, costs) })) },
       },
       include: orderInclude,
     });
@@ -364,6 +382,7 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
   const parsed = quoteSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
+  const costs = await canSeeCosts(req.user!.role);
 
   const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
   if (!client) return res.status(400).json({ error: 'Corporate client not found' });
@@ -386,7 +405,7 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
         dueDate,
         orderDiscountPct: form.orderDiscountPct,
         orderDiscountAmt: form.orderDiscountAmt,
-        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null })) },
+        lineItems: { create: form.lineItems.map((li) => ({ ...li, serviceId: li.serviceId ?? null, materialId: li.materialId ?? null, ...costFieldsFor(li, costs) })) },
       },
       include: orderInclude,
     });
@@ -434,6 +453,192 @@ ordersRouter.post('/:id/payments', async (req, res) => {
 
   const updated = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
   res.json(serializeDetail(updated!));
+});
+
+// ── Outsourced jobs: costing, supplier bills, profit ─────────────────────────
+// Everything here is for people who can see costs. A contracted-out service has ONE supplier price (paper and service together,
+// VAT included) which we mark up. The quote is captured per job on the order line; the supplier's bill — and any deposit paid with
+// it — is an expense tied to the order, and that is the job's cost of sales.
+async function requireCosts(req: { user?: { role: string } }, res: import('express').Response): Promise<boolean> {
+  if (await canSeeCosts(req.user!.role)) return true;
+  res.status(403).json({ error: 'Not permitted for your role' });
+  return false;
+}
+
+const BILL_CATEGORY = 'Outsourced Services';
+
+async function jobCosting(orderId: number) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { ...orderInclude, expenses: { where: { category: BILL_CATEGORY }, include: { payments: true }, orderBy: { id: 'asc' } } },
+  });
+  if (!order) return null;
+  const inputs = order.lineItems.map(toLineItemInput);
+  const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
+  const totals = computeOrderTotals({ lineItems: inputs, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt });
+  // What the order-level discount leaves of each line, so an outsourced line's sale is what the customer really pays for it.
+  const scale = subtotal > 0 ? totals.grandTotal / subtotal : 0;
+  const lines = order.lineItems
+    .map((li, i) => ({ li, sale: round2(buildLineTotal(inputs[i]!) * scale) }))
+    .filter(({ li }) => li.service?.outsourced)
+    .map(({ li, sale }) => ({
+      lineId: li.id,
+      service: li.service!.name,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      sale,
+      supplierName: li.supplierName ?? li.service!.supplierName ?? '',
+      supplierCost: li.supplierCost,
+      markupType: li.markupType,
+      markupValue: li.markupValue,
+      estimatedCost: li.supplierCost != null ? round2(li.supplierCost * li.qty) : null,
+      needsCosting: needsCosting({ outsourced: true, supplierCost: li.supplierCost }),
+    }));
+  const bills = order.expenses.map((e) => {
+    const paid = e.paid ? e.amount : round2(e.payments.reduce((a, p) => a + p.amount, 0));
+    return { id: e.id, date: e.date, supplier: e.supplier, invoiceNumber: e.invoiceNumber, note: e.note, amount: e.amount, paid, owing: round2(e.amount - paid), dueDate: e.dueDate };
+  });
+  const sale = round2(lines.reduce((a, l) => a + l.sale, 0));
+  const estimated = round2(lines.reduce((a, l) => a + (l.estimatedCost ?? 0), 0));
+  const billed = round2(bills.reduce((a, b) => a + b.amount, 0));
+  const paid = round2(bills.reduce((a, b) => a + b.paid, 0));
+  // The real cost is what the supplier billed; until a bill is in, the quote stands in for it.
+  const cost = billed > 0 ? billed : estimated;
+  return {
+    orderId: order.id,
+    orderNo: order.orderNo,
+    lines,
+    bills,
+    sale,
+    estimatedCost: estimated,
+    billed,
+    paid,
+    owing: round2(billed - paid),
+    costBasis: billed > 0 ? 'supplier bills' : estimated > 0 ? 'quote (no bill recorded yet)' : 'not costed',
+    margin: jobMargin(sale, cost, VAT_RATE),
+    unbilledQuote: billed > 0 ? round2(Math.max(0, estimated - billed)) : estimated,
+  };
+}
+
+ordersRouter.get('/outsourced/jobs', async (req, res) => {
+  if (!(await requireCosts(req, res))) return;
+  const orders = await prisma.order.findMany({
+    where: { lineItems: { some: { service: { outsourced: true } } }, OR: [{ kind: 'walkin' }, { status: { not: 'Quote' } }] },
+    select: { id: true },
+    orderBy: { id: 'desc' },
+    take: 300,
+  });
+  const jobs = (await Promise.all(orders.map((o) => jobCosting(o.id)))).filter((j): j is NonNullable<typeof j> => !!j);
+  const full = await prisma.order.findMany({ where: { id: { in: jobs.map((j) => j.orderId) } }, include: { corporateClient: true } });
+  const byId = new Map(full.map((o) => [o.id, o]));
+  res.json({
+    jobs: jobs.map((j) => {
+      const o = byId.get(j.orderId)!;
+      return { ...j, customer: o.customerName || o.corporateClient?.name || 'Customer', date: o.createdDate, stage: o.stage, status: o.status, suppliers: [...new Set(j.lines.map((l) => l.supplierName).filter(Boolean))] };
+    }),
+    totals: {
+      sale: round2(jobs.reduce((a, j) => a + j.sale, 0)),
+      billed: round2(jobs.reduce((a, j) => a + j.billed, 0)),
+      owing: round2(jobs.reduce((a, j) => a + j.owing, 0)),
+      needCosting: jobs.filter((j) => j.lines.some((l) => l.needsCosting)).length,
+    },
+  });
+});
+
+ordersRouter.get('/:id/costing', async (req, res) => {
+  if (!(await requireCosts(req, res))) return;
+  const costing = await jobCosting(Number(req.params.id));
+  if (!costing) return res.status(404).json({ error: 'Order not found' });
+  res.json(costing);
+});
+
+// Record (or correct) the supplier's quote and the mark-up on the order's outsourced lines. This does not change the selling price.
+const costingSchema = z.object({
+  lines: z
+    .array(
+      z.object({
+        lineId: z.number().int(),
+        supplierCost: z.number().min(0).nullable(),
+        markupType: z.enum(MARKUP_TYPES).nullable().optional(),
+        markupValue: z.number().min(0).nullable().optional(),
+        supplierName: z.string().trim().max(120).nullable().optional(),
+      }),
+    )
+    .min(1),
+});
+
+ordersRouter.put('/:id/costing', async (req, res) => {
+  if (!(await requireCosts(req, res))) return;
+  const parsed = costingSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { lineItems: { include: { service: true } } } });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  for (const l of parsed.data.lines) {
+    const line = order.lineItems.find((x) => x.id === l.lineId);
+    if (!line || !line.service?.outsourced) return res.status(400).json({ error: 'That line is not an outsourced service on this order' });
+  }
+  await prisma.$transaction(
+    parsed.data.lines.map((l) =>
+      prisma.orderLineItem.update({
+        where: { id: l.lineId },
+        data: { supplierCost: l.supplierCost, markupType: l.supplierCost == null ? null : l.markupType ?? 'percent', markupValue: l.supplierCost == null ? null : l.markupValue ?? 0, supplierName: l.supplierName || null },
+      }),
+    ),
+  );
+  res.json(await jobCosting(order.id));
+});
+
+// Record a supplier's bill for the job. Suppliers are paid upfront or with a deposit, so a bill can be paid in full now, part now
+// (a deposit — the balance stays owing in Accounts Payable until it is paid under Finance → Expenses), or not at all yet.
+const supplierBillSchema = z.object({
+  supplierName: z.string().trim().min(1, 'Who is the supplier?').max(120),
+  amount: z.number().positive('Enter the amount the supplier is charging (VAT included)'),
+  paidNow: z.number().min(0).default(0),
+  method: z.enum(EXPENSE_METHODS).default('Bank Transfer'),
+  invoiceNumber: z.string().trim().max(100).optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
+  note: z.string().max(200).optional(),
+});
+
+ordersRouter.post('/:id/supplier-bills', async (req, res) => {
+  if (!(await requireCosts(req, res))) return;
+  const parsed = supplierBillSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { lineItems: { include: { service: true } } } });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (!order.lineItems.some((l) => l.service?.outsourced)) return res.status(400).json({ error: 'This order has no outsourced service on it' });
+  if (d.paidNow > d.amount + 0.005) return res.status(400).json({ error: 'The amount paid now is more than the bill' });
+
+  // Paying from petty cash needs the float to cover it.
+  if (d.paidNow > 0 && d.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(d.paidNow, todayStr());
+    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString('en-KE')} available, Ksh ${Math.round(d.paidNow).toLocaleString('en-KE')} needed)` });
+  }
+
+  await ensureChartOnce();
+  const today = todayStr();
+  const fullyPaid = d.paidNow >= d.amount - 0.005;
+  const expense = await prisma.expense.create({
+    data: {
+      date: today,
+      category: BILL_CATEGORY,
+      amount: d.amount,
+      supplier: d.supplierName,
+      invoiceNumber: d.invoiceNumber || null,
+      note: d.note ? d.note : `${order.orderNo} — outsourced job${d.paidNow > 0 && !fullyPaid ? ' (deposit paid, balance owing)' : ''}`,
+      orderId: order.id,
+      capturedByName: req.user!.name,
+      // Paid in full: a plain paid expense. Otherwise it is a bill on credit, with the deposit (if any) recorded as a payment against it.
+      paid: fullyPaid,
+      method: fullyPaid ? d.method : PETTY_CASH_METHOD,
+      dueDate: fullyPaid ? null : d.dueDate ?? null,
+    },
+  });
+  if (!fullyPaid && d.paidNow > 0) {
+    await prisma.expensePayment.create({ data: { expenseId: expense.id, date: today, amount: d.paidNow, method: d.method, note: 'Deposit', capturedByName: req.user!.name } });
+  }
+  res.status(201).json(await jobCosting(order.id));
 });
 
 // ── Hand an order over to the customer — the ONLY way an order becomes Completed ──

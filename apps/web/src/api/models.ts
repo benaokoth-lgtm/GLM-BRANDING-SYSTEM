@@ -14,6 +14,12 @@ export interface CatalogService {
   usesArtworkPricing: boolean;
   chargesPressingFee: boolean;
   soldViaDtfModule: boolean;
+  // Contracted-out service. The supplier name is for everyone; the supplier price and mark-up arrive only for people who can see costs.
+  outsourced: boolean;
+  supplierName: string;
+  markupType?: 'percent' | 'amount';
+  markupValue?: number;
+  defaultSupplierCost?: number | null;
 }
 
 export interface CatalogMaterial {
@@ -73,6 +79,9 @@ export interface OrderLineItemView {
   heatPressFee: number | null;
   artworkAreaSqm: number | null;
   lineTotal: number;
+  // Contracted-out service line; needsCosting = nobody has entered the supplier's quote yet. (The cost itself is never sent to staff.)
+  outsourced?: boolean;
+  needsCosting?: boolean;
 }
 
 export interface PaymentView {
@@ -271,6 +280,11 @@ export interface DraftLineItem {
   discountAmt: number | string;
   heatPressFee: number | string;
   artworkAreaSqm: number | string;
+  // Outsourced services, for people who can see costs: the supplier's quote for this job (per unit, VAT included) and the mark-up.
+  supplierName?: string;
+  supplierCost?: number | string;
+  markupType?: 'percent' | 'amount';
+  markupValue?: number | string;
 }
 
 export interface StockTakeRow {

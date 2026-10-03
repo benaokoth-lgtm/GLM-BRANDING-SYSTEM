@@ -30,7 +30,8 @@ qualityRouter.get('/queue', async (req, res) => {
     return {
       ...productionSummary(o),
       producerId: t?.assigneeId ?? null,
-      producerName: t?.assignee.name ?? 'Not recorded',
+      outsourced: !!t && t.assigneeId == null,
+      producerName: t?.assignee?.name ?? (t?.supplierName ? `Supplier: ${t.supplierName}` : 'Not recorded'),
       finishedAt: t?.finishedAt ?? null,
       unitsCompleted: t?.unitsCompleted ?? null,
       isRework: t?.isRework ?? false,
@@ -58,7 +59,7 @@ qualityRouter.get('/queue', async (req, res) => {
       result: c.result,
       checkedAt: c.checkedAt,
       inspectorName: c.inspector.name,
-      producerName: c.task?.assignee.name ?? '',
+      producerName: c.task?.assignee?.name ?? (c.task?.supplierName ? `Supplier: ${c.task.supplierName}` : ''),
       unitsInspected: c.unitsInspected,
       unitsRejected: c.unitsRejected,
       defects: c.defects,
@@ -124,7 +125,9 @@ qualityRouter.post('/orders/:orderId/check', async (req, res) => {
       await tx.productionTask.create({
         data: {
           orderId: order.id,
+          // Back to the person who made it — or, for a contracted-out job, back to the supplier.
           assigneeId: task.assigneeId,
+          supplierName: task.supplierName,
           assignedByName: `Quality control (${req.user!.name})`,
           isRework: true,
           unitsPlanned: rejected > 0 ? rejected : task.unitsPlanned,

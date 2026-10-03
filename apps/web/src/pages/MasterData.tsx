@@ -4,8 +4,9 @@ import { PERMISSION_KEYS, fmtKsh } from '@glm/shared';
 import type { PermissionKey, RoleRow } from '@glm/shared';
 import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
+import MpesaSettingsPanel from '../components/MpesaSettingsPanel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'materials' | 'clients' | 'discount' | 'company';
+type MasterTab = 'staff' | 'roles' | 'services' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -15,6 +16,7 @@ const TABS: [MasterTab, string][] = [
   ['clients', 'Corporate Clients'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
+  ['mpesa', 'M-Pesa'],
 ];
 
 const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -712,6 +714,8 @@ export default function MasterData() {
           <p className="note">Applies to both walk-in and corporate line/order discounts. Staff can still submit above this — it only raises the approval flag.</p>
         </>
       )}
+
+      {tab === 'mpesa' && <MpesaSettingsPanel />}
 
       {tab === 'company' && (
         <>

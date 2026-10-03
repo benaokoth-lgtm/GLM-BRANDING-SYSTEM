@@ -507,6 +507,24 @@ model MpesaTransaction {
   payment           Payment?
 }
 
+// M-Pesa (Daraja) setup, edited by the Admin under Master Data → M-Pesa. One row (id = 1). The consumer secret and passkey are
+// never sent back to the browser once saved — the screen only confirms they are set. When no row has been saved yet, the app
+// still honours the old MPESA_* environment variables (see mpesaConfig.ts), so existing installs keep working.
+model MpesaSettings {
+  id              Int       @id @default(1)
+  enabled         Boolean   @default(false)
+  environment     String    @default("sandbox") // sandbox | production
+  shortCode       String    @default("")
+  isTill          Boolean   @default(false) // a Till (Buy Goods) takes an STK push amount only — a Paybill takes an account reference too
+  consumerKey     String    @default("")
+  consumerSecret  String    @default("")
+  passkey         String    @default("")
+  publicBaseUrl   String    @default("") // this server's own https address — Safaricom must be able to reach it
+  callbackSecret  String    @default("") // random path segment only this install and Safaricom's callbacks know
+  c2bRegisteredAt DateTime?
+  updatedAt       DateTime  @updatedAt
+}
+
 // Finance > Asset Register — fixed-asset tracking (machines, vehicles,
 // computers, furniture), separate from Material (consumable stock sold to
 // customers) and StockItem-style inventory. Modeled on the Olerai Hotel

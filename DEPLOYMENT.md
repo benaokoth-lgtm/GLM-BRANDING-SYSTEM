@@ -41,7 +41,7 @@ cPanel → **Setup Node.js App** → Create (or edit) the application:
 | `JWT_SECRET` | a long random string — generate once with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` and keep it; changing it logs everyone out |
 | `CORS_ORIGINS` | `https://pos.glmgroup.co.ke` |
 
-No `PORT` — Passenger assigns it. Optional (each feature disables itself cleanly if unset): `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (invoice emails and the Admin's emailed PIN reset), and the `MPESA_*` set including `MPESA_C2B_SECRET` for live Paybill/Till matching (see `apps/api/.env.example`; `MPESA_CALLBACK_URL` must be `https://api.glmgroup.co.ke/api/mpesa/callback`).
+No `PORT` — Passenger assigns it. Optional (each feature disables itself cleanly if unset): `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` (invoice emails and the Admin's emailed PIN reset), and the `MPESA_*` set (**older installs only** — M-Pesa is now configured in Master Data → M-Pesa instead; see `apps/api/.env.example`; `MPESA_CALLBACK_URL` must be `https://api.glmgroup.co.ke/api/mpesa/callback`).
 
 Save, then click **Run NPM Install** (this installs Prisma and generates its client), then **Restart**.
 
@@ -71,7 +71,7 @@ node books-check.js
 
 **Production, quality control and requisitions.** The same `npm run db:push` adds their tables. It will warn that it drops the old `cogsPct` column (the cost-of-sales percentage, now replaced by actual purchases) — that is expected; answer `y`. On first start the API (a) gives any older stock requisitions a reference number (REQ-0001…) and turns each one's material into a line, and (b) grants the new Production / Quality permissions once: Staff can work the jobs they're assigned; Supervisor, Finance Manager and General Manager can assign staff and see productivity; Supervisor, Finance Manager and General Manager can inspect quality. Adjust them any time under Master Data → Roles & Access. Orders already in the system appear in Production's "Waiting to be assigned" list according to their current stage.
 
-**M-Pesa matching.** Always available by uploading the M-Pesa statement (Accounting → M-Pesa Matching). To also catch Paybill/Till payments live, set `MPESA_C2B_SECRET` (a long random string) and, if the API's public address differs from `MPESA_CALLBACK_URL`, `MPESA_PUBLIC_URL`; restart; then, signed in as Admin, call `POST /api/mpesa/c2b/register` once.
+**M-Pesa.** Set up by the Admin under **Master Data → M-Pesa** — no server variables needed any more. Enter the Paybill/Till number, tick "Till" if it is one, the consumer key, consumer secret and passkey from Safaricom's Daraja portal, and this installation's public address (`https://api.glmgroup.co.ke`). **Save**, **Test the connection**, then **Switch on**. The secret and passkey are never shown again once saved. Start in *Sandbox*; change to *Production* with your live keys when ready. To also catch Paybill/Till payments made without a prompt, click **Register these addresses with Safaricom** (needs a Production Paybill/Till). Without registering, upload the M-Pesa statement under Accounting → M-Pesa Matching — matching works from that too. (An install already running on the old `MPESA_*` variables keeps working until the first save in Master Data, which carries those values over.)
 
 **Forgot a PIN, or a correct PIN "doesn't work"?** Five wrong attempts lock a user for 15 minutes. From the same folder and environment as above:
 

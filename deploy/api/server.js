@@ -50369,7 +50369,7 @@ emailRouter.post("/send", async (req, res) => {
 
 // apps/api/src/routes/mpesa.ts
 var import_express9 = __toESM(require_express2());
-var import_crypto2 = require("crypto");
+var import_crypto3 = require("crypto");
 
 // apps/api/src/accounting/reports.ts
 var inRange4 = (d, from, to) => d >= from && d <= to;
@@ -50767,28 +50767,78 @@ async function importStatement(text, by) {
   return { read: receipts.length, added, duplicates, linkedToRecorded: linked, autoApplied: applied, skipped };
 }
 
-// apps/api/src/routes/mpesa.ts
-var mpesaRouter = (0, import_express9.Router)();
-function darajaBaseUrl() {
-  return process.env.MPESA_ENV === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+// apps/api/src/mpesaConfig.ts
+var import_crypto2 = require("crypto");
+var newCallbackSecret = () => (0, import_crypto2.randomBytes)(24).toString("hex");
+async function getSettingsRow() {
+  return await prisma.mpesaSettings.findUnique({ where: { id: 1 } }) ?? prisma.mpesaSettings.create({ data: { id: 1 } });
 }
-function isConfigured() {
-  return !!(process.env.MPESA_CONSUMER_KEY && process.env.MPESA_CONSUMER_SECRET && process.env.MPESA_SHORTCODE && process.env.MPESA_PASSKEY && process.env.MPESA_CALLBACK_URL);
+async function loadMpesaConfig() {
+  const row = await prisma.mpesaSettings.findUnique({ where: { id: 1 } });
+  if (row && (row.consumerKey || row.shortCode)) {
+    return {
+      source: "settings",
+      enabled: row.enabled,
+      environment: row.environment === "production" ? "production" : "sandbox",
+      shortCode: row.shortCode,
+      isTill: row.isTill,
+      consumerKey: row.consumerKey,
+      consumerSecret: row.consumerSecret,
+      passkey: row.passkey,
+      publicBaseUrl: row.publicBaseUrl.replace(/\/+$/, ""),
+      callbackSecret: row.callbackSecret,
+      c2bRegisteredAt: row.c2bRegisteredAt
+    };
+  }
+  const e = process.env;
+  const origin = (() => {
+    try {
+      return e.MPESA_PUBLIC_URL ? e.MPESA_PUBLIC_URL.replace(/\/+$/, "") : e.MPESA_CALLBACK_URL ? new URL(e.MPESA_CALLBACK_URL).origin : "";
+    } catch {
+      return "";
+    }
+  })();
+  return {
+    source: "env",
+    enabled: !!(e.MPESA_CONSUMER_KEY && e.MPESA_CONSUMER_SECRET && e.MPESA_SHORTCODE && e.MPESA_PASSKEY && e.MPESA_CALLBACK_URL),
+    environment: e.MPESA_ENV === "production" ? "production" : "sandbox",
+    shortCode: e.MPESA_SHORTCODE || "",
+    isTill: false,
+    consumerKey: e.MPESA_CONSUMER_KEY || "",
+    consumerSecret: e.MPESA_CONSUMER_SECRET || "",
+    passkey: e.MPESA_PASSKEY || "",
+    publicBaseUrl: origin,
+    callbackSecret: e.MPESA_C2B_SECRET || "",
+    c2bRegisteredAt: null
+  };
 }
-function normalizePhone(raw) {
-  const digits = raw.replace(/[^\d]/g, "");
-  if (/^0[17]\d{8}$/.test(digits)) return "254" + digits.slice(1);
-  if (/^254[17]\d{8}$/.test(digits)) return digits;
-  if (/^[17]\d{8}$/.test(digits)) return "254" + digits;
-  return null;
+function isReady(c) {
+  return c.enabled && !!(c.consumerKey && c.consumerSecret && c.shortCode && c.passkey);
 }
-async function getAccessToken() {
-  const auth = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString("base64");
-  const res = await fetch(`${darajaBaseUrl()}/oauth/v1/generate?grant_type=client_credentials`, {
-    headers: { Authorization: `Basic ${auth}` }
-  });
-  if (!res.ok) throw new Error("Failed to authenticate with M-Pesa");
+var darajaBaseUrl = (c) => c.environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+function callbackUrls(c) {
+  if (!c.publicBaseUrl || !c.callbackSecret) return null;
+  const base2 = `${c.publicBaseUrl}/api/mpesa`;
+  return {
+    stk: c.source === "env" && process.env.MPESA_CALLBACK_URL ? process.env.MPESA_CALLBACK_URL : `${base2}/callback/${c.callbackSecret}`,
+    validation: `${base2}/c2b/${c.callbackSecret}/validation`,
+    confirmation: `${base2}/c2b/${c.callbackSecret}/confirmation`
+  };
+}
+var DarajaError = class extends Error {
+};
+async function getAccessToken(c) {
+  if (!c.consumerKey || !c.consumerSecret) throw new DarajaError("Enter the consumer key and secret first");
+  const auth = Buffer.from(`${c.consumerKey}:${c.consumerSecret}`).toString("base64");
+  let res;
+  try {
+    res = await fetch(`${darajaBaseUrl(c)}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${auth}` } });
+  } catch {
+    throw new DarajaError("Could not reach Safaricom \u2014 check the server has internet access");
+  }
+  if (!res.ok) throw new DarajaError(res.status === 400 || res.status === 401 ? "Safaricom rejected the consumer key / secret (check the environment matches: sandbox keys only work on Sandbox)" : `Safaricom answered ${res.status} when asked for a token`);
   const data = await res.json();
+  if (!data.access_token) throw new DarajaError("Safaricom did not return an access token");
   return data.access_token;
 }
 function darajaTimestamp() {
@@ -50796,6 +50846,110 @@ function darajaTimestamp() {
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
+
+// apps/api/src/routes/mpesa.ts
+var mpesaRouter = (0, import_express9.Router)();
+var NOT_SET_UP = "M-Pesa isn't set up (or is switched off) \u2014 an Admin can set it up under Master Data \u2192 M-Pesa";
+function normalizePhone(raw) {
+  const digits = raw.replace(/[^\d]/g, "");
+  if (/^0[17]\d{8}$/.test(digits)) return "254" + digits.slice(1);
+  if (/^254[17]\d{8}$/.test(digits)) return digits;
+  if (/^[17]\d{8}$/.test(digits)) return "254" + digits;
+  return null;
+}
+function publicSettings(c) {
+  return {
+    source: c.source,
+    // 'env' = still running from the server's MPESA_* variables; the first save moves it into Master Data
+    enabled: c.enabled,
+    ready: isReady(c),
+    environment: c.environment,
+    shortCode: c.shortCode,
+    isTill: c.isTill,
+    publicBaseUrl: c.publicBaseUrl,
+    hasConsumerKey: !!c.consumerKey,
+    hasConsumerSecret: !!c.consumerSecret,
+    hasPasskey: !!c.passkey,
+    c2bRegisteredAt: c.c2bRegisteredAt,
+    callbackUrls: callbackUrls(c)
+  };
+}
+mpesaRouter.get("/settings", requireAuth, requireRole("Admin"), async (_req, res) => {
+  res.json(publicSettings(await loadMpesaConfig()));
+});
+var settingsSchema2 = external_exports.object({
+  environment: external_exports.enum(["sandbox", "production"]).optional(),
+  shortCode: external_exports.string().trim().max(20).optional(),
+  isTill: external_exports.boolean().optional(),
+  publicBaseUrl: external_exports.string().trim().max(200).optional(),
+  // Blank = keep what is saved (the browser never has the saved values to send back).
+  consumerKey: external_exports.string().trim().max(200).optional(),
+  consumerSecret: external_exports.string().trim().max(200).optional(),
+  passkey: external_exports.string().trim().max(300).optional(),
+  enabled: external_exports.boolean().optional()
+});
+mpesaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = settingsSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const b = parsed.data;
+  const current = await loadMpesaConfig();
+  const row = await getSettingsRow();
+  const base2 = row.consumerKey || row.shortCode ? row : { ...row, consumerKey: current.consumerKey, consumerSecret: current.consumerSecret, passkey: current.passkey, shortCode: current.shortCode, publicBaseUrl: current.publicBaseUrl, environment: current.environment, callbackSecret: current.callbackSecret, enabled: current.enabled };
+  const data = {
+    environment: b.environment ?? base2.environment,
+    shortCode: b.shortCode ?? base2.shortCode,
+    isTill: b.isTill ?? base2.isTill,
+    consumerKey: b.consumerKey ? b.consumerKey : base2.consumerKey,
+    consumerSecret: b.consumerSecret ? b.consumerSecret : base2.consumerSecret,
+    passkey: b.passkey ? b.passkey : base2.passkey,
+    publicBaseUrl: base2.publicBaseUrl,
+    callbackSecret: base2.callbackSecret || newCallbackSecret(),
+    enabled: b.enabled ?? base2.enabled
+  };
+  if (b.publicBaseUrl !== void 0) {
+    const v = b.publicBaseUrl.replace(/\/+$/, "");
+    if (v && !/^https:\/\//.test(v)) return res.status(400).json({ error: "The public web address must start with https:// \u2014 Safaricom will not call back over plain http" });
+    data.publicBaseUrl = v;
+  }
+  if (data.enabled && !(data.consumerKey && data.consumerSecret && data.passkey && data.shortCode)) {
+    return res.status(400).json({ error: "Fill in the Paybill/Till number, consumer key, consumer secret and passkey before switching M-Pesa on" });
+  }
+  const saved = await prisma.mpesaSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  void saved;
+  res.json(publicSettings(await loadMpesaConfig()));
+});
+mpesaRouter.post("/settings/test", requireAuth, requireRole("Admin"), async (_req, res) => {
+  try {
+    await getAccessToken(await loadMpesaConfig());
+    res.json({ ok: true });
+  } catch (e) {
+    if (e instanceof DarajaError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+async function registerC2B(_req, res) {
+  const c = await loadMpesaConfig();
+  if (!c.consumerKey || !c.consumerSecret || !c.shortCode) return res.status(400).json({ error: "Save the Paybill/Till number, consumer key and secret first" });
+  const urls = callbackUrls(c);
+  if (!urls) return res.status(400).json({ error: "Save this installation\u2019s public web address (https://\u2026) first \u2014 the callback addresses are built from it" });
+  try {
+    const token = await getAccessToken(c);
+    const r = await fetch(`${darajaBaseUrl(c)}/mpesa/c2b/v1/registerurl`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ShortCode: c.shortCode, ResponseType: "Completed", ConfirmationURL: urls.confirmation, ValidationURL: urls.validation })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(502).json({ error: data.errorMessage || data.ResponseDescription || "Safaricom rejected the registration" });
+  } catch (e) {
+    if (e instanceof DarajaError) return res.status(400).json({ error: e.message });
+    return res.status(502).json({ error: e instanceof Error ? e.message : "Failed to reach M-Pesa" });
+  }
+  if (c.source === "settings") await prisma.mpesaSettings.update({ where: { id: 1 }, data: { c2bRegisteredAt: /* @__PURE__ */ new Date() } });
+  res.json(publicSettings(await loadMpesaConfig()));
+}
+mpesaRouter.post("/settings/register-c2b", requireAuth, requireRole("Admin"), registerC2B);
+mpesaRouter.post("/c2b/register", requireAuth, requireRole("Admin"), registerC2B);
 var stkPushSchema = external_exports.object({
   phone: external_exports.string().min(9),
   amount: external_exports.number().positive(),
@@ -50804,31 +50958,32 @@ var stkPushSchema = external_exports.object({
   orderId: external_exports.number().int().optional()
 });
 mpesaRouter.post("/stkpush", requireAuth, async (req, res) => {
-  if (!isConfigured()) {
-    return res.status(501).json({ error: "M-Pesa STK push isn't configured yet \u2014 set MPESA_* in apps/api/.env (see comments there)" });
-  }
+  const cfg = await loadMpesaConfig();
+  if (!isReady(cfg)) return res.status(501).json({ error: NOT_SET_UP });
+  const urls = callbackUrls(cfg);
+  if (!urls) return res.status(501).json({ error: "M-Pesa needs this installation\u2019s public web address \u2014 an Admin can add it under Master Data \u2192 M-Pesa" });
   const parsed = stkPushSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const phone = normalizePhone(parsed.data.phone);
   if (!phone) return res.status(400).json({ error: "Enter a valid Kenyan phone number (e.g. 07xx xxx xxx)" });
   try {
-    const token = await getAccessToken();
-    const shortcode = process.env.MPESA_SHORTCODE;
+    const token = await getAccessToken(cfg);
     const timestamp = darajaTimestamp();
-    const password = Buffer.from(`${shortcode}${process.env.MPESA_PASSKEY}${timestamp}`).toString("base64");
-    const stkRes = await fetch(`${darajaBaseUrl()}/mpesa/stkpush/v1/processrequest`, {
+    const password = Buffer.from(`${cfg.shortCode}${cfg.passkey}${timestamp}`).toString("base64");
+    const stkRes = await fetch(`${darajaBaseUrl(cfg)}/mpesa/stkpush/v1/processrequest`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        BusinessShortCode: shortcode,
+        BusinessShortCode: cfg.shortCode,
         Password: password,
         Timestamp: timestamp,
-        TransactionType: "CustomerPayBillOnline",
+        // A Till (Buy Goods) takes the amount only; a Paybill also carries an account reference.
+        TransactionType: cfg.isTill ? "CustomerBuyGoodsOnline" : "CustomerPayBillOnline",
         Amount: Math.round(parsed.data.amount),
         PartyA: phone,
-        PartyB: shortcode,
+        PartyB: cfg.shortCode,
         PhoneNumber: phone,
-        CallBackURL: process.env.MPESA_CALLBACK_URL,
+        CallBackURL: urls.stk,
         AccountReference: parsed.data.accountReference,
         TransactionDesc: parsed.data.description || parsed.data.accountReference
       })
@@ -50867,11 +51022,12 @@ async function markSuccess(tx, mpesaReceipt) {
     }
   }
 }
-mpesaRouter.post("/callback", async (req, res) => {
-  const stkCallback = req.body?.Body?.stkCallback;
-  if (!stkCallback?.CheckoutRequestID) return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+var ACK = { ResultCode: 0, ResultDesc: "Accepted" };
+async function handleStkCallback(body) {
+  const stkCallback = body?.Body?.stkCallback;
+  if (!stkCallback?.CheckoutRequestID) return;
   const tx = await prisma.mpesaTransaction.findUnique({ where: { checkoutRequestId: stkCallback.CheckoutRequestID } });
-  if (!tx || tx.status !== "Pending") return res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+  if (!tx || tx.status !== "Pending") return;
   if (stkCallback.ResultCode === 0) {
     const receipt = stkCallback.CallbackMetadata?.Item.find((i) => i.Name === "MpesaReceiptNumber")?.Value;
     await markSuccess(tx, receipt != null ? String(receipt) : null);
@@ -50881,7 +51037,21 @@ mpesaRouter.post("/callback", async (req, res) => {
       data: { status: stkCallback.ResultCode === 1032 ? "Cancelled" : "Failed", resultCode: stkCallback.ResultCode, resultDesc: stkCallback.ResultDesc }
     });
   }
-  res.json({ ResultCode: 0, ResultDesc: "Accepted" });
+}
+function secretOk(given, want) {
+  const a2 = Buffer.from(given);
+  const b = Buffer.from(want);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto3.timingSafeEqual)(a2, b);
+}
+mpesaRouter.post("/callback/:secret", async (req, res) => {
+  const cfg = await loadMpesaConfig();
+  if (secretOk(req.params.secret, cfg.callbackSecret)) await handleStkCallback(req.body).catch((e) => console.error("STK callback failed", e));
+  res.json(ACK);
+});
+mpesaRouter.post("/callback", async (req, res) => {
+  const cfg = await loadMpesaConfig();
+  if (cfg.source === "env") await handleStkCallback(req.body).catch((e) => console.error("STK callback failed", e));
+  res.json(ACK);
 });
 mpesaRouter.get("/status/:checkoutRequestId", requireAuth, async (req, res) => {
   const tx = await prisma.mpesaTransaction.findUnique({ where: { checkoutRequestId: req.params.checkoutRequestId } });
@@ -50896,16 +51066,10 @@ mpesaRouter.post("/:checkoutRequestId/confirm-manually", requireAuth, async (req
   await markSuccess(tx, null);
   res.json({ ok: true });
 });
-var ACK = { ResultCode: 0, ResultDesc: "Accepted" };
-function secretOk(given) {
-  const want = process.env.MPESA_C2B_SECRET || "";
-  const a2 = Buffer.from(given);
-  const b = Buffer.from(want);
-  return want.length >= 16 && a2.length === b.length && (0, import_crypto2.timingSafeEqual)(a2, b);
-}
 mpesaRouter.post("/c2b/:secret/validation", (_req, res) => res.json(ACK));
 mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
-  if (!secretOk(req.params.secret)) return res.json(ACK);
+  const cfg = await loadMpesaConfig();
+  if (!secretOk(req.params.secret, cfg.callbackSecret)) return res.json(ACK);
   try {
     const b = req.body;
     const receipt = String(b.TransID || "").toUpperCase();
@@ -50930,30 +51094,6 @@ mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
     console.error("C2B confirmation failed", err);
   }
   res.json(ACK);
-});
-mpesaRouter.post("/c2b/register", requireAuth, requireRole("Admin"), async (_req, res) => {
-  if (!isConfigured()) return res.status(501).json({ error: "M-Pesa isn't configured yet \u2014 set MPESA_* in the API environment" });
-  const secret = process.env.MPESA_C2B_SECRET || "";
-  const base2 = (process.env.MPESA_PUBLIC_URL || new URL(process.env.MPESA_CALLBACK_URL).origin).replace(/\/$/, "");
-  if (secret.length < 16) return res.status(400).json({ error: "Set MPESA_C2B_SECRET to a long random string (16+ characters) first" });
-  try {
-    const token = await getAccessToken();
-    const r = await fetch(`${darajaBaseUrl()}/mpesa/c2b/v1/registerurl`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ShortCode: process.env.MPESA_SHORTCODE,
-        ResponseType: "Completed",
-        ConfirmationURL: `${base2}/api/mpesa/c2b/${secret}/confirmation`,
-        ValidationURL: `${base2}/api/mpesa/c2b/${secret}/validation`
-      })
-    });
-    const data = await r.json();
-    if (!r.ok) return res.status(502).json({ error: data.errorMessage || data.ResponseDescription || "Safaricom rejected the registration" });
-    res.json({ ok: true, message: data.ResponseDescription || "Registered" });
-  } catch (err) {
-    res.status(502).json({ error: err instanceof Error ? err.message : "Failed to reach M-Pesa" });
-  }
 });
 
 // apps/api/src/routes/assets.ts
@@ -51202,7 +51342,7 @@ dtfRouter.get("/data", async (req, res) => {
     }))
   });
 });
-var settingsSchema2 = external_exports.object({
+var settingsSchema3 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
   rollWidthCm: external_exports.number().positive(),
   stdPricePerM: external_exports.number().positive(),
@@ -51212,7 +51352,7 @@ var settingsSchema2 = external_exports.object({
   fixedChargePerMetre: external_exports.number().min(0)
 }).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" });
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
-  const parsed = settingsSchema2.safeParse(req.body);
+  const parsed = settingsSchema3.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   await getSettings();
   await prisma.dtfSetting.update({ where: { id: 1 }, data: parsed.data });

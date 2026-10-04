@@ -12,6 +12,7 @@ import {
   bandsProblem,
   buildLineTotal,
   clientKeyFor,
+  isNamedClient,
   computeOrderTotals,
   filmPremiumCommission,
   filmPremiumPerM,
@@ -148,8 +149,10 @@ export async function claimProblem(
 ): Promise<string | null> {
   if (!o.sourcedBy) return null;
   if (o.sourcedBy !== user.id && !(await canManageCommission(user.role))) return 'You can only claim a client for yourself';
-  const key = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-  if (!key || key.startsWith('n:')) return "Enter the client's phone number so they can be credited to you and recognised on their next order";
+  // Name and phone are optional on a walk-in sale — they become mandatory only here, when a client is being credited to someone.
+  if (o.corporateClientId) return null;
+  const key = clientKeyFor({ phone: o.phone, name: o.name });
+  if (!key || !key.startsWith('p:') || !isNamedClient(o.name)) return "Enter the client's name and phone number so they can be credited to you and recognised on their next order";
   return null;
 }
 

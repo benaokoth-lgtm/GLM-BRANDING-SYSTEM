@@ -139,6 +139,15 @@ export function ownershipActive(o: { endDate: string; status: string }, today: s
   return o.status === 'Active' && o.endDate >= today;
 }
 
+/** What an order's client is called when nobody enters a name. */
+export const WALK_IN_CLIENT = 'Walk-in';
+
+/** True when a real name was given — blank, or "Walk-in" itself, is not a person anyone can be credited with. */
+export function isNamedClient(name?: string | null): boolean {
+  const n = (name ?? '').trim();
+  return n.length > 0 && !/^walk[\s-]*in$/i.test(n);
+}
+
 /**
  * A stable identity for a client so the same person is recognised across orders: a corporate client by its id, a walk-in by phone
  * number (the last nine digits, so 0712 345 678 and +254 712 345 678 match), else by name. Anonymous walk-ins have no key and so
@@ -148,6 +157,7 @@ export function clientKeyFor(c: { corporateClientId?: number | null; phone?: str
   if (c.corporateClientId) return `c:${c.corporateClientId}`;
   const digits = (c.phone ?? '').replace(/\D/g, '');
   if (digits.length >= 9) return `p:${digits.slice(-9)}`;
+  if (!isNamedClient(c.name)) return null; // an anonymous walk-in can never be owned
   const name = (c.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
   return name.length >= 3 ? `n:${name}` : null;
 }

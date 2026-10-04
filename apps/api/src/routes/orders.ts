@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from '../middleware/auth';
 import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
 import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
+import { WALK_IN_CLIENT } from '@glm/shared';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
@@ -256,7 +257,8 @@ const lineItemSchema = z
   });
 
 const walkinSchema = z.object({
-  customerName: z.string().min(1),
+  // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
+  customerName: z.string().optional(),
   phone: z.string().optional(),
   staffId: z.number().int(),
   paymentTiming: z.enum(['onAcceptance', 'onCompletion']),
@@ -308,8 +310,8 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
       data: {
         orderNo,
         kind: 'walkin',
-        customerName: form.customerName,
-        phone: form.phone,
+        customerName: form.customerName?.trim() || WALK_IN_CLIENT,
+        phone: form.phone?.trim() || null,
         staffId: form.staffId,
         ...sourcing,
         createdDate: todayStr(),

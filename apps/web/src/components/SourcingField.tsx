@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fmtDate } from '@glm/shared';
+import { fmtDate, isNamedClient } from '@glm/shared';
 import { api } from '../api/client';
 
 interface Lookup {
@@ -58,7 +58,8 @@ export default function SourcingField({
     if (owner && checked) onChange(false);
   }, [owner, checked, onChange]);
 
-  const needsPhone = checked && !corporateClientId && !(phone ?? '').trim();
+  // Name and phone are optional on a walk-in sale; they are required here, to credit the client to someone.
+  const needsDetails = checked && !corporateClientId && (!(phone ?? '').trim() || !isNamedClient(name));
 
   return (
     <div className="field" style={{ margin: 0 }}>
@@ -76,8 +77,8 @@ export default function SourcingField({
               <b>{staffName || 'This staff member'}</b> brought this client in through their own network — credit them for {lookup?.months ?? 12} months
             </span>
           </label>
-          {needsPhone && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Add the client’s phone number so they can be recognised on their next order.</p>}
-          {!checked && <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Leave unticked for walk-ins and clients the shop already had — a house order earns no sourcing commission.</p>}
+          {needsDetails && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client to you and to recognise them on their next order.</p>}
+          {!checked && <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Leave unticked for walk-ins and clients the shop already had — no name or phone is needed, and a house order earns no sourcing commission.</p>}
         </>
       )}
     </div>

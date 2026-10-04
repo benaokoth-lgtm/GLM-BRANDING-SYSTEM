@@ -44338,10 +44338,16 @@ function ownershipEnd(start, months) {
   const nd = Math.min(d, lastDay);
   return `${ny}-${String(nm + 1).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
 }
+var WALK_IN_CLIENT = "Walk-in";
+function isNamedClient(name2) {
+  const n = (name2 ?? "").trim();
+  return n.length > 0 && !/^walk[\s-]*in$/i.test(n);
+}
 function clientKeyFor(c) {
   if (c.corporateClientId) return `c:${c.corporateClientId}`;
   const digits = (c.phone ?? "").replace(/\D/g, "");
   if (digits.length >= 9) return `p:${digits.slice(-9)}`;
+  if (!isNamedClient(c.name)) return null;
   const name2 = (c.name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   return name2.length >= 3 ? `n:${name2}` : null;
 }
@@ -49233,8 +49239,9 @@ async function resolveSourcing(db, o) {
 async function claimProblem(user, o) {
   if (!o.sourcedBy) return null;
   if (o.sourcedBy !== user.id && !await canManageCommission(user.role)) return "You can only claim a client for yourself";
-  const key2 = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-  if (!key2 || key2.startsWith("n:")) return "Enter the client's phone number so they can be credited to you and recognised on their next order";
+  if (o.corporateClientId) return null;
+  const key2 = clientKeyFor({ phone: o.phone, name: o.name });
+  if (!key2 || !key2.startsWith("p:") || !isNamedClient(o.name)) return "Enter the client's name and phone number so they can be credited to you and recognised on their next order";
   return null;
 }
 var orderInc = { lineItems: true, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true };
@@ -49793,7 +49800,8 @@ var lineItemSchema = external_exports.object({
   message: "A material line needs a material, a service line needs a service"
 });
 var walkinSchema = external_exports.object({
-  customerName: external_exports.string().min(1),
+  // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
+  customerName: external_exports.string().optional(),
   phone: external_exports.string().optional(),
   staffId: external_exports.number().int(),
   paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
@@ -49832,8 +49840,8 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
       data: {
         orderNo,
         kind: "walkin",
-        customerName: form.customerName,
-        phone: form.phone,
+        customerName: form.customerName?.trim() || WALK_IN_CLIENT,
+        phone: form.phone?.trim() || null,
         staffId: form.staffId,
         ...sourcing,
         createdDate: todayStr(),
@@ -52522,7 +52530,7 @@ dtfRouter.post("/sales", async (req, res) => {
       const service = await tx.service.findFirst({ where: { name: "DTF Sheet (per metre)" } });
       if (!service) throw new Error('The "DTF Sheet (per metre)" service is missing from Master Data \u2014 cannot generate an order for this sale.');
       const order2 = await createDtfOrder(tx, {
-        customerName: d.client.trim(),
+        customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: req.user.id,
         serviceLine: { itemType: "per-metre", serviceId: service.id, qty: d.metres, unitPrice: c.price },
@@ -52534,7 +52542,7 @@ dtfRouter.post("/sales", async (req, res) => {
         data: {
           rollId: d.rollId,
           soldOn: d.soldOn ?? todayStr(),
-          client: d.client.trim(),
+          client: d.client.trim() || WALK_IN_CLIENT,
           metres: d.metres,
           pricePerM: c.price,
           stdPriceAtSale: settings.stdPricePerM,
@@ -52617,7 +52625,7 @@ dtfRouter.post("/jobs", async (req, res) => {
       const service = await tx.service.findFirst({ where: { name: "DTF Printing" } });
       if (!service) throw new Error('The "DTF Printing" service is missing from Master Data \u2014 cannot generate an order for this job.');
       const order2 = await createDtfOrder(tx, {
-        customerName: d.client.trim(),
+        customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: req.user.id,
         serviceLine: { itemType: "service", serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
@@ -52629,7 +52637,7 @@ dtfRouter.post("/jobs", async (req, res) => {
         data: {
           rollId: d.rollId,
           jobOn: d.jobOn ?? todayStr(),
-          client: d.client.trim(),
+          client: d.client.trim() || WALK_IN_CLIENT,
           runningMetres: d.runningMetres,
           pieces: d.pieces,
           fixedChargePerMetreAtJob: settings.fixedChargePerMetre,

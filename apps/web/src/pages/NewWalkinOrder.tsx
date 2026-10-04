@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { computeOrderTotals, exceedsDiscountCeiling, fmtKsh } from '@glm/shared';
+import { WALK_IN_CLIENT, computeOrderTotals, exceedsDiscountCeiling, fmtKsh, isNamedClient } from '@glm/shared';
 import type { CompanySettings, DraftLineItem, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
 import LineItemsEditor, { isBlankLine, makeDefaultLine } from '../components/LineItemsEditor';
@@ -54,10 +54,14 @@ export default function NewWalkinOrder() {
   const totals = computeOrderTotals({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 });
   const discountWarning = exceedsDiscountCeiling({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 }, maxDiscountPct);
 
+  // The client's name and phone are optional (a blank name is recorded as "Walk-in") — except when the client is being credited to a
+  // staff member for commission, which needs both to recognise them next time.
+  const sourcingIncomplete = sourced && (!phone.trim() || !isNamedClient(customerName));
+
   const payProblem = paymentTiming === 'onAcceptance' ? paymentProblem(paymentRows, totals.grandTotal) : null;
 
   async function submit() {
-    if (!customerName.trim() || !staffId || payProblem || normalized.length === 0) return;
+    if (!staffId || payProblem || sourcingIncomplete || normalized.length === 0) return;
     setSubmitting(true);
     setError(null);
     // Open the popup synchronously (before any await) so browser popup
@@ -66,7 +70,7 @@ export default function NewWalkinOrder() {
     try {
       const [order, company] = await Promise.all([
         api.post<OrderDetail>('/orders/walkin', {
-          customerName,
+          customerName: customerName.trim() || WALK_IN_CLIENT,
           phone,
           staffId,
           sourcedBy: sourced ? staffId : null,
@@ -101,11 +105,11 @@ export default function NewWalkinOrder() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <div className="field">
-          <label>Customer name</label>
-          <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="e.g. Peter Mwangi" />
+          <label>Customer name (optional)</label>
+          <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in (optional)" />
         </div>
         <div className="field">
-          <label>Phone</label>
+          <label>Phone (optional)</label>
           <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
         </div>
         <div className="field">
@@ -176,7 +180,7 @@ export default function NewWalkinOrder() {
           type="button"
           className="btn btn-primary blueprint"
           onClick={submit}
-          disabled={submitting || !customerName.trim() || !!payProblem || normalized.length === 0}
+          disabled={submitting || !!payProblem || sourcingIncomplete || normalized.length === 0}
         >
           <i className="corner tl"></i>
           <i className="corner tr"></i>

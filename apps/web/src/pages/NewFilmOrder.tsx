@@ -77,8 +77,8 @@ export default function NewFilmOrder() {
         </div>
         {open.length === 0 && <p className="note">No open film roll — ask a manager to install one under DTF → Rolls before capturing a sale.</p>}
         <div className="field" style={{ margin: 0 }}>
-          <label>Client</label>
-          <input className="input" value={f.client} onChange={(e) => setF({ ...f, client: e.target.value })} placeholder="e.g. Peter Mwangi" />
+          <label>Client (optional)</label>
+          <input className="input" value={f.client} onChange={(e) => setF({ ...f, client: e.target.value })} placeholder="Walk-in (optional)" />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
           <div className="field" style={{ margin: 0 }}>

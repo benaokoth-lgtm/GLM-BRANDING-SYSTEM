@@ -230,6 +230,45 @@ describe('staff sales commission', () => {
     assert.equal(again.body.payouts.find((p: any) => p.staffId === ids.amina).status, 'Paid');
     assert.equal(await prisma.expense.count({ where: { category: 'Sales Commission', note: { contains: 'amina' } } }), 1);
   });
+
+  it('a client name and phone are optional on a walk-in sale — required only to credit the client to someone', async () => {
+    // General order with no name and no phone: recorded as a walk-in, a house order
+    const bare = await call('amina', 'POST', '/orders/walkin', { staffId: ids.amina, paymentTiming: 'onCompletion', lineItems: [{ itemType: 'service', serviceId: banner, qty: 1, unitPrice: 1000 }] });
+    assert.equal(bare.status, 201, JSON.stringify(bare.body));
+    assert.equal(bare.body.customerName, 'Walk-in');
+    assert.equal(bare.body.phone, null);
+    assert.equal(bare.body.salesSource, 'house');
+    // a blank name is the same
+    const blank = await call('amina', 'POST', '/orders/walkin', { customerName: '   ', phone: '', staffId: ids.amina, paymentTiming: 'onCompletion', lineItems: [{ itemType: 'service', serviceId: banner, qty: 1, unitPrice: 1000 }] });
+    assert.equal(blank.body.customerName, 'Walk-in');
+
+    // claiming the client for commission needs both a real name and a phone number
+    const noName = await walkin('amina', '', '0766 111 222', 1000, { sourcedBy: ids.amina });
+    assert.equal(noName.status, 400);
+    assert.match(noName.body.error, /name and phone/);
+    const walkInName = await walkin('amina', 'Walk-in', '0766 111 222', 1000, { sourcedBy: ids.amina });
+    assert.equal(walkInName.status, 400);
+    const noPhone = await walkin('amina', 'Joyce Akinyi', '', 1000, { sourcedBy: ids.amina });
+    assert.equal(noPhone.status, 400);
+    const ok = await walkin('amina', 'Joyce Akinyi', '0766 111 222', 1000, { sourcedBy: ids.amina });
+    assert.equal(ok.status, 201);
+    assert.equal(ok.body.sourcedByStaffId, ids.amina);
+
+    // "Walk-in" orders never become anyone's client
+    assert.equal(await prisma.clientOwner.count({ where: { clientName: { in: ['Walk-in', ''] } } }), 0);
+
+    // film and artwork orders: no client at all is fine, and recorded as Walk-in
+    const film = await call('brian', 'POST', '/dtf/sales', { rollId: 'ROLL-001', metres: 1, pricePerM: 400, amountPaid: 400 });
+    assert.equal(film.status, 201, JSON.stringify(film.body));
+    assert.equal(film.body.sale.client, 'Walk-in');
+    assert.equal(film.body.order.customerName, 'Walk-in');
+    const art = await call('amina', 'POST', '/dtf/jobs', { rollId: 'ROLL-001', runningMetres: 2, pieces: 108, amountPaid: 7560 });
+    assert.equal(art.status, 201, JSON.stringify(art.body));
+    assert.equal(art.body.job.client, 'Walk-in');
+    // claiming on a film order without the details is refused too
+    const filmClaim = await call('brian', 'POST', '/dtf/sales', { rollId: 'ROLL-001', metres: 1, pricePerM: 400, amountPaid: 400, sourcedBy: ids.brian });
+    assert.equal(filmClaim.status, 400);
+  });
 });
 
 function round2(n: number) {

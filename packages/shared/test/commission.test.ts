@@ -7,7 +7,9 @@ import {
   bandPosition,
   bandedAmount,
   bandsProblem,
+  WALK_IN_CLIENT,
   clientKeyFor,
+  isNamedClient,
   filmPremiumCommission,
   filmPremiumPerM,
   ownershipActive,
@@ -88,6 +90,18 @@ test('the same client is recognised however the phone number is written', () => 
   assert.equal(clientKeyFor({ name: '  Mary   Wanjiku ' }), 'n:mary wanjiku');
   assert.equal(clientKeyFor({ phone: '123', name: 'Al' }), null); // nothing to recognise them by
   assert.equal(clientKeyFor({}), null);
+});
+
+test('an anonymous walk-in is not a client anyone can be credited with', () => {
+  assert.equal(WALK_IN_CLIENT, 'Walk-in');
+  assert.equal(isNamedClient('Walk-in'), false);
+  assert.equal(isNamedClient(' walk in '), false);
+  assert.equal(isNamedClient('WALKIN'), false);
+  assert.equal(isNamedClient(''), false);
+  assert.equal(isNamedClient(undefined), false);
+  assert.equal(isNamedClient('Walter Inn'), true);
+  assert.equal(clientKeyFor({ name: 'Walk-in' }), null);
+  assert.equal(clientKeyFor({ name: 'Walk-in', phone: '0712 345 678' }), 'p:712345678'); // a phone number still identifies them
 });
 
 test('an artwork job keeps the recommended price unless a higher one was charged', () => {

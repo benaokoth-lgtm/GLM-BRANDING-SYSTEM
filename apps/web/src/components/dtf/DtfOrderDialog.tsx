@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { HEAT_PRESS_FEE_OPTIONS, PAYMENT_METHODS, fmtKsh } from '@glm/shared';
+import { HEAT_PRESS_FEE_OPTIONS, PAYMENT_METHODS, fmtKsh, isNamedClient } from '@glm/shared';
 import type { PaymentMethod } from '@glm/shared';
 import { api } from '../../api/client';
 import { useCatalog } from '../../hooks/useCatalog';
@@ -57,6 +57,8 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   const grandTotal = Math.round((serviceLineTotal + materialsTotal) * 100) / 100;
   const paid = paymentsTotal(paymentRows);
   const payProblem = paymentProblem(paymentRows, grandTotal);
+  // Name and phone are optional (a blank client is recorded as "Walk-in") — except when the client is credited to a staff member.
+  const sourcingIncomplete = sourced && (!phone.trim() || !isNamedClient(client));
 
   function addMaterialLine() {
     const first = materials[0];
@@ -187,7 +189,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
             <Corners />
             Cancel
           </button>
-          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!payProblem}>
+          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!payProblem || sourcingIncomplete}>
             <Corners />
             Print
           </button>

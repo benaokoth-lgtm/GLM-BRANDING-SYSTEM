@@ -91,8 +91,8 @@ export default function NewArtworkOrder() {
           </select>
         </div>
         <div className="field" style={{ margin: 0 }}>
-          <label>Client</label>
-          <input className="input" value={f.client} onChange={(e) => setF({ ...f, client: e.target.value })} placeholder="e.g. Peter Mwangi" />
+          <label>Client (optional)</label>
+          <input className="input" value={f.client} onChange={(e) => setF({ ...f, client: e.target.value })} placeholder="Walk-in (optional)" />
         </div>
         <div className="field" style={{ margin: 0 }}>
           <label>Running metres</label>

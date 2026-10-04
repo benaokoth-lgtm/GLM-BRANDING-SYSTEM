@@ -7,6 +7,7 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
 import { claimProblem, resolveSourcing } from '../commission';
+import { WALK_IN_CLIENT } from '@glm/shared';
 import { paymentLineSchema, recordOrderPayments, PaymentError, orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
 import type { PaymentLine } from './orders';
 
@@ -323,7 +324,7 @@ dtfRouter.post('/sales', async (req, res) => {
       const service = await tx.service.findFirst({ where: { name: 'DTF Sheet (per metre)' } });
       if (!service) throw new Error('The "DTF Sheet (per metre)" service is missing from Master Data — cannot generate an order for this sale.');
       const order = await createDtfOrder(tx, {
-        customerName: d.client.trim(),
+        customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: req.user!.id,
         serviceLine: { itemType: 'per-metre', serviceId: service.id, qty: d.metres, unitPrice: c.price },
@@ -335,7 +336,7 @@ dtfRouter.post('/sales', async (req, res) => {
         data: {
           rollId: d.rollId,
           soldOn: d.soldOn ?? todayStr(),
-          client: d.client.trim(),
+          client: d.client.trim() || WALK_IN_CLIENT,
           metres: d.metres,
           pricePerM: c.price,
           stdPriceAtSale: settings.stdPricePerM,
@@ -442,7 +443,7 @@ dtfRouter.post('/jobs', async (req, res) => {
       const service = await tx.service.findFirst({ where: { name: 'DTF Printing' } });
       if (!service) throw new Error('The "DTF Printing" service is missing from Master Data — cannot generate an order for this job.');
       const order = await createDtfOrder(tx, {
-        customerName: d.client.trim(),
+        customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: req.user!.id,
         serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
@@ -454,7 +455,7 @@ dtfRouter.post('/jobs', async (req, res) => {
         data: {
           rollId: d.rollId,
           jobOn: d.jobOn ?? todayStr(),
-          client: d.client.trim(),
+          client: d.client.trim() || WALK_IN_CLIENT,
           runningMetres: d.runningMetres,
           pieces: d.pieces,
           fixedChargePerMetreAtJob: settings.fixedChargePerMetre,

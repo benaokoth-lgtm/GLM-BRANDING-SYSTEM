@@ -165,6 +165,9 @@ describe('DTF daily roll-ups and business head detail', () => {
     const all = (await call('lead', 'GET', '/orders')).body as any[];
     assert.equal(all.find((o) => o.orderNo === orderNos.s1).dtfKind, 'film');
     assert.equal(all.find((o) => o.orderNo === orderNos.j1).dtfKind, 'artwork');
+    // and which business head it sells for, so My Orders can be browsed by line of business
+    assert.deepEqual(all.find((o) => o.orderNo === orderNos.s1).businessHeads, ['DTF Printing']);
+    assert.deepEqual(all.find((o) => o.orderNo === orderNos.j1).businessHeads, ['DTF Printing']);
   });
 
   it('Accounts Receivable is no longer a report here', async () => {

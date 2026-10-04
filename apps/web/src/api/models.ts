@@ -69,6 +69,8 @@ export interface OrderSummary {
   priceApproval?: 'Pending' | null;
   /** For Film/Artwork orders: which of the two it is. */
   dtfKind?: 'film' | 'artwork' | null;
+  /** The business heads the order's lines belong to. */
+  businessHeads?: string[];
 }
 
 export interface OrderLineItemView {

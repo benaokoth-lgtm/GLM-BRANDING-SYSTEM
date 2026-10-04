@@ -49641,7 +49641,7 @@ ordersRouter.use(requireAuth, async (_req, _res, next) => {
 var orderInclude = import_client2.Prisma.validator()({
   staff: true,
   corporateClient: true,
-  lineItems: { include: { service: true, material: true } },
+  lineItems: { include: { service: { include: { businessHead: true } }, material: true } },
   payments: { orderBy: { id: "asc" } },
   dtfArtworkJob: { select: { approvalStatus: true } },
   dtfFilmSale: { select: { id: true } }
@@ -49681,7 +49681,9 @@ function serializeSummary(order) {
     // An artwork job priced below the recommended price is on hold until a manager approves it.
     priceApproval: order.dtfArtworkJob?.approvalStatus === "Pending" ? "Pending" : null,
     // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
-    dtfKind: order.dtfFilmSale ? "film" : order.dtfArtworkJob ? "artwork" : null
+    dtfKind: order.dtfFilmSale ? "film" : order.dtfArtworkJob ? "artwork" : null,
+    // The lines of business this order sells (same rule as Sales by Business Head: a service's head, else a name-based default; materials are General Order).
+    businessHeads: [...new Set(order.lineItems.map((li) => li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD))]
   };
 }
 function serializeDetail(order, opts = {}) {

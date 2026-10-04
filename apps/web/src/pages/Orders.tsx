@@ -18,6 +18,8 @@ export default function Orders({ scope }: Props) {
   const [statusFilter, setStatusFilter] = useState('all');
   // Film orders and artwork jobs are separate lists. (Choosing one dims the module row, like any other sub-item.)
   const [channelFilter, setChannelFilter] = useSubTab<'all' | 'general' | 'film' | 'artwork'>('all');
+  // Orders by line of business (DTF Printing, Embroidery, …). An order with lines in two heads shows under both.
+  const [headFilter, setHeadFilter] = useSubTab<string>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
   // My Orders keeps three kinds of document apart: an Order (paid in full), an Invoice (still has a balance, collected as it is paid)
   // and a Quotation (an offer nobody has accepted yet).
@@ -43,22 +45,26 @@ export default function Orders({ scope }: Props) {
 
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
 
-  const count = (s: string) => orders.filter((o) => o.status === s).length;
-  const invoices = orders.filter((o) => o.status === 'Invoice');
+  const inHead = (o: OrderSummary) => headFilter === 'all' || (o.businessHeads ?? []).includes(headFilter);
+  const headNames = [...new Set(orders.flatMap((o) => o.businessHeads ?? []))].sort();
+  const headCount = (h: string) => orders.filter((o) => (o.businessHeads ?? []).includes(h)).length;
+  const ofHead = orders.filter(inHead);
+  const count = (s: string) => ofHead.filter((o) => o.status === s).length;
+  const invoices = ofHead.filter((o) => o.status === 'Invoice');
   const invoiceOpen = invoices.filter((o) => o.stage !== 'Completed').length;
   const shown =
     scope === 'mine'
-      ? orders.filter((o) => o.status === kind && (kind !== 'Invoice' || invoiceView === 'all' || (invoiceView === 'open' ? o.stage !== 'Completed' : o.stage === 'Completed')))
-      : orders;
+      ? ofHead.filter((o) => o.status === kind && (kind !== 'Invoice' || invoiceView === 'all' || (invoiceView === 'open' ? o.stage !== 'Completed' : o.stage === 'Completed')))
+      : ofHead;
   const showDue = scope === 'mine' && kind === 'Invoice';
 
   const kpis =
     scope === 'all'
       ? [
-          { label: 'Total orders', value: String(orders.length) },
-          { label: 'In production', value: String(orders.filter((o) => o.stage === 'In Production').length) },
-          { label: 'Pending balance', value: fmtKsh(orders.reduce((a, o) => a + o.totals.balanceDue, 0)) },
-          { label: 'Overdue invoices', value: String(orders.filter((o) => o.overdue).length) },
+          { label: 'Total orders', value: String(ofHead.length) },
+          { label: 'In production', value: String(ofHead.filter((o) => o.stage === 'In Production').length) },
+          { label: 'Pending balance', value: fmtKsh(ofHead.reduce((a, o) => a + o.totals.balanceDue, 0)) },
+          { label: 'Overdue invoices', value: String(ofHead.filter((o) => o.overdue).length) },
         ]
       : [];
 
@@ -79,6 +85,17 @@ export default function Orders({ scope }: Props) {
           </label>
         ))}
       </div>
+
+      {headNames.length > 0 && (
+        <div className="seg" role="radiogroup" aria-label="Business head" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+          {([['all', `All business heads (${orders.length})`], ...headNames.map((h) => [h, `${h} (${headCount(h)})`])] as [string, string][]).map(([k, label]) => (
+            <label key={k} className={'seg-opt' + (headFilter === k ? ' checked' : '')}>
+              <input type="radio" name="ordhead" checked={headFilter === k} onChange={() => setHeadFilter(k)} />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
 
       {scope === 'mine' && (
         <>

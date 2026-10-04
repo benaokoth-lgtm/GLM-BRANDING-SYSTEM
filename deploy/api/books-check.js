@@ -20,6 +20,7 @@ var PERMISSION_KEYS = [
   "canAccessProduction",
   "canManageProduction",
   "canAccessQuality",
+  "canReceiveStock",
   "canManageCommission"
 ];
 
@@ -60,6 +61,7 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canViewAllOrders: true,
     canManagePayments: true,
     canAccessStock: true,
+    canReceiveStock: true,
     canAccessDtf: true,
     canAccessProduction: true,
     canManageProduction: true,
@@ -81,7 +83,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canManageProduction: true,
     canAccessQuality: true,
     canSeeCosts: true,
-    canManageCommission: true
+    canManageCommission: true,
+    canReceiveStock: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -99,7 +102,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canManageProduction: true,
     canAccessQuality: true,
     canSeeCosts: true,
-    canManageCommission: true
+    canManageCommission: true,
+    canReceiveStock: true
   },
   Admin: ALL_TRUE
 };
@@ -531,9 +535,10 @@ async function payrollPostings(book) {
   }
 }
 async function unlinkedPurchasePostings(book) {
-  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } }, include: { material: true } })) {
-    const ref = `PUR-${p.id}`;
-    const memo = `Stock purchase \u2014 ${p.material.name}${p.supplier ? ` \u2014 ${p.supplier}` : ""}`;
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } }, include: { material: true, lines: { include: { material: true } } } })) {
+    const ref = p.poRef ?? `PUR-${p.id}`;
+    const what = p.lines.length ? p.lines.map((l) => l.material.name).join(", ") : p.material?.name ?? "stock";
+    const memo = `Stock purchase \u2014 ${what}${p.supplier ? ` \u2014 ${p.supplier}` : ""}`;
     book.dr(p.date, ACCT.costOfSales, p.totalCost, "Purchase", ref, memo);
     book.cr(p.date, ACCT.bank, p.totalCost, "Purchase", ref, memo);
   }

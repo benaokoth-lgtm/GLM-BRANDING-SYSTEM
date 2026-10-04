@@ -7,3 +7,5 @@ export * from './accounting';
 export * from './production';
 export * from './outsourced';
 export * from './commission';
+export * from './purchasing';
+export * from './businessHeads';

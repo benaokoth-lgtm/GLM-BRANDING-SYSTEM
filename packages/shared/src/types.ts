@@ -24,6 +24,7 @@ export const PERMISSION_KEYS = [
   'canAccessProduction',
   'canManageProduction',
   'canAccessQuality',
+  'canReceiveStock',
   'canManageCommission',
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];

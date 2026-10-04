@@ -11,6 +11,7 @@ export interface CatalogService {
   name: string;
   unit: ServiceUnit;
   price: number;
+  businessHeadId?: number | null;
   usesArtworkPricing: boolean;
   chargesPressingFee: boolean;
   soldViaDtfModule: boolean;
@@ -260,6 +261,8 @@ export interface StockRequisitionLineRow {
   materialId: number;
   materialName: string;
   qty: number;
+  /** The unit price expected when the requisition was raised. */
+  estUnitCost: number | null;
 }
 
 export interface StockRequisitionRow {
@@ -304,15 +307,13 @@ export interface StockTakeRow {
   countedAt: string;
 }
 
+/** An approved requisition with lines still to be bought. */
 export interface RequisitionAwaitingPurchase {
   id: number;
   ref: string | null;
-  lineId: number;
-  materialId: number;
-  materialName: string;
-  qty: number;
   note: string;
   requestedByName: string;
+  lines: { lineId: number; materialId: number; materialName: string; qty: number; estUnitCost: number | null }[];
 }
 
 export interface PurchaseExpenseOption {
@@ -346,26 +347,80 @@ export interface AssetRow {
   bookValue: number | null;
 }
 
+/** A purchase order: a PO reference and any number of lines. */
 export interface PurchaseRow {
   id: number;
+  poRef: string | null; // PO-0001
   requisitionId: number | null;
   requisitionRef: string | null;
-  materialId: number;
-  materialName: string;
   date: string;
   supplier: string;
-  qty: number;
-  unitCost: number;
-  totalCost: number;
   invoiceNumber: string | null;
   status: 'Held' | 'Accepted' | 'Rejected';
-  requisitionedQty: number | null;
-  varianceQty: number | null;
+  totalCost: number;
+  lines: { id: number; materialId: number; materialName: string; qty: number; unitCost: number; totalCost: number; receivedQty: number | null; requisitionedQty: number | null }[];
   acceptedByName: string | null;
   acceptedAt: string | null;
   rejectReason: string | null;
+  receiveNote: string | null;
   capturedByName: string;
   createdAt: string;
+}
+
+export interface ReconLineRow {
+  materialId: number;
+  name: string;
+  status: 'Not purchased' | 'Awaiting receipt' | 'Received' | 'Not requisitioned';
+  requisitionedQty: number;
+  expectedUnitCost: number | null;
+  expectedTotal: number | null;
+  purchasedQty: number;
+  receivedQty: number;
+  actualUnitCost: number | null;
+  actualTotal: number;
+  qtyVariance: number | null;
+  shortDelivery: number;
+  priceVarianceUnit: number | null;
+  priceVarianceValue: number | null;
+  qtyVarianceValue: number | null;
+  totalVariance: number | null;
+}
+
+export interface ReconTotalsRow {
+  expectedTotal: number;
+  actualTotal: number;
+  totalVariance: number;
+  priceVarianceValue: number;
+  qtyVarianceValue: number;
+  unpricedLines: number;
+  shortDeliveryValue: number;
+  linesNotPurchased: number;
+  linesAwaitingReceipt: number;
+}
+
+export interface ReconciliationData {
+  requisitions: {
+    id: number;
+    ref: string | null;
+    note: string;
+    requestedByName: string;
+    requestedAt: string;
+    decidedByName: string | null;
+    state: 'Not purchased' | 'Part purchased' | 'Awaiting receipt' | 'Received';
+    purchaseOrders: { id: number; poRef: string | null; status: string; supplier: string; invoiceNumber: string | null; totalCost: number; date: string }[];
+    lines: ReconLineRow[];
+    totals: ReconTotalsRow;
+  }[];
+  summary: { requisitions: number; expectedTotal: number; actualTotal: number; totalVariance: number; priceVarianceValue: number; qtyVarianceValue: number; shortDeliveryValue: number };
+  standalone: { id: number; poRef: string | null; date: string; supplier: string; invoiceNumber: string | null; status: string; totalCost: number; items: string }[];
+}
+
+export interface BusinessHeadRow {
+  id: number;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+  services: number;
 }
 
 export interface SalesCategoryRow {
@@ -379,6 +434,13 @@ export interface SalesByCategoryData {
   toDate: string;
   categories: SalesCategoryRow[];
   materials: { qty: number; revenue: number };
+}
+
+export interface SalesByBusinessHeadData {
+  fromDate: string;
+  toDate: string;
+  totalSales: number;
+  heads: { name: string; active: boolean; sales: number; orders: number; sharePct: number; services: { name: string; qty: number; sales: number }[] }[];
 }
 
 export interface EmbroideryConsumableBreakdownRow {

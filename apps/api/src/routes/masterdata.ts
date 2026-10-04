@@ -6,6 +6,8 @@ import { requireAuth, requirePermission, requireRole } from '../middleware/auth'
 import crypto from 'crypto';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS } from '@glm/shared';
 import { canSeeCosts } from '../costs';
+import { defaultBusinessHeadName } from '@glm/shared';
+import { ensureBusinessHeadsOnce } from '../purchases';
 import { MARKUP_TYPES } from '@glm/shared';
 import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig } from '../mailer';
 
@@ -273,6 +275,7 @@ masterDataRouter.get('/services', async (req, res) => {
 
 const serviceSchema = z.object({
   name: z.string().min(1),
+  businessHeadId: z.number().int().nullable().optional(),
   unit: z.enum(['piece', 'metre', 'sqm']),
   price: z.number().positive(),
   usesArtworkPricing: z.boolean().optional(),
@@ -287,7 +290,13 @@ const serviceSchema = z.object({
 masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
   const parsed = serviceSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  res.status(201).json(await prisma.service.create({ data: parsed.data }));
+  // A new service goes under the head its name suggests until someone chooses one.
+  let { businessHeadId } = parsed.data;
+  if (businessHeadId == null) {
+    await ensureBusinessHeadsOnce();
+    businessHeadId = (await prisma.businessHead.findUnique({ where: { name: defaultBusinessHeadName(parsed.data.name) } }))?.id ?? null;
+  }
+  res.status(201).json(await prisma.service.create({ data: { ...parsed.data, businessHeadId } }));
 });
 
 // Price/unit and the artwork-pricing/pressing-fee flags are all catalog
@@ -298,6 +307,7 @@ masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
 const serviceUpdateSchema = z
   .object({
     price: z.number().positive().optional(),
+    businessHeadId: z.number().int().nullable().optional(),
     unit: z.enum(['piece', 'metre', 'sqm']).optional(),
     usesArtworkPricing: z.boolean().optional(),
     chargesPressingFee: z.boolean().optional(),
@@ -315,6 +325,45 @@ masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => 
   const service = await prisma.service.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
   if (!service) return res.status(404).json({ error: 'Service not found' });
   res.json(service);
+});
+
+// ── Business heads ──────────────────────────────────────────────────────
+// The lines of business income is reported under (DTF Printing, UV Printing, Laser Engraving, Large Format Printing, Embroidery,
+// General Order). Everyone can read them; only Admin changes them.
+masterDataRouter.get('/business-heads', async (_req, res) => {
+  await ensureBusinessHeadsOnce();
+  const heads = await prisma.businessHead.findMany({ include: { _count: { select: { services: true } } }, orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+  res.json(heads.map((h) => ({ id: h.id, name: h.name, sortOrder: h.sortOrder, active: h.active, services: h._count.services })));
+});
+
+masterDataRouter.post('/business-heads', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ name: z.string().trim().min(1, 'Give the business head a name').max(60) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  if (await prisma.businessHead.findUnique({ where: { name: parsed.data.name } })) return res.status(400).json({ error: 'There is already a business head with that name' });
+  const last = await prisma.businessHead.findFirst({ orderBy: { sortOrder: 'desc' } });
+  res.status(201).json(await prisma.businessHead.create({ data: { name: parsed.data.name, sortOrder: (last?.sortOrder ?? 0) + 1 } }));
+});
+
+masterDataRouter.put('/business-heads/:id', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ name: z.string().trim().min(1).max(60).optional(), active: z.boolean().optional(), sortOrder: z.number().int().optional() }).refine((o) => Object.keys(o).length > 0, { message: 'No fields to update' }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const id = Number(req.params.id);
+  if (parsed.data.name) {
+    const clash = await prisma.businessHead.findUnique({ where: { name: parsed.data.name } });
+    if (clash && clash.id !== id) return res.status(400).json({ error: 'There is already a business head with that name' });
+  }
+  const head = await prisma.businessHead.update({ where: { id }, data: parsed.data }).catch(() => null);
+  if (!head) return res.status(404).json({ error: 'Business head not found' });
+  res.json(head);
+});
+
+masterDataRouter.delete('/business-heads/:id', requireRole('Admin'), async (req, res) => {
+  const id = Number(req.params.id);
+  const head = await prisma.businessHead.findUnique({ where: { id }, include: { _count: { select: { services: true } } } });
+  if (!head) return res.status(404).json({ error: 'Business head not found' });
+  if (head._count.services > 0) return res.status(400).json({ error: 'Move its services to another business head first (or mark it inactive instead)' });
+  await prisma.businessHead.delete({ where: { id } });
+  res.status(204).end();
 });
 
 // ── Material Price List ─────────────────────────────────────────────────

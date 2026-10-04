@@ -147,9 +147,10 @@ async function payrollPostings(book: Book) {
 // posts here: cost of sales, paid from the bank. (Purchases WITH an expense are posted by the expense, above.) A rejected purchase
 // was never accepted into stock and costs nothing.
 async function unlinkedPurchasePostings(book: Book) {
-  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: 'Rejected' } }, include: { material: true } })) {
-    const ref = `PUR-${p.id}`;
-    const memo = `Stock purchase — ${p.material.name}${p.supplier ? ` — ${p.supplier}` : ''}`;
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: 'Rejected' } }, include: { material: true, lines: { include: { material: true } } } })) {
+    const ref = p.poRef ?? `PUR-${p.id}`;
+    const what = p.lines.length ? p.lines.map((l) => l.material.name).join(', ') : (p.material?.name ?? 'stock');
+    const memo = `Stock purchase — ${what}${p.supplier ? ` — ${p.supplier}` : ''}`;
     book.dr(p.date, ACCT.costOfSales, p.totalCost, 'Purchase', ref, memo);
     book.cr(p.date, ACCT.bank, p.totalCost, 'Purchase', ref, memo);
   }

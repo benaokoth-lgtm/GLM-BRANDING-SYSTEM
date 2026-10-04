@@ -72,11 +72,24 @@ model Role {
   canAccessQuality    Boolean @default(false) // Quality control: inspect finished orders (pass → ready, fail → back to production)
   canSeeCosts         Boolean @default(false) // sees supplier costs and mark-ups on outsourced jobs (everyone else sees selling prices only)
   canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
+  canReceiveStock     Boolean @default(false) // Stores: receive purchased goods into the store (enter the quantities that physically arrived)
   canManageCommission Boolean @default(false) // Sales Commission: settings, every staff member's statement, client ownership, approving and paying commission
+}
+
+// The lines of business income is reported under: DTF Printing, UV Printing, Laser Engraving, Large Format Printing, Embroidery and
+// General Order. Every service belongs to one; a material sold over the counter counts as General Order.
+model BusinessHead {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  sortOrder Int       @default(0)
+  active    Boolean   @default(true)
+  services  Service[]
 }
 
 model Service {
   id                  Int     @id @default(autoincrement())
+  businessHeadId      Int?
+  businessHead        BusinessHead? @relation(fields: [businessHeadId], references: [id])
   name                String
   unit                String // 'piece' | 'metre' | 'sqm'
   price               Float
@@ -129,6 +142,7 @@ model Material {
   requisitionLines StockRequisitionLine[] @relation("RequisitionLineMaterial")
   stockTakes   StockTake[]
   purchases    Purchase[]
+  purchaseLines PurchaseLine[] @relation("PurchaseLineMaterial")
 }
 
 // A physical count reconciliation — staff count what's actually on the
@@ -356,6 +370,8 @@ model StockRequisitionLine {
   materialId    Int
   material      Material         @relation("RequisitionLineMaterial", fields: [materialId], references: [id])
   qty           Float
+  // The unit price expected when the requisition is raised — what the purchases reconciliation compares the real price against.
+  estUnitCost   Float?
 }
 
 // Stock > Purchases — the held-then-released middle stage between a
@@ -374,13 +390,19 @@ model Purchase {
   id               Int               @id @default(autoincrement())
   requisitionId    Int?
   requisition      StockRequisition? @relation(fields: [requisitionId], references: [id])
-  materialId       Int
-  material         Material          @relation(fields: [materialId], references: [id])
+  // PO-0001, PO-0002… — the purchase order reference, given when the purchase is captured.
+  poRef            String?           @unique
+  // LEGACY single-material fields (before a purchase had many lines). New purchases leave materialId empty and use `lines`; older
+  // rows are converted to one line on start-up (see purchases.ts) and keep these only as a record.
+  materialId       Int?
+  material         Material?         @relation(fields: [materialId], references: [id])
+  lines            PurchaseLine[]
   date             String // 'YYYY-MM-DD' purchased/received
   supplier         String            @default("")
-  qty              Float // quantity actually purchased/delivered
-  unitCost         Float
-  totalCost        Float
+  qty              Float             @default(0) // legacy: quantity of the single material
+  unitCost         Float             @default(0) // legacy
+  totalCost        Float // the whole purchase: the sum of its lines
+  receiveNote      String?
   invoiceNumber    String?
   // "New purchase creates the Expense" / "already logged, pick it from a
   // dropdown" linkage — an Expense can back at most one purchase (enforced
@@ -395,6 +417,19 @@ model Purchase {
   rejectReason     String?
   capturedByName   String
   createdAt        DateTime          @default(now())
+}
+
+// One material on a purchase order: what was bought, at what price, and what the store manager counted in.
+model PurchaseLine {
+  id          Int      @id @default(autoincrement())
+  purchaseId  Int
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  materialId  Int
+  material    Material @relation("PurchaseLineMaterial", fields: [materialId], references: [id])
+  qty         Float // purchased (as invoiced)
+  unitCost    Float
+  totalCost   Float
+  receivedQty Float? // entered by the store manager on receipt; null until received
 }
 
 model Order {

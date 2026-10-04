@@ -27375,7 +27375,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r23 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r23, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r24 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r24, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -29901,10 +29901,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r23, options) => {
+    var intersects = (r1, r24, options) => {
       r1 = new Range(r1, options);
-      r23 = new Range(r23, options);
-      return r1.intersects(r23, options);
+      r24 = new Range(r24, options);
+      return r1.intersects(r24, options);
     };
     module2.exports = intersects;
   }
@@ -43742,6 +43742,7 @@ var PERMISSION_KEYS = [
   "canAccessProduction",
   "canManageProduction",
   "canAccessQuality",
+  "canReceiveStock",
   "canManageCommission"
 ];
 
@@ -43790,6 +43791,7 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canViewAllOrders: true,
     canManagePayments: true,
     canAccessStock: true,
+    canReceiveStock: true,
     canAccessDtf: true,
     canAccessProduction: true,
     canManageProduction: true,
@@ -43811,7 +43813,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canManageProduction: true,
     canAccessQuality: true,
     canSeeCosts: true,
-    canManageCommission: true
+    canManageCommission: true,
+    canReceiveStock: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -43829,7 +43832,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canManageProduction: true,
     canAccessQuality: true,
     canSeeCosts: true,
-    canManageCommission: true
+    canManageCommission: true,
+    canReceiveStock: true
   },
   Admin: ALL_TRUE
 };
@@ -44340,6 +44344,107 @@ function clientKeyFor(c) {
   if (digits.length >= 9) return `p:${digits.slice(-9)}`;
   const name2 = (c.name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   return name2.length >= 3 ? `n:${name2}` : null;
+}
+
+// packages/shared/src/purchasing.ts
+var r23 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var formatPurchaseOrderRef = (n) => `PO-${String(n).padStart(4, "0")}`;
+function nextPurchaseOrderNumber(refs) {
+  let highest = 0;
+  for (const ref of refs) {
+    const m = /^PO-(\d+)$/.exec(ref ?? "");
+    if (m) highest = Math.max(highest, Number(m[1]));
+  }
+  return highest + 1;
+}
+function reconcileRequisition(reqLines, purchases) {
+  const byMaterial = /* @__PURE__ */ new Map();
+  for (const p of purchases) byMaterial.set(p.materialId, [...byMaterial.get(p.materialId) ?? [], p]);
+  const build = (materialId, name2, reqQty, est, bought) => {
+    const purchasedQty = bought.reduce((a2, p) => a2 + p.qty, 0);
+    const actualTotal = r23(bought.reduce((a2, p) => a2 + p.totalCost, 0));
+    const anyHeld = bought.some((p) => p.status === "Held");
+    const receivedQty = bought.reduce((a2, p) => a2 + (p.status === "Accepted" ? p.receivedQty ?? p.qty : 0), 0);
+    const acceptedQty = bought.filter((p) => p.status === "Accepted").reduce((a2, p) => a2 + p.qty, 0);
+    const status = reqQty === 0 ? "Not requisitioned" : bought.length === 0 ? "Not purchased" : anyHeld ? "Awaiting receipt" : "Received";
+    const actualUnitCost = purchasedQty > 0 ? r23(actualTotal / purchasedQty) : null;
+    const expectedTotal = est != null ? r23(est * reqQty) : null;
+    const priced = est != null && purchasedQty > 0;
+    const priceVarianceValue = priced ? r23((actualTotal / purchasedQty - est) * purchasedQty) : null;
+    const qtyVarianceValue = priced ? r23((purchasedQty - reqQty) * est) : null;
+    return {
+      materialId,
+      name: name2,
+      status,
+      requisitionedQty: reqQty,
+      expectedUnitCost: est,
+      expectedTotal,
+      purchasedQty,
+      receivedQty,
+      actualUnitCost,
+      actualTotal,
+      qtyVariance: status === "Received" || status === "Not requisitioned" ? r23(receivedQty - reqQty) : null,
+      shortDelivery: r23(acceptedQty - receivedQty),
+      priceVarianceUnit: actualUnitCost != null && est != null ? r23(actualUnitCost - est) : null,
+      priceVarianceValue,
+      qtyVarianceValue,
+      totalVariance: priced ? r23(actualTotal - (expectedTotal ?? 0)) : null
+    };
+  };
+  const lines = [];
+  const onReq = /* @__PURE__ */ new Set();
+  for (const l of reqLines) {
+    onReq.add(l.materialId);
+    lines.push(build(l.materialId, l.name, l.qty, l.estUnitCost, byMaterial.get(l.materialId) ?? []));
+  }
+  for (const [materialId, bought] of byMaterial) {
+    if (!onReq.has(materialId)) lines.push(build(materialId, bought[0].name, 0, null, bought));
+  }
+  const totals = {
+    expectedTotal: 0,
+    actualTotal: 0,
+    totalVariance: 0,
+    priceVarianceValue: 0,
+    qtyVarianceValue: 0,
+    unpricedLines: 0,
+    shortDeliveryValue: 0,
+    linesNotPurchased: 0,
+    linesAwaitingReceipt: 0
+  };
+  for (const l of lines) {
+    totals.actualTotal = r23(totals.actualTotal + l.actualTotal);
+    if (l.status === "Not purchased") totals.linesNotPurchased++;
+    if (l.status === "Awaiting receipt") totals.linesAwaitingReceipt++;
+    totals.shortDeliveryValue = r23(totals.shortDeliveryValue + l.shortDelivery * (l.actualUnitCost ?? 0));
+    if (l.totalVariance != null) {
+      totals.expectedTotal = r23(totals.expectedTotal + (l.expectedTotal ?? 0));
+      totals.totalVariance = r23(totals.totalVariance + l.totalVariance);
+      totals.priceVarianceValue = r23(totals.priceVarianceValue + (l.priceVarianceValue ?? 0));
+      totals.qtyVarianceValue = r23(totals.qtyVarianceValue + (l.qtyVarianceValue ?? 0));
+    } else if (l.requisitionedQty > 0 && l.expectedUnitCost == null) {
+      totals.unpricedLines++;
+    }
+  }
+  for (const l of lines) {
+    if (l.status === "Not requisitioned") {
+      totals.totalVariance = r23(totals.totalVariance + l.actualTotal);
+      totals.qtyVarianceValue = r23(totals.qtyVarianceValue + l.actualTotal);
+    }
+  }
+  return { lines, totals };
+}
+
+// packages/shared/src/businessHeads.ts
+var GENERAL_ORDER_HEAD = "General Order";
+var DEFAULT_BUSINESS_HEADS = ["DTF Printing", "UV Printing", "Laser Engraving", "Large Format Printing", "Embroidery", GENERAL_ORDER_HEAD];
+function defaultBusinessHeadName(serviceName) {
+  const n = serviceName.toLowerCase();
+  if (n.includes("dtf")) return "DTF Printing";
+  if (n.includes("embroid")) return "Embroidery";
+  if (n.includes("laser") || n.includes("engrav")) return "Laser Engraving";
+  if (/\buv\b/.test(n)) return "UV Printing";
+  if (/large[\s-]*format|banner|vinyl|flex\b|canvas|poster/.test(n)) return "Large Format Printing";
+  return GENERAL_ORDER_HEAD;
 }
 
 // apps/api/src/permissions.ts
@@ -48548,6 +48653,54 @@ function costFieldsFor(li, allowed) {
   };
 }
 
+// apps/api/src/purchases.ts
+async function nextPoNumber() {
+  const rows = await prisma.purchase.findMany({ where: { poRef: { not: null } }, select: { poRef: true } });
+  return nextPurchaseOrderNumber(rows.map((r) => r.poRef));
+}
+async function ensurePurchases() {
+  const rows = await prisma.purchase.findMany({ include: { lines: true }, orderBy: { id: "asc" } });
+  let next = await nextPoNumber();
+  for (const p of rows) {
+    if (!p.poRef) await prisma.purchase.update({ where: { id: p.id }, data: { poRef: formatPurchaseOrderRef(next++) } });
+    if (p.lines.length === 0 && p.materialId) {
+      await prisma.purchaseLine.create({
+        data: { purchaseId: p.id, materialId: p.materialId, qty: p.qty, unitCost: p.unitCost, totalCost: p.totalCost, receivedQty: p.status === "Accepted" ? p.qty : null }
+      });
+    }
+  }
+}
+var ensuringPurchases = null;
+function ensurePurchasesOnce() {
+  if (!ensuringPurchases) ensuringPurchases = ensurePurchases().finally(() => ensuringPurchases = null);
+  return ensuringPurchases;
+}
+async function ensureStoresAccess() {
+  if (await prisma.role.count({ where: { canReceiveStock: true } }) > 0) return;
+  for (const name2 of ["Supervisor", "Finance Manager", "General Manager"]) {
+    if (DEFAULT_ROLE_PERMISSIONS[name2]?.canReceiveStock) await prisma.role.updateMany({ where: { name: name2 }, data: { canReceiveStock: true } });
+  }
+}
+async function ensureBusinessHeads() {
+  const existing = await prisma.businessHead.findMany();
+  const byName = new Map(existing.map((h) => [h.name, h]));
+  let order = existing.reduce((a2, h) => Math.max(a2, h.sortOrder), 0);
+  for (const name2 of DEFAULT_BUSINESS_HEADS) {
+    if (!byName.has(name2)) {
+      byName.set(name2, await prisma.businessHead.create({ data: { name: name2, sortOrder: ++order } }));
+    }
+  }
+  for (const s of await prisma.service.findMany({ where: { businessHeadId: null } })) {
+    const head = byName.get(defaultBusinessHeadName(s.name));
+    if (head) await prisma.service.update({ where: { id: s.id }, data: { businessHeadId: head.id } });
+  }
+}
+var ensuringHeads = null;
+function ensureBusinessHeadsOnce() {
+  if (!ensuringHeads) ensuringHeads = ensureBusinessHeads().finally(() => ensuringHeads = null);
+  return ensuringHeads;
+}
+
 // apps/api/src/routes/masterdata.ts
 var masterDataRouter = (0, import_express2.Router)();
 masterDataRouter.use(requireAuth);
@@ -48780,6 +48933,7 @@ masterDataRouter.get("/services", async (req, res) => {
 });
 var serviceSchema = external_exports.object({
   name: external_exports.string().min(1),
+  businessHeadId: external_exports.number().int().nullable().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]),
   price: external_exports.number().positive(),
   usesArtworkPricing: external_exports.boolean().optional(),
@@ -48793,10 +48947,16 @@ var serviceSchema = external_exports.object({
 masterDataRouter.post("/services", requireRole("Admin"), async (req, res) => {
   const parsed = serviceSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  res.status(201).json(await prisma.service.create({ data: parsed.data }));
+  let { businessHeadId } = parsed.data;
+  if (businessHeadId == null) {
+    await ensureBusinessHeadsOnce();
+    businessHeadId = (await prisma.businessHead.findUnique({ where: { name: defaultBusinessHeadName(parsed.data.name) } }))?.id ?? null;
+  }
+  res.status(201).json(await prisma.service.create({ data: { ...parsed.data, businessHeadId } }));
 });
 var serviceUpdateSchema = external_exports.object({
   price: external_exports.number().positive().optional(),
+  businessHeadId: external_exports.number().int().nullable().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]).optional(),
   usesArtworkPricing: external_exports.boolean().optional(),
   chargesPressingFee: external_exports.boolean().optional(),
@@ -48812,6 +48972,38 @@ masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => 
   const service = await prisma.service.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
   if (!service) return res.status(404).json({ error: "Service not found" });
   res.json(service);
+});
+masterDataRouter.get("/business-heads", async (_req, res) => {
+  await ensureBusinessHeadsOnce();
+  const heads = await prisma.businessHead.findMany({ include: { _count: { select: { services: true } } }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
+  res.json(heads.map((h) => ({ id: h.id, name: h.name, sortOrder: h.sortOrder, active: h.active, services: h._count.services })));
+});
+masterDataRouter.post("/business-heads", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ name: external_exports.string().trim().min(1, "Give the business head a name").max(60) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  if (await prisma.businessHead.findUnique({ where: { name: parsed.data.name } })) return res.status(400).json({ error: "There is already a business head with that name" });
+  const last2 = await prisma.businessHead.findFirst({ orderBy: { sortOrder: "desc" } });
+  res.status(201).json(await prisma.businessHead.create({ data: { name: parsed.data.name, sortOrder: (last2?.sortOrder ?? 0) + 1 } }));
+});
+masterDataRouter.put("/business-heads/:id", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ name: external_exports.string().trim().min(1).max(60).optional(), active: external_exports.boolean().optional(), sortOrder: external_exports.number().int().optional() }).refine((o) => Object.keys(o).length > 0, { message: "No fields to update" }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const id = Number(req.params.id);
+  if (parsed.data.name) {
+    const clash = await prisma.businessHead.findUnique({ where: { name: parsed.data.name } });
+    if (clash && clash.id !== id) return res.status(400).json({ error: "There is already a business head with that name" });
+  }
+  const head = await prisma.businessHead.update({ where: { id }, data: parsed.data }).catch(() => null);
+  if (!head) return res.status(404).json({ error: "Business head not found" });
+  res.json(head);
+});
+masterDataRouter.delete("/business-heads/:id", requireRole("Admin"), async (req, res) => {
+  const id = Number(req.params.id);
+  const head = await prisma.businessHead.findUnique({ where: { id }, include: { _count: { select: { services: true } } } });
+  if (!head) return res.status(404).json({ error: "Business head not found" });
+  if (head._count.services > 0) return res.status(400).json({ error: "Move its services to another business head first (or mark it inactive instead)" });
+  await prisma.businessHead.delete({ where: { id } });
+  res.status(204).end();
 });
 masterDataRouter.get("/materials", async (_req, res) => {
   res.json(await prisma.material.findMany({ orderBy: { name: "asc" } }));
@@ -49252,9 +49444,10 @@ async function payrollPostings(book) {
   }
 }
 async function unlinkedPurchasePostings(book) {
-  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } }, include: { material: true } })) {
-    const ref = `PUR-${p.id}`;
-    const memo = `Stock purchase \u2014 ${p.material.name}${p.supplier ? ` \u2014 ${p.supplier}` : ""}`;
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } }, include: { material: true, lines: { include: { material: true } } } })) {
+    const ref = p.poRef ?? `PUR-${p.id}`;
+    const what = p.lines.length ? p.lines.map((l) => l.material.name).join(", ") : p.material?.name ?? "stock";
+    const memo = `Stock purchase \u2014 ${what}${p.supplier ? ` \u2014 ${p.supplier}` : ""}`;
     book.dr(p.date, ACCT.costOfSales, p.totalCost, "Purchase", ref, memo);
     book.cr(p.date, ACCT.bank, p.totalCost, "Purchase", ref, memo);
   }
@@ -50565,19 +50758,27 @@ stockRouter.get("/requisitions", async (req, res) => {
       requestedAt: r.requestedAt,
       decidedByName: r.decidedByName,
       decidedAt: r.decidedAt,
-      lines: r.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty }))
+      lines: r.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, estUnitCost: l.estUnitCost }))
     }))
   );
 });
 var requisitionSchema = external_exports.object({
   note: external_exports.string().max(200).optional(),
-  lines: external_exports.array(external_exports.object({ materialId: external_exports.number().int(), qty: external_exports.number().positive() })).min(1, "Add at least one item").max(40)
+  lines: external_exports.array(external_exports.object({ materialId: external_exports.number().int(), qty: external_exports.number().positive(), estUnitCost: external_exports.number().min(0).nullable().optional() })).min(1, "Add at least one item").max(40)
 });
 stockRouter.post("/requisitions", async (req, res) => {
   const parsed = requisitionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const merged = /* @__PURE__ */ new Map();
-  for (const l of parsed.data.lines) merged.set(l.materialId, (merged.get(l.materialId) ?? 0) + l.qty);
+  for (const l of parsed.data.lines) {
+    const m = merged.get(l.materialId);
+    const est = l.estUnitCost ?? null;
+    if (!m) merged.set(l.materialId, { qty: l.qty, est });
+    else {
+      m.est = m.est != null && est != null ? (m.est * m.qty + est * l.qty) / (m.qty + l.qty) : est ?? m.est;
+      m.qty += l.qty;
+    }
+  }
   const materials = await prisma.material.findMany({ where: { id: { in: [...merged.keys()] } } });
   if (materials.length !== merged.size) return res.status(400).json({ error: "A chosen material was not found" });
   await ensureRequisitionsOnce();
@@ -50589,7 +50790,7 @@ stockRouter.post("/requisitions", async (req, res) => {
         ref: formatRequisitionRef(number),
         note: reqNote,
         requestedByName: req.user.name,
-        lines: { create: [...merged.entries()].map(([materialId, qty]) => ({ materialId, qty })) }
+        lines: { create: [...merged.entries()].map(([materialId, m]) => ({ materialId, qty: m.qty, estUnitCost: m.est })) }
       },
       include: requisitionInclude
     });
@@ -50607,7 +50808,7 @@ stockRouter.post("/requisitions", async (req, res) => {
     ref: requisition.ref,
     note: requisition.note,
     status: requisition.status,
-    lines: requisition.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty }))
+    lines: requisition.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, estUnitCost: l.estUnitCost }))
   });
 });
 async function decideRequisition(id, approve, deciderName, res) {
@@ -50675,50 +50876,76 @@ stockRouter.post("/takes", async (req, res) => {
   ]);
   res.status(201).json({ ...take, materialName: material.name });
 });
-stockRouter.get("/purchases", async (req, res) => {
-  const status = typeof req.query.status === "string" ? req.query.status : void 0;
-  const purchases = await prisma.purchase.findMany({
-    where: status ? { status } : void 0,
-    include: { material: true, requisition: true },
+var lineWithRequisition = { include: { material: true }, orderBy: { id: "asc" } };
+async function loadPurchases(where, take = 300) {
+  return prisma.purchase.findMany({
+    where,
+    include: { lines: lineWithRequisition, requisition: { include: { lines: true } } },
     orderBy: { createdAt: "desc" },
-    take: 300
+    take
   });
-  res.json(
-    purchases.map((p) => ({
-      id: p.id,
-      requisitionId: p.requisitionId,
-      requisitionRef: p.requisition?.ref ?? null,
-      materialId: p.materialId,
-      materialName: p.material.name,
-      date: p.date,
-      supplier: p.supplier,
-      qty: p.qty,
-      unitCost: p.unitCost,
-      totalCost: p.totalCost,
-      invoiceNumber: p.invoiceNumber,
-      status: p.status,
-      requisitionedQty: p.requisitionedQty,
-      varianceQty: p.varianceQty,
-      acceptedByName: p.acceptedByName,
-      acceptedAt: p.acceptedAt,
-      rejectReason: p.rejectReason,
-      capturedByName: p.capturedByName,
-      createdAt: p.createdAt
-    }))
-  );
+}
+function serializePurchase(p) {
+  return {
+    id: p.id,
+    poRef: p.poRef,
+    requisitionId: p.requisitionId,
+    requisitionRef: p.requisition?.ref ?? null,
+    date: p.date,
+    supplier: p.supplier,
+    invoiceNumber: p.invoiceNumber,
+    status: p.status,
+    totalCost: p.totalCost,
+    lines: p.lines.map((l) => ({
+      id: l.id,
+      materialId: l.materialId,
+      materialName: l.material.name,
+      qty: l.qty,
+      unitCost: l.unitCost,
+      totalCost: l.totalCost,
+      receivedQty: l.receivedQty,
+      requisitionedQty: p.requisition?.lines.find((rl) => rl.materialId === l.materialId)?.qty ?? null
+    })),
+    acceptedByName: p.acceptedByName,
+    acceptedAt: p.acceptedAt,
+    rejectReason: p.rejectReason,
+    receiveNote: p.receiveNote,
+    capturedByName: p.capturedByName,
+    createdAt: p.createdAt
+  };
+}
+stockRouter.get("/purchases", async (req, res) => {
+  await ensurePurchasesOnce();
+  const status = typeof req.query.status === "string" ? req.query.status : void 0;
+  res.json((await loadPurchases(status ? { status } : void 0)).map(serializePurchase));
 });
 stockRouter.get("/requisitions/awaiting-purchase", async (_req, res) => {
   await ensureRequisitionsOnce();
+  await ensurePurchasesOnce();
   const requisitions = await prisma.stockRequisition.findMany({
     where: { status: "Approved" },
-    include: { ...requisitionInclude, purchases: { where: { status: { in: ["Held", "Accepted"] } } } },
+    include: { ...requisitionInclude, purchases: { where: { status: { in: ["Held", "Accepted"] } }, include: { lines: true } } },
     orderBy: { requestedAt: "desc" }
   });
   res.json(
-    requisitions.flatMap(
-      (r) => r.lines.filter((l) => !r.purchases.some((p) => p.materialId === l.materialId)).map((l) => ({ id: r.id, ref: r.ref, lineId: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, note: r.note, requestedByName: r.requestedByName }))
-    )
+    requisitions.map((r) => {
+      const covered = new Set(r.purchases.flatMap((p) => p.lines.map((l) => l.materialId)));
+      return {
+        id: r.id,
+        ref: r.ref,
+        note: r.note,
+        requestedByName: r.requestedByName,
+        lines: r.lines.filter((l) => !covered.has(l.materialId)).map((l) => ({ lineId: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, estUnitCost: l.estUnitCost }))
+      };
+    }).filter((r) => r.lines.length > 0)
   );
+});
+stockRouter.get("/material-costs", async (_req, res) => {
+  await ensurePurchasesOnce();
+  const lines = await prisma.purchaseLine.findMany({ where: { purchase: { status: { not: "Rejected" } } }, orderBy: { id: "desc" }, take: 2e3, select: { materialId: true, unitCost: true } });
+  const latest = {};
+  for (const l of lines) if (latest[l.materialId] == null) latest[l.materialId] = l.unitCost;
+  res.json(latest);
 });
 stockRouter.get("/available-expenses-for-purchase", async (_req, res) => {
   const linked = await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } });
@@ -50729,135 +50956,214 @@ stockRouter.get("/available-expenses-for-purchase", async (_req, res) => {
   });
   res.json(expenses.map((e) => ({ id: e.id, date: e.date, invoiceNumber: e.invoiceNumber, amount: e.amount, note: e.note })));
 });
+var purchaseLineSchema = external_exports.object({ materialId: external_exports.number().int(), qty: external_exports.number().positive(), unitCost: external_exports.number().positive("Every line needs the unit price from the invoice") });
+var purchaseBase = {
+  requisitionId: external_exports.number().int().optional(),
+  supplier: external_exports.string().max(200).optional(),
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  lines: external_exports.array(purchaseLineSchema).min(1, "Add at least one item").max(40)
+};
 var purchaseSchema = external_exports.discriminatedUnion("mode", [
-  external_exports.object({
-    mode: external_exports.literal("new"),
-    requisitionId: external_exports.number().int().optional(),
-    materialId: external_exports.number().int(),
-    supplier: external_exports.string().max(200).optional(),
-    qty: external_exports.number().positive(),
-    unitCost: external_exports.number().positive(),
-    invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"),
-    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
-  }),
-  external_exports.object({
-    mode: external_exports.literal("existing"),
-    requisitionId: external_exports.number().int().optional(),
-    materialId: external_exports.number().int(),
-    supplier: external_exports.string().max(200).optional(),
-    qty: external_exports.number().positive(),
-    expenseId: external_exports.number().int(),
-    date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
-  })
+  external_exports.object({ mode: external_exports.literal("new"), invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"), ...purchaseBase }),
+  external_exports.object({ mode: external_exports.literal("existing"), expenseId: external_exports.number().int(), ...purchaseBase })
 ]);
 stockRouter.post("/purchases", async (req, res) => {
   const parsed = purchaseSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const data = parsed.data;
-  const material = await prisma.material.findUnique({ where: { id: data.materialId } });
-  if (!material) return res.status(400).json({ error: "Material not found" });
-  let requisitionedQty = null;
+  await ensurePurchasesOnce();
+  const merged = /* @__PURE__ */ new Map();
+  for (const l of data.lines) {
+    const m = merged.get(l.materialId) ?? { qty: 0, total: 0 };
+    m.qty += l.qty;
+    m.total += l.qty * l.unitCost;
+    merged.set(l.materialId, m);
+  }
+  const materials = await prisma.material.findMany({ where: { id: { in: [...merged.keys()] } } });
+  if (materials.length !== merged.size) return res.status(400).json({ error: "A chosen material was not found" });
+  const nameOf = new Map(materials.map((m) => [m.id, m.name]));
+  const lines = [...merged.entries()].map(([materialId, m]) => ({ materialId, qty: m.qty, totalCost: Math.round(m.total * 100) / 100, unitCost: Math.round(m.total / m.qty * 1e4) / 1e4 }));
+  const total = Math.round(lines.reduce((a2, l) => a2 + l.totalCost, 0) * 100) / 100;
   if (data.requisitionId) {
     await ensureRequisitionsOnce();
-    const requisition = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: true, lines: true } });
+    const requisition = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: { where: { status: { in: ["Held", "Accepted"] } }, include: { lines: true } } } });
     if (!requisition) return res.status(404).json({ error: "Requisition not found" });
     if (requisition.status !== "Approved") return res.status(400).json({ error: "Only an approved requisition can be purchased against" });
-    const line = requisition.lines.find((l) => l.materialId === data.materialId);
-    if (!line) return res.status(400).json({ error: `${requisition.ref} has no line for that material` });
-    if (requisition.purchases.some((p) => p.materialId === data.materialId && (p.status === "Held" || p.status === "Accepted"))) {
-      return res.status(400).json({ error: "That line of the requisition already has a purchase in progress or accepted" });
-    }
-    requisitionedQty = line.qty;
+    const covered = new Set(requisition.purchases.flatMap((p) => p.lines.map((l) => l.materialId)));
+    const dup = lines.find((l) => covered.has(l.materialId));
+    if (dup) return res.status(400).json({ error: `${nameOf.get(dup.materialId)} on ${requisition.ref} already has a purchase in progress or accepted` });
   }
   const date = data.date ?? todayStr();
-  let unitCost;
-  let totalCost;
   let invoiceNumber;
   let expenseIdToLink = null;
-  let expenseToCreate = null;
+  let createExpense = false;
   if (data.mode === "new") {
     const balance = await computePettyCashBalance();
-    const cost = data.qty * data.unitCost;
-    if (cost > balance) {
-      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(cost).toLocaleString("en-KE")} needed)` });
+    if (total > balance) {
+      return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(balance).toLocaleString("en-KE")} available, Ksh ${Math.round(total).toLocaleString("en-KE")} needed)` });
     }
-    unitCost = data.unitCost;
-    totalCost = cost;
     invoiceNumber = data.invoiceNumber;
-    expenseToCreate = { note: `Stock purchase \u2014 ${material.name} \u2014 invoice/receipt ${data.invoiceNumber}`, amount: cost, invoiceNumber: data.invoiceNumber };
+    createExpense = true;
   } else {
     const expense = await prisma.expense.findUnique({ where: { id: data.expenseId } });
     if (!expense) return res.status(404).json({ error: "Expense not found" });
     if (expense.category !== PURCHASE_EXPENSE_CATEGORY) return res.status(400).json({ error: "That expense is not a stock purchase" });
     if (!expense.invoiceNumber) return res.status(400).json({ error: "That expense has no invoice/receipt number recorded" });
-    const alreadyLinked = await prisma.purchase.findFirst({ where: { expenseId: expense.id } });
-    if (alreadyLinked) return res.status(400).json({ error: "That expense has already been used for a purchase" });
-    totalCost = expense.amount;
-    unitCost = totalCost / data.qty;
+    if (await prisma.purchase.findFirst({ where: { expenseId: expense.id } })) return res.status(400).json({ error: "That expense has already been used for a purchase" });
+    if (Math.abs(expense.amount - total) > 1) {
+      return res.status(400).json({ error: `The lines add up to Ksh ${total.toLocaleString("en-KE")} but that expense is Ksh ${expense.amount.toLocaleString("en-KE")} \u2014 check the quantities and unit prices against the invoice` });
+    }
     invoiceNumber = expense.invoiceNumber;
     expenseIdToLink = expense.id;
   }
-  const purchase = await prisma.$transaction(async (tx) => {
-    let finalExpenseId = expenseIdToLink;
-    if (expenseToCreate) {
-      const created = await tx.expense.create({
-        data: { date, category: PURCHASE_EXPENSE_CATEGORY, note: expenseToCreate.note, amount: expenseToCreate.amount, invoiceNumber: expenseToCreate.invoiceNumber, capturedByName: req.user.name }
+  let created = null;
+  for (let attempt = 0; attempt < 5 && !created; attempt++) {
+    const poRef = formatPurchaseOrderRef(await nextPoNumber() + attempt);
+    try {
+      const id = await prisma.$transaction(async (tx) => {
+        let expenseId = expenseIdToLink;
+        if (createExpense) {
+          const e = await tx.expense.create({
+            data: {
+              date,
+              category: PURCHASE_EXPENSE_CATEGORY,
+              note: `Stock purchase ${poRef} \u2014 ${lines.length} item${lines.length === 1 ? "" : "s"} \u2014 invoice/receipt ${invoiceNumber}`,
+              amount: total,
+              invoiceNumber,
+              supplier: data.supplier ?? "",
+              capturedByName: req.user.name
+            }
+          });
+          expenseId = e.id;
+        }
+        const p = await tx.purchase.create({
+          data: {
+            poRef,
+            requisitionId: data.requisitionId ?? null,
+            date,
+            supplier: data.supplier ?? "",
+            totalCost: total,
+            invoiceNumber,
+            expenseId,
+            capturedByName: req.user.name,
+            lines: { create: lines }
+          }
+        });
+        return p.id;
       });
-      finalExpenseId = created.id;
+      created = (await loadPurchases({ id }, 1))[0] ?? null;
+    } catch (e) {
+      if (attempt === 4) throw e;
     }
-    return tx.purchase.create({
-      data: {
-        requisitionId: data.requisitionId ?? null,
-        materialId: data.materialId,
-        date,
-        supplier: data.supplier ?? "",
-        qty: data.qty,
-        unitCost,
-        totalCost,
-        invoiceNumber,
-        expenseId: finalExpenseId,
-        requisitionedQty,
-        capturedByName: req.user.name
-      },
-      include: { material: true }
-    });
-  });
-  res.status(201).json({ ...purchase, materialName: purchase.material.name });
-});
-stockRouter.post("/purchases/:id/accept", requirePermission("canApproveStock"), async (req, res) => {
-  const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
-  if (!purchase) return res.status(404).json({ error: "Purchase not found" });
-  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting acceptance" });
-  if (purchase.capturedByName === req.user.name) {
-    return res.status(400).json({ error: "You cannot accept a purchase you captured yourself" });
   }
-  const varianceQty = purchase.requisitionedQty != null ? purchase.qty - purchase.requisitionedQty : null;
-  const [updated] = await prisma.$transaction([
-    prisma.purchase.update({
-      where: { id: purchase.id },
-      data: { status: "Accepted", varianceQty, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() },
-      include: { material: true }
-    }),
-    prisma.material.update({ where: { id: purchase.materialId }, data: { stockQty: { increment: purchase.qty } } })
-  ]);
-  res.json({ ...updated, materialName: updated.material.name });
+  if (!created) return res.status(500).json({ error: "Could not allocate a purchase order number \u2014 try again" });
+  res.status(201).json(serializePurchase(created));
+});
+var receiveSchema = external_exports.object({
+  lines: external_exports.array(external_exports.object({ lineId: external_exports.number().int(), receivedQty: external_exports.number().min(0) })).optional(),
+  note: external_exports.string().max(300).optional()
+});
+var receivers = requirePermission("canReceiveStock", "canApproveStock");
+stockRouter.post("/purchases/:id/accept", receivers, async (req, res) => {
+  const parsed = receiveSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  await ensurePurchasesOnce();
+  const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) }, include: { lines: true } });
+  if (!purchase) return res.status(404).json({ error: "Purchase not found" });
+  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting receipt" });
+  if (purchase.capturedByName === req.user.name) {
+    return res.status(400).json({ error: "You cannot receive a purchase you captured yourself" });
+  }
+  const given = new Map((parsed.data.lines ?? []).map((l) => [l.lineId, l.receivedQty]));
+  for (const id of given.keys()) if (!purchase.lines.some((l) => l.id === id)) return res.status(400).json({ error: "A line does not belong to this purchase" });
+  await prisma.$transaction(async (tx) => {
+    for (const line of purchase.lines) {
+      const received = given.get(line.id) ?? line.qty;
+      await tx.purchaseLine.update({ where: { id: line.id }, data: { receivedQty: received } });
+      if (received > 0) await tx.material.update({ where: { id: line.materialId }, data: { stockQty: { increment: received } } });
+    }
+    await tx.purchase.update({ where: { id: purchase.id }, data: { status: "Accepted", acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date(), receiveNote: parsed.data.note?.trim() || null } });
+  });
+  res.json(serializePurchase((await loadPurchases({ id: purchase.id }, 1))[0]));
 });
 var rejectPurchaseSchema = external_exports.object({ reason: external_exports.string().min(1, "A reason for rejecting is required") });
-stockRouter.post("/purchases/:id/reject", requirePermission("canApproveStock"), async (req, res) => {
+stockRouter.post("/purchases/:id/reject", receivers, async (req, res) => {
   const parsed = rejectPurchaseSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
   if (!purchase) return res.status(404).json({ error: "Purchase not found" });
-  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting acceptance" });
+  if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting receipt" });
   if (purchase.capturedByName === req.user.name) {
     return res.status(400).json({ error: "You cannot reject a purchase you captured yourself" });
   }
-  const updated = await prisma.purchase.update({
-    where: { id: purchase.id },
-    data: { status: "Rejected", rejectReason: parsed.data.reason, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() },
-    include: { material: true }
+  await prisma.purchase.update({ where: { id: purchase.id }, data: { status: "Rejected", rejectReason: parsed.data.reason, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() } });
+  res.json(serializePurchase((await loadPurchases({ id: purchase.id }, 1))[0]));
+});
+stockRouter.get("/reconciliation", async (req, res) => {
+  await ensureRequisitionsOnce();
+  await ensurePurchasesOnce();
+  const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
+  const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
+  const onlyVariance = req.query.variance === "1";
+  const requisitions = await prisma.stockRequisition.findMany({
+    where: {
+      status: "Approved",
+      ...from || to ? { requestedAt: { ...from ? { gte: /* @__PURE__ */ new Date(from + "T00:00:00") } : {}, ...to ? { lte: /* @__PURE__ */ new Date(to + "T23:59:59") } : {} } } : {}
+    },
+    include: { lines: { include: { material: true }, orderBy: { id: "asc" } }, purchases: { where: { status: { not: "Rejected" } }, include: { lines: { include: { material: true } } }, orderBy: { id: "asc" } } },
+    orderBy: { requestedAt: "desc" }
   });
-  res.json({ ...updated, materialName: updated.material.name });
+  const rows = requisitions.map((r) => {
+    const purchaseLines = r.purchases.flatMap(
+      (p) => p.lines.map((l) => ({ materialId: l.materialId, name: l.material.name, qty: l.qty, unitCost: l.unitCost, totalCost: l.totalCost, receivedQty: l.receivedQty, status: p.status === "Accepted" ? "Accepted" : "Held" }))
+    );
+    const { lines, totals } = reconcileRequisition(
+      r.lines.map((l) => ({ materialId: l.materialId, name: l.material.name, qty: l.qty, estUnitCost: l.estUnitCost })),
+      purchaseLines
+    );
+    const state = r.purchases.length === 0 ? "Not purchased" : lines.some((l) => l.status === "Not purchased") ? "Part purchased" : lines.some((l) => l.status === "Awaiting receipt") ? "Awaiting receipt" : "Received";
+    return {
+      id: r.id,
+      ref: r.ref,
+      note: r.note,
+      requestedByName: r.requestedByName,
+      requestedAt: r.requestedAt,
+      decidedByName: r.decidedByName,
+      state,
+      purchaseOrders: r.purchases.map((p) => ({ id: p.id, poRef: p.poRef, status: p.status, supplier: p.supplier, invoiceNumber: p.invoiceNumber, totalCost: p.totalCost, date: p.date })),
+      lines,
+      totals
+    };
+  });
+  const filtered = onlyVariance ? rows.filter((r) => r.totals.totalVariance !== 0 || r.lines.some((l) => (l.qtyVariance ?? 0) !== 0 || l.shortDelivery !== 0)) : rows;
+  const standalone = await prisma.purchase.findMany({
+    where: { requisitionId: null, status: { not: "Rejected" }, ...from || to ? { date: { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } } : {} },
+    include: { lines: { include: { material: true } } },
+    orderBy: { id: "desc" },
+    take: 200
+  });
+  res.json({
+    requisitions: filtered,
+    summary: {
+      requisitions: filtered.length,
+      expectedTotal: Math.round(filtered.reduce((a2, r) => a2 + r.totals.expectedTotal, 0) * 100) / 100,
+      actualTotal: Math.round(filtered.reduce((a2, r) => a2 + r.totals.actualTotal, 0) * 100) / 100,
+      totalVariance: Math.round(filtered.reduce((a2, r) => a2 + r.totals.totalVariance, 0) * 100) / 100,
+      priceVarianceValue: Math.round(filtered.reduce((a2, r) => a2 + r.totals.priceVarianceValue, 0) * 100) / 100,
+      qtyVarianceValue: Math.round(filtered.reduce((a2, r) => a2 + r.totals.qtyVarianceValue, 0) * 100) / 100,
+      shortDeliveryValue: Math.round(filtered.reduce((a2, r) => a2 + r.totals.shortDeliveryValue, 0) * 100) / 100
+    },
+    standalone: standalone.map((p) => ({
+      id: p.id,
+      poRef: p.poRef,
+      date: p.date,
+      supplier: p.supplier,
+      invoiceNumber: p.invoiceNumber,
+      status: p.status,
+      totalCost: p.totalCost,
+      items: p.lines.map((l) => `${l.material.name} \xD7 ${l.qty}`).join(", ")
+    }))
+  });
 });
 var importLineSchema = external_exports.object({
   description: external_exports.string().min(1),
@@ -50878,10 +51184,11 @@ stockRouter.post("/imports", async (req, res) => {
   const date = parsed.data.date ?? todayStr();
   const reference = parsed.data.reference?.trim() || "";
   const supplier = `China Import (${model === "kra" ? "KRA Full Tax" : "Consolidator"})${reference ? " \u2014 " + reference : ""}`;
+  await ensurePurchasesOnce();
   const existingMaterials = await prisma.material.findMany();
   const byLowerName = new Map(existingMaterials.map((m) => [m.name.toLowerCase(), m]));
   const created = await prisma.$transaction(async (tx) => {
-    const rows = [];
+    const resolved = [];
     for (const line of lines) {
       const name2 = line.description.trim();
       let material = byLowerName.get(name2.toLowerCase());
@@ -50889,21 +51196,22 @@ stockRouter.post("/imports", async (req, res) => {
         material = await tx.material.create({ data: { name: name2, price: Math.round(line.unitCost) } });
         byLowerName.set(name2.toLowerCase(), material);
       }
-      const purchase = await tx.purchase.create({
-        data: {
-          materialId: material.id,
-          date,
-          supplier,
-          qty: line.qty,
-          unitCost: line.unitCost,
-          totalCost: line.totalCost,
-          invoiceNumber: reference || null,
-          capturedByName: req.user.name
-        }
-      });
-      rows.push({ ...purchase, materialName: material.name });
+      resolved.push({ materialId: material.id, materialName: material.name, qty: line.qty, unitCost: line.unitCost, totalCost: line.totalCost });
     }
-    return rows;
+    const existing = await tx.purchase.findMany({ where: { poRef: { not: null } }, select: { poRef: true } });
+    const poRef = formatPurchaseOrderRef(nextPurchaseOrderNumber(existing.map((p) => p.poRef)));
+    const purchase = await tx.purchase.create({
+      data: {
+        poRef,
+        date,
+        supplier,
+        invoiceNumber: reference || null,
+        totalCost: Math.round(resolved.reduce((a2, l) => a2 + l.totalCost, 0) * 100) / 100,
+        capturedByName: req.user.name,
+        lines: { create: resolved.map(({ materialId, qty, unitCost, totalCost }) => ({ materialId, qty, unitCost, totalCost })) }
+      }
+    });
+    return resolved.map((l) => ({ ...l, purchaseId: purchase.id, poRef }));
   });
   res.status(201).json(created);
 });
@@ -50998,7 +51306,9 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
     where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } }
   });
   const materialIds = consumableMaterials.map((m) => m.id);
-  const purchases = materialIds.length ? await prisma.purchase.findMany({ where: { materialId: { in: materialIds }, status: "Accepted" }, include: { material: true } }) : [];
+  await ensurePurchasesOnce();
+  const purchaseLines = materialIds.length ? await prisma.purchaseLine.findMany({ where: { materialId: { in: materialIds }, purchase: { status: "Accepted" } }, include: { material: true, purchase: true } }) : [];
+  const purchases = purchaseLines.map((l) => ({ date: l.purchase.date, material: l.material, qty: l.receivedQty ?? l.qty, totalCost: l.totalCost }));
   const breakdownMap = /* @__PURE__ */ new Map();
   let consumablesCost = 0;
   for (const p of purchases) {
@@ -51075,6 +51385,60 @@ reportsRouter.get("/accounts-receivable", async (req, res) => {
     totalOutstanding: rows.reduce((a2, r) => a2 + r.balanceDue, 0),
     buckets,
     rows
+  });
+});
+reportsRouter.get("/sales-by-business-head", async (req, res) => {
+  const range2 = parseRange2(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  await ensureBusinessHeadsOnce();
+  const heads = await prisma.businessHead.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
+  const orders = await prisma.order.findMany({
+    where: { status: { not: "Quote" }, createdDate: { gte: range2.from, lte: range2.to } },
+    include: { lineItems: { include: { service: { include: { businessHead: true } } } } }
+  });
+  const buckets = /* @__PURE__ */ new Map();
+  const bucket = (name2) => {
+    let b = buckets.get(name2);
+    if (!b) buckets.set(name2, b = { sales: 0, orders: /* @__PURE__ */ new Set(), services: /* @__PURE__ */ new Map() });
+    return b;
+  };
+  for (const o of orders) {
+    const inputs = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+    const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
+    const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+    const scale = subtotal > 0 ? grandTotal / subtotal : 0;
+    o.lineItems.forEach((li, i) => {
+      const gross = buildLineTotal(inputs[i]) * scale;
+      const name2 = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
+      const b = bucket(name2);
+      b.sales += gross / (1 + VAT_RATE);
+      b.orders.add(o.id);
+      const label = li.service ? li.service.name : "Materials sold";
+      const s = b.services.get(label) ?? { qty: 0, sales: 0 };
+      s.qty += li.qty;
+      s.sales += gross / (1 + VAT_RATE);
+      b.services.set(label, s);
+    });
+  }
+  const round = (n) => Math.round(n * 100) / 100;
+  const names = [...heads.map((h) => h.name), ...[...buckets.keys()].filter((n) => !heads.some((h) => h.name === n))];
+  const total = [...buckets.values()].reduce((a2, b) => a2 + b.sales, 0);
+  res.json({
+    fromDate: range2.from,
+    toDate: range2.to,
+    heads: names.map((name2) => {
+      const b = buckets.get(name2);
+      const head = heads.find((h) => h.name === name2);
+      return {
+        name: name2,
+        active: head?.active ?? true,
+        sales: round(b?.sales ?? 0),
+        orders: b?.orders.size ?? 0,
+        sharePct: total > 0 ? round((b?.sales ?? 0) / total * 100) : 0,
+        services: [...b?.services.entries() ?? []].map(([n, v]) => ({ name: n, qty: round(v.qty), sales: round(v.sales) })).sort((a2, c) => c.sales - a2.sales)
+      };
+    }),
+    totalSales: round(total)
   });
 });
 
@@ -53688,5 +54052,5 @@ var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
   console.log(`GLM Branding POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

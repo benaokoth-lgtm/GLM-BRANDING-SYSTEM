@@ -8,12 +8,13 @@ import { useCatalog } from '../hooks/useCatalog';
 import MpesaSettingsPanel from '../components/MpesaSettingsPanel';
 import MailSettingsPanel from '../components/MailSettingsPanel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
   ['roles', 'Roles & Access'],
   ['services', 'Service Price List'],
+  ['heads', 'Business Heads'],
   ['materials', 'Stock Price List'],
   ['clients', 'Corporate Clients'],
   ['discount', 'Discount Rules'],
@@ -38,16 +39,24 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canAccessProduction: 'Production: work assigned jobs',
   canManageProduction: 'Production: assign staff & productivity',
   canAccessQuality: 'Quality control: inspect orders',
+  canReceiveStock: 'Stores: receive purchased goods',
   canManageCommission: 'Commission: rates, team statements & payouts',
 };
 
 import { notifyBrandingChanged } from '../hooks/useBranding';
+import BusinessHeadsPanel from '../components/BusinessHeadsPanel';
+import type { BusinessHeadRow } from '../api/models';
 
 const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 
 export default function MasterData() {
   const catalog = useCatalog();
   const [tab, setTab] = useState<MasterTab>('staff');
+  const [heads, setHeads] = useState<BusinessHeadRow[]>([]);
+  const loadHeads = () => api.get<BusinessHeadRow[]>('/master-data/business-heads').then(setHeads).catch(() => setHeads([]));
+  useEffect(() => {
+    loadHeads();
+  }, []);
 
   const [roles, setRoles] = useState<RoleRow[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
@@ -605,6 +614,7 @@ export default function MasterData() {
             <thead>
               <tr>
                 <th>Service</th>
+                <th>Business head</th>
                 <th>Unit</th>
                 <th>Price</th>
                 <th>Artwork pricing</th>
@@ -617,6 +627,16 @@ export default function MasterData() {
                 <Fragment key={sv.id}>
                 <tr>
                   <td>{sv.name}</td>
+                  <td>
+                    <select className="input" style={{ width: 170 }} value={sv.businessHeadId ?? ''} onChange={(e) => saveServiceFields(sv.id, { businessHeadId: e.target.value ? Number(e.target.value) : null })}>
+                      <option value="">—</option>
+                      {heads.filter((h) => h.active || h.id === sv.businessHeadId).map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
                   <td>
                     <select className="input" style={{ width: 90 }} value={sv.unit} onChange={(e) => changeServiceUnit(sv.id, e.target.value as 'piece' | 'metre' | 'sqm')}>
                       <option value="piece">piece</option>
@@ -658,7 +678,7 @@ export default function MasterData() {
                 </tr>
                 {sv.outsourced && (
                   <tr>
-                    <td colSpan={6} style={{ background: 'var(--color-surface)' }}>
+                    <td colSpan={7} style={{ background: 'var(--color-surface)' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr auto', gap: 'var(--space-3)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                         <div className="field" style={{ margin: 0 }}>
                           <label>Supplier</label>
@@ -877,6 +897,8 @@ export default function MasterData() {
           </div>
         </>
       )}
+
+      {tab === 'heads' && <BusinessHeadsPanel heads={heads} onChanged={() => { loadHeads(); catalog.reload(); }} />}
 
       {tab === 'discount' && (
         <>

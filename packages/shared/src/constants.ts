@@ -31,6 +31,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canViewAllOrders: true,
     canManagePayments: true,
     canAccessStock: true,
+    canReceiveStock: true,
     canAccessDtf: true,
     canAccessProduction: true,
     canManageProduction: true,
@@ -53,6 +54,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessQuality: true,
     canSeeCosts: true,
     canManageCommission: true,
+    canReceiveStock: true,
   },
   'General Manager': {
     ...ALL_FALSE,
@@ -71,6 +73,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessQuality: true,
     canSeeCosts: true,
     canManageCommission: true,
+    canReceiveStock: true,
   },
   Admin: ALL_TRUE,
 };

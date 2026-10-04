@@ -1,14 +1,15 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
-import type { AccountsReceivableData, EmbroideryProfitabilityData, OrderSummary, SalesByCategoryData } from '../api/models';
+import type { AccountsReceivableData, EmbroideryProfitabilityData, OrderSummary, SalesByBusinessHeadData, SalesByCategoryData } from '../api/models';
 import OrderDetailDialog from '../components/OrderDetailDialog';
 
-type ReportTab = 'sales' | 'category' | 'embroidery' | 'ar';
+type ReportTab = 'sales' | 'heads' | 'category' | 'embroidery' | 'ar';
 type Preset = 'today' | 'month' | 'year' | 'custom';
 
 const TABS: [ReportTab, string][] = [
   ['sales', 'Sales'],
+  ['heads', 'Sales by Business Head'],
   ['category', 'Sales by Category'],
   ['embroidery', 'Embroidery Profitability'],
   ['ar', 'Accounts Receivable'],
@@ -38,6 +39,7 @@ export default function Reports() {
 
   const [orders, setOrders] = useState<OrderSummary[] | null>(null);
   const [category, setCategory] = useState<SalesByCategoryData | null>(null);
+  const [heads, setHeads] = useState<SalesByBusinessHeadData | null>(null);
   const [embroidery, setEmbroidery] = useState<EmbroideryProfitabilityData | null>(null);
   const [ar, setAr] = useState<AccountsReceivableData | null>(null);
   const [arDetailId, setArDetailId] = useState<number | null>(null);
@@ -59,12 +61,14 @@ export default function Reports() {
     Promise.all([
       api.get<OrderSummary[]>('/orders'),
       api.get<SalesByCategoryData>(`/reports/sales-by-category?from=${fromDate}&to=${toDate}`),
+      api.get<SalesByBusinessHeadData>(`/reports/sales-by-business-head?from=${fromDate}&to=${toDate}`),
       api.get<EmbroideryProfitabilityData>(`/reports/embroidery-profitability?from=${fromDate}&to=${toDate}`),
       api.get<AccountsReceivableData>('/reports/accounts-receivable'),
     ])
-      .then(([o, c, e, a]) => {
+      .then(([o, c, h, e, a]) => {
         setOrders(o);
         setCategory(c);
+        setHeads(h);
         setEmbroidery(e);
         setAr(a);
       })
@@ -247,6 +251,63 @@ export default function Reports() {
             </p>
           </div>
         </>
+      )}
+
+      {tab === 'heads' && heads && (
+        <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+            Sales by business head
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Business head</th>
+                  <th style={{ textAlign: 'right' }}>Orders</th>
+                  <th style={{ textAlign: 'right' }}>Sales (excl. VAT)</th>
+                  <th style={{ textAlign: 'right' }}>Share</th>
+                </tr>
+              </thead>
+              <tbody>
+                {heads.heads.map((h) => (
+                  <Fragment key={h.name}>
+                    <tr>
+                      <td>
+                        <strong>{h.name}</strong>
+                        {!h.active && <span className="tag tag-neutral" style={{ marginLeft: 8 }}>not in use</span>}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{h.orders}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtKsh(h.sales)}</td>
+                      <td style={{ textAlign: 'right' }}>{h.sharePct.toFixed(1)}%</td>
+                    </tr>
+                    {h.services.map((s) => (
+                      <tr key={h.name + s.name}>
+                        <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>{s.name}</td>
+                        <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{s.qty}</td>
+                        <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(s.sales)}</td>
+                        <td></td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+                <tr style={{ fontWeight: 700, borderTop: '2px solid var(--color-divider)' }}>
+                  <td>Total</td>
+                  <td></td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(heads.totalSales)}</td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+            Sales raised in the period (orders and invoices, not quotations), after discounts and with the 16% VAT taken out — before any credit notes. A service’s business head is set in
+            Master Data → Service Price List; materials sold over the counter count as General Order.
+          </p>
+        </div>
       )}
 
       {tab === 'category' && category && (

@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { buildLineTotal, computeOrderTotals, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, todayStr } from '@glm/shared';
+import { buildLineTotal, computeOrderTotals, defaultBusinessHeadName, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, GENERAL_ORDER_HEAD, todayStr, VAT_RATE } from '@glm/shared';
+import { ensureBusinessHeadsOnce, ensurePurchasesOnce } from '../purchases';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
 export const reportsRouter = Router();
@@ -119,9 +120,11 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
     where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } },
   });
   const materialIds = consumableMaterials.map((m) => m.id);
-  const purchases = materialIds.length
-    ? await prisma.purchase.findMany({ where: { materialId: { in: materialIds }, status: 'Accepted' }, include: { material: true } })
+  await ensurePurchasesOnce();
+  const purchaseLines = materialIds.length
+    ? await prisma.purchaseLine.findMany({ where: { materialId: { in: materialIds }, purchase: { status: 'Accepted' } }, include: { material: true, purchase: true } })
     : [];
+  const purchases = purchaseLines.map((l) => ({ date: l.purchase.date, material: l.material, qty: l.receivedQty ?? l.qty, totalCost: l.totalCost }));
 
   const breakdownMap = new Map<string, { qty: number; totalCost: number }>();
   let consumablesCost = 0;
@@ -216,5 +219,68 @@ reportsRouter.get('/accounts-receivable', async (req, res) => {
     totalOutstanding: rows.reduce((a, r) => a + r.balanceDue, 0),
     buckets,
     rows,
+  });
+});
+
+// Sales by business head: DTF Printing, UV Printing, Laser Engraving, Large Format Printing, Embroidery and General Order. Every
+// service belongs to one head; a material sold over the counter is General Order. Figures are sales raised in the period (orders and
+// invoices, not quotations), after discounts, with the 16% VAT taken out — before any credit notes.
+reportsRouter.get('/sales-by-business-head', async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
+  await ensureBusinessHeadsOnce();
+
+  const heads = await prisma.businessHead.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
+  const orders = await prisma.order.findMany({
+    where: { status: { not: 'Quote' }, createdDate: { gte: range.from, lte: range.to } },
+    include: { lineItems: { include: { service: { include: { businessHead: true } } } } },
+  });
+
+  type Bucket = { sales: number; orders: Set<number>; services: Map<string, { qty: number; sales: number }> };
+  const buckets = new Map<string, Bucket>();
+  const bucket = (name: string): Bucket => {
+    let b = buckets.get(name);
+    if (!b) buckets.set(name, (b = { sales: 0, orders: new Set(), services: new Map() }));
+    return b;
+  };
+
+  for (const o of orders) {
+    const inputs: LineItemInput[] = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+    const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
+    const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+    const scale = subtotal > 0 ? grandTotal / subtotal : 0; // what the order-level discount leaves of each line
+    o.lineItems.forEach((li, i) => {
+      const gross = buildLineTotal(inputs[i]!) * scale;
+      const name = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
+      const b = bucket(name);
+      b.sales += gross / (1 + VAT_RATE);
+      b.orders.add(o.id);
+      const label = li.service ? li.service.name : 'Materials sold';
+      const s = b.services.get(label) ?? { qty: 0, sales: 0 };
+      s.qty += li.qty;
+      s.sales += gross / (1 + VAT_RATE);
+      b.services.set(label, s);
+    });
+  }
+
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const names = [...heads.map((h) => h.name), ...[...buckets.keys()].filter((n) => !heads.some((h) => h.name === n))];
+  const total = [...buckets.values()].reduce((a, b) => a + b.sales, 0);
+  res.json({
+    fromDate: range.from,
+    toDate: range.to,
+    heads: names.map((name) => {
+      const b = buckets.get(name);
+      const head = heads.find((h) => h.name === name);
+      return {
+        name,
+        active: head?.active ?? true,
+        sales: round(b?.sales ?? 0),
+        orders: b?.orders.size ?? 0,
+        sharePct: total > 0 ? round(((b?.sales ?? 0) / total) * 100) : 0,
+        services: [...(b?.services.entries() ?? [])].map(([n, v]) => ({ name: n, qty: round(v.qty), sales: round(v.sales) })).sort((a, c) => c.sales - a.sales),
+      };
+    }),
+    totalSales: round(total),
   });
 });

@@ -165,63 +165,6 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
 
 // Accounts Receivable — every order (corporate or walk-in/DTF) currently
 // sitting at status 'Invoice' with money still owed, aged off its due date.
-// A live snapshot ("as of today"), not a date-range report like the others
-// above: an invoice doesn't stop being owed just because it falls outside a
-// chosen range, so there's no from/to filter here.
-reportsRouter.get('/accounts-receivable', async (req, res) => {
-  const today = todayStr();
-  const orders = await prisma.order.findMany({
-    where: { status: 'Invoice' },
-    include: { corporateClient: true, lineItems: true, payments: true, staff: true },
-    orderBy: { dueDate: 'asc' },
-  });
-
-  const rows = orders
-    .map((o) => {
-      const lineItems: LineItemInput[] = o.lineItems.map((li) => ({
-        itemType: li.itemType as LineItemInput['itemType'],
-        serviceId: li.serviceId,
-        materialId: li.materialId,
-        qty: li.qty,
-        unitPrice: li.unitPrice,
-        discountPct: li.discountPct,
-        discountAmt: li.discountAmt,
-        heatPressFee: li.heatPressFee,
-      }));
-      const payments: PaymentRecord[] = o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
-      const totals = computeOrderTotals({ lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }, payments);
-      const daysOverdue = o.dueDate && o.dueDate < today ? Math.round((Date.parse(today) - Date.parse(o.dueDate)) / 86400000) : 0;
-      return {
-        id: o.id,
-        orderNo: o.orderNo,
-        kind: o.kind,
-        channel: o.channel,
-        client: o.kind === 'corporate' ? o.corporateClient?.name ?? '—' : o.customerName ?? '—',
-        staffName: o.staff.name,
-        createdDate: o.createdDate,
-        dueDate: o.dueDate,
-        grandTotal: totals.grandTotal,
-        paidTotal: totals.paidTotal,
-        balanceDue: totals.balanceDue,
-        daysOverdue,
-      };
-    })
-    .filter((r) => r.balanceDue > 0)
-    .sort((a, b) => b.daysOverdue - a.daysOverdue);
-
-  const bucket = (r: (typeof rows)[number]) =>
-    r.daysOverdue <= 0 ? 'current' : r.daysOverdue <= 30 ? 'days1to30' : r.daysOverdue <= 60 ? 'days31to60' : r.daysOverdue <= 90 ? 'days61to90' : 'days90plus';
-  const buckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days90plus: 0 };
-  for (const r of rows) buckets[bucket(r)] += r.balanceDue;
-
-  res.json({
-    asOf: today,
-    totalOutstanding: rows.reduce((a, r) => a + r.balanceDue, 0),
-    buckets,
-    rows,
-  });
-});
-
 // Sales by business head: DTF Printing, UV Printing, Laser Engraving, Large Format Printing, Embroidery and General Order. Every
 // service belongs to one head; a material sold over the counter is General Order. Figures are sales raised in the period (orders and
 // invoices, not quotations), after discounts, with the 16% VAT taken out — before any credit notes.
@@ -324,5 +267,72 @@ reportsRouter.get('/sales-by-business-head', async (req, res) => {
     unassignedCosts: unassigned,
     totalCosts: round(taggedCosts + unassigned.total),
     totalMargin: round(total - taggedCosts - unassigned.total),
+  });
+});
+
+// What is behind one business head's figures for the period: the sales lines, the purchase lines tagged to it and the expenses tagged
+// to it. head = the head's name, or "__shared__" for the costs nobody tagged to a head.
+reportsRouter.get('/business-head-detail', async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
+  await ensureBusinessHeadsOnce();
+  const headName = String(req.query.head || '');
+  const shared = headName === '__shared__';
+  const heads = await prisma.businessHead.findMany();
+  const head = shared ? null : heads.find((h) => h.name === headName);
+  if (!shared && !head) return res.status(404).json({ error: 'Business head not found' });
+  const round = (n: number) => Math.round(n * 100) / 100;
+
+  const salesLines: { date: string; orderId: number; orderNo: string; customer: string; item: string; qty: number; sales: number }[] = [];
+  if (!shared) {
+    const orders = await prisma.order.findMany({
+      where: { status: { not: 'Quote' }, createdDate: { gte: range.from, lte: range.to } },
+      include: { corporateClient: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } } },
+      orderBy: [{ createdDate: 'desc' }, { id: 'desc' }],
+    });
+    for (const o of orders) {
+      const inputs: LineItemInput[] = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+      const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
+      const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+      const scale = subtotal > 0 ? grandTotal / subtotal : 0;
+      o.lineItems.forEach((li, i) => {
+        const name = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
+        if (name !== headName) return;
+        salesLines.push({
+          date: o.createdDate,
+          orderId: o.id,
+          orderNo: o.orderNo,
+          customer: o.customerName || o.corporateClient?.name || 'Walk-in',
+          item: li.service?.name ?? li.material?.name ?? 'Item',
+          qty: li.qty,
+          sales: round((buildLineTotal(inputs[i]!) * scale) / (1 + VAT_RATE)),
+        });
+      });
+    }
+  }
+
+  const headFilter = shared ? null : head!.id;
+  const [purchaseLines, expenses] = await Promise.all([
+    prisma.purchaseLine.findMany({
+      where: { businessHeadId: headFilter, purchase: { status: { not: 'Rejected' }, date: { gte: range.from, lte: range.to } } },
+      include: { material: true, purchase: true },
+      orderBy: { id: 'desc' },
+    }),
+    prisma.expense.findMany({ where: { businessHeadId: headFilter, date: { gte: range.from, lte: range.to }, purchase: { is: null } }, orderBy: [{ date: 'desc' }, { id: 'desc' }] }),
+  ]);
+  const purchases = purchaseLines.map((l) => ({ date: l.purchase.date, poRef: l.purchase.poRef, supplier: l.purchase.supplier, item: l.material.name, qty: l.qty, unitCost: l.unitCost, amount: round(l.totalCost) }));
+  const expenseRows = expenses.map((e) => ({ id: e.id, date: e.date, category: e.category, note: e.note, supplier: e.supplier, amount: round(e.amount) }));
+  res.json({
+    head: shared ? 'Shared (not tagged to a head)' : headName,
+    from: range.from,
+    to: range.to,
+    sales: salesLines,
+    purchases: purchases.sort((a, b) => (a.date < b.date ? 1 : -1)),
+    expenses: expenseRows,
+    totals: {
+      sales: round(salesLines.reduce((a, l) => a + l.sales, 0)),
+      purchases: round(purchases.reduce((a, p) => a + p.amount, 0)),
+      expenses: round(expenseRows.reduce((a, e) => a + e.amount, 0)),
+    },
   });
 });

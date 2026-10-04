@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
-import type { AccountsReceivableData, EmbroideryProfitabilityData, OrderSummary, SalesByBusinessHeadData, SalesByCategoryData } from '../api/models';
+import type { EmbroideryProfitabilityData, OrderSummary, SalesByBusinessHeadData, SalesByCategoryData } from '../api/models';
 import OrderDetailDialog from '../components/OrderDetailDialog';
+import BusinessHeadDetail from '../components/reports/BusinessHeadDetail';
 
-type ReportTab = 'sales' | 'heads' | 'category' | 'embroidery' | 'ar';
+type ReportTab = 'sales' | 'heads' | 'category' | 'embroidery';
 type Preset = 'today' | 'month' | 'year' | 'custom';
 
 const TABS: [ReportTab, string][] = [
@@ -12,15 +13,6 @@ const TABS: [ReportTab, string][] = [
   ['heads', 'Sales by Business Head'],
   ['category', 'Sales by Category'],
   ['embroidery', 'Embroidery Profitability'],
-  ['ar', 'Accounts Receivable'],
-];
-
-const AR_BUCKET_LABELS: [keyof AccountsReceivableData['buckets'], string][] = [
-  ['current', 'Not yet due'],
-  ['days1to30', '1–30 days'],
-  ['days31to60', '31–60 days'],
-  ['days61to90', '61–90 days'],
-  ['days90plus', '90+ days'],
 ];
 
 function presetRange(preset: Preset, today: string, current: { from: string; to: string }): { from: string; to: string } {
@@ -41,8 +33,9 @@ export default function Reports() {
   const [category, setCategory] = useState<SalesByCategoryData | null>(null);
   const [heads, setHeads] = useState<SalesByBusinessHeadData | null>(null);
   const [embroidery, setEmbroidery] = useState<EmbroideryProfitabilityData | null>(null);
-  const [ar, setAr] = useState<AccountsReceivableData | null>(null);
-  const [arDetailId, setArDetailId] = useState<number | null>(null);
+  // A business head opened into its detail, and an order opened from it.
+  const [openHead, setOpenHead] = useState<string | null>(null);
+  const [detailOrderId, setDetailOrderId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,14 +56,12 @@ export default function Reports() {
       api.get<SalesByCategoryData>(`/reports/sales-by-category?from=${fromDate}&to=${toDate}`),
       api.get<SalesByBusinessHeadData>(`/reports/sales-by-business-head?from=${fromDate}&to=${toDate}`),
       api.get<EmbroideryProfitabilityData>(`/reports/embroidery-profitability?from=${fromDate}&to=${toDate}`),
-      api.get<AccountsReceivableData>('/reports/accounts-receivable'),
     ])
-      .then(([o, c, h, e, a]) => {
+      .then(([o, c, h, e]) => {
         setOrders(o);
         setCategory(c);
         setHeads(h);
         setEmbroidery(e);
-        setAr(a);
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load reports'))
       .finally(() => setLoading(false));
@@ -279,9 +270,22 @@ export default function Reports() {
               <tbody>
                 {heads.heads.map((h) => (
                   <Fragment key={h.name}>
-                    <tr>
+                    <tr
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={openHead === h.name}
+                      title="Show the sales, purchases and expenses behind these figures"
+                      onClick={() => setOpenHead(openHead === h.name ? null : h.name)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setOpenHead(openHead === h.name ? null : h.name);
+                        }
+                      }}
+                      style={{ cursor: 'pointer', background: openHead === h.name ? 'var(--color-surface)' : undefined }}
+                    >
                       <td>
-                        <strong>{h.name}</strong>
+                        <span className="text-muted">{openHead === h.name ? '▾' : '▸'}</span> <strong>{h.name}</strong>
                         {!h.active && <span className="tag tag-neutral" style={{ marginLeft: 8 }}>not in use</span>}
                         <div className="note" style={{ margin: 0 }}>{h.sharePct.toFixed(1)}% of sales</div>
                       </td>
@@ -293,6 +297,13 @@ export default function Reports() {
                       <td style={{ textAlign: 'right', fontWeight: 700, color: h.margin < 0 ? '#a33' : undefined }}>{fmtKsh(h.margin)}</td>
                       <td style={{ textAlign: 'right', color: h.margin < 0 ? '#a33' : undefined }}>{h.marginPct == null ? '—' : `${h.marginPct.toFixed(1)}%`}</td>
                     </tr>
+                    {openHead === h.name && (
+                      <tr>
+                        <td colSpan={8} style={{ padding: 0 }}>
+                          <BusinessHeadDetail head={h.name} from={fromDate} to={toDate} onOpenOrder={setDetailOrderId} />
+                        </td>
+                      </tr>
+                    )}
                     {h.services.map((s) => (
                       <tr key={h.name + s.name}>
                         <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>{s.name} × {s.qty}</td>
@@ -311,9 +322,22 @@ export default function Reports() {
                     ))}
                   </Fragment>
                 ))}
-                <tr>
+                <tr
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={openHead === '__shared__'}
+                  title="Show the purchases and expenses nobody tagged to a head"
+                  onClick={() => setOpenHead(openHead === '__shared__' ? null : '__shared__')}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setOpenHead(openHead === '__shared__' ? null : '__shared__');
+                    }
+                  }}
+                  style={{ cursor: 'pointer', background: openHead === '__shared__' ? 'var(--color-surface)' : undefined }}
+                >
                   <td>
-                    <strong>Shared (not tagged to a head)</strong>
+                    <span className="text-muted">{openHead === '__shared__' ? '▾' : '▸'}</span> <strong>Shared (not tagged to a head)</strong>
                     <div className="note" style={{ margin: 0 }}>costs nobody tagged — overheads such as rent, wages and utilities</div>
                   </td>
                   <td></td>
@@ -324,6 +348,13 @@ export default function Reports() {
                   <td></td>
                   <td></td>
                 </tr>
+                {openHead === '__shared__' && (
+                  <tr>
+                    <td colSpan={8} style={{ padding: 0 }}>
+                      <BusinessHeadDetail head="__shared__" from={fromDate} to={toDate} onOpenOrder={setDetailOrderId} />
+                    </td>
+                  </tr>
+                )}
                 {heads.unassignedCosts.expenseCategories.map((c) => (
                   <tr key={'u' + c.category}>
                     <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>expense: {c.category}</td>
@@ -348,7 +379,7 @@ export default function Reports() {
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
             Sales are raised in the period (orders and invoices, not quotations), after discounts and with the 16% VAT taken out, before credit notes. Costs are what was bought for each head
             (purchase orders, tagged line by line) plus the expenses tagged to it, as recorded — VAT included, since input VAT is not reclaimed. An expense that backs a purchase order is counted once,
-            through the purchase. Tag a service, a material, a purchase line or an expense to a head to move its figures; whatever is untagged stays under Shared. Rejected purchases cost nothing.
+            through the purchase. Click a head to see the sales, purchases and expenses behind its figures (and an order in it to open it). Tag a service, a material, a purchase line or an expense to a head to move its figures; whatever is untagged stays under Shared. Rejected purchases cost nothing.
           </p>
         </div>
       )}
@@ -518,81 +549,7 @@ export default function Reports() {
         </>
       )}
 
-      {tab === 'ar' && ar && (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 'var(--space-3)' }}>
-            {AR_BUCKET_LABELS.map(([key, label]) => (
-              <div key={key} className="card blueprint elev-sm">
-                <i className="corner tl"></i>
-                <i className="corner tr"></i>
-                <i className="corner bl"></i>
-                <i className="corner br"></i>
-                <div className="card-kicker">{label}</div>
-                <div className="card-title">{fmtKsh(ar.buckets[key])}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
-            <i className="corner tl"></i>
-            <i className="corner tr"></i>
-            <i className="corner bl"></i>
-            <i className="corner br"></i>
-            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
-              Outstanding invoices — total owed {fmtKsh(ar.totalOutstanding)} as of {fmtDate(ar.asOf)}
-            </div>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Order #</th>
-                  <th>Type</th>
-                  <th>Client</th>
-                  <th>Staff</th>
-                  <th>Due date</th>
-                  <th style={{ textAlign: 'right' }}>Total</th>
-                  <th style={{ textAlign: 'right' }}>Paid</th>
-                  <th style={{ textAlign: 'right' }}>Balance due</th>
-                  <th>Age</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ar.rows.map((r) => (
-                  <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => setArDetailId(r.id)}>
-                    <td>{r.orderNo}</td>
-                    <td>{r.kind === 'corporate' ? 'Corporate' : r.channel === 'dtf' ? 'Film/Artwork' : 'Walk-in'}</td>
-                    <td className="text-muted">{r.client}</td>
-                    <td className="text-muted">{r.staffName}</td>
-                    <td className="text-muted">{fmtDate(r.dueDate)}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtKsh(r.grandTotal)}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtKsh(r.paidTotal)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtKsh(r.balanceDue)}</td>
-                    <td>
-                      {r.daysOverdue > 0 ? (
-                        <span className="tag tag-accent">{r.daysOverdue}d overdue</span>
-                      ) : (
-                        <span className="tag tag-outline">Not yet due</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {ar.rows.length === 0 && <p className="note">No outstanding invoices — everything's settled.</p>}
-            <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-              Every order (corporate, walk-in, or Film/Artwork) currently sitting at "Invoice" with a balance still
-              owed, aged off its due date. Click a row to record a payment against it directly.
-            </p>
-          </div>
-
-          {arDetailId && (
-            <OrderDetailDialog
-              orderId={arDetailId}
-              onClose={() => setArDetailId(null)}
-              onChanged={load}
-            />
-          )}
-        </>
-      )}
+      {detailOrderId != null && <OrderDetailDialog orderId={detailOrderId} onClose={() => setDetailOrderId(null)} onChanged={load} />}
     </div>
   );
 }

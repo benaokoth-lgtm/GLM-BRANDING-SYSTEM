@@ -43946,6 +43946,13 @@ function jobCalc(runningMetres, pieces, fixedChargePerMetre, minPricePerPiece) {
 function systemJobCalc(j) {
   return jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob);
 }
+function jobTotals(j) {
+  const sys = systemJobCalc(j);
+  if (j.chargedPerPiece != null && j.chargedPerPiece > 0 && Math.abs(j.chargedPerPiece - sys.finalPerPiece) > 4e-3) {
+    return { finalPerPiece: r2(j.chargedPerPiece), jobTotal: r2(j.chargedPerPiece * j.pieces) };
+  }
+  return sys;
+}
 function nextRollId(rolls) {
   const max = rolls.reduce((m, r) => Math.max(m, Number(/(\d+)$/.exec(r.id)?.[1] ?? 0)), 0);
   return `ROLL-${String(max + 1).padStart(3, "0")}`;
@@ -51260,52 +51267,6 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
     consumableBreakdown
   });
 });
-reportsRouter.get("/accounts-receivable", async (req, res) => {
-  const today = todayStr();
-  const orders = await prisma.order.findMany({
-    where: { status: "Invoice" },
-    include: { corporateClient: true, lineItems: true, payments: true, staff: true },
-    orderBy: { dueDate: "asc" }
-  });
-  const rows = orders.map((o) => {
-    const lineItems = o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    }));
-    const payments = o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-    const totals = computeOrderTotals({ lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }, payments);
-    const daysOverdue = o.dueDate && o.dueDate < today ? Math.round((Date.parse(today) - Date.parse(o.dueDate)) / 864e5) : 0;
-    return {
-      id: o.id,
-      orderNo: o.orderNo,
-      kind: o.kind,
-      channel: o.channel,
-      client: o.kind === "corporate" ? o.corporateClient?.name ?? "\u2014" : o.customerName ?? "\u2014",
-      staffName: o.staff.name,
-      createdDate: o.createdDate,
-      dueDate: o.dueDate,
-      grandTotal: totals.grandTotal,
-      paidTotal: totals.paidTotal,
-      balanceDue: totals.balanceDue,
-      daysOverdue
-    };
-  }).filter((r) => r.balanceDue > 0).sort((a2, b) => b.daysOverdue - a2.daysOverdue);
-  const bucket = (r) => r.daysOverdue <= 0 ? "current" : r.daysOverdue <= 30 ? "days1to30" : r.daysOverdue <= 60 ? "days31to60" : r.daysOverdue <= 90 ? "days61to90" : "days90plus";
-  const buckets = { current: 0, days1to30: 0, days31to60: 0, days61to90: 0, days90plus: 0 };
-  for (const r of rows) buckets[bucket(r)] += r.balanceDue;
-  res.json({
-    asOf: today,
-    totalOutstanding: rows.reduce((a2, r) => a2 + r.balanceDue, 0),
-    buckets,
-    rows
-  });
-});
 reportsRouter.get("/sales-by-business-head", async (req, res) => {
   const range2 = parseRange2(req);
   if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
@@ -51395,6 +51356,68 @@ reportsRouter.get("/sales-by-business-head", async (req, res) => {
     unassignedCosts: unassigned,
     totalCosts: round(taggedCosts + unassigned.total),
     totalMargin: round(total - taggedCosts - unassigned.total)
+  });
+});
+reportsRouter.get("/business-head-detail", async (req, res) => {
+  const range2 = parseRange2(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  await ensureBusinessHeadsOnce();
+  const headName = String(req.query.head || "");
+  const shared = headName === "__shared__";
+  const heads = await prisma.businessHead.findMany();
+  const head = shared ? null : heads.find((h) => h.name === headName);
+  if (!shared && !head) return res.status(404).json({ error: "Business head not found" });
+  const round = (n) => Math.round(n * 100) / 100;
+  const salesLines = [];
+  if (!shared) {
+    const orders = await prisma.order.findMany({
+      where: { status: { not: "Quote" }, createdDate: { gte: range2.from, lte: range2.to } },
+      include: { corporateClient: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } } },
+      orderBy: [{ createdDate: "desc" }, { id: "desc" }]
+    });
+    for (const o of orders) {
+      const inputs = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+      const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
+      const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+      const scale = subtotal > 0 ? grandTotal / subtotal : 0;
+      o.lineItems.forEach((li, i) => {
+        const name2 = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
+        if (name2 !== headName) return;
+        salesLines.push({
+          date: o.createdDate,
+          orderId: o.id,
+          orderNo: o.orderNo,
+          customer: o.customerName || o.corporateClient?.name || "Walk-in",
+          item: li.service?.name ?? li.material?.name ?? "Item",
+          qty: li.qty,
+          sales: round(buildLineTotal(inputs[i]) * scale / (1 + VAT_RATE))
+        });
+      });
+    }
+  }
+  const headFilter = shared ? null : head.id;
+  const [purchaseLines, expenses] = await Promise.all([
+    prisma.purchaseLine.findMany({
+      where: { businessHeadId: headFilter, purchase: { status: { not: "Rejected" }, date: { gte: range2.from, lte: range2.to } } },
+      include: { material: true, purchase: true },
+      orderBy: { id: "desc" }
+    }),
+    prisma.expense.findMany({ where: { businessHeadId: headFilter, date: { gte: range2.from, lte: range2.to }, purchase: { is: null } }, orderBy: [{ date: "desc" }, { id: "desc" }] })
+  ]);
+  const purchases = purchaseLines.map((l) => ({ date: l.purchase.date, poRef: l.purchase.poRef, supplier: l.purchase.supplier, item: l.material.name, qty: l.qty, unitCost: l.unitCost, amount: round(l.totalCost) }));
+  const expenseRows = expenses.map((e) => ({ id: e.id, date: e.date, category: e.category, note: e.note, supplier: e.supplier, amount: round(e.amount) }));
+  res.json({
+    head: shared ? "Shared (not tagged to a head)" : headName,
+    from: range2.from,
+    to: range2.to,
+    sales: salesLines,
+    purchases: purchases.sort((a2, b) => a2.date < b.date ? 1 : -1),
+    expenses: expenseRows,
+    totals: {
+      sales: round(salesLines.reduce((a2, l) => a2 + l.sales, 0)),
+      purchases: round(purchases.reduce((a2, p) => a2 + p.amount, 0)),
+      expenses: round(expenseRows.reduce((a2, e) => a2 + e.amount, 0))
+    }
   });
 });
 
@@ -52686,6 +52709,73 @@ dtfRouter.post("/jobs", async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record job") });
   }
+});
+var orderMoney = (o) => {
+  const t = computeOrderTotals(
+    { lineItems: o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee })), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt },
+    o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }))
+  );
+  return { total: round2(t.grandTotal), paid: round2(t.paidTotal), balance: round2(t.balanceDue) };
+};
+var orderForDaily = { include: { lineItems: true, payments: true } };
+dtfRouter.get("/daily", manageOnly, async (req, res) => {
+  const kind = req.query.kind === "sales" ? "sales" : "jobs";
+  const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
+  const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
+  const dateRange = from || to ? { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } : void 0;
+  if (kind === "sales") {
+    const sales = await prisma.dtfFilmSale.findMany({ where: dateRange ? { soldOn: dateRange } : void 0, include: { order: orderForDaily }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] });
+    const byDay2 = /* @__PURE__ */ new Map();
+    for (const s of sales) byDay2.set(s.soldOn, [...byDay2.get(s.soldOn) ?? [], s]);
+    const days2 = [...byDay2.entries()].map(([date, list]) => {
+      const orders = list.map((s) => {
+        const money = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
+        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money };
+      });
+      const metres = round2(list.reduce((a2, s) => a2 + s.metres, 0));
+      return {
+        date,
+        count: list.length,
+        metres,
+        avgPricePerM: metres > 0 ? round2(list.reduce((a2, s) => a2 + s.metres * s.pricePerM, 0) / metres) : null,
+        total: round2(orders.reduce((a2, o) => a2 + o.total, 0)),
+        paid: round2(orders.reduce((a2, o) => a2 + o.paid, 0)),
+        balance: round2(orders.reduce((a2, o) => a2 + o.balance, 0)),
+        orders
+      };
+    });
+    return res.json({ kind, days: days2 });
+  }
+  const jobs = await prisma.dtfArtworkJob.findMany({ where: dateRange ? { jobOn: dateRange } : void 0, include: { order: orderForDaily }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] });
+  const byDay = /* @__PURE__ */ new Map();
+  for (const j of jobs) byDay.set(j.jobOn, [...byDay.get(j.jobOn) ?? [], j]);
+  const days = [...byDay.entries()].map(([date, list]) => {
+    const orders = list.map((j) => {
+      const calc = { id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece };
+      const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
+      const final = jobTotals(calc).finalPerPiece;
+      const money = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
+      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money };
+    });
+    const counted = orders.filter((o) => o.approval !== "Pending");
+    const pieces = counted.reduce((a2, o) => a2 + o.pieces, 0);
+    const total = round2(counted.reduce((a2, o) => a2 + o.total, 0));
+    return {
+      date,
+      count: counted.length,
+      pendingApproval: orders.length - counted.length,
+      pieces,
+      metres: round2(counted.reduce((a2, o) => a2 + o.runningMetres, 0)),
+      avgPricePerJob: counted.length ? round2(total / counted.length) : null,
+      avgRecommendedPerPiece: pieces > 0 ? round2(counted.reduce((a2, o) => a2 + o.recommendedPerPiece * o.pieces, 0) / pieces) : null,
+      avgFinalPerPiece: pieces > 0 ? round2(counted.reduce((a2, o) => a2 + o.finalPerPiece * o.pieces, 0) / pieces) : null,
+      total,
+      paid: round2(counted.reduce((a2, o) => a2 + o.paid, 0)),
+      balance: round2(counted.reduce((a2, o) => a2 + o.balance, 0)),
+      orders
+    };
+  });
+  res.json({ kind, days });
 });
 dtfRouter.get("/approvals", manageOnly, async (_req, res) => {
   const rows = await prisma.priceApproval.findMany({ orderBy: [{ status: "asc" }, { id: "desc" }], take: 200 });

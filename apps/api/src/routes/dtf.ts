@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { computeOrderTotals, jobCalc, nextRollId, saleCalc, todayStr } from '@glm/shared';
+import { computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -500,6 +500,80 @@ dtfRouter.post('/jobs', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record job') });
   }
+});
+
+// A day at a time. For each date: the number of artwork jobs (or film sales), what was printed or sold, the average prices, and the money —
+// total, paid and balance, taken from the orders those jobs generated (so a payment taken later through the order counts). Each day lists the
+// individual orders behind it. Jobs waiting for a price approval are listed but kept out of the day's figures until they are approved.
+const orderMoney = (o: { lineItems: { itemType: string; serviceId: number | null; materialId: number | null; qty: number; unitPrice: number; discountPct: number; discountAmt: number; heatPressFee: number | null }[]; orderDiscountPct: number; orderDiscountAmt: number; payments: { date: string; amount: number; method: string }[] }) => {
+  const t = computeOrderTotals(
+    { lineItems: o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee })), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt },
+    o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentMethod })),
+  );
+  return { total: round2(t.grandTotal), paid: round2(t.paidTotal), balance: round2(t.balanceDue) };
+};
+const orderForDaily = { include: { lineItems: true, payments: true } } as const;
+
+dtfRouter.get('/daily', manageOnly, async (req, res) => {
+  const kind = req.query.kind === 'sales' ? 'sales' : 'jobs';
+  const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
+  const to = typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
+  const dateRange = from || to ? { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } : undefined;
+
+  if (kind === 'sales') {
+    const sales = await prisma.dtfFilmSale.findMany({ where: dateRange ? { soldOn: dateRange } : undefined, include: { order: orderForDaily }, orderBy: [{ soldOn: 'desc' }, { id: 'desc' }] });
+    const byDay = new Map<string, typeof sales>();
+    for (const s of sales) byDay.set(s.soldOn, [...(byDay.get(s.soldOn) ?? []), s]);
+    const days = [...byDay.entries()].map(([date, list]) => {
+      const orders = list.map((s) => {
+        const money = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
+        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money };
+      });
+      const metres = round2(list.reduce((a, s) => a + s.metres, 0));
+      return {
+        date,
+        count: list.length,
+        metres,
+        avgPricePerM: metres > 0 ? round2(list.reduce((a, s) => a + s.metres * s.pricePerM, 0) / metres) : null,
+        total: round2(orders.reduce((a, o) => a + o.total, 0)),
+        paid: round2(orders.reduce((a, o) => a + o.paid, 0)),
+        balance: round2(orders.reduce((a, o) => a + o.balance, 0)),
+        orders,
+      };
+    });
+    return res.json({ kind, days });
+  }
+
+  const jobs = await prisma.dtfArtworkJob.findMany({ where: dateRange ? { jobOn: dateRange } : undefined, include: { order: orderForDaily }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] });
+  const byDay = new Map<string, typeof jobs>();
+  for (const j of jobs) byDay.set(j.jobOn, [...(byDay.get(j.jobOn) ?? []), j]);
+  const days = [...byDay.entries()].map(([date, list]) => {
+    const orders = list.map((j) => {
+      const calc = { id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece };
+      const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
+      const final = jobTotals(calc).finalPerPiece;
+      const money = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
+      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money };
+    });
+    const counted = orders.filter((o) => o.approval !== 'Pending');
+    const pieces = counted.reduce((a, o) => a + o.pieces, 0);
+    const total = round2(counted.reduce((a, o) => a + o.total, 0));
+    return {
+      date,
+      count: counted.length,
+      pendingApproval: orders.length - counted.length,
+      pieces,
+      metres: round2(counted.reduce((a, o) => a + o.runningMetres, 0)),
+      avgPricePerJob: counted.length ? round2(total / counted.length) : null,
+      avgRecommendedPerPiece: pieces > 0 ? round2(counted.reduce((a, o) => a + o.recommendedPerPiece * o.pieces, 0) / pieces) : null,
+      avgFinalPerPiece: pieces > 0 ? round2(counted.reduce((a, o) => a + o.finalPerPiece * o.pieces, 0) / pieces) : null,
+      total,
+      paid: round2(counted.reduce((a, o) => a + o.paid, 0)),
+      balance: round2(counted.reduce((a, o) => a + o.balance, 0)),
+      orders,
+    };
+  });
+  res.json({ kind, days });
 });
 
 // ── Price approvals — a job priced below the recommended price is held until a DTF manager decides ──

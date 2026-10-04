@@ -49,13 +49,13 @@ export default function DtfDashboard({ data, go }: { data: DtfData; go: (tab: 's
         ))}
       </div>
 
-      <Card title="What discounts cost — roll by roll">
+      <Card title="What artwork discounts cost — roll by roll">
         <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
           {[
             ['Discounts given', fmtKsh(d.discountGiven)],
             ['Profit at full prices', fmtKsh(d.profitBeforeDiscounts)],
             ['Profit taken by discounts', d.profitLostPct == null ? '—' : `${fmtNum(d.profitLostPct, 1)}%`],
-            ['Earned above standard price', fmtKsh(d.premiumEarned)],
+            ['Earned above recommended price', fmtKsh(d.premiumEarned)],
           ].map(([k, v]) => (
             <div key={k} style={{ minWidth: 150 }}>
               <div className="card-kicker">{k}</div>
@@ -103,7 +103,7 @@ export default function DtfDashboard({ data, go }: { data: DtfData; go: (tab: 's
           </table>
         </div>
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-          A discount is film sold below its standard price, or an artwork job charged below the recommended price (approved ones only — a job waiting for approval earns nothing yet). “At full price”
+          A discount is an artwork job charged below the recommended price (approved ones only — a job waiting for approval earns nothing yet). Film sales are not part of this. “At full price”
           adds the discounts back, so “profit lost” is the share of what the roll would have made that the discounts took. Roll cost includes the wastage when a roll is closed.
         </p>
       </Card>

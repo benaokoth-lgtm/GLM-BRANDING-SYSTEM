@@ -177,14 +177,13 @@ export interface RollSummary {
   profit: number;
   filmRevPerM: number | null;
   artRevPerM: number | null;
-  // The effect of discounts — a price below the standard film price, or below the recommended artwork price — on this roll's profit.
-  filmDiscount: number;
+  // The effect of ARTWORK discounts — a job charged below the recommended price — on this roll's profit. Film sales are not part of it.
   artworkDiscount: number;
-  /** Everything given away by pricing below standard/recommended. */
+  /** Everything given away by charging artwork below the recommended price (approved jobs only). */
   discountGiven: number;
-  /** Extra earned by pricing above standard/recommended. */
+  /** Extra earned by charging artwork above the recommended price. */
   premiumEarned: number;
-  /** Metres of film sold or printed at a discount, and how many sales/jobs they were. */
+  /** Metres of artwork printed at a discount, and how many jobs they were. */
   discountedM: number;
   discountedCount: number;
   revenueBeforeDiscounts: number;
@@ -220,14 +219,9 @@ export function summariseRoll(
   const filmRev = mine.reduce((a, x) => a + saleTotals(x).total, 0);
   const artRev = approvedJobs.reduce((a, x) => a + jobTotals(x).jobTotal, 0);
   const revenue = filmRev + artRev;
-  const filmDiscount = r2(mine.reduce((a, x) => a + x.metres * Math.max(0, x.stdPriceAtSale - x.pricePerM), 0));
   const artworkDiscount = r2(approvedJobs.reduce((a, x) => a + x.pieces * jobDiscountPerPiece(x), 0));
-  const premiumEarned = r2(
-    mine.reduce((a, x) => a + x.metres * Math.max(0, x.pricePerM - x.stdPriceAtSale), 0) +
-      approvedJobs.reduce((a, x) => a + x.pieces * Math.max(0, jobTotals(x).finalPerPiece - systemJobCalc(x).finalPerPiece), 0),
-  );
-  const discountGiven = r2(filmDiscount + artworkDiscount);
-  const discountedSales = mine.filter((x) => x.pricePerM < x.stdPriceAtSale);
+  const premiumEarned = r2(approvedJobs.reduce((a, x) => a + x.pieces * Math.max(0, jobTotals(x).finalPerPiece - systemJobCalc(x).finalPerPiece), 0));
+  const discountGiven = artworkDiscount;
   const discountedJobs = approvedJobs.filter((x) => jobDiscountPerPiece(x) > 0);
   const profit = revenue - rollCost;
   return {
@@ -250,12 +244,11 @@ export function summariseRoll(
     profit,
     filmRevPerM: filmM > 0 ? filmRev / filmM : null,
     artRevPerM: artM > 0 ? artRev / artM : null,
-    filmDiscount,
     artworkDiscount,
     discountGiven,
     premiumEarned,
-    discountedM: discountedSales.reduce((a, x) => a + x.metres, 0) + discountedJobs.reduce((a, x) => a + x.runningMetres, 0),
-    discountedCount: discountedSales.length + discountedJobs.length,
+    discountedM: discountedJobs.reduce((a, x) => a + x.runningMetres, 0),
+    discountedCount: discountedJobs.length,
     revenueBeforeDiscounts: r2(revenue + discountGiven),
     profitBeforeDiscounts: r2(profit + discountGiven),
     discountPctOfRevenue: revenue + discountGiven > 0 ? r2((discountGiven / (revenue + discountGiven)) * 100) : null,

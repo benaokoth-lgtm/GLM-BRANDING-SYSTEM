@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { useSubTab } from '../state/SubNavContext';
+import { HeadRow, groupByHead } from '../components/HeadGroups';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { Card, DateRangeBar, Loading, Notice, Tag, money, numStyle, useLoad, useRange } from './accounting/shared';
@@ -16,6 +17,7 @@ interface OrderBits {
   orderNo: string;
   customer: string;
   channel: string;
+  businessHead: string;
   createdDate: string;
   dueDate: string | null;
   items: { name: string; qty: number }[];
@@ -176,7 +178,10 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                   </td>
                 </tr>
               )}
-              {data.waiting.map((o) => (
+              {groupByHead(data.waiting).map(([head, rows]) => (
+                <Fragment key={head}>
+                  <HeadRow head={head} count={rows.length} cols={7} />
+                  {rows.map((o) => (
                 <tr key={o.orderId}>
                   <td>
                     <strong>{o.orderNo}</strong> {o.channel === 'dtf' && <Tag>DTF</Tag>} {o.outsourced && <Tag>Outsourced</Tag>}
@@ -210,6 +215,8 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                     </div>
                   </td>
                 </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -252,7 +259,10 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                 </td>
               </tr>
             )}
-            {data.tasks.map((t) => (
+            {groupByHead(data.tasks).map(([head, rows]) => (
+              <Fragment key={head}>
+                <HeadRow head={head} count={rows.length} cols={data.manager ? 8 : 7} />
+                {rows.map((t) => (
               <tr key={t.id}>
                 <td>
                   <strong>{t.orderNo}</strong>
@@ -313,6 +323,8 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                   )}
                 </td>
               </tr>
+                ))}
+              </Fragment>
             ))}
           </tbody>
         </table>

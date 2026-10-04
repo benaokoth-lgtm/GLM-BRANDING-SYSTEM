@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { fmtDate } from '@glm/shared';
 import { api } from '../api/client';
+import { HeadRow, HeadTitle, groupByHead } from '../components/HeadGroups';
 import { Card, DateRangeBar, Loading, Notice, Tag, numStyle, useLoad, useRange } from './accounting/shared';
 
 // Quality control: every finished order is inspected before it can go to the customer. A pass makes it "Ready for Pickup /
@@ -12,6 +13,7 @@ interface Awaiting {
   orderNo: string;
   customer: string;
   channel: string;
+  businessHead: string;
   items: { name: string; qty: number }[];
   units: number;
   producerName: string;
@@ -23,6 +25,7 @@ interface Awaiting {
 interface History {
   id: number;
   orderNo: string;
+  businessHead: string;
   result: 'Passed' | 'Failed';
   checkedAt: string;
   inspectorName: string;
@@ -94,7 +97,10 @@ export default function Quality() {
         <>
           <Card title={`Awaiting inspection (${data.awaiting.length})`} hint="Finished by Production and waiting for a quality check. A pass makes the order ready for the customer; a fail sends it back as rework.">
             {data.awaiting.length === 0 && <p className="note">Nothing waiting for inspection.</p>}
-            {data.awaiting.map((o) => (
+            {groupByHead(data.awaiting).map(([head, rows]) => (
+              <Fragment key={head}>
+                <HeadTitle head={head} count={rows.length} />
+                {rows.map((o) => (
               <div key={o.orderId} style={{ borderTop: '1px solid var(--color-divider)', padding: 'var(--space-3) 0' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
                   <div>
@@ -157,6 +163,8 @@ export default function Quality() {
                   </div>
                 )}
               </div>
+                ))}
+              </Fragment>
             ))}
           </Card>
 
@@ -201,7 +209,10 @@ export default function Quality() {
                     </td>
                   </tr>
                 )}
-                {data.history.map((c) => (
+                {groupByHead(data.history).map(([head, rows]) => (
+                  <Fragment key={head}>
+                    <HeadRow head={head} count={rows.length} cols={8} />
+                    {rows.map((c) => (
                   <tr key={c.id}>
                     <td className="text-muted">{when(c.checkedAt)}</td>
                     <td>
@@ -218,6 +229,8 @@ export default function Quality() {
                       {[c.defects, c.note].filter(Boolean).join(' — ') || '—'}
                     </td>
                   </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>

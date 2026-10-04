@@ -7,6 +7,7 @@ import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
 import { ensureChartOfAccounts } from '../src/accounting/chart';
+import { STAGE_QUALITY, STAGE_WAITING } from '@glm/shared';
 
 let server: Server;
 let base = '';
@@ -33,6 +34,8 @@ describe('DTF daily roll-ups and business head detail', () => {
       const u = await prisma.user.create({ data: { name: `${key} (daily test)`, role, pinHash: 'x' } });
       tokens[key] = signToken({ id: u.id, name: u.name, role });
     }
+    const boss = await prisma.user.create({ data: { name: 'boss (daily test)', role: 'Admin', pinHash: 'x' } });
+    tokens.boss = signToken({ id: boss.id, name: boss.name, role: 'Admin' });
     await prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 70 } }).catch(() => null);
     await prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 500 } }).catch(() => null);
     await prisma.dtfRoll.create({ data: { id: ROLL, installedOn: '2026-01-01', createdByName: 'test', rollLengthM: 100, filmCost: 6000, inkPowderCost: 4000 } });
@@ -168,6 +171,24 @@ describe('DTF daily roll-ups and business head detail', () => {
     // and which business head it sells for, so My Orders can be browsed by line of business
     assert.deepEqual(all.find((o) => o.orderNo === orderNos.s1).businessHeads, ['DTF Printing']);
     assert.deepEqual(all.find((o) => o.orderNo === orderNos.j1).businessHeads, ['DTF Printing']);
+  });
+
+  it('Production and Quality control put each order under its business head, with DTF Printing split into film and artwork sales', async () => {
+    const q = (await call('boss', 'GET', '/production/queue')).body;
+    const head = (no: string) => q.waiting.find((o: any) => o.orderNo === no)?.businessHead;
+    assert.equal(head(orderNos.s1), 'DTF Printing — Film sales');
+    assert.equal(head(orderNos.j1), 'DTF Printing — Artwork sales');
+    // a general order for a material is under General Order
+    const general = q.waiting.filter((o: any) => !o.orderNo.startsWith('F-') && o.businessHead.startsWith('DTF Printing —'));
+    assert.equal(general.length, 0);
+    // the same heading comes through the quality queue
+    await prisma.order.updateMany({ where: { orderNo: { in: [orderNos.s1, orderNos.j1] } }, data: { stage: STAGE_QUALITY } });
+    const quality = (await call('boss', 'GET', '/quality/queue')).body;
+    assert.equal(quality.awaiting.find((o: any) => o.orderNo === orderNos.s1).businessHead, 'DTF Printing — Film sales');
+    assert.equal(quality.awaiting.find((o: any) => o.orderNo === orderNos.j1).businessHead, 'DTF Printing — Artwork sales');
+    await prisma.order.updateMany({ where: { orderNo: { in: [orderNos.s1, orderNos.j1] } }, data: { stage: STAGE_WAITING } }); // (other tests share this database)
+    for (const o of quality.awaiting) assert.equal(typeof o.businessHead, 'string');
+    for (const c of quality.history) assert.equal(typeof c.businessHead, 'string');
   });
 
   it('Accounts Receivable is no longer a report here', async () => {

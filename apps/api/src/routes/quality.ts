@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { STAGE_IN_PRODUCTION, STAGE_QUALITY, STAGE_READY, todayStr } from '@glm/shared';
-import { ensureProductionOnce, orderForProductionInclude, productionSummary } from '../production';
+import { ensureProductionOnce, orderForProductionInclude, orderHeadGroup, productionSummary } from '../production';
 
 // Quality control: every finished order is inspected before it can go to the customer. A pass makes it "Ready for Pickup/
 // Delivery"; a fail sends it back to Production as rework. The person who made a job can't be the one who passes it. Like
@@ -44,7 +44,7 @@ qualityRouter.get('/queue', async (req, res) => {
   const hi = new Date(`${to}T23:59:59.999Z`);
   const checks = await prisma.qualityCheck.findMany({
     where: { checkedAt: { gte: lo, lte: hi } },
-    include: { order: { select: { orderNo: true } }, inspector: true, task: { include: { assignee: true } } },
+    include: { order: { select: { orderNo: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } }, dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { approvalStatus: true } } } }, inspector: true, task: { include: { assignee: true } } },
     orderBy: { checkedAt: 'desc' },
     take: 200,
   });
@@ -56,6 +56,7 @@ qualityRouter.get('/queue', async (req, res) => {
     history: checks.slice(0, 60).map((c) => ({
       id: c.id,
       orderNo: c.order.orderNo,
+      businessHead: orderHeadGroup({ ...c.order, id: 0, kind: '', channel: '', status: '', stage: '', customerName: null, createdDate: '', dueDate: null, orderDiscountPct: 0, orderDiscountAmt: 0, corporateClient: null, payments: [] }),
       result: c.result,
       checkedAt: c.checkedAt,
       inspectorName: c.inspector.name,

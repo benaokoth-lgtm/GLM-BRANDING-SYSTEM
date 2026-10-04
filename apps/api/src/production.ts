@@ -2,6 +2,7 @@ import { buildLineTotal, computeOrderTotals, DEFAULT_ROLE_PERMISSIONS, orderUnit
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
+import { headGroup, primaryHead } from './orderHeads';
 
 // Shared pieces of the Production and Quality routes.
 
@@ -33,9 +34,11 @@ export async function canWorkProduction(role: string): Promise<boolean> {
 }
 
 export const orderForProductionInclude = {
-  lineItems: { include: { service: true, material: true } },
+  lineItems: { include: { service: { include: { businessHead: true } }, material: true } },
   payments: true,
   corporateClient: true,
+  dtfFilmSale: { select: { id: true } },
+  dtfArtworkJob: { select: { approvalStatus: true } },
 } as const;
 
 type OrderWithLines = {
@@ -51,9 +54,17 @@ type OrderWithLines = {
   orderDiscountPct: number;
   orderDiscountAmt: number;
   corporateClient: { name: string } | null;
-  lineItems: { itemType: string; serviceId: number | null; materialId: number | null; qty: number; unitPrice: number; discountPct: number; discountAmt: number; heatPressFee: number | null; service: { name: string; outsourced?: boolean; supplierName?: string } | null; material: { name: string } | null }[];
+  lineItems: { itemType: string; serviceId: number | null; materialId: number | null; qty: number; unitPrice: number; discountPct: number; discountAmt: number; heatPressFee: number | null; service: { name: string; outsourced?: boolean; supplierName?: string; businessHead?: { name: string } | null } | null; material: { name: string } | null }[];
   payments: { date: string; amount: number; method: string }[];
+  dtfFilmSale?: { id: number } | null;
+  dtfArtworkJob?: { approvalStatus: string } | null;
 };
+
+/** The heading an order is worked under in Production and Quality control: its business head, with DTF Printing split into film and artwork sales. */
+export function orderHeadGroup(o: OrderWithLines): string {
+  const lines = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee, service: li.service }));
+  return headGroup(primaryHead(lines), o.dtfFilmSale ? 'film' : o.dtfArtworkJob ? 'artwork' : null);
+}
 
 /** What Production and Quality need to know about an order: who it is for, what is on it, how much work, and whether it is paid for. */
 export function productionSummary(o: OrderWithLines) {
@@ -74,6 +85,7 @@ export function productionSummary(o: OrderWithLines) {
     orderNo: o.orderNo,
     customer: o.customerName || o.corporateClient?.name || 'Customer',
     channel: o.channel,
+    businessHead: orderHeadGroup(o),
     status: o.status,
     stage: o.stage,
     createdDate: o.createdDate,

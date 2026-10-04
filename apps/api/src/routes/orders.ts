@@ -6,7 +6,8 @@ import { requireAuth, requirePermission } from '../middleware/auth';
 import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
 import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
-import { WALK_IN_CLIENT, GENERAL_ORDER_HEAD, defaultBusinessHeadName } from '@glm/shared';
+import { WALK_IN_CLIENT } from '@glm/shared';
+import { orderHeads } from '../orderHeads';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
@@ -77,7 +78,7 @@ export function serializeSummary(order: FullOrder) {
     // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
     dtfKind: order.dtfFilmSale ? ('film' as const) : order.dtfArtworkJob ? ('artwork' as const) : null,
     // The lines of business this order sells (same rule as Sales by Business Head: a service's head, else a name-based default; materials are General Order).
-    businessHeads: [...new Set(order.lineItems.map((li) => (li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD)))],
+    businessHeads: orderHeads(order.lineItems),
   };
 }
 

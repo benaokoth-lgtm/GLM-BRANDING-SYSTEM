@@ -16,10 +16,10 @@ export default function Orders({ scope }: Props) {
   const [loading, setLoading] = useState(true);
   const [staffFilter, setStaffFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  // One category row: All orders, Film, Artwork, then every other line of business (Embroidery, General Order, …). Film and Artwork are the
-  // DTF Printing head split in two, so that head is not listed again. An order with lines in two heads shows under both. (Choosing one dims
-  // the module row, like any other sub-item.)
+  // One category row: All orders, then each line of business (DTF Printing, Embroidery, General Order, …). An order with lines in two heads
+  // shows under both. DTF Printing opens into its film sales and artwork sales. (Choosing one dims the module row, like any other sub-item.)
   const [category, setCategory] = useSubTab<string>('all');
+  const [dtfPart, setDtfPart] = useSubTab<'all' | 'film' | 'artwork' | 'other'>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
   // My Orders keeps three kinds of document apart: an Order (paid in full), an Invoice (still has a balance, collected as it is paid)
   // and a Quotation (an offer nobody has accepted yet).
@@ -45,16 +45,17 @@ export default function Orders({ scope }: Props) {
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
 
   const heads = (o: OrderSummary) => o.businessHeads ?? [];
-  const inCategory = (o: OrderSummary, c: string) => (c === 'all' ? true : c === 'film' || c === 'artwork' ? o.dtfKind === c : c === 'DTF Printing' ? !o.dtfKind && heads(o).includes(c) : heads(o).includes(c));
-  // (DTF Printing appears only for the odd general order that has a DTF line on it but is not a Film or Artwork job.)
-  const otherHeads = [...new Set(orders.flatMap(heads))].filter((h) => h !== 'DTF Printing' || orders.some((o) => inCategory(o, h))).sort();
-  const categories: [string, string][] = [
-    ['all', 'All orders'],
-    ['film', 'Film'],
-    ['artwork', 'Artwork'],
-    ...otherHeads.map((h): [string, string] => [h, h]),
+  const inCategory = (o: OrderSummary, c: string) => c === 'all' || heads(o).includes(c);
+  const inDtfPart = (o: OrderSummary, p: string) => (p === 'film' || p === 'artwork' ? o.dtfKind === p : p === 'other' ? !o.dtfKind : true);
+  const categories = ['all', ...[...new Set(orders.flatMap(heads))].sort((a, b) => (a === 'DTF Printing' ? -1 : b === 'DTF Printing' ? 1 : a === 'General Order' ? 1 : b === 'General Order' ? -1 : a.localeCompare(b)))];
+  const ofHead = orders.filter((o) => inCategory(o, category) && (category !== 'DTF Printing' || inDtfPart(o, dtfPart)));
+  const dtfOrders = orders.filter((o) => inCategory(o, 'DTF Printing'));
+  const dtfSplit: ['all' | 'film' | 'artwork' | 'other', string][] = [
+    ['all', 'All DTF Printing'],
+    ['film', 'Film sales'],
+    ['artwork', 'Artwork sales'],
+    ...(dtfOrders.some((o) => !o.dtfKind) ? [['other', 'Other DTF lines'] as ['other', string]] : []),
   ];
-  const ofHead = orders.filter((o) => inCategory(o, category));
   const count = (s: string) => ofHead.filter((o) => o.status === s).length;
   const invoices = ofHead.filter((o) => o.status === 'Invoice');
   const invoiceOpen = invoices.filter((o) => o.stage !== 'Completed').length;
@@ -76,14 +77,32 @@ export default function Orders({ scope }: Props) {
 
   return (
     <div>
-      <div className="seg" role="radiogroup" aria-label="Category" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
-        {categories.map(([k, label]) => (
+      <div className="seg" role="radiogroup" aria-label="Business head" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+        {categories.map((k) => (
           <label key={k} className={'seg-opt' + (category === k ? ' checked' : '')}>
-            <input type="radio" name="ordcat" checked={category === k} onChange={() => setCategory(k)} />
-            {label} ({orders.filter((o) => inCategory(o, k)).length})
+            <input
+              type="radio"
+              name="ordcat"
+              checked={category === k}
+              onChange={() => {
+                setCategory(k);
+                setDtfPart('all');
+              }}
+            />
+            {k === 'all' ? 'All orders' : k} ({orders.filter((o) => inCategory(o, k)).length})
           </label>
         ))}
       </div>
+      {category === 'DTF Printing' && (
+        <div className="seg" role="radiogroup" aria-label="DTF Printing" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+          {dtfSplit.map(([k, label]) => (
+            <label key={k} className={'seg-opt' + (dtfPart === k ? ' checked' : '')}>
+              <input type="radio" name="ordcatdtf" checked={dtfPart === k} onChange={() => setDtfPart(k)} />
+              {label} ({dtfOrders.filter((o) => inDtfPart(o, k)).length})
+            </label>
+          ))}
+        </div>
+      )}
 
       {scope === 'mine' && (
         <>

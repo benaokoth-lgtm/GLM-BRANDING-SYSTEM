@@ -49375,6 +49375,26 @@ async function buildStatements(period, only) {
   return { config, statements };
 }
 
+// apps/api/src/orderHeads.ts
+var DTF_HEAD = "DTF Printing";
+function lineHead(li) {
+  return li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
+}
+function orderHeads(lines) {
+  return [...new Set(lines.map(lineHead))];
+}
+function primaryHead(lines) {
+  if (lines.length === 0) return GENERAL_ORDER_HEAD;
+  const value = /* @__PURE__ */ new Map();
+  for (const li of lines) value.set(lineHead(li), (value.get(lineHead(li)) ?? 0) + buildLineTotal(li));
+  return [...value.entries()].sort((a2, b) => b[1] - a2[1])[0][0];
+}
+function headGroup(head, dtfKind) {
+  if (dtfKind === "film") return `${DTF_HEAD} \u2014 Film sales`;
+  if (dtfKind === "artwork") return `${DTF_HEAD} \u2014 Artwork sales`;
+  return head;
+}
+
 // apps/api/src/accounting/ledger.ts
 async function loadCtx() {
   const [accounts, heads] = await Promise.all([prisma.account.findMany(), prisma.expenseHead.findMany()]);
@@ -49683,7 +49703,7 @@ function serializeSummary(order) {
     // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
     dtfKind: order.dtfFilmSale ? "film" : order.dtfArtworkJob ? "artwork" : null,
     // The lines of business this order sells (same rule as Sales by Business Head: a service's head, else a name-based default; materials are General Order).
-    businessHeads: [...new Set(order.lineItems.map((li) => li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD))]
+    businessHeads: orderHeads(order.lineItems)
   };
 }
 function serializeDetail(order, opts = {}) {
@@ -53598,10 +53618,16 @@ async function canWorkProduction(role) {
   return p.canAccessProduction || p.canManageProduction;
 }
 var orderForProductionInclude = {
-  lineItems: { include: { service: true, material: true } },
+  lineItems: { include: { service: { include: { businessHead: true } }, material: true } },
   payments: true,
-  corporateClient: true
+  corporateClient: true,
+  dtfFilmSale: { select: { id: true } },
+  dtfArtworkJob: { select: { approvalStatus: true } }
 };
+function orderHeadGroup(o) {
+  const lines = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee, service: li.service }));
+  return headGroup(primaryHead(lines), o.dtfFilmSale ? "film" : o.dtfArtworkJob ? "artwork" : null);
+}
 function productionSummary(o) {
   const lines = o.lineItems.map((li) => ({
     itemType: li.itemType,
@@ -53620,6 +53646,7 @@ function productionSummary(o) {
     orderNo: o.orderNo,
     customer: o.customerName || o.corporateClient?.name || "Customer",
     channel: o.channel,
+    businessHead: orderHeadGroup(o),
     status: o.status,
     stage: o.stage,
     createdDate: o.createdDate,
@@ -53860,7 +53887,7 @@ qualityRouter.get("/queue", async (req, res) => {
   const hi = /* @__PURE__ */ new Date(`${to}T23:59:59.999Z`);
   const checks = await prisma.qualityCheck.findMany({
     where: { checkedAt: { gte: lo, lte: hi } },
-    include: { order: { select: { orderNo: true } }, inspector: true, task: { include: { assignee: true } } },
+    include: { order: { select: { orderNo: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } }, dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { approvalStatus: true } } } }, inspector: true, task: { include: { assignee: true } } },
     orderBy: { checkedAt: "desc" },
     take: 200
   });
@@ -53872,6 +53899,7 @@ qualityRouter.get("/queue", async (req, res) => {
     history: checks.slice(0, 60).map((c) => ({
       id: c.id,
       orderNo: c.order.orderNo,
+      businessHead: orderHeadGroup({ ...c.order, id: 0, kind: "", channel: "", status: "", stage: "", customerName: null, createdDate: "", dueDate: null, orderDiscountPct: 0, orderDiscountAmt: 0, corporateClient: null, payments: [] }),
       result: c.result,
       checkedAt: c.checkedAt,
       inspectorName: c.inspector.name,

@@ -259,6 +259,8 @@ export interface DraftLineItem {
   unitPrice: number | string;
   discountPct: number | string;
   discountAmt: number | string;
+  // Which of the two discounts the single discount box is showing (a line carries one or the other).
+  discountMode?: 'pct' | 'amt';
   heatPressFee: number | string;
   artworkAreaSqm: number | string;
   // Outsourced services, for people who can see costs: the supplier's quote for this job (per unit, VAT included) and the mark-up.

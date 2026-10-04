@@ -3,7 +3,7 @@ import { HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh, markupOf, priceFromCost
 import { useAuth } from '../state/AuthContext';
 import type { CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
 import ArtworkSizeDialog from './ArtworkSizeDialog';
-import ItemPicker from './ItemPicker';
+import ItemPicker, { loadRecent, rememberPick } from './ItemPicker';
 import type { PickChoice } from './ItemPicker';
 
 interface Props {
@@ -74,6 +74,9 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
   const [calcIdx, setCalcIdx] = useState<number | null>(null);
   const { user } = useAuth();
   const seeCosts = user?.role === 'Admin' || !!user?.permissions.canSeeCosts;
+  // Recent picks (this person's last few), and which line's list the keyboard has just asked to open.
+  const [recent, setRecent] = useState<PickChoice[]>(() => loadRecent(user?.id));
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
 
   function updateLine(idx: number, patch: Partial<DraftLineItem>) {
     const next = lineItems.slice();
@@ -123,7 +126,46 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         ...outsourcedPatch(sv, seeCosts),
       });
     }
+    rememberPick(user?.id, choice);
+    setRecent(loadRecent(user?.id));
+    // straight on to the quantity
+    setTimeout(() => {
+      const el = document.getElementById(`li-qty-${idx}`) as HTMLInputElement | null;
+      el?.focus();
+      el?.select();
+    }, 40);
   }
+
+  // A copy of the line right under it — the same item at another size or price.
+  function duplicateLine(idx: number) {
+    const copy = { ...lineItems[idx]! };
+    onChange([...lineItems.slice(0, idx + 1), copy, ...lineItems.slice(idx + 1)]);
+  }
+
+  // Enter moves to the next box on the line; Enter in the last box carries on to the next line (adding one at the end).
+  function onEnter(e: React.KeyboardEvent<HTMLElement>, idx: number) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const fields = Array.from(document.querySelectorAll<HTMLElement>(`[data-lf="${idx}"]`));
+    const next = fields[fields.indexOf(e.currentTarget) + 1];
+    if (next) {
+      next.focus();
+      (next as HTMLInputElement).select?.();
+      return;
+    }
+    if (isBlankLine(lineItems[idx]!)) return;
+    if (idx === lineItems.length - 1) addLine();
+    setOpenIdx(idx + 1);
+  }
+
+  // One discount box per line, with a % / Ksh switch: a line carries one kind of discount or the other.
+  const modeOf = (li: DraftLineItem): 'pct' | 'amt' => li.discountMode ?? (Number(li.discountAmt) > 0 && !(Number(li.discountPct) > 0) ? 'amt' : 'pct');
+  const discountOf = (li: DraftLineItem) => {
+    const v = modeOf(li) === 'amt' ? li.discountAmt : li.discountPct;
+    return typeof v === 'number' && v === 0 ? '' : v; // an untouched 0 shows as an empty box
+  };
+  const setDiscount = (idx: number, mode: 'pct' | 'amt', value: string | number) =>
+    updateLine(idx, { discountMode: mode, discountPct: mode === 'pct' ? value : 0, discountAmt: mode === 'amt' ? value : 0 });
 
   function addLine() {
     onChange([...lineItems, defaultLine(services, materials)]);
@@ -180,9 +222,20 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         const rowService = services.find((sv) => sv.id === row.serviceId);
         const usesArtworkPricing = !isMaterial && !!rowService?.usesArtworkPricing && rowService?.unit === 'sqm';
         const chargesPressingFee = !isMaterial && !!rowService?.chargesPressingFee;
-        const baseCols = '2.4fr 0.7fr 0.9fr 0.7fr 0.7fr';
-        const extraCols = (usesArtworkPricing ? ' 0.9fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
-        const cols = baseCols + extraCols + ' auto';
+        // item, qty, [artwork size], unit price, discount, [heat press fee], line total, buttons
+        const cols = '2.2fr 0.7fr' + (usesArtworkPricing ? ' 0.9fr' : '') + ' 0.9fr 1.2fr' + (chargesPressingFee ? ' 0.9fr' : '') + ' 0.9fr auto';
+        const rowTotal = isBlankLine(row)
+          ? null
+          : buildLineTotal({
+              itemType: row.itemType,
+              serviceId: row.serviceId,
+              materialId: row.materialId,
+              qty: Number(row.qty) || 0,
+              unitPrice: Number(row.unitPrice) || 0,
+              discountPct: Number(row.discountPct) || 0,
+              discountAmt: Number(row.discountAmt) || 0,
+              heatPressFee: Number(row.heatPressFee) || 0,
+            });
         const outsourced = !isMaterial && !!rowService?.outsourced;
         const quote = Number(row.supplierCost) || 0;
         const suggested = quote > 0 ? priceFromCost(quote, row.markupType ?? 'percent', Number(row.markupValue) || 0) : 0;
@@ -207,20 +260,25 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
               materials={materials}
               selected={row.serviceId != null ? { kind: 'service', id: row.serviceId } : row.materialId != null ? { kind: 'material', id: row.materialId } : null}
               onPick={(choice) => handlePick(idx, choice)}
+              recent={recent}
+              autoOpen={openIdx === idx}
+              onOpened={() => setOpenIdx(null)}
             />
           </div>
           <div className="field" style={{ margin: 0 }}>
             <label>{row.itemType === 'per-metre' ? 'Metres' : 'Qty'}</label>
-            <input className="input" value={row.qty} onChange={(e) => updateLine(idx, { qty: e.target.value })} />
+            <input id={`li-qty-${idx}`} data-lf={idx} className="input" value={row.qty} onChange={(e) => updateLine(idx, { qty: e.target.value })} onKeyDown={(e) => onEnter(e, idx)} />
           </div>
           {usesArtworkPricing && (
             <div className="field" style={{ margin: 0 }}>
               <label>Artwork size (sqm)</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 <input
+                  data-lf={idx}
                   className="input"
                   value={row.artworkAreaSqm}
                   onChange={(e) => updateLine(idx, { artworkAreaSqm: e.target.value })}
+                  onKeyDown={(e) => onEnter(e, idx)}
                   placeholder="e.g. 0.06"
                 />
                 <button
@@ -237,20 +295,30 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
           )}
           <div className="field" style={{ margin: 0 }}>
             <label>Unit price</label>
-            <input className="input" value={row.unitPrice} onChange={(e) => updateLine(idx, { unitPrice: e.target.value })} />
+            <input data-lf={idx} className="input" value={row.unitPrice} onChange={(e) => updateLine(idx, { unitPrice: e.target.value })} onKeyDown={(e) => onEnter(e, idx)} />
           </div>
           <div className="field" style={{ margin: 0 }}>
-            <label>Disc %</label>
-            <input className="input" value={row.discountPct} onChange={(e) => updateLine(idx, { discountPct: e.target.value })} />
-          </div>
-          <div className="field" style={{ margin: 0 }}>
-            <label>Disc Ksh</label>
-            <input className="input" value={row.discountAmt} onChange={(e) => updateLine(idx, { discountAmt: e.target.value })} />
+            <label>Discount</label>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <input
+                data-lf={idx}
+                className="input"
+                inputMode="decimal"
+                value={discountOf(row)}
+                placeholder="0"
+                onChange={(e) => setDiscount(idx, modeOf(row), e.target.value)}
+                onKeyDown={(e) => onEnter(e, idx)}
+              />
+              <select className="input" style={{ width: 66, flex: 'none' }} value={modeOf(row)} aria-label="Discount in percent or shillings" onChange={(e) => setDiscount(idx, e.target.value as 'pct' | 'amt', discountOf(row))}>
+                <option value="pct">%</option>
+                <option value="amt">Ksh</option>
+              </select>
+            </div>
           </div>
           {chargesPressingFee && (
             <div className="field" style={{ margin: 0 }}>
               <label>Heat press fee (Ksh/pc)</label>
-              <select className="input" value={row.heatPressFee} onChange={(e) => updateLine(idx, { heatPressFee: e.target.value })}>
+              <select data-lf={idx} className="input" value={row.heatPressFee} onChange={(e) => updateLine(idx, { heatPressFee: e.target.value })} onKeyDown={(e) => onEnter(e, idx)}>
                 <option value="">Select…</option>
                 {HEAT_PRESS_FEE_OPTIONS.map((fee) => (
                   <option key={fee} value={fee}>
@@ -260,9 +328,18 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
               </select>
             </div>
           )}
-          <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" onClick={() => removeLine(idx)}>
-            ✕
-          </button>
+          <div className="field" style={{ margin: 0 }}>
+            <label>Line total</label>
+            <div style={{ padding: '9px 2px', textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{rowTotal == null ? '—' : fmtKsh(rowTotal)}</div>
+          </div>
+          <div style={{ display: 'flex' }}>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Duplicate this line" title="Duplicate this line" disabled={isBlankLine(row)} onClick={() => duplicateLine(idx)}>
+              ⧉
+            </button>
+            <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove" title="Remove this line" onClick={() => removeLine(idx)}>
+              ✕
+            </button>
+          </div>
         </div>
         {outsourced && seeCosts && (
           <div style={{ background: 'var(--color-surface)', border: '1px solid var(--color-divider)', padding: 'var(--space-2) var(--space-3)', margin: 'var(--space-2) 0' }}>
@@ -329,7 +406,7 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         Pick a <b>service</b> (Service Price List) or an <b>item</b> (Stock Price List) — type part of the name to find it. Selling and servicing the same
         thing (e.g. printing a cap you're also selling) is two lines: the cap, then the print job. A service line with no matching item line means the client
         brought their own. For an artwork-priced service (DTF Printing, Embroidery), enter one artwork's size — the unit price is worked out for you (area ×
-        Ksh/sqm rate); the 📐 calculator gives the area from a length × width.
+        Ksh/sqm rate); the 📐 calculator gives the area from a length × width. Keyboard: Enter moves to the next box, and Enter in the last box of a line opens the next line — a whole order can be keyed without the mouse.
       </p>
       {missingArtworkArea && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>

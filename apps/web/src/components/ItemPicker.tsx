@@ -8,12 +8,33 @@ import type { CatalogMaterial, CatalogService } from '../api/models';
 
 export type PickChoice = { kind: 'service' | 'material'; id: number };
 
+// The last few things each person picked, kept in this browser, so the box opens with the items they sell most often.
+const RECENT_MAX = 8;
+const recentKey = (userId?: number) => `glm_recent_picks_${userId ?? 0}`;
+export function loadRecent(userId?: number): PickChoice[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(recentKey(userId)) ?? '[]');
+    return Array.isArray(v) ? v.filter((c) => c && (c.kind === 'service' || c.kind === 'material') && Number.isInteger(c.id)).slice(0, RECENT_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+export function rememberPick(userId: number | undefined, choice: PickChoice) {
+  try {
+    const next = [choice, ...loadRecent(userId).filter((c) => !(c.kind === choice.kind && c.id === choice.id))].slice(0, RECENT_MAX);
+    localStorage.setItem(recentKey(userId), JSON.stringify(next));
+  } catch {
+    /* remembering recent picks is a convenience only */
+  }
+}
+
 interface Option {
   kind: 'service' | 'material';
   id: number;
   name: string;
   hint: string;
   warn?: boolean;
+  recent?: boolean;
 }
 
 export default function ItemPicker({
@@ -21,11 +42,19 @@ export default function ItemPicker({
   materials,
   selected,
   onPick,
+  recent = [],
+  autoOpen = false,
+  onOpened,
 }: {
   services: CatalogService[];
   materials: CatalogMaterial[];
   selected: PickChoice | null;
   onPick: (choice: PickChoice) => void;
+  /** Shown first while nothing has been typed. */
+  recent?: PickChoice[];
+  /** Open the list as soon as this turns true (used to carry on to the next line from the keyboard). */
+  autoOpen?: boolean;
+  onOpened?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -48,12 +77,21 @@ export default function ItemPicker({
     const first = words[0];
     return first ? [...hits].sort((a, b) => Number(b.name.toLowerCase().startsWith(first)) - Number(a.name.toLowerCase().startsWith(first))) : hits;
   }, [all, query]);
+  // while nothing is typed, the person's recent picks come first
+  const recents: Option[] = query.trim() ? [] : recent.map((c) => all.find((o) => o.kind === c.kind && o.id === c.id)).filter((o): o is Option => !!o).map((o) => ({ ...o, recent: true }));
   const svc = shown.filter((o) => o.kind === 'service');
   const itm = shown.filter((o) => o.kind === 'material');
   const LIMIT = 40; // only what is on screen can be arrowed to
-  const flat = [...svc.slice(0, LIMIT), ...itm.slice(0, LIMIT)];
+  const flat = [...recents, ...svc.slice(0, LIMIT), ...itm.slice(0, LIMIT)];
 
   useEffect(() => setActive(0), [query, open]);
+  useEffect(() => {
+    if (autoOpen) {
+      setOpen(true);
+      onOpened?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpen]);
   useEffect(() => {
     if (!open) return;
     input.current?.focus();
@@ -91,7 +129,7 @@ export default function ItemPicker({
     const i = flat.indexOf(o);
     return (
       <button
-        key={o.kind + o.id}
+        key={(o.recent ? 'r' : '') + o.kind + o.id}
         type="button"
         onMouseEnter={() => setActive(i)}
         onClick={() => choose(o)}
@@ -166,6 +204,8 @@ export default function ItemPicker({
           }}
         >
           {shown.length === 0 && <div className="note" style={{ padding: '10px' }}>Nothing matches “{query}” in the service or stock price lists.</div>}
+          {recents.length > 0 && heading('Recent — what you sold last')}
+          {recents.map(row)}
           {svc.length > 0 && heading(`Services — Service Price List (${svc.length})`)}
           {svc.slice(0, LIMIT).map(row)}
           {svc.length > LIMIT && <div className="note" style={{ padding: '4px 10px' }}>…{svc.length - LIMIT} more — keep typing to narrow it down</div>}

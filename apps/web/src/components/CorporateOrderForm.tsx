@@ -29,6 +29,8 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
   const [lineItems, setLineItems] = useState<DraftLineItem[] | null>(null);
   const [orderDiscountPct, setOrderDiscountPct] = useState('0');
   const [orderDiscountAmt, setOrderDiscountAmt] = useState('0');
+  // The order-level discount is rarely used, so it stays out of the way until asked for.
+  const [showOrderDiscount, setShowOrderDiscount] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,6 +71,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
       });
       setLineItems(null);
       setSourced(false);
+      setShowOrderDiscount(false);
       setOrderDiscountPct('0');
       setOrderDiscountAmt('0');
       onCreated(created.orderNo);
@@ -125,17 +128,34 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
-        <div className="field">
-          <label>Order discount %</label>
-          <input className="input" value={orderDiscountPct} onChange={(e) => setOrderDiscountPct(e.target.value)} />
+      {showOrderDiscount || Number(orderDiscountPct) > 0 || Number(orderDiscountAmt) > 0 ? (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
+          <div className="field">
+            <label>Order discount %</label>
+            <input className="input" value={orderDiscountPct} onChange={(e) => setOrderDiscountPct(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>Order discount Ksh</label>
+            <input className="input" value={orderDiscountAmt} onChange={(e) => setOrderDiscountAmt(e.target.value)} />
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              setOrderDiscountPct('0');
+              setOrderDiscountAmt('0');
+              setShowOrderDiscount(false);
+            }}
+          >
+            Remove discount
+          </button>
+          {discountWarning && <span className="tag tag-accent">Exceeds standard discount — needs supervisor approval</span>}
         </div>
-        <div className="field">
-          <label>Order discount Ksh</label>
-          <input className="input" value={orderDiscountAmt} onChange={(e) => setOrderDiscountAmt(e.target.value)} />
-        </div>
-        {discountWarning && <span className="tag tag-accent">Exceeds standard discount — needs supervisor approval</span>}
-      </div>
+      ) : (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 'var(--space-3)' }} onClick={() => setShowOrderDiscount(true)}>
+          + Add order discount
+        </button>
+      )}
 
       {error && (
         <p className="note" style={{ color: '#a33' }}>

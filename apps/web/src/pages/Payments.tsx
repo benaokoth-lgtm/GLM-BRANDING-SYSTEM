@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
+import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
 import type { OrderSummary } from '../api/models';
 import OrderDetailDialog from '../components/OrderDetailDialog';
@@ -30,7 +31,7 @@ function presetRange(preset: Preset, today: string): { from: string; to: string 
 export default function Payments() {
   const today = todayStr();
   const initial = presetRange('last12', today);
-  const [tab, setTab] = useState<PayTab>('pending');
+  const [tab, setTab] = useSubTab<PayTab>('pending');
   const [fromDate, setFromDate] = useState(initial.from);
   const [toDate, setToDate] = useState(initial.to);
   const [orders, setOrders] = useState<OrderSummary[]>([]);

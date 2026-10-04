@@ -148,6 +148,25 @@ describe('DTF daily roll-ups and business head detail', () => {
     assert.equal((await call('lead', 'GET', `/reports/business-head-detail?head=__shared__&${day}`)).status, 200);
   });
 
+  it('the order lists keep film orders and artwork orders apart', async () => {
+    const nos = async (channel: string) => ((await call('lead', 'GET', `/orders?channel=${channel}`)).body as any[]).map((o) => o.orderNo);
+    const film = await nos('film');
+    const artwork = await nos('artwork');
+    assert.ok(film.includes(orderNos.s1) && film.includes(orderNos.s2));
+    assert.ok(!film.includes(orderNos.j1) && !film.includes(orderNos.j2));
+    assert.ok(artwork.includes(orderNos.j1) && artwork.includes(orderNos.j2));
+    assert.ok(!artwork.includes(orderNos.s1) && !artwork.includes(orderNos.s2));
+    // together they are the DTF channel, and neither is in the general list
+    const dtf = await nos('dtf');
+    for (const n of [orderNos.s1, orderNos.j1]) assert.ok(dtf.includes(n));
+    const general = await nos('general');
+    for (const n of [orderNos.s1, orderNos.j1]) assert.ok(!general.includes(n));
+    // each order says which kind it is
+    const all = (await call('lead', 'GET', '/orders')).body as any[];
+    assert.equal(all.find((o) => o.orderNo === orderNos.s1).dtfKind, 'film');
+    assert.equal(all.find((o) => o.orderNo === orderNos.j1).dtfKind, 'artwork');
+  });
+
   it('Accounts Receivable is no longer a report here', async () => {
     assert.equal((await call('lead', 'GET', '/reports/accounts-receivable')).status, 404);
   });

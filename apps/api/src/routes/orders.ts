@@ -23,6 +23,7 @@ export const orderInclude = Prisma.validator<Prisma.OrderInclude>()({
   lineItems: { include: { service: true, material: true } },
   payments: { orderBy: { id: 'asc' } },
   dtfArtworkJob: { select: { approvalStatus: true } },
+  dtfFilmSale: { select: { id: true } },
 });
 
 export type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
@@ -73,6 +74,8 @@ export function serializeSummary(order: FullOrder) {
     overdue,
     // An artwork job priced below the recommended price is on hold until a manager approves it.
     priceApproval: order.dtfArtworkJob?.approvalStatus === 'Pending' ? ('Pending' as const) : null,
+    // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
+    dtfKind: order.dtfFilmSale ? ('film' as const) : order.dtfArtworkJob ? ('artwork' as const) : null,
   };
 }
 
@@ -220,7 +223,14 @@ ordersRouter.get('/', async (req, res) => {
     where.staffId = Number(staffId);
   }
   if (status && status !== 'all') where.status = status;
-  if (channel && channel !== 'all') where.channel = channel;
+  // 'film' and 'artwork' split the DTF channel; 'general' and 'dtf' (both together) still work.
+  if (channel === 'film') {
+    where.channel = 'dtf';
+    where.dtfFilmSale = { isNot: null };
+  } else if (channel === 'artwork') {
+    where.channel = 'dtf';
+    where.dtfArtworkJob = { isNot: null };
+  } else if (channel && channel !== 'all') where.channel = channel;
 
   const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: 'desc' } });
   res.json(orders.map(serializeSummary));

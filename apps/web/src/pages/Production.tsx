@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fmtDate, fmtKsh } from '@glm/shared';
+import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { Card, DateRangeBar, Loading, Notice, Tag, money, numStyle, useLoad, useRange } from './accounting/shared';
@@ -51,7 +52,7 @@ const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-GB'
 export default function Production() {
   const queue = useLoad<Queue>('/production/queue');
   const range = useRange();
-  const [tab, setTab] = useState<'jobs' | 'productivity' | 'outsourced'>('jobs');
+  const [tab, setTab] = useSubTab<'jobs' | 'productivity' | 'outsourced'>('jobs');
   const manager = queue.data?.manager ?? false;
   const { user } = useAuth();
   const seeCosts = user?.role === 'Admin' || !!user?.permissions.canSeeCosts;

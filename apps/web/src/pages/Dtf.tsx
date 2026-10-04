@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
 import DtfDashboard from '../components/dtf/DtfDashboard';
 import DtfRolls from '../components/dtf/DtfRolls';
@@ -26,7 +27,7 @@ const MANAGER_TABS: [Tab, string][] = [
 
 export default function Dtf() {
   const [data, setData] = useState<DtfData | null>(null);
-  const [tab, setTab] = useState<Tab | null>(null);
+  const [tab, setTab] = useSubTab<Tab | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {

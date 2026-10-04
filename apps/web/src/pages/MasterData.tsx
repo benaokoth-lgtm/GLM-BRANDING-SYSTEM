@@ -43,6 +43,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canManageCommission: 'Commission: rates, team statements & payouts',
 };
 
+import { useSubTab } from '../state/SubNavContext';
 import { notifyBrandingChanged } from '../hooks/useBranding';
 import BusinessHeadsPanel from '../components/BusinessHeadsPanel';
 import type { BusinessHeadRow } from '../api/models';
@@ -51,7 +52,7 @@ const MAX_LOGO_BYTES = 1.5 * 1024 * 1024;
 
 export default function MasterData() {
   const catalog = useCatalog();
-  const [tab, setTab] = useState<MasterTab>('staff');
+  const [tab, setTab] = useSubTab<MasterTab>('staff');
   const [heads, setHeads] = useState<BusinessHeadRow[]>([]);
   const loadHeads = () => api.get<BusinessHeadRow[]>('/master-data/business-heads').then(setHeads).catch(() => setHeads([]));
   useEffect(() => {

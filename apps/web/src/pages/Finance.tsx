@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { EXPENSE_CATEGORIES, EXPENSE_METHODS, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import type { ExpenseCategory, PettyCashSource } from '@glm/shared';
+import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
 import type { BusinessHeadRow, DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesData, PettyCashData } from '../api/models';
 import DeleteReasonRow from '../components/DeleteReasonRow';
@@ -175,7 +176,7 @@ function ExpenseCaptureForm({
 export default function Finance() {
   const today = todayStr();
   const initial = presetRange('month', today);
-  const [tab, setTab] = useState<FinanceTab>('expenses');
+  const [tab, setTab] = useSubTab<FinanceTab>('expenses');
   const [fromDate, setFromDate] = useState(initial.from);
   const [toDate, setToDate] = useState(initial.to);
   const [expenses, setExpenses] = useState<ExpensesData | null>(null);

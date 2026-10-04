@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import type { CatalogMaterial, StockRequisitionRow, StockTakeRow } from '../api/models';
+import { useSubTab } from '../state/SubNavContext';
 import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
 import ImportCostCalculator from '../components/ImportCostCalculator';
@@ -44,7 +45,7 @@ const reqTotal = (r: StockRequisitionRow) => r.lines.reduce((a, l) => a + (l.est
 export default function Stock() {
   const { user } = useAuth();
   const { materials, reload: reloadCatalog } = useCatalog();
-  const [tab, setTab] = useState<StockTab>('levels');
+  const [tab, setTab] = useSubTab<StockTab>('levels');
   const [requisitions, setRequisitions] = useState<StockRequisitionRow[]>([]);
   const [stockTakes, setStockTakes] = useState<StockTakeRow[]>([]);
   const [lastCosts, setLastCosts] = useState<Record<number, number>>({});

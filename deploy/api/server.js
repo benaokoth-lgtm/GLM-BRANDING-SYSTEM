@@ -49643,7 +49643,8 @@ var orderInclude = import_client2.Prisma.validator()({
   corporateClient: true,
   lineItems: { include: { service: true, material: true } },
   payments: { orderBy: { id: "asc" } },
-  dtfArtworkJob: { select: { approvalStatus: true } }
+  dtfArtworkJob: { select: { approvalStatus: true } },
+  dtfFilmSale: { select: { id: true } }
 });
 function toLineItemInput(li) {
   return {
@@ -49678,7 +49679,9 @@ function serializeSummary(order) {
     totals,
     overdue,
     // An artwork job priced below the recommended price is on hold until a manager approves it.
-    priceApproval: order.dtfArtworkJob?.approvalStatus === "Pending" ? "Pending" : null
+    priceApproval: order.dtfArtworkJob?.approvalStatus === "Pending" ? "Pending" : null,
+    // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
+    dtfKind: order.dtfFilmSale ? "film" : order.dtfArtworkJob ? "artwork" : null
   };
 }
 function serializeDetail(order, opts = {}) {
@@ -49780,7 +49783,13 @@ ordersRouter.get("/", async (req, res) => {
     where.staffId = Number(staffId);
   }
   if (status && status !== "all") where.status = status;
-  if (channel && channel !== "all") where.channel = channel;
+  if (channel === "film") {
+    where.channel = "dtf";
+    where.dtfFilmSale = { isNot: null };
+  } else if (channel === "artwork") {
+    where.channel = "dtf";
+    where.dtfArtworkJob = { isNot: null };
+  } else if (channel && channel !== "all") where.channel = channel;
   const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: "desc" } });
   res.json(orders.map(serializeSummary));
 });

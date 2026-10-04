@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
+import { useModuleHome, useSubNav } from '../state/SubNavContext';
 import { useRange } from './accounting/shared';
 import { BalanceSheetTab, CashFlowTab, LedgerTab, ProfitLossTab, TrialBalanceTab } from './accounting/StatementsTabs';
 import { PayablesTab, ReceivablesTab } from './accounting/AgingTabs';
@@ -51,10 +52,14 @@ export default function Accounting() {
     }
   });
   const tab: TabId = tabs.some((t) => t.id === picked) ? (picked as TabId) : (tabs[0]?.id ?? 'mpesa');
+  // Choosing a tab dims the module row; clicking the module itself returns to the first tab.
+  const subNav = useSubNav();
+  useModuleHome(() => setPicked(null));
   // One date range shared by the period reports, so switching tabs keeps the days you picked.
   const range = useRange();
 
   function choose(id: TabId) {
+    subNav.mark();
     setPicked(id);
     try {
       localStorage.setItem(TAB_KEY, id);

@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { OrderSummary, StaffUser } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
 import OrderDetailDialog from '../components/OrderDetailDialog';
+import { useSubTab } from '../state/SubNavContext';
 
 interface Props {
   scope: 'mine' | 'all';
@@ -15,13 +16,14 @@ export default function Orders({ scope }: Props) {
   const [loading, setLoading] = useState(true);
   const [staffFilter, setStaffFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [channelFilter, setChannelFilter] = useState<'all' | 'general' | 'dtf'>('all');
+  // Film orders and artwork jobs are separate lists. (Choosing one dims the module row, like any other sub-item.)
+  const [channelFilter, setChannelFilter] = useSubTab<'all' | 'general' | 'film' | 'artwork'>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
   // My Orders keeps three kinds of document apart: an Order (paid in full), an Invoice (still has a balance, collected as it is paid)
   // and a Quotation (an offer nobody has accepted yet).
-  const [kind, setKind] = useState<'Order' | 'Invoice' | 'Quote'>('Order');
+  const [kind, setKind] = useSubTab<'Order' | 'Invoice' | 'Quote'>('Order');
   // An invoice stays an invoice once it is paid in full: it is tracked through production to completion.
-  const [invoiceView, setInvoiceView] = useState<'all' | 'open' | 'done'>('all');
+  const [invoiceView, setInvoiceView] = useSubTab<'all' | 'open' | 'done'>('all');
 
   function load() {
     setLoading(true);
@@ -62,19 +64,20 @@ export default function Orders({ scope }: Props) {
 
   return (
     <div>
-      <div className="seg" role="radiogroup" style={{ marginBottom: 'var(--space-4)', maxWidth: 360 }}>
-        <label className={'seg-opt' + (channelFilter === 'all' ? ' checked' : '')}>
-          <input type="radio" name="ordchan" checked={channelFilter === 'all'} onChange={() => setChannelFilter('all')} />
-          All orders
-        </label>
-        <label className={'seg-opt' + (channelFilter === 'general' ? ' checked' : '')}>
-          <input type="radio" name="ordchan" checked={channelFilter === 'general'} onChange={() => setChannelFilter('general')} />
-          General
-        </label>
-        <label className={'seg-opt' + (channelFilter === 'dtf' ? ' checked' : '')}>
-          <input type="radio" name="ordchan" checked={channelFilter === 'dtf'} onChange={() => setChannelFilter('dtf')} />
-          Film &amp; Artwork
-        </label>
+      <div className="seg" role="radiogroup" style={{ marginBottom: 'var(--space-4)', maxWidth: 520 }}>
+        {(
+          [
+            ['all', 'All orders'],
+            ['general', 'General'],
+            ['film', 'Film'],
+            ['artwork', 'Artwork'],
+          ] as ['all' | 'general' | 'film' | 'artwork', string][]
+        ).map(([k, label]) => (
+          <label key={k} className={'seg-opt' + (channelFilter === k ? ' checked' : '')}>
+            <input type="radio" name="ordchan" checked={channelFilter === k} onChange={() => setChannelFilter(k)} />
+            {label}
+          </label>
+        ))}
       </div>
 
       {scope === 'mine' && (
@@ -177,7 +180,7 @@ export default function Orders({ scope }: Props) {
                   {row.priceApproval === 'Pending' && <div><span className="tag tag-outline">Awaiting price approval</span></div>}
                 </td>
                 <td className="text-muted">{fmtDate(row.createdDate)}</td>
-                <td>{row.kind === 'corporate' ? 'Corporate' : row.channel === 'dtf' ? 'Film/Artwork' : 'Walk-in'}</td>
+                <td>{row.kind === 'corporate' ? 'Corporate' : row.dtfKind === 'film' ? 'Film' : row.dtfKind === 'artwork' ? 'Artwork' : row.channel === 'dtf' ? 'Film/Artwork' : 'Walk-in'}</td>
                 <td>{row.kind === 'corporate' ? row.corporateClient?.name ?? '—' : row.customerName ?? '—'}</td>
                 <td>{row.staff.name}</td>
                 <td>

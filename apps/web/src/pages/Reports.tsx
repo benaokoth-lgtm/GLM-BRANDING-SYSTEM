@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
+import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
 import type { EmbroideryProfitabilityData, OrderSummary, SalesByBusinessHeadData, SalesByCategoryData } from '../api/models';
 import OrderDetailDialog from '../components/OrderDetailDialog';
@@ -24,7 +25,7 @@ function presetRange(preset: Preset, today: string, current: { from: string; to:
 
 export default function Reports() {
   const today = todayStr();
-  const [tab, setTab] = useState<ReportTab>('sales');
+  const [tab, setTab] = useSubTab<ReportTab>('sales');
   const [preset, setPreset] = useState<Preset>('today');
   const [fromDate, setFromDate] = useState(today);
   const [toDate, setToDate] = useState(today);

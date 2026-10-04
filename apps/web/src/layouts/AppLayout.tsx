@@ -51,9 +51,12 @@ function buildTabs(user: CurrentUser): [string, string][] {
 }
 
 import { useBranding } from '../hooks/useBranding';
+import { SubNavProvider, useSubNav } from '../state/SubNavContext';
 
-export default function AppLayout() {
+function AppLayoutInner() {
   const branding = useBranding();
+  const subNav = useSubNav();
+  const [overModules, setOverModules] = useState(false);
   const { user, logout, clearMustChangePin } = useAuth();
   const [changingPin, setChangingPin] = useState(false);
   const tabs = user ? buildTabs(user) : [];
@@ -80,11 +83,21 @@ export default function AppLayout() {
         </div>
       </nav>
 
-      <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-4) var(--space-6) 0', flexWrap: 'wrap' }}>
+      {/* The modules. While someone is working in one of a module's sub-items this row is dimmed — still visible and clickable, full strength
+          under the mouse — and clicking a module brings it back and returns that module to its starting view. */}
+      <div
+        className="no-print"
+        onMouseEnter={() => setOverModules(true)}
+        onMouseLeave={() => setOverModules(false)}
+        onFocus={() => setOverModules(true)}
+        onBlur={() => setOverModules(false)}
+        style={{ display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-4) var(--space-6) 0', flexWrap: 'wrap', opacity: subNav.dim && !overModules ? 0.5 : 1, transition: 'opacity 0.2s ease' }}
+      >
         {tabs.map(([path, label]) => (
           <NavLink
             key={path}
             to={path}
+            onClick={subNav.goHome}
             className={({ isActive }) => 'btn blueprint ' + (isActive ? 'btn-primary' : 'btn-secondary')}
           >
             <i className="corner tl"></i>
@@ -101,5 +114,13 @@ export default function AppLayout() {
       </main>
       {(changingPin || user?.mustChangePin) && <ChangePinDialog forced={!!user?.mustChangePin} onClose={() => setChangingPin(false)} onChanged={clearMustChangePin} />}
     </div>
+  );
+}
+
+export default function AppLayout() {
+  return (
+    <SubNavProvider>
+      <AppLayoutInner />
+    </SubNavProvider>
   );
 }

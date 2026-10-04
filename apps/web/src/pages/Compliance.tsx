@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { EMPLOYEE_TYPES, PAYROLL_PAYMENT_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import type { EmployeeType, PayrollPaymentSource } from '@glm/shared';
+import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
 import type { DeletableRecordType, DeletionRequest, PayrollData, VatData } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
@@ -36,7 +37,7 @@ export default function Compliance() {
   const today = todayStr();
   const initial = presetRange('month', today);
   const { staff } = useCatalog();
-  const [tab, setTab] = useState<ComplianceTab>('vat');
+  const [tab, setTab] = useSubTab<ComplianceTab>('vat');
   const [fromDate, setFromDate] = useState(initial.from);
   const [toDate, setToDate] = useState(initial.to);
   const [vat, setVat] = useState<VatData | null>(null);

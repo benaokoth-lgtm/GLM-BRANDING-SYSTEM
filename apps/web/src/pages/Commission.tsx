@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { EXPENSE_METHODS, bandsProblem, fmtDate, fmtKsh, fmtNum } from '@glm/shared';
 import type { Band } from '@glm/shared';
 import { api } from '../api/client';
+import { useSubTab } from '../state/SubNavContext';
 import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from './accounting/shared';
@@ -650,7 +651,7 @@ function RatesTab() {
 export default function Commission() {
   const { user } = useAuth();
   const manager = user?.role === 'Admin' || !!user?.permissions.canManageCommission;
-  const [tab, setTab] = useState<Tab>(manager ? 'team' : 'mine');
+  const [tab, setTab] = useSubTab<Tab>(manager ? 'team' : 'mine');
   const [period, setPeriod] = useState(thisMonth());
 
   const tabs: [Tab, string][] = [['mine', 'My commission']];

@@ -67,6 +67,8 @@ export interface OrderSummary {
   overdue: boolean;
   /** An artwork job priced below the recommended price waits for a manager's approval. */
   priceApproval?: 'Pending' | null;
+  /** For Film/Artwork orders: which of the two it is. */
+  dtfKind?: 'film' | 'artwork' | null;
 }
 
 export interface OrderLineItemView {

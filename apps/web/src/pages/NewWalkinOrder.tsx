@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { computeOrderTotals, exceedsDiscountCeiling, fmtKsh } from '@glm/shared';
 import type { CompanySettings, DraftLineItem, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
-import LineItemsEditor, { makeDefaultLine } from '../components/LineItemsEditor';
+import LineItemsEditor, { isBlankLine, makeDefaultLine } from '../components/LineItemsEditor';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printWalkinReceipt } from '../utils/printTicket';
@@ -38,7 +38,8 @@ export default function NewWalkinOrder() {
 
   const items = lineItems ?? (services.length && materials.length ? [makeDefaultLine(services, materials)] : []);
 
-  const normalized = items.map((li) => ({
+  // A line with nothing picked is left out.
+  const normalized = items.filter((li) => !isBlankLine(li)).map((li) => ({
     itemType: li.itemType,
     serviceId: li.serviceId != null ? Number(li.serviceId) : null,
     materialId: li.materialId,
@@ -56,7 +57,7 @@ export default function NewWalkinOrder() {
   const payProblem = paymentTiming === 'onAcceptance' ? paymentProblem(paymentRows, totals.grandTotal) : null;
 
   async function submit() {
-    if (!customerName.trim() || !staffId || payProblem) return;
+    if (!customerName.trim() || !staffId || payProblem || normalized.length === 0) return;
     setSubmitting(true);
     setError(null);
     // Open the popup synchronously (before any await) so browser popup
@@ -175,7 +176,7 @@ export default function NewWalkinOrder() {
           type="button"
           className="btn btn-primary blueprint"
           onClick={submit}
-          disabled={submitting || !customerName.trim() || !!payProblem}
+          disabled={submitting || !customerName.trim() || !!payProblem || normalized.length === 0}
         >
           <i className="corner tl"></i>
           <i className="corner tr"></i>

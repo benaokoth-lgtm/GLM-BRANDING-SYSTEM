@@ -3,6 +3,8 @@ import { HEAT_PRESS_FEE_OPTIONS, buildLineTotal, fmtKsh, markupOf, priceFromCost
 import { useAuth } from '../state/AuthContext';
 import type { CatalogMaterial, CatalogService, DraftLineItem } from '../api/models';
 import ArtworkSizeDialog from './ArtworkSizeDialog';
+import ItemPicker from './ItemPicker';
+import type { PickChoice } from './ItemPicker';
 
 interface Props {
   lineItems: DraftLineItem[];
@@ -11,24 +13,26 @@ interface Props {
   onChange: (items: DraftLineItem[]) => void;
 }
 
-// A line is either a material sale (Cap, Polo Shirt, canvas, ...) or a
-// service fee (DTF Printing, Embroidery, Large Format Printing, ...) — never
-// both. Selling and servicing the same physical item is two separate line
-// items (a material line, then a service line), not one combined row — so
-// new lines default to a material sale, the natural first step.
-function defaultLine(services: CatalogService[], materials: CatalogMaterial[]): DraftLineItem {
-  const mt = materials[0];
+// A line is an item sold from the Stock Price List or a service from the Service Price List — never both. Selling and servicing the
+// same physical item is two lines. A new line starts empty: pick what is being sold from the searchable list. A line with nothing
+// picked is left out when the order is saved (see isBlankLine).
+function defaultLine(_services: CatalogService[], _materials: CatalogMaterial[]): DraftLineItem {
   return {
     itemType: 'material',
     serviceId: null,
-    materialId: mt?.id ?? null,
+    materialId: null,
     qty: 1,
-    unitPrice: mt?.price ?? 0,
+    unitPrice: '',
     discountPct: 0,
     discountAmt: 0,
     heatPressFee: '',
     artworkAreaSqm: '',
   };
+}
+
+/** True while nothing has been picked for the line. */
+export function isBlankLine(li: DraftLineItem): boolean {
+  return li.serviceId == null && li.materialId == null;
 }
 
 export function makeDefaultLine(services: CatalogService[], materials: CatalogMaterial[]): DraftLineItem {
@@ -101,24 +105,24 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
     onChange(next);
   }
 
-  function handleTypeChange(idx: number, itemType: DraftLineItem['itemType']) {
-    if (itemType === 'material') {
-      const mt = materials.find((m) => m.id === lineItems[idx].materialId) ?? materials[0];
-      updateLine(idx, { itemType, serviceId: null, materialId: mt?.id ?? null, unitPrice: mt?.price ?? 0, artworkAreaSqm: '', ...outsourcedPatch(undefined, seeCosts) });
+  // Picking from the list decides what kind of line this is: an item from stock, a service, or (when the service is sold by the
+  // metre) a per-metre service. Anything left over from a previous pick — artwork size, heat press fee, a supplier quote — is cleared.
+  function handlePick(idx: number, choice: PickChoice) {
+    if (choice.kind === 'material') {
+      const mt = materials.find((m) => m.id === choice.id);
+      updateLine(idx, { itemType: 'material', serviceId: null, materialId: choice.id, unitPrice: mt?.price ?? 0, artworkAreaSqm: '', heatPressFee: '', ...outsourcedPatch(undefined, seeCosts) });
     } else {
-      const sv = services.find((s) => s.id === lineItems[idx].serviceId) ?? services[0];
-      updateLine(idx, { itemType, materialId: null, serviceId: sv?.id ?? null, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '', ...outsourcedPatch(sv, seeCosts) });
+      const sv = services.find((s) => s.id === choice.id);
+      updateLine(idx, {
+        itemType: sv?.unit === 'metre' ? 'per-metre' : 'service',
+        materialId: null,
+        serviceId: choice.id,
+        unitPrice: initialUnitPriceFor(sv),
+        artworkAreaSqm: '',
+        heatPressFee: '',
+        ...outsourcedPatch(sv, seeCosts),
+      });
     }
-  }
-
-  function handleServiceChange(idx: number, serviceId: number) {
-    const sv = services.find((s) => s.id === serviceId);
-    updateLine(idx, { serviceId, unitPrice: initialUnitPriceFor(sv), artworkAreaSqm: '', ...outsourcedPatch(sv, seeCosts) });
-  }
-
-  function handleMaterialChange(idx: number, materialId: number) {
-    const mt = materials.find((m) => m.id === materialId);
-    updateLine(idx, { materialId, unitPrice: mt?.price ?? 0 });
   }
 
   function addLine() {
@@ -176,7 +180,7 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         const rowService = services.find((sv) => sv.id === row.serviceId);
         const usesArtworkPricing = !isMaterial && !!rowService?.usesArtworkPricing && rowService?.unit === 'sqm';
         const chargesPressingFee = !isMaterial && !!rowService?.chargesPressingFee;
-        const baseCols = '1.3fr 1.3fr 0.7fr 0.9fr 0.7fr 0.7fr';
+        const baseCols = '2.4fr 0.7fr 0.9fr 0.7fr 0.7fr';
         const extraCols = (usesArtworkPricing ? ' 0.9fr' : '') + (chargesPressingFee ? ' 0.9fr' : '');
         const cols = baseCols + extraCols + ' auto';
         const outsourced = !isMaterial && !!rowService?.outsourced;
@@ -197,36 +201,14 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
           }}
         >
           <div className="field" style={{ margin: 0 }}>
-            <label>Type</label>
-            <select className="input" value={row.itemType} onChange={(e) => handleTypeChange(idx, e.target.value as DraftLineItem['itemType'])}>
-              <option value="material">Material</option>
-              <option value="service">Service</option>
-              <option value="per-metre">Per-metre service</option>
-            </select>
+            <label>Item or service</label>
+            <ItemPicker
+              services={services}
+              materials={materials}
+              selected={row.serviceId != null ? { kind: 'service', id: row.serviceId } : row.materialId != null ? { kind: 'material', id: row.materialId } : null}
+              onPick={(choice) => handlePick(idx, choice)}
+            />
           </div>
-          {isMaterial ? (
-            <div className="field" style={{ margin: 0 }}>
-              <label>Material</label>
-              <select className="input" value={row.materialId ?? ''} onChange={(e) => handleMaterialChange(idx, Number(e.target.value))}>
-                {materials.map((mt) => (
-                  <option key={mt.id} value={mt.id}>
-                    {mt.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="field" style={{ margin: 0 }}>
-              <label>Service</label>
-              <select className="input" value={row.serviceId ?? ''} onChange={(e) => handleServiceChange(idx, Number(e.target.value))}>
-                {services.map((sv) => (
-                  <option key={sv.id} value={sv.id}>
-                    {sv.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
           <div className="field" style={{ margin: 0 }}>
             <label>{row.itemType === 'per-metre' ? 'Metres' : 'Qty'}</label>
             <input className="input" value={row.qty} onChange={(e) => updateLine(idx, { qty: e.target.value })} />
@@ -338,12 +320,16 @@ export default function LineItemsEditor({ lineItems, services, materials, onChan
         </button>
         <div style={{ textAlign: 'right', fontFamily: 'var(--font-heading)' }}>Subtotal: {fmtKsh(subtotal)}</div>
       </div>
+      {lineItems.every(isBlankLine) && (
+        <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+          <span className="tag tag-accent">Nothing picked yet</span> — search the service price list and the stock price list in "Item or service" above.
+        </p>
+      )}
       <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-        Selling and servicing the same item (e.g. printing a cap you're also selling) is two lines: a Material line
-        for the cap, then a Service line for the print job. A Service line with no matching Material line above it
-        means the client brought their own item. For an artwork-priced service (DTF Printing, Embroidery), enter one
-        artwork's size — unit price is computed for you (area × Ksh/sqm rate). Use the 📐 calculator to work out
-        the area from a length × width.
+        Pick a <b>service</b> (Service Price List) or an <b>item</b> (Stock Price List) — type part of the name to find it. Selling and servicing the same
+        thing (e.g. printing a cap you're also selling) is two lines: the cap, then the print job. A service line with no matching item line means the client
+        brought their own. For an artwork-priced service (DTF Printing, Embroidery), enter one artwork's size — the unit price is worked out for you (area ×
+        Ksh/sqm rate); the 📐 calculator gives the area from a length × width.
       </p>
       {missingArtworkArea && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>

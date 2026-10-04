@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { computeOrderTotals, exceedsDiscountCeiling, fmtKsh } from '@glm/shared';
 import type { DraftLineItem } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
-import LineItemsEditor, { makeDefaultLine } from '../components/LineItemsEditor';
+import LineItemsEditor, { isBlankLine, makeDefaultLine } from '../components/LineItemsEditor';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { costPayload } from '../utils/lineCosts';
@@ -38,7 +38,8 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
   const effectiveClientId = corporateClientId ?? corporateClients[0]?.id ?? null;
   const items = lineItems ?? (services.length && materials.length ? [makeDefaultLine(services, materials)] : []);
 
-  const normalized = items.map((li) => ({
+  // A line with nothing picked is left out.
+  const normalized = items.filter((li) => !isBlankLine(li)).map((li) => ({
     itemType: li.itemType,
     serviceId: li.serviceId != null ? Number(li.serviceId) : null,
     materialId: li.materialId,
@@ -54,7 +55,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
   const discountWarning = exceedsDiscountCeiling({ lineItems: normalized, orderDiscountPct: Number(orderDiscountPct) || 0, orderDiscountAmt: Number(orderDiscountAmt) || 0 }, maxDiscountPct);
 
   async function submit() {
-    if (!effectiveClientId || !staffId) return;
+    if (!effectiveClientId || !staffId || normalized.length === 0) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -153,7 +154,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
         }}
       >
         <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>{kind === 'quote' ? 'Quote total' : 'Invoice total'}: {fmtKsh(totals.grandTotal)}</div>
-        <button type="button" className="btn btn-primary blueprint" onClick={submit} disabled={submitting || !effectiveClientId}>
+        <button type="button" className="btn btn-primary blueprint" onClick={submit} disabled={submitting || !effectiveClientId || normalized.length === 0}>
           <i className="corner tl"></i>
           <i className="corner tr"></i>
           <i className="corner bl"></i>

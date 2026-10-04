@@ -159,10 +159,10 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
             <thead>
               <tr>
                 <th>Order</th>
+                <th>Date</th>
                 <th>Customer</th>
                 <th>Items</th>
                 <th style={numStyle}>Units</th>
-                <th>Captured</th>
                 <th>Payment</th>
                 <th style={{ width: 340 }}>Assign</th>
               </tr>
@@ -180,12 +180,12 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                   <td>
                     <strong>{o.orderNo}</strong> {o.channel === 'dtf' && <Tag>DTF</Tag>} {o.outsourced && <Tag>Outsourced</Tag>}
                   </td>
+                  <td className="text-muted">{fmtDate(o.createdDate)}</td>
                   <td>{o.customer}</td>
                   <td className="text-muted" style={{ fontSize: 12 }}>
                     {itemsText(o.items)}
                   </td>
                   <td style={numStyle}>{o.units}</td>
-                  <td className="text-muted">{fmtDate(o.createdDate)}</td>
                   <td>{o.balanceDue > 0 ? <Tag tone="bad">owes {fmtKsh(o.balanceDue)}</Tag> : <Tag tone="good">paid</Tag>}</td>
                   <td>
                     {(o.outsourced || supplierOpen === o.orderId) && (
@@ -234,12 +234,12 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
           <thead>
             <tr>
               <th>Order</th>
+              <th>Since</th>
               <th>Customer</th>
               <th>Items</th>
               <th style={numStyle}>Units</th>
               {data.manager && <th>Assigned to</th>}
               <th>Status</th>
-              <th>Since</th>
               <th style={{ width: data.manager ? 360 : 200 }}></th>
             </tr>
           </thead>
@@ -256,6 +256,7 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                 <td>
                   <strong>{t.orderNo}</strong>
                 </td>
+                <td className="text-muted">{when(t.startedAt ?? t.assignedAt)}</td>
                 <td>{t.customer}</td>
                 <td className="text-muted" style={{ fontSize: 12 }}>
                   {itemsText(t.items)}
@@ -266,7 +267,6 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                 <td>
                   <Tag tone={t.status === 'In Progress' ? 'good' : 'neutral'}>{t.assigneeId == null ? 'At supplier' : t.status}</Tag> {t.isRework && <Tag tone="bad">rework</Tag>}
                 </td>
-                <td className="text-muted">{when(t.startedAt ?? t.assignedAt)}</td>
                 <td>
                   {finishing === t.id ? (
                     <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>

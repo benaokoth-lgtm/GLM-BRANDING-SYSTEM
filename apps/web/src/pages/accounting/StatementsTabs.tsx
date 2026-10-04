@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { AsOfBar, Card, DateRangeBar, Loading, Tag, money, numStyle, printPage, useLoad, ymd } from './shared';
 import type { Range } from './shared';
@@ -56,12 +56,73 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
 
 const vsPrior = (pct: number | null) => (pct === null ? 'No prior data' : `${pct >= 0 ? '+' : ''}${pct}% vs prior period`);
 
+/** The transactions behind one Profit & Loss line, for the period on screen — every posting to that account, with where it came from. */
+function AccountTransactions({ accountId, range, kind }: { accountId: number; range: Range; kind: 'Income' | 'Expense' }) {
+  const { data, error, loading } = useLoad<LedgerData>(`/accounting/ledger?accountId=${accountId}&from=${range.from}&to=${range.to}`);
+  if (!data) return <Loading loading={loading} error={error} />;
+  // What each posting adds to the P&L line: income grows with credits, an expense with debits.
+  const amount = (r: { debit: number; credit: number }) => (kind === 'Income' ? r.credit - r.debit : r.debit - r.credit);
+  const total = data.rows.reduce((a, r) => a + amount(r), 0);
+  return (
+    <div style={{ padding: 'var(--space-2) var(--space-3) var(--space-3)', background: 'var(--color-surface)', borderLeft: '3px solid var(--color-accent)' }}>
+      <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
+        {data.account.code} {data.account.name} — {data.rows.length} transaction{data.rows.length === 1 ? '' : 's'}, {fmtDate(range.from)} to {fmtDate(range.to)}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Source</th>
+              <th>Reference</th>
+              <th>Detail</th>
+              <th style={numStyle}>Debit</th>
+              <th style={numStyle}>Credit</th>
+              <th style={numStyle}>{kind === 'Income' ? 'Income' : 'Expense'} (Ksh)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="text-muted">
+                  No postings to this account in the period.
+                </td>
+              </tr>
+            )}
+            {data.rows.map((r, i) => (
+              <tr key={i}>
+                <td className="text-muted">{fmtDate(r.date)}</td>
+                <td>{r.source}</td>
+                <td className="text-muted">{r.ref}</td>
+                <td className="text-muted">{r.memo}</td>
+                <td style={numStyle}>{money(r.debit)}</td>
+                <td style={numStyle}>{money(r.credit)}</td>
+                <td style={numStyle}>{money(amount(r))}</td>
+              </tr>
+            ))}
+            {data.rows.length > 0 && (
+              <tr style={{ fontWeight: 700, borderTop: '2px solid var(--color-divider)' }}>
+                <td colSpan={4}>Total for the period</td>
+                <td style={numStyle}>{money(data.rows.reduce((a, r) => a + r.debit, 0))}</td>
+                <td style={numStyle}>{money(data.rows.reduce((a, r) => a + r.credit, 0))}</td>
+                <td style={numStyle}>{money(total)}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export function ProfitLossTab({ range }: { range: Range }) {
   const { data, error, loading } = useLoad<PlData>(`/accounting/profit-loss?from=${range.from}&to=${range.to}`);
   const [byMonth, setByMonth] = useState(false);
   const showMonths = byMonth && !!data && data.months.length > 1 && data.months.length <= 13;
+  // Click an account to open the transactions behind its figure (click again to close).
+  const [openAccount, setOpenAccount] = useState<number | null>(null);
 
-  const section = (title: string, s: PlData['income'], months: string[]) => (
+  const section = (title: string, s: PlData['income'], months: string[], kind: 'Income' | 'Expense') => (
     <>
       <tr>
         <th colSpan={2 + (showMonths ? months.length : 0)} style={{ textAlign: 'left', paddingTop: 'var(--space-3)' }}>
@@ -76,13 +137,35 @@ export function ProfitLossTab({ range }: { range: Range }) {
         </tr>
       )}
       {s.rows.map((r) => (
-        <tr key={r.id}>
-          <td>
-            <span className="text-muted">{r.code}</span> {r.name}
-          </td>
-          {showMonths && r.byMonth.map((v, i) => <td key={i} style={numStyle}>{money(v)}</td>)}
-          <td style={numStyle}>{money(r.amount)}</td>
-        </tr>
+        <Fragment key={r.id}>
+          <tr
+            onClick={() => setOpenAccount(openAccount === r.id ? null : r.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setOpenAccount(openAccount === r.id ? null : r.id);
+              }
+            }}
+            tabIndex={0}
+            role="button"
+            aria-expanded={openAccount === r.id}
+            title="Show the transactions behind this figure"
+            style={{ cursor: 'pointer', background: openAccount === r.id ? 'var(--color-surface)' : undefined }}
+          >
+            <td>
+              <span className="text-muted">{openAccount === r.id ? '▾' : '▸'}</span> <span className="text-muted">{r.code}</span> {r.name}
+            </td>
+            {showMonths && r.byMonth.map((v, i) => <td key={i} style={numStyle}>{money(v)}</td>)}
+            <td style={numStyle}>{money(r.amount)}</td>
+          </tr>
+          {openAccount === r.id && (
+            <tr>
+              <td colSpan={2 + (showMonths ? months.length : 0)} style={{ padding: 0 }}>
+                <AccountTransactions accountId={r.id} range={range} kind={kind} />
+              </td>
+            </tr>
+          )}
+        </Fragment>
       ))}
       <tr style={{ fontWeight: 700 }}>
         <td>Total {title.toLowerCase()}</td>
@@ -136,14 +219,14 @@ export function ProfitLossTab({ range }: { range: Range }) {
                 </tr>
               </thead>
               <tbody>
-                {section('Income', data.income, data.months)}
-                {section('Cost of sales', data.costOfSales, data.months)}
+                {section('Income', data.income, data.months, 'Income')}
+                {section('Cost of sales', data.costOfSales, data.months, 'Expense')}
                 <tr style={{ fontFamily: 'var(--font-heading)', fontSize: 17 }}>
                   <td>Gross profit</td>
                   {showMonths && data.grossByMonth.map((v, i) => <td key={i} style={numStyle}>{money(v)}</td>)}
                   <td style={numStyle}>{money(data.grossProfit)}</td>
                 </tr>
-                {section('Operating expenses', data.expenses, data.months)}
+                {section('Operating expenses', data.expenses, data.months, 'Expense')}
                 <tr style={{ fontFamily: 'var(--font-heading)', fontSize: 18 }}>
                   <td>{data.netProfit >= 0 ? 'Net profit' : 'Net loss'}</td>
                   {showMonths && data.netByMonth.map((v, i) => <td key={i} style={numStyle}>{money(v)}</td>)}
@@ -152,6 +235,7 @@ export function ProfitLossTab({ range }: { range: Range }) {
               </tbody>
             </table>
           </div>
+          <p className="note no-print">Click any account to see the transactions behind its figure.</p>
           <p className="note">
             Cost of sales is what was actually bought — stock purchases and materials expenses — not a percentage of income.
             {data.grossMargin != null && <> Gross margin {data.grossMargin}%{data.margin != null ? `, net margin ${data.margin}%` : ''}.</>}

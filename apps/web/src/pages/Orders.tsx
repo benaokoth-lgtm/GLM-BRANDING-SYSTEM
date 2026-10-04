@@ -16,10 +16,10 @@ export default function Orders({ scope }: Props) {
   const [loading, setLoading] = useState(true);
   const [staffFilter, setStaffFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  // Film orders and artwork jobs are separate lists. (Choosing one dims the module row, like any other sub-item.)
-  const [channelFilter, setChannelFilter] = useSubTab<'all' | 'general' | 'film' | 'artwork'>('all');
-  // Orders by line of business (DTF Printing, Embroidery, …). An order with lines in two heads shows under both.
-  const [headFilter, setHeadFilter] = useSubTab<string>('all');
+  // One category row: All orders, Film, Artwork, then every other line of business (Embroidery, General Order, …). Film and Artwork are the
+  // DTF Printing head split in two, so that head is not listed again. An order with lines in two heads shows under both. (Choosing one dims
+  // the module row, like any other sub-item.)
+  const [category, setCategory] = useSubTab<string>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
   // My Orders keeps three kinds of document apart: an Order (paid in full), an Invoice (still has a balance, collected as it is paid)
   // and a Quotation (an offer nobody has accepted yet).
@@ -30,7 +30,6 @@ export default function Orders({ scope }: Props) {
   function load() {
     setLoading(true);
     const params = new URLSearchParams();
-    if (channelFilter !== 'all') params.set('channel', channelFilter);
     if (scope === 'all') {
       if (staffFilter !== 'all') params.set('staffId', staffFilter);
       if (statusFilter !== 'all') params.set('status', statusFilter);
@@ -41,14 +40,21 @@ export default function Orders({ scope }: Props) {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [scope, staffFilter, statusFilter, channelFilter]);
+  useEffect(load, [scope, staffFilter, statusFilter]);
 
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
 
-  const inHead = (o: OrderSummary) => headFilter === 'all' || (o.businessHeads ?? []).includes(headFilter);
-  const headNames = [...new Set(orders.flatMap((o) => o.businessHeads ?? []))].sort();
-  const headCount = (h: string) => orders.filter((o) => (o.businessHeads ?? []).includes(h)).length;
-  const ofHead = orders.filter(inHead);
+  const heads = (o: OrderSummary) => o.businessHeads ?? [];
+  const inCategory = (o: OrderSummary, c: string) => (c === 'all' ? true : c === 'film' || c === 'artwork' ? o.dtfKind === c : c === 'DTF Printing' ? !o.dtfKind && heads(o).includes(c) : heads(o).includes(c));
+  // (DTF Printing appears only for the odd general order that has a DTF line on it but is not a Film or Artwork job.)
+  const otherHeads = [...new Set(orders.flatMap(heads))].filter((h) => h !== 'DTF Printing' || orders.some((o) => inCategory(o, h))).sort();
+  const categories: [string, string][] = [
+    ['all', 'All orders'],
+    ['film', 'Film'],
+    ['artwork', 'Artwork'],
+    ...otherHeads.map((h): [string, string] => [h, h]),
+  ];
+  const ofHead = orders.filter((o) => inCategory(o, category));
   const count = (s: string) => ofHead.filter((o) => o.status === s).length;
   const invoices = ofHead.filter((o) => o.status === 'Invoice');
   const invoiceOpen = invoices.filter((o) => o.stage !== 'Completed').length;
@@ -70,32 +76,14 @@ export default function Orders({ scope }: Props) {
 
   return (
     <div>
-      <div className="seg" role="radiogroup" style={{ marginBottom: 'var(--space-4)', maxWidth: 520 }}>
-        {(
-          [
-            ['all', 'All orders'],
-            ['general', 'General'],
-            ['film', 'Film'],
-            ['artwork', 'Artwork'],
-          ] as ['all' | 'general' | 'film' | 'artwork', string][]
-        ).map(([k, label]) => (
-          <label key={k} className={'seg-opt' + (channelFilter === k ? ' checked' : '')}>
-            <input type="radio" name="ordchan" checked={channelFilter === k} onChange={() => setChannelFilter(k)} />
-            {label}
+      <div className="seg" role="radiogroup" aria-label="Category" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
+        {categories.map(([k, label]) => (
+          <label key={k} className={'seg-opt' + (category === k ? ' checked' : '')}>
+            <input type="radio" name="ordcat" checked={category === k} onChange={() => setCategory(k)} />
+            {label} ({orders.filter((o) => inCategory(o, k)).length})
           </label>
         ))}
       </div>
-
-      {headNames.length > 0 && (
-        <div className="seg" role="radiogroup" aria-label="Business head" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
-          {([['all', `All business heads (${orders.length})`], ...headNames.map((h) => [h, `${h} (${headCount(h)})`])] as [string, string][]).map(([k, label]) => (
-            <label key={k} className={'seg-opt' + (headFilter === k ? ' checked' : '')}>
-              <input type="radio" name="ordhead" checked={headFilter === k} onChange={() => setHeadFilter(k)} />
-              {label}
-            </label>
-          ))}
-        </div>
-      )}
 
       {scope === 'mine' && (
         <>

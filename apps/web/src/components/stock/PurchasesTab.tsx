@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../../api/client';
-import type { CatalogMaterial, PurchaseExpenseOption, PurchaseRow, RequisitionAwaitingPurchase } from '../../api/models';
+import type { BusinessHeadRow, CatalogMaterial, PurchaseExpenseOption, PurchaseRow, RequisitionAwaitingPurchase } from '../../api/models';
 import { useAuth } from '../../state/AuthContext';
 
 // Stock → Purchases. A purchase order (PO-0001…) has any number of lines — a material, the quantity bought and the real unit price from
@@ -14,6 +14,8 @@ interface Line {
   materialId: number | null;
   qty: string;
   unitCost: string;
+  /** Business head: undefined = the material's usual head, '' = deliberately none, otherwise the head's id. */
+  head?: string;
 }
 const blankLine = (): Line => ({ materialId: null, qty: '', unitCost: '' });
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
@@ -38,6 +40,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
   const [purchases, setPurchases] = useState<PurchaseRow[]>([]);
   const [awaiting, setAwaiting] = useState<RequisitionAwaitingPurchase[]>([]);
   const [expenses, setExpenses] = useState<PurchaseExpenseOption[]>([]);
+  const [heads, setHeads] = useState<BusinessHeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -59,8 +62,10 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
       api.get<PurchaseRow[]>('/stock/purchases'),
       api.get<RequisitionAwaitingPurchase[]>('/stock/requisitions/awaiting-purchase'),
       api.get<PurchaseExpenseOption[]>('/stock/available-expenses-for-purchase'),
+      api.get<BusinessHeadRow[]>('/master-data/business-heads'),
     ])
-      .then(([p, a, e]) => {
+      .then(([p, a, e, h]) => {
+        setHeads(h);
         setPurchases(p);
         setAwaiting(a);
         setExpenses(e);
@@ -92,7 +97,13 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
   const expectedKnown = !!requisition && requisition.lines.some((l) => l.estUnitCost != null);
 
   async function capture() {
-    const payloadLines = lines.map((l) => ({ materialId: l.materialId ?? materials[0]?.id ?? null, qty: num(l.qty), unitCost: num(l.unitCost) }));
+    const payloadLines = lines.map((l) => ({
+      materialId: l.materialId ?? materials[0]?.id ?? null,
+      qty: num(l.qty),
+      unitCost: num(l.unitCost),
+      // left out = the material's usual business head; null = deliberately not tagged
+      ...(l.head === undefined ? {} : { businessHeadId: l.head === '' ? null : Number(l.head) }),
+    }));
     if (payloadLines.some((l) => !l.materialId)) return setError('Choose a material for every line');
     if (payloadLines.some((l) => l.qty <= 0)) return setError('Every line needs a quantity greater than 0');
     if (payloadLines.some((l) => l.unitCost <= 0)) return setError('Every line needs the unit price from the invoice');
@@ -157,6 +168,19 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
     }
   }
 
+  const usualHead = (materialId: number | null) => String(materials.find((m) => m.id === (materialId ?? materials[0]?.id))?.businessHeadId ?? '');
+  const headOf = (l: Line) => (l.head === undefined ? usualHead(l.materialId) : l.head);
+
+  async function retagLine(lineId: number, value: string) {
+    setError(null);
+    try {
+      await api.patch(`/stock/purchases/lines/${lineId}/business-head`, { businessHeadId: value ? Number(value) : null });
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to tag the line');
+    }
+  }
+
   const setLine = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, n) => (n === i ? { ...l, ...patch } : l)));
 
   return (
@@ -203,6 +227,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
                 <th style={{ width: 110 }}>Qty bought</th>
                 <th style={{ width: 130 }}>Unit price (Ksh)</th>
                 <th style={{ width: 120, textAlign: 'right' }}>Line total</th>
+                <th style={{ width: 170 }}>Business head</th>
                 {requisition && <th style={{ width: 150 }}>Requisitioned</th>}
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -228,6 +253,16 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
                       <input className="input" inputMode="decimal" value={l.unitCost} onChange={(e) => setLine(i, { unitCost: e.target.value })} placeholder="0" />
                     </td>
                     <td style={{ textAlign: 'right' }}>{fmtKsh(num(l.qty) * num(l.unitCost))}</td>
+                    <td>
+                      <select className="input" value={headOf(l)} onChange={(e) => setLine(i, { head: e.target.value })}>
+                        <option value="">Shared — not tagged</option>
+                        {heads.filter((h) => h.active || String(h.id) === headOf(l)).map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     {requisition && (
                       <td className="text-muted" style={{ fontSize: 12 }}>
                         {rl ? `${rl.qty}${rl.estUnitCost != null ? ` @ ${rl.estUnitCost}` : ''}` : <span className="tag tag-outline">not requisitioned</span>}
@@ -310,7 +345,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
                 <th>PO</th>
                 <th>Date</th>
                 <th>Supplier / invoice</th>
-                <th>Items</th>
+                <th>Items &amp; business head</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
                 <th>Status</th>
                 <th>Captured by</th>
@@ -335,6 +370,16 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
                         <div key={l.id} style={{ fontSize: 12 }}>
                           {l.materialName} × {l.qty} @ {l.unitCost}
                           {l.receivedQty != null && l.receivedQty !== l.qty && <b style={{ color: '#a33' }}> — received {l.receivedQty}</b>}
+                          {p.status !== 'Rejected' && (
+                            <select className="input no-print" style={{ marginLeft: 6, width: 150, padding: '2px 4px', fontSize: 11 }} value={l.businessHeadId ?? ''} onChange={(e) => retagLine(l.id, e.target.value)} aria-label="Business head">
+                              <option value="">— not tagged</option>
+                              {heads.filter((h) => h.active || h.id === l.businessHeadId).map((h) => (
+                                <option key={h.id} value={h.id}>
+                                  {h.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       ))}
                     </td>

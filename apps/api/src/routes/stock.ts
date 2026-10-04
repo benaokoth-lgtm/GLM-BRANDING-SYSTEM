@@ -195,7 +195,7 @@ stockRouter.post('/takes', async (req, res) => {
 // entering the quantity of each line that physically arrived. Receiving is the only thing that ever increases stock from a purchase.
 // A different person must receive it than captured it. Purchases raised against an approved requisition are reconciled against that
 // requisition (see /reconciliation below): quantities and prices asked for, bought, and received.
-const lineWithRequisition = { include: { material: true }, orderBy: { id: 'asc' as const } };
+const lineWithRequisition = { include: { material: true, businessHead: true }, orderBy: { id: 'asc' as const } };
 
 type PurchaseWithRefs = Awaited<ReturnType<typeof loadPurchases>>[number];
 async function loadPurchases(where?: Prisma.PurchaseWhereInput, take = 300) {
@@ -226,6 +226,8 @@ function serializePurchase(p: PurchaseWithRefs) {
       unitCost: l.unitCost,
       totalCost: l.totalCost,
       receivedQty: l.receivedQty,
+      businessHeadId: l.businessHeadId,
+      businessHeadName: l.businessHead?.name ?? null,
       requisitionedQty: p.requisition?.lines.find((rl) => rl.materialId === l.materialId)?.qty ?? null,
     })),
     acceptedByName: p.acceptedByName,
@@ -290,7 +292,8 @@ stockRouter.get('/available-expenses-for-purchase', async (_req, res) => {
   res.json(expenses.map((e) => ({ id: e.id, date: e.date, invoiceNumber: e.invoiceNumber, amount: e.amount, note: e.note })));
 });
 
-const purchaseLineSchema = z.object({ materialId: z.number().int(), qty: z.number().positive(), unitCost: z.number().positive('Every line needs the unit price from the invoice') });
+// businessHeadId: left out = the material's usual head; null = deliberately not tagged to one.
+const purchaseLineSchema = z.object({ materialId: z.number().int(), qty: z.number().positive(), unitCost: z.number().positive('Every line needs the unit price from the invoice'), businessHeadId: z.number().int().nullable().optional() });
 const purchaseBase = {
   requisitionId: z.number().int().optional(),
   supplier: z.string().max(200).optional(),
@@ -309,9 +312,9 @@ stockRouter.post('/purchases', async (req, res) => {
   await ensurePurchasesOnce();
 
   // The same material twice on one purchase is one line: quantities add, and the price is the weighted average.
-  const merged = new Map<number, { qty: number; total: number }>();
+  const merged = new Map<number, { qty: number; total: number; head: number | null | undefined }>();
   for (const l of data.lines) {
-    const m = merged.get(l.materialId) ?? { qty: 0, total: 0 };
+    const m = merged.get(l.materialId) ?? { qty: 0, total: 0, head: l.businessHeadId };
     m.qty += l.qty;
     m.total += l.qty * l.unitCost;
     merged.set(l.materialId, m);
@@ -319,7 +322,19 @@ stockRouter.post('/purchases', async (req, res) => {
   const materials = await prisma.material.findMany({ where: { id: { in: [...merged.keys()] } } });
   if (materials.length !== merged.size) return res.status(400).json({ error: 'A chosen material was not found' });
   const nameOf = new Map(materials.map((m) => [m.id, m.name]));
-  const lines = [...merged.entries()].map(([materialId, m]) => ({ materialId, qty: m.qty, totalCost: Math.round(m.total * 100) / 100, unitCost: Math.round((m.total / m.qty) * 10000) / 10000 }));
+  const headIds = [...new Set([...merged.values()].map((m) => m.head).filter((h): h is number => h != null))];
+  if (headIds.length && (await prisma.businessHead.count({ where: { id: { in: headIds } } })) !== headIds.length) return res.status(400).json({ error: 'A chosen business head does not exist' });
+  const materialHead = new Map(materials.map((m) => [m.id, m.businessHeadId]));
+  const lines = [...merged.entries()].map(([materialId, m]) => ({
+    materialId,
+    qty: m.qty,
+    totalCost: Math.round(m.total * 100) / 100,
+    unitCost: Math.round((m.total / m.qty) * 10000) / 10000,
+    businessHeadId: m.head === undefined ? materialHead.get(materialId) ?? null : m.head,
+  }));
+  // The invoice's expense takes the head when every line is for the same one (the cost report counts the lines, not the expense).
+  const heads = new Set(lines.map((l) => l.businessHeadId));
+  const expenseHead = heads.size === 1 ? [...heads][0] ?? null : null;
   const total = Math.round(lines.reduce((a, l) => a + l.totalCost, 0) * 100) / 100;
 
   if (data.requisitionId) {
@@ -374,6 +389,7 @@ stockRouter.post('/purchases', async (req, res) => {
               amount: total,
               invoiceNumber,
               supplier: data.supplier ?? '',
+              businessHeadId: expenseHead,
               capturedByName: req.user!.name,
             },
           });
@@ -449,6 +465,16 @@ stockRouter.post('/purchases/:id/reject', receivers, async (req, res) => {
   }
   await prisma.purchase.update({ where: { id: purchase.id }, data: { status: 'Rejected', rejectReason: parsed.data.reason, acceptedByName: req.user!.name, acceptedAt: new Date() } });
   res.json(serializePurchase((await loadPurchases({ id: purchase.id }, 1))[0]!));
+});
+
+// Tagging a purchase line to a line of business (or clearing it) changes no quantity or cost.
+stockRouter.patch('/purchases/lines/:id/business-head', async (req, res) => {
+  const parsed = z.object({ businessHeadId: z.number().int().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose a business head, or none' });
+  if (parsed.data.businessHeadId != null && !(await prisma.businessHead.findUnique({ where: { id: parsed.data.businessHeadId } }))) return res.status(400).json({ error: 'That business head does not exist' });
+  const line = await prisma.purchaseLine.update({ where: { id: Number(req.params.id) }, data: { businessHeadId: parsed.data.businessHeadId } }).catch(() => null);
+  if (!line) return res.status(404).json({ error: 'Purchase line not found' });
+  res.json(line);
 });
 
 // ── Purchases reconciliation ─────────────────────────────────────────────
@@ -562,7 +588,7 @@ stockRouter.post('/imports', async (req, res) => {
   const byLowerName = new Map(existingMaterials.map((m) => [m.name.toLowerCase(), m]));
 
   const created = await prisma.$transaction(async (tx) => {
-    const resolved: { materialId: number; materialName: string; qty: number; unitCost: number; totalCost: number }[] = [];
+    const resolved: { materialId: number; materialName: string; qty: number; unitCost: number; totalCost: number; businessHeadId: number | null }[] = [];
     for (const line of lines) {
       const name = line.description.trim();
       let material = byLowerName.get(name.toLowerCase());
@@ -570,7 +596,7 @@ stockRouter.post('/imports', async (req, res) => {
         material = await tx.material.create({ data: { name, price: Math.round(line.unitCost) } });
         byLowerName.set(name.toLowerCase(), material);
       }
-      resolved.push({ materialId: material.id, materialName: material.name, qty: line.qty, unitCost: line.unitCost, totalCost: line.totalCost });
+      resolved.push({ materialId: material.id, materialName: material.name, qty: line.qty, unitCost: line.unitCost, totalCost: line.totalCost, businessHeadId: material.businessHeadId });
     }
     const existing = await tx.purchase.findMany({ where: { poRef: { not: null } }, select: { poRef: true } });
     const poRef = formatPurchaseOrderRef(nextPurchaseOrderNumber(existing.map((p) => p.poRef)));
@@ -582,7 +608,7 @@ stockRouter.post('/imports', async (req, res) => {
         invoiceNumber: reference || null,
         totalCost: Math.round(resolved.reduce((a, l) => a + l.totalCost, 0) * 100) / 100,
         capturedByName: req.user!.name,
-        lines: { create: resolved.map(({ materialId, qty, unitCost, totalCost }) => ({ materialId, qty, unitCost, totalCost })) },
+        lines: { create: resolved.map(({ materialId, qty, unitCost, totalCost, businessHeadId }) => ({ materialId, qty, unitCost, totalCost, businessHeadId })) },
       },
     });
     return resolved.map((l) => ({ ...l, purchaseId: purchase.id, poRef }));

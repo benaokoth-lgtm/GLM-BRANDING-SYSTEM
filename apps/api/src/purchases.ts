@@ -12,14 +12,14 @@ export async function nextPoNumber(): Promise<number> {
 }
 
 export async function ensurePurchases(): Promise<void> {
-  const rows = await prisma.purchase.findMany({ include: { lines: true }, orderBy: { id: 'asc' } });
+  const rows = await prisma.purchase.findMany({ include: { lines: true, material: true }, orderBy: { id: 'asc' } });
   let next = await nextPoNumber();
   for (const p of rows) {
     if (!p.poRef) await prisma.purchase.update({ where: { id: p.id }, data: { poRef: formatPurchaseOrderRef(next++) } });
     if (p.lines.length === 0 && p.materialId) {
       // Stock was increased by the whole quantity when an old purchase was accepted, so that is what was "received".
       await prisma.purchaseLine.create({
-        data: { purchaseId: p.id, materialId: p.materialId, qty: p.qty, unitCost: p.unitCost, totalCost: p.totalCost, receivedQty: p.status === 'Accepted' ? p.qty : null },
+        data: { purchaseId: p.id, materialId: p.materialId, qty: p.qty, unitCost: p.unitCost, totalCost: p.totalCost, receivedQty: p.status === 'Accepted' ? p.qty : null, businessHeadId: p.material?.businessHeadId ?? null },
       });
     }
   }

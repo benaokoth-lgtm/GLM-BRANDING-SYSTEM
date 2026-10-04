@@ -260,7 +260,7 @@ export default function Reports() {
           <i className="corner bl"></i>
           <i className="corner br"></i>
           <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
-            Sales by business head
+            Sales, costs and margin by business head
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table className="table">
@@ -269,7 +269,11 @@ export default function Reports() {
                   <th>Business head</th>
                   <th style={{ textAlign: 'right' }}>Orders</th>
                   <th style={{ textAlign: 'right' }}>Sales (excl. VAT)</th>
-                  <th style={{ textAlign: 'right' }}>Share</th>
+                  <th style={{ textAlign: 'right' }}>Purchases</th>
+                  <th style={{ textAlign: 'right' }}>Other expenses</th>
+                  <th style={{ textAlign: 'right' }}>Total costs</th>
+                  <th style={{ textAlign: 'right' }}>Margin</th>
+                  <th style={{ textAlign: 'right' }}>Margin %</th>
                 </tr>
               </thead>
               <tbody>
@@ -279,33 +283,72 @@ export default function Reports() {
                       <td>
                         <strong>{h.name}</strong>
                         {!h.active && <span className="tag tag-neutral" style={{ marginLeft: 8 }}>not in use</span>}
+                        <div className="note" style={{ margin: 0 }}>{h.sharePct.toFixed(1)}% of sales</div>
                       </td>
                       <td style={{ textAlign: 'right' }}>{h.orders}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtKsh(h.sales)}</td>
-                      <td style={{ textAlign: 'right' }}>{h.sharePct.toFixed(1)}%</td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(h.costs.purchases)}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(h.costs.expenses)}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(h.costs.total)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: h.margin < 0 ? '#a33' : undefined }}>{fmtKsh(h.margin)}</td>
+                      <td style={{ textAlign: 'right', color: h.margin < 0 ? '#a33' : undefined }}>{h.marginPct == null ? '—' : `${h.marginPct.toFixed(1)}%`}</td>
                     </tr>
                     {h.services.map((s) => (
                       <tr key={h.name + s.name}>
-                        <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>{s.name}</td>
-                        <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{s.qty}</td>
-                        <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(s.sales)}</td>
+                        <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>{s.name} × {s.qty}</td>
                         <td></td>
+                        <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(s.sales)}</td>
+                        <td colSpan={5}></td>
+                      </tr>
+                    ))}
+                    {h.costs.expenseCategories.map((c) => (
+                      <tr key={h.name + 'x' + c.category}>
+                        <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>expense: {c.category}</td>
+                        <td colSpan={3}></td>
+                        <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(c.amount)}</td>
+                        <td colSpan={3}></td>
                       </tr>
                     ))}
                   </Fragment>
+                ))}
+                <tr>
+                  <td>
+                    <strong>Shared (not tagged to a head)</strong>
+                    <div className="note" style={{ margin: 0 }}>costs nobody tagged — overheads such as rent, wages and utilities</div>
+                  </td>
+                  <td></td>
+                  <td></td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(heads.unassignedCosts.purchases)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(heads.unassignedCosts.expenses)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(heads.unassignedCosts.total)}</td>
+                  <td></td>
+                  <td></td>
+                </tr>
+                {heads.unassignedCosts.expenseCategories.map((c) => (
+                  <tr key={'u' + c.category}>
+                    <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>expense: {c.category}</td>
+                    <td colSpan={3}></td>
+                    <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(c.amount)}</td>
+                    <td colSpan={3}></td>
+                  </tr>
                 ))}
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--color-divider)' }}>
                   <td>Total</td>
                   <td></td>
                   <td style={{ textAlign: 'right' }}>{fmtKsh(heads.totalSales)}</td>
                   <td></td>
+                  <td></td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(heads.totalCosts)}</td>
+                  <td style={{ textAlign: 'right', color: heads.totalMargin < 0 ? '#a33' : undefined }}>{fmtKsh(heads.totalMargin)}</td>
+                  <td style={{ textAlign: 'right' }}>{heads.totalSales > 0 ? `${((heads.totalMargin / heads.totalSales) * 100).toFixed(1)}%` : '—'}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Sales raised in the period (orders and invoices, not quotations), after discounts and with the 16% VAT taken out — before any credit notes. A service’s business head is set in
-            Master Data → Service Price List; materials sold over the counter count as General Order.
+            Sales are raised in the period (orders and invoices, not quotations), after discounts and with the 16% VAT taken out, before credit notes. Costs are what was bought for each head
+            (purchase orders, tagged line by line) plus the expenses tagged to it, as recorded — VAT included, since input VAT is not reclaimed. An expense that backs a purchase order is counted once,
+            through the purchase. Tag a service, a material, a purchase line or an expense to a head to move its figures; whatever is untagged stays under Shared. Rejected purchases cost nothing.
           </p>
         </div>
       )}

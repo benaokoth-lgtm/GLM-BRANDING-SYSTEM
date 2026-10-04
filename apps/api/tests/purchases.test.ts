@@ -223,4 +223,65 @@ describe('purchases and reconciliation', () => {
     assert.equal((await call('admin', 'DELETE', `/master-data/business-heads/${full.id}`)).status, 400); // still has services
     assert.equal((await call('admin', 'DELETE', `/master-data/business-heads/${added.body.id}`)).status, 204);
   });
+
+  it('purchases and expenses are tagged to business heads, and the report charges costs to them', async () => {
+    const range = 'from=2033-05-01&to=2033-05-31';
+    const day = '2033-05-10';
+    const heads = (await call('admin', 'GET', '/master-data/business-heads')).body;
+    const id = (n: string) => heads.find((h: any) => h.name === n).id as number;
+    const report = async () => (await call('boss', 'GET', `/reports/sales-by-business-head?${range}`)).body;
+    const head = (r: any, n: string) => r.heads.find((h: any) => h.name === n);
+
+    await prisma.role.create({ data: { name: 'Finance (heads cost test)', canAccessFinance: true } });
+    const fin = await prisma.user.create({ data: { name: 'fin (heads cost test)', role: 'Finance (heads cost test)', pinHash: 'x' } });
+    tokens.fin = signToken({ id: fin.id, name: fin.name, role: 'Finance (heads cost test)' });
+
+    // a material's usual head is set in Master Data; a purchase line starts with it and can be overridden
+    const film = await prisma.material.create({ data: { name: 'DTF film (heads cost test)', price: 100, businessHeadId: id('DTF Printing') } });
+    const thread = await prisma.material.create({ data: { name: 'Thread (heads cost test)', price: 10 } });
+    assert.equal((await call('boss', 'PUT', `/master-data/materials/${thread.id}`, { businessHeadId: id('Embroidery') })).status, 200);
+    assert.equal((await call('buyer', 'PUT', `/master-data/materials/${thread.id}`, { businessHeadId: id('Embroidery') })).status, 403);
+
+    const po = await call('buyer', 'POST', '/stock/purchases', {
+      mode: 'new', invoiceNumber: 'HC-1', date: day,
+      lines: [{ materialId: film.id, qty: 10, unitCost: 500 }, { materialId: thread.id, qty: 20, unitCost: 50, businessHeadId: null }],
+    });
+    assert.equal(po.status, 201, JSON.stringify(po.body));
+    const filmLine = po.body.lines.find((l: any) => l.materialId === film.id);
+    const threadLine = po.body.lines.find((l: any) => l.materialId === thread.id);
+    assert.equal(filmLine.businessHeadName, 'DTF Printing'); // the material's usual head
+    assert.equal(threadLine.businessHeadName, null); // deliberately not tagged
+
+    // expenses carry a head too
+    const tagged = await call('fin', 'POST', '/finance/expenses', { date: day, category: 'Transport', amount: 2000, method: 'Bank Transfer', businessHeadId: id('UV Printing') });
+    assert.equal(tagged.status, 201, JSON.stringify(tagged.body));
+    const loose = await call('fin', 'POST', '/finance/expenses', { date: day, category: 'Utilities', amount: 700, method: 'Bank Transfer' });
+    assert.equal(loose.body.businessHeadId, null);
+    assert.equal((await call('fin', 'POST', '/finance/expenses', { date: day, category: 'Utilities', amount: 5, method: 'Bank Transfer', businessHeadId: 999999 })).status, 400);
+
+    // a rejected purchase costs nothing
+    const bad = await call('buyer', 'POST', '/stock/purchases', { mode: 'new', invoiceNumber: 'HC-2', date: day, lines: [{ materialId: film.id, qty: 1, unitCost: 9999 }] });
+    assert.equal((await call('boss', 'POST', `/stock/purchases/${bad.body.id}/reject`, { reason: 'wrong item' })).status, 200);
+
+    let r = await report();
+    // the invoice's own expense (6,000) is not counted a second time on top of the purchase lines
+    assert.equal(head(r, 'DTF Printing').costs.purchases, 5000);
+    assert.equal(head(r, 'DTF Printing').margin, -5000); // no sales in that month
+    assert.equal(head(r, 'DTF Printing').marginPct, null);
+    assert.equal(head(r, 'UV Printing').costs.expenses, 2000);
+    assert.deepEqual(head(r, 'UV Printing').costs.expenseCategories, [{ category: 'Transport', amount: 2000 }]);
+    assert.equal(r.unassignedCosts.purchases, 1000); // the thread line
+    assert.equal(r.unassignedCosts.expenses, 700);
+    assert.equal(r.totalCosts, 5000 + 2000 + 1000 + 700);
+    assert.equal(r.totalMargin, -8700);
+
+    // retagging moves the cost without changing any amount
+    assert.equal((await call('fin', 'PATCH', `/finance/expenses/${loose.body.id}/business-head`, { businessHeadId: id('Laser Engraving') })).status, 200);
+    assert.equal((await call('buyer', 'PATCH', `/stock/purchases/lines/${threadLine.id}/business-head`, { businessHeadId: id('Embroidery') })).status, 200);
+    r = await report();
+    assert.equal(head(r, 'Laser Engraving').costs.expenses, 700);
+    assert.equal(head(r, 'Embroidery').costs.purchases, 1000);
+    assert.equal(r.unassignedCosts.total, 0);
+    assert.equal(r.totalCosts, 8700);
+  });
 });

@@ -48659,13 +48659,13 @@ async function nextPoNumber() {
   return nextPurchaseOrderNumber(rows.map((r) => r.poRef));
 }
 async function ensurePurchases() {
-  const rows = await prisma.purchase.findMany({ include: { lines: true }, orderBy: { id: "asc" } });
+  const rows = await prisma.purchase.findMany({ include: { lines: true, material: true }, orderBy: { id: "asc" } });
   let next = await nextPoNumber();
   for (const p of rows) {
     if (!p.poRef) await prisma.purchase.update({ where: { id: p.id }, data: { poRef: formatPurchaseOrderRef(next++) } });
     if (p.lines.length === 0 && p.materialId) {
       await prisma.purchaseLine.create({
-        data: { purchaseId: p.id, materialId: p.materialId, qty: p.qty, unitCost: p.unitCost, totalCost: p.totalCost, receivedQty: p.status === "Accepted" ? p.qty : null }
+        data: { purchaseId: p.id, materialId: p.materialId, qty: p.qty, unitCost: p.unitCost, totalCost: p.totalCost, receivedQty: p.status === "Accepted" ? p.qty : null, businessHeadId: p.material?.businessHeadId ?? null }
       });
     }
   }
@@ -49008,7 +49008,7 @@ masterDataRouter.delete("/business-heads/:id", requireRole("Admin"), async (req,
 masterDataRouter.get("/materials", async (_req, res) => {
   res.json(await prisma.material.findMany({ orderBy: { name: "asc" } }));
 });
-var materialSchema = external_exports.object({ name: external_exports.string().min(1), price: external_exports.number().positive() });
+var materialSchema = external_exports.object({ name: external_exports.string().min(1), price: external_exports.number().positive(), businessHeadId: external_exports.number().int().nullable().optional() });
 masterDataRouter.post("/materials", requireRole("Admin"), async (req, res) => {
   const parsed = materialSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
@@ -49016,7 +49016,9 @@ masterDataRouter.post("/materials", requireRole("Admin"), async (req, res) => {
 });
 var materialUpdateSchema = external_exports.object({
   price: external_exports.number().positive().optional(),
-  reorderLevel: external_exports.number().min(0).optional()
+  reorderLevel: external_exports.number().min(0).optional(),
+  // The line of business this material is normally bought for (purchases of it are tagged to it by default).
+  businessHeadId: external_exports.number().int().nullable().optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/materials/:id", requirePermission("canApproveStock"), async (req, res) => {
   const parsed = materialUpdateSchema.safeParse(req.body);
@@ -50113,6 +50115,8 @@ ordersRouter.post("/:id/supplier-bills", async (req, res) => {
       invoiceNumber: d.invoiceNumber || null,
       note: d.note ? d.note : `${order.orderNo} \u2014 outsourced job${d.paidNow > 0 && !fullyPaid ? " (deposit paid, balance owing)" : ""}`,
       orderId: order.id,
+      // The supplier's bill is a cost of the line of business the contracted-out service belongs to.
+      businessHeadId: order.lineItems.find((l) => l.service?.outsourced)?.service?.businessHeadId ?? null,
       capturedByName: req.user.name,
       // Paid in full: a plain paid expense. Otherwise it is a bill on credit, with the deposit (if any) recorded as a payment against it.
       paid: fullyPaid,
@@ -50463,7 +50467,9 @@ var expenseSchema = external_exports.object({
   method: external_exports.enum(EXPENSE_METHODS).default(PETTY_CASH_METHOD),
   paid: external_exports.boolean().default(true),
   supplier: external_exports.string().max(120).optional(),
-  dueDate: dateStr.optional().nullable()
+  dueDate: dateStr.optional().nullable(),
+  // The line of business this cost belongs to (see Master Data → Business Heads); blank = shared, not tagged to one.
+  businessHeadId: external_exports.number().int().nullable().optional()
 });
 financeRouter.post("/expenses", async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
@@ -50471,6 +50477,7 @@ financeRouter.post("/expenses", async (req, res) => {
   const d = parsed.data;
   if (!(await expenseHeadNames()).includes(d.category)) return res.status(400).json({ error: "Choose one of the expense heads (add new ones under Accounting \u2192 Chart of Accounts)" });
   if (!d.paid && !(d.supplier || "").trim()) return res.status(400).json({ error: "A supplier is required for an expense bought on credit" });
+  if (d.businessHeadId != null && !await prisma.businessHead.findUnique({ where: { id: d.businessHeadId } })) return res.status(400).json({ error: "That business head does not exist" });
   if (d.paid && d.method === PETTY_CASH_METHOD) {
     const check = await pettyCashShortfall(d.amount, d.date);
     if (check.short) return res.status(400).json({ error: shortMessage(check.available, d.amount) });
@@ -50486,10 +50493,19 @@ financeRouter.post("/expenses", async (req, res) => {
       paid: d.paid,
       supplier: (d.supplier || "").trim(),
       dueDate: d.paid ? null : d.dueDate ?? null,
+      businessHeadId: d.businessHeadId ?? null,
       capturedByName: req.user.name
     }
   });
   res.status(201).json(expense);
+});
+financeRouter.patch("/expenses/:id/business-head", async (req, res) => {
+  const parsed = external_exports.object({ businessHeadId: external_exports.number().int().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose a business head, or none" });
+  if (parsed.data.businessHeadId != null && !await prisma.businessHead.findUnique({ where: { id: parsed.data.businessHeadId } })) return res.status(400).json({ error: "That business head does not exist" });
+  const updated = await prisma.expense.update({ where: { id: Number(req.params.id) }, data: { businessHeadId: parsed.data.businessHeadId } }).catch(() => null);
+  if (!updated) return res.status(404).json({ error: "Expense not found" });
+  res.json(updated);
 });
 var expensePaymentSchema = external_exports.object({ date: dateStr, amount: external_exports.number().positive(), method: external_exports.enum(EXPENSE_METHODS), note: external_exports.string().max(200).optional() });
 financeRouter.post("/expenses/:id/payments", async (req, res) => {
@@ -50876,7 +50892,7 @@ stockRouter.post("/takes", async (req, res) => {
   ]);
   res.status(201).json({ ...take, materialName: material.name });
 });
-var lineWithRequisition = { include: { material: true }, orderBy: { id: "asc" } };
+var lineWithRequisition = { include: { material: true, businessHead: true }, orderBy: { id: "asc" } };
 async function loadPurchases(where, take = 300) {
   return prisma.purchase.findMany({
     where,
@@ -50904,6 +50920,8 @@ function serializePurchase(p) {
       unitCost: l.unitCost,
       totalCost: l.totalCost,
       receivedQty: l.receivedQty,
+      businessHeadId: l.businessHeadId,
+      businessHeadName: l.businessHead?.name ?? null,
       requisitionedQty: p.requisition?.lines.find((rl) => rl.materialId === l.materialId)?.qty ?? null
     })),
     acceptedByName: p.acceptedByName,
@@ -50956,7 +50974,7 @@ stockRouter.get("/available-expenses-for-purchase", async (_req, res) => {
   });
   res.json(expenses.map((e) => ({ id: e.id, date: e.date, invoiceNumber: e.invoiceNumber, amount: e.amount, note: e.note })));
 });
-var purchaseLineSchema = external_exports.object({ materialId: external_exports.number().int(), qty: external_exports.number().positive(), unitCost: external_exports.number().positive("Every line needs the unit price from the invoice") });
+var purchaseLineSchema = external_exports.object({ materialId: external_exports.number().int(), qty: external_exports.number().positive(), unitCost: external_exports.number().positive("Every line needs the unit price from the invoice"), businessHeadId: external_exports.number().int().nullable().optional() });
 var purchaseBase = {
   requisitionId: external_exports.number().int().optional(),
   supplier: external_exports.string().max(200).optional(),
@@ -50974,7 +50992,7 @@ stockRouter.post("/purchases", async (req, res) => {
   await ensurePurchasesOnce();
   const merged = /* @__PURE__ */ new Map();
   for (const l of data.lines) {
-    const m = merged.get(l.materialId) ?? { qty: 0, total: 0 };
+    const m = merged.get(l.materialId) ?? { qty: 0, total: 0, head: l.businessHeadId };
     m.qty += l.qty;
     m.total += l.qty * l.unitCost;
     merged.set(l.materialId, m);
@@ -50982,7 +51000,18 @@ stockRouter.post("/purchases", async (req, res) => {
   const materials = await prisma.material.findMany({ where: { id: { in: [...merged.keys()] } } });
   if (materials.length !== merged.size) return res.status(400).json({ error: "A chosen material was not found" });
   const nameOf = new Map(materials.map((m) => [m.id, m.name]));
-  const lines = [...merged.entries()].map(([materialId, m]) => ({ materialId, qty: m.qty, totalCost: Math.round(m.total * 100) / 100, unitCost: Math.round(m.total / m.qty * 1e4) / 1e4 }));
+  const headIds = [...new Set([...merged.values()].map((m) => m.head).filter((h) => h != null))];
+  if (headIds.length && await prisma.businessHead.count({ where: { id: { in: headIds } } }) !== headIds.length) return res.status(400).json({ error: "A chosen business head does not exist" });
+  const materialHead = new Map(materials.map((m) => [m.id, m.businessHeadId]));
+  const lines = [...merged.entries()].map(([materialId, m]) => ({
+    materialId,
+    qty: m.qty,
+    totalCost: Math.round(m.total * 100) / 100,
+    unitCost: Math.round(m.total / m.qty * 1e4) / 1e4,
+    businessHeadId: m.head === void 0 ? materialHead.get(materialId) ?? null : m.head
+  }));
+  const heads = new Set(lines.map((l) => l.businessHeadId));
+  const expenseHead = heads.size === 1 ? [...heads][0] ?? null : null;
   const total = Math.round(lines.reduce((a2, l) => a2 + l.totalCost, 0) * 100) / 100;
   if (data.requisitionId) {
     await ensureRequisitionsOnce();
@@ -51031,6 +51060,7 @@ stockRouter.post("/purchases", async (req, res) => {
               amount: total,
               invoiceNumber,
               supplier: data.supplier ?? "",
+              businessHeadId: expenseHead,
               capturedByName: req.user.name
             }
           });
@@ -51098,6 +51128,14 @@ stockRouter.post("/purchases/:id/reject", receivers, async (req, res) => {
   }
   await prisma.purchase.update({ where: { id: purchase.id }, data: { status: "Rejected", rejectReason: parsed.data.reason, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() } });
   res.json(serializePurchase((await loadPurchases({ id: purchase.id }, 1))[0]));
+});
+stockRouter.patch("/purchases/lines/:id/business-head", async (req, res) => {
+  const parsed = external_exports.object({ businessHeadId: external_exports.number().int().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose a business head, or none" });
+  if (parsed.data.businessHeadId != null && !await prisma.businessHead.findUnique({ where: { id: parsed.data.businessHeadId } })) return res.status(400).json({ error: "That business head does not exist" });
+  const line = await prisma.purchaseLine.update({ where: { id: Number(req.params.id) }, data: { businessHeadId: parsed.data.businessHeadId } }).catch(() => null);
+  if (!line) return res.status(404).json({ error: "Purchase line not found" });
+  res.json(line);
 });
 stockRouter.get("/reconciliation", async (req, res) => {
   await ensureRequisitionsOnce();
@@ -51196,7 +51234,7 @@ stockRouter.post("/imports", async (req, res) => {
         material = await tx.material.create({ data: { name: name2, price: Math.round(line.unitCost) } });
         byLowerName.set(name2.toLowerCase(), material);
       }
-      resolved.push({ materialId: material.id, materialName: material.name, qty: line.qty, unitCost: line.unitCost, totalCost: line.totalCost });
+      resolved.push({ materialId: material.id, materialName: material.name, qty: line.qty, unitCost: line.unitCost, totalCost: line.totalCost, businessHeadId: material.businessHeadId });
     }
     const existing = await tx.purchase.findMany({ where: { poRef: { not: null } }, select: { poRef: true } });
     const poRef = formatPurchaseOrderRef(nextPurchaseOrderNumber(existing.map((p) => p.poRef)));
@@ -51208,7 +51246,7 @@ stockRouter.post("/imports", async (req, res) => {
         invoiceNumber: reference || null,
         totalCost: Math.round(resolved.reduce((a2, l) => a2 + l.totalCost, 0) * 100) / 100,
         capturedByName: req.user.name,
-        lines: { create: resolved.map(({ materialId, qty, unitCost, totalCost }) => ({ materialId, qty, unitCost, totalCost })) }
+        lines: { create: resolved.map(({ materialId, qty, unitCost, totalCost, businessHeadId }) => ({ materialId, qty, unitCost, totalCost, businessHeadId })) }
       }
     });
     return resolved.map((l) => ({ ...l, purchaseId: purchase.id, poRef }));
@@ -51420,25 +51458,62 @@ reportsRouter.get("/sales-by-business-head", async (req, res) => {
       b.services.set(label, s);
     });
   }
+  const headName = new Map(heads.map((h) => [h.id, h.name]));
+  const [purchaseLines, expenses] = await Promise.all([
+    prisma.purchaseLine.findMany({ where: { purchase: { status: { not: "Rejected" }, date: { gte: range2.from, lte: range2.to } } } }),
+    prisma.expense.findMany({ where: { date: { gte: range2.from, lte: range2.to }, purchase: { is: null } } })
+  ]);
+  const costs = /* @__PURE__ */ new Map();
+  const UNASSIGNED = "\0unassigned";
+  const cost = (key2) => {
+    let c = costs.get(key2);
+    if (!c) costs.set(key2, c = { purchases: 0, expenses: 0, categories: /* @__PURE__ */ new Map() });
+    return c;
+  };
+  for (const l of purchaseLines) {
+    cost(l.businessHeadId != null ? headName.get(l.businessHeadId) ?? UNASSIGNED : UNASSIGNED).purchases += l.totalCost;
+  }
+  for (const e of expenses) {
+    const c = cost(e.businessHeadId != null ? headName.get(e.businessHeadId) ?? UNASSIGNED : UNASSIGNED);
+    c.expenses += e.amount;
+    c.categories.set(e.category, (c.categories.get(e.category) ?? 0) + e.amount);
+  }
   const round = (n) => Math.round(n * 100) / 100;
   const names = [...heads.map((h) => h.name), ...[...buckets.keys()].filter((n) => !heads.some((h) => h.name === n))];
   const total = [...buckets.values()].reduce((a2, b) => a2 + b.sales, 0);
+  const costOut = (c) => ({
+    purchases: round(c?.purchases ?? 0),
+    expenses: round(c?.expenses ?? 0),
+    total: round((c?.purchases ?? 0) + (c?.expenses ?? 0)),
+    expenseCategories: [...c?.categories.entries() ?? []].map(([category, amount]) => ({ category, amount: round(amount) })).sort((x, y) => y.amount - x.amount)
+  });
+  const headRows = names.map((name2) => {
+    const b = buckets.get(name2);
+    const head = heads.find((h) => h.name === name2);
+    const sales = round(b?.sales ?? 0);
+    const c = costOut(costs.get(name2));
+    return {
+      name: name2,
+      active: head?.active ?? true,
+      sales,
+      orders: b?.orders.size ?? 0,
+      sharePct: total > 0 ? round((b?.sales ?? 0) / total * 100) : 0,
+      costs: c,
+      margin: round(sales - c.total),
+      marginPct: sales > 0 ? round((sales - c.total) / sales * 100) : null,
+      services: [...b?.services.entries() ?? []].map(([n, v]) => ({ name: n, qty: round(v.qty), sales: round(v.sales) })).sort((x, y) => y.sales - x.sales)
+    };
+  });
+  const unassigned = costOut(costs.get(UNASSIGNED));
+  const taggedCosts = round(headRows.reduce((a2, h) => a2 + h.costs.total, 0));
   res.json({
     fromDate: range2.from,
     toDate: range2.to,
-    heads: names.map((name2) => {
-      const b = buckets.get(name2);
-      const head = heads.find((h) => h.name === name2);
-      return {
-        name: name2,
-        active: head?.active ?? true,
-        sales: round(b?.sales ?? 0),
-        orders: b?.orders.size ?? 0,
-        sharePct: total > 0 ? round((b?.sales ?? 0) / total * 100) : 0,
-        services: [...b?.services.entries() ?? []].map(([n, v]) => ({ name: n, qty: round(v.qty), sales: round(v.sales) })).sort((a2, c) => c.sales - a2.sales)
-      };
-    }),
-    totalSales: round(total)
+    heads: headRows,
+    totalSales: round(total),
+    unassignedCosts: unassigned,
+    totalCosts: round(taggedCosts + unassigned.total),
+    totalMargin: round(total - taggedCosts - unassigned.total)
   });
 });
 

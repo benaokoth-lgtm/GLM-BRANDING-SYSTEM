@@ -230,6 +230,8 @@ const expenseSchema = z.object({
   paid: z.boolean().default(true),
   supplier: z.string().max(120).optional(),
   dueDate: dateStr.optional().nullable(),
+  // The line of business this cost belongs to (see Master Data → Business Heads); blank = shared, not tagged to one.
+  businessHeadId: z.number().int().nullable().optional(),
 });
 
 financeRouter.post('/expenses', async (req, res) => {
@@ -238,6 +240,7 @@ financeRouter.post('/expenses', async (req, res) => {
   const d = parsed.data;
   if (!(await expenseHeadNames()).includes(d.category)) return res.status(400).json({ error: 'Choose one of the expense heads (add new ones under Accounting → Chart of Accounts)' });
   if (!d.paid && !(d.supplier || '').trim()) return res.status(400).json({ error: 'A supplier is required for an expense bought on credit' });
+  if (d.businessHeadId != null && !(await prisma.businessHead.findUnique({ where: { id: d.businessHeadId } }))) return res.status(400).json({ error: 'That business head does not exist' });
 
   // Anything paid from petty cash — now, not on credit — must be covered by the float (on its day and every later day).
   if (d.paid && d.method === PETTY_CASH_METHOD) {
@@ -256,10 +259,21 @@ financeRouter.post('/expenses', async (req, res) => {
       paid: d.paid,
       supplier: (d.supplier || '').trim(),
       dueDate: d.paid ? null : d.dueDate ?? null,
+      businessHeadId: d.businessHeadId ?? null,
       capturedByName: req.user!.name,
     },
   });
   res.status(201).json(expense);
+});
+
+// Tagging an expense to a line of business (or clearing it) changes no amount, so it needs no amendment request.
+financeRouter.patch('/expenses/:id/business-head', async (req, res) => {
+  const parsed = z.object({ businessHeadId: z.number().int().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose a business head, or none' });
+  if (parsed.data.businessHeadId != null && !(await prisma.businessHead.findUnique({ where: { id: parsed.data.businessHeadId } }))) return res.status(400).json({ error: 'That business head does not exist' });
+  const updated = await prisma.expense.update({ where: { id: Number(req.params.id) }, data: { businessHeadId: parsed.data.businessHeadId } }).catch(() => null);
+  if (!updated) return res.status(404).json({ error: 'Expense not found' });
+  res.json(updated);
 });
 
 // Pay down an expense bought on credit — in full or in part, by any method (petty cash included, if the float covers it).

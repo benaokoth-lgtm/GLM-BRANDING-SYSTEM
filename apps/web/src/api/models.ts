@@ -29,6 +29,7 @@ export interface CatalogMaterial {
   price: number;
   stockQty: number;
   reorderLevel: number;
+  businessHeadId?: number | null;
 }
 
 export interface CorporateClient {
@@ -113,6 +114,7 @@ export interface ExpenseRow {
   amount: number;
   invoiceNumber: string | null;
   capturedByName: string;
+  businessHeadId?: number | null;
   method: string; // 'Petty Cash' | 'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'
   paid: boolean; // false = bought on credit (sits in Accounts Payable)
   supplier: string;
@@ -358,7 +360,7 @@ export interface PurchaseRow {
   invoiceNumber: string | null;
   status: 'Held' | 'Accepted' | 'Rejected';
   totalCost: number;
-  lines: { id: number; materialId: number; materialName: string; qty: number; unitCost: number; totalCost: number; receivedQty: number | null; requisitionedQty: number | null }[];
+  lines: { id: number; materialId: number; materialName: string; qty: number; unitCost: number; totalCost: number; receivedQty: number | null; requisitionedQty: number | null; businessHeadId: number | null; businessHeadName: string | null }[];
   acceptedByName: string | null;
   acceptedAt: string | null;
   rejectReason: string | null;
@@ -440,7 +442,27 @@ export interface SalesByBusinessHeadData {
   fromDate: string;
   toDate: string;
   totalSales: number;
-  heads: { name: string; active: boolean; sales: number; orders: number; sharePct: number; services: { name: string; qty: number; sales: number }[] }[];
+  totalCosts: number;
+  totalMargin: number;
+  heads: {
+    name: string;
+    active: boolean;
+    sales: number;
+    orders: number;
+    sharePct: number;
+    costs: HeadCosts;
+    margin: number;
+    marginPct: number | null;
+    services: { name: string; qty: number; sales: number }[];
+  }[];
+  unassignedCosts: HeadCosts;
+}
+
+export interface HeadCosts {
+  purchases: number;
+  expenses: number;
+  total: number;
+  expenseCategories: { category: string; amount: number }[];
 }
 
 export interface EmbroideryConsumableBreakdownRow {

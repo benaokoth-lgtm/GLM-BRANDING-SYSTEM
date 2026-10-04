@@ -371,7 +371,7 @@ masterDataRouter.get('/materials', async (_req, res) => {
   res.json(await prisma.material.findMany({ orderBy: { name: 'asc' } }));
 });
 
-const materialSchema = z.object({ name: z.string().min(1), price: z.number().positive() });
+const materialSchema = z.object({ name: z.string().min(1), price: z.number().positive(), businessHeadId: z.number().int().nullable().optional() });
 
 masterDataRouter.post('/materials', requireRole('Admin'), async (req, res) => {
   const parsed = materialSchema.safeParse(req.body);
@@ -386,6 +386,8 @@ const materialUpdateSchema = z
   .object({
     price: z.number().positive().optional(),
     reorderLevel: z.number().min(0).optional(),
+    // The line of business this material is normally bought for (purchases of it are tagged to it by default).
+    businessHeadId: z.number().int().nullable().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 

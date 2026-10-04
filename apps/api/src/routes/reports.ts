@@ -263,24 +263,66 @@ reportsRouter.get('/sales-by-business-head', async (req, res) => {
     });
   }
 
+  // Costs: what was bought for each line of business (purchase lines, tagged), plus the expenses tagged to it. An expense that backs a
+  // purchase is counted through the purchase's lines, never twice. Anything not tagged is shown apart as shared (unassigned) cost.
+  const headName = new Map(heads.map((h) => [h.id, h.name]));
+  const [purchaseLines, expenses] = await Promise.all([
+    prisma.purchaseLine.findMany({ where: { purchase: { status: { not: 'Rejected' }, date: { gte: range.from, lte: range.to } } } }),
+    prisma.expense.findMany({ where: { date: { gte: range.from, lte: range.to }, purchase: { is: null } } }),
+  ]);
+  type Cost = { purchases: number; expenses: number; categories: Map<string, number> };
+  const costs = new Map<string, Cost>();
+  const UNASSIGNED = '\u0000unassigned';
+  const cost = (key: string): Cost => {
+    let c = costs.get(key);
+    if (!c) costs.set(key, (c = { purchases: 0, expenses: 0, categories: new Map() }));
+    return c;
+  };
+  for (const l of purchaseLines) {
+    // (A line is tagged when the purchase is captured — from its material's usual head, or as chosen — so an untagged one is shared cost.)
+    cost(l.businessHeadId != null ? headName.get(l.businessHeadId) ?? UNASSIGNED : UNASSIGNED).purchases += l.totalCost;
+  }
+  for (const e of expenses) {
+    const c = cost(e.businessHeadId != null ? headName.get(e.businessHeadId) ?? UNASSIGNED : UNASSIGNED);
+    c.expenses += e.amount;
+    c.categories.set(e.category, (c.categories.get(e.category) ?? 0) + e.amount);
+  }
+
   const round = (n: number) => Math.round(n * 100) / 100;
   const names = [...heads.map((h) => h.name), ...[...buckets.keys()].filter((n) => !heads.some((h) => h.name === n))];
   const total = [...buckets.values()].reduce((a, b) => a + b.sales, 0);
+  const costOut = (c: Cost | undefined) => ({
+    purchases: round(c?.purchases ?? 0),
+    expenses: round(c?.expenses ?? 0),
+    total: round((c?.purchases ?? 0) + (c?.expenses ?? 0)),
+    expenseCategories: [...(c?.categories.entries() ?? [])].map(([category, amount]) => ({ category, amount: round(amount) })).sort((x, y) => y.amount - x.amount),
+  });
+  const headRows = names.map((name) => {
+    const b = buckets.get(name);
+    const head = heads.find((h) => h.name === name);
+    const sales = round(b?.sales ?? 0);
+    const c = costOut(costs.get(name));
+    return {
+      name,
+      active: head?.active ?? true,
+      sales,
+      orders: b?.orders.size ?? 0,
+      sharePct: total > 0 ? round(((b?.sales ?? 0) / total) * 100) : 0,
+      costs: c,
+      margin: round(sales - c.total),
+      marginPct: sales > 0 ? round(((sales - c.total) / sales) * 100) : null,
+      services: [...(b?.services.entries() ?? [])].map(([n, v]) => ({ name: n, qty: round(v.qty), sales: round(v.sales) })).sort((x, y) => y.sales - x.sales),
+    };
+  });
+  const unassigned = costOut(costs.get(UNASSIGNED));
+  const taggedCosts = round(headRows.reduce((a, h) => a + h.costs.total, 0));
   res.json({
     fromDate: range.from,
     toDate: range.to,
-    heads: names.map((name) => {
-      const b = buckets.get(name);
-      const head = heads.find((h) => h.name === name);
-      return {
-        name,
-        active: head?.active ?? true,
-        sales: round(b?.sales ?? 0),
-        orders: b?.orders.size ?? 0,
-        sharePct: total > 0 ? round(((b?.sales ?? 0) / total) * 100) : 0,
-        services: [...(b?.services.entries() ?? [])].map(([n, v]) => ({ name: n, qty: round(v.qty), sales: round(v.sales) })).sort((a, c) => c.sales - a.sales),
-      };
-    }),
+    heads: headRows,
     totalSales: round(total),
+    unassignedCosts: unassigned,
+    totalCosts: round(taggedCosts + unassigned.total),
+    totalMargin: round(total - taggedCosts - unassigned.total),
   });
 });

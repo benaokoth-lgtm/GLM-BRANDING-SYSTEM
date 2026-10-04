@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { EXPENSE_CATEGORIES, EXPENSE_METHODS, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import type { ExpenseCategory, PettyCashSource } from '@glm/shared';
 import { api } from '../api/client';
-import type { DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesData, PettyCashData } from '../api/models';
+import type { BusinessHeadRow, DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesData, PettyCashData } from '../api/models';
 import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
 import CorporateOrderForm from '../components/CorporateOrderForm';
@@ -63,6 +63,8 @@ interface ExpenseDraft {
   onCredit: boolean;
   supplier: string;
   dueDate: string;
+  // The business head this cost belongs to ('' = shared, not tagged to one).
+  businessHeadId: string;
 }
 
 function ExpenseCaptureForm({
@@ -71,6 +73,7 @@ function ExpenseCaptureForm({
   onSubmit,
   busy,
   categories,
+  heads,
   full,
 }: {
   draft: ExpenseDraft;
@@ -78,6 +81,7 @@ function ExpenseCaptureForm({
   onSubmit: () => void;
   busy: boolean;
   categories: readonly string[];
+  heads: { id: number; name: string }[];
   /** The Expenses tab offers payment method / on-credit; the Petty Cash tab is always petty cash. */
   full: boolean;
 }) {
@@ -117,6 +121,17 @@ function ExpenseCaptureForm({
         <i className="corner br"></i>
         Add
       </button>
+    </div>
+    <div className="field" style={{ maxWidth: 320, marginTop: 'var(--space-3)' }}>
+      <label>Business head (optional)</label>
+      <select className="input" value={draft.businessHeadId} onChange={(e) => setDraft((d) => ({ ...d, businessHeadId: e.target.value }))}>
+        <option value="">Shared — not tagged to one</option>
+        {heads.map((h) => (
+          <option key={h.id} value={h.id}>
+            {h.name}
+          </option>
+        ))}
+      </select>
     </div>
     {full && (
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.2fr 1fr', gap: 'var(--space-3)', alignItems: 'end', marginTop: 'var(--space-3)' }}>
@@ -168,6 +183,11 @@ export default function Finance() {
   const [expenses, setExpenses] = useState<ExpensesData | null>(null);
   const [pettyCash, setPettyCash] = useState<PettyCashData | null>(null);
   const [amendments, setAmendments] = useState<ExpenseAmendment[]>([]);
+  const [heads, setHeads] = useState<BusinessHeadRow[]>([]);
+  const activeHeads = heads.filter((h) => h.active);
+  useEffect(() => {
+    api.get<BusinessHeadRow[]>('/master-data/business-heads').then(setHeads).catch(() => setHeads([]));
+  }, []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -182,6 +202,7 @@ export default function Finance() {
     onCredit: false,
     supplier: '',
     dueDate: '',
+    businessHeadId: '',
   });
 
   const [newPettyExpense, setNewPettyExpense] = useState<ExpenseDraft>({
@@ -194,6 +215,7 @@ export default function Finance() {
     onCredit: false,
     supplier: '',
     dueDate: '',
+    businessHeadId: '',
   });
 
   const [newTopUp, setNewTopUp] = useState({
@@ -244,6 +266,17 @@ export default function Finance() {
     setToDate(r.to);
   }
 
+  // Tagging an expense to a line of business (or clearing it) changes no amount, so it needs no amendment request.
+  async function retagExpense(expenseId: number, value: string) {
+    setError(null);
+    try {
+      await api.patch(`/finance/expenses/${expenseId}/business-head`, { businessHeadId: value ? Number(value) : null });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to tag the expense');
+    }
+  }
+
   async function submitExpense(draft: ExpenseDraft, reset: () => void) {
     const amount = Number(draft.amount);
     if (!amount || amount <= 0) return setError('Amount must be greater than 0');
@@ -260,6 +293,7 @@ export default function Finance() {
         paid: !draft.onCredit,
         supplier: draft.supplier || undefined,
         dueDate: draft.onCredit && draft.dueDate ? draft.dueDate : undefined,
+        businessHeadId: draft.businessHeadId ? Number(draft.businessHeadId) : null,
       });
       reset();
       load();
@@ -491,13 +525,14 @@ export default function Finance() {
               Operating expenses
             </div>
 
-            <ExpenseCaptureForm full categories={expenses.expenseCategories} draft={newExpense} setDraft={setNewExpense} busy={busy} onSubmit={() => submitExpense(newExpense, () => setNewExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '', supplier: '', dueDate: '' })))} />
+            <ExpenseCaptureForm full categories={expenses.expenseCategories} heads={activeHeads} draft={newExpense} setDraft={setNewExpense} busy={busy} onSubmit={() => submitExpense(newExpense, () => setNewExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '', supplier: '', dueDate: '' })))} />
 
             <table className="table" style={{ marginTop: 'var(--space-4)' }}>
               <thead>
                 <tr>
                   <th>Date</th>
                   <th>Category</th>
+                  <th>Business head</th>
                   <th>Note</th>
                   <th>Invoice #</th>
                   <th style={{ textAlign: 'right' }}>Amount</th>
@@ -512,6 +547,16 @@ export default function Finance() {
                     <tr>
                       <td className="text-muted">{fmtDate(e.date)}</td>
                       <td>{e.category}</td>
+                      <td>
+                        <select className="input" style={{ width: 150 }} value={e.businessHeadId ?? ''} onChange={(ev) => retagExpense(e.id, ev.target.value)} disabled={busy}>
+                          <option value="">—</option>
+                          {heads.filter((h) => h.active || h.id === e.businessHeadId).map((h) => (
+                            <option key={h.id} value={h.id}>
+                              {h.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="text-muted">{e.note}</td>
                       <td className="text-muted">{e.invoiceNumber || '—'}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(e.amount)}</td>
@@ -548,11 +593,11 @@ export default function Finance() {
                       </td>
                     </tr>
                     {deleteTarget?.type === 'Expense' && deleteTarget.id === e.id && (
-                      <DeleteReasonRow colSpan={8} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
+                      <DeleteReasonRow colSpan={9} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
                     )}
                     {payingId === e.id && (
                       <tr>
-                        <td colSpan={8} style={{ background: 'var(--color-surface)' }}>
+                        <td colSpan={9} style={{ background: 'var(--color-surface)' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                             <div className="field" style={{ margin: 0 }}>
                               <label>Payment date</label>
@@ -584,7 +629,7 @@ export default function Finance() {
                     )}
                     {amendingId === e.id && (
                       <tr>
-                        <td colSpan={8} style={{ background: 'var(--color-surface)' }}>
+                        <td colSpan={9} style={{ background: 'var(--color-surface)' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1.6fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                             <div className="field" style={{ margin: 0 }}>
                               <label>Date</label>
@@ -797,6 +842,7 @@ export default function Finance() {
             <ExpenseCaptureForm
               full={false}
               categories={expenses?.expenseCategories ?? EXPENSE_CATEGORIES}
+              heads={activeHeads}
               draft={newPettyExpense}
               setDraft={setNewPettyExpense}
               busy={busy}

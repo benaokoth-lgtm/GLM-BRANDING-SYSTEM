@@ -91,6 +91,9 @@ model BusinessHead {
   sortOrder Int       @default(0)
   active    Boolean   @default(true)
   services  Service[]
+  materials Material[]
+  expenses  Expense[]
+  purchaseLines PurchaseLine[]
 }
 
 model Service {
@@ -141,6 +144,9 @@ model Material {
   price        Float
   stockQty     Float  @default(0)
   reorderLevel Float  @default(0)
+  // The business head this material is normally bought for — purchases of it are tagged to it unless changed on the purchase order.
+  businessHeadId Int?
+  businessHead   BusinessHead? @relation(fields: [businessHeadId], references: [id])
   // Income account for sales of this material (null = Merchandise & Materials Sales).
   accountId    Int?
   account      Account? @relation("MaterialAccount", fields: [accountId], references: [id])
@@ -235,6 +241,9 @@ model Expense {
   // Set when this is a supplier bill for an outsourced job — it is that job's cost.
   orderId         Int?
   order           Order?   @relation(fields: [orderId], references: [id])
+  // The line of business this cost belongs to (null = shared, not tagged to one).
+  businessHeadId  Int?
+  businessHead    BusinessHead? @relation(fields: [businessHeadId], references: [id])
 }
 
 // A payment made against an expense bought on credit (partial payments allowed).
@@ -437,6 +446,9 @@ model PurchaseLine {
   unitCost    Float
   totalCost   Float
   receivedQty Float? // entered by the store manager on receipt; null until received
+  // Which line of business this was bought for — what Reports → Sales by Business Head charges the cost to. Null = not tagged.
+  businessHeadId Int?
+  businessHead   BusinessHead? @relation(fields: [businessHeadId], references: [id])
 }
 
 model Order {

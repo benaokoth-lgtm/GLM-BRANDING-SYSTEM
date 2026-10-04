@@ -648,6 +648,8 @@ ordersRouter.post('/:id/supplier-bills', async (req, res) => {
       invoiceNumber: d.invoiceNumber || null,
       note: d.note ? d.note : `${order.orderNo} — outsourced job${d.paidNow > 0 && !fullyPaid ? ' (deposit paid, balance owing)' : ''}`,
       orderId: order.id,
+      // The supplier's bill is a cost of the line of business the contracted-out service belongs to.
+      businessHeadId: order.lineItems.find((l) => l.service?.outsourced)?.service?.businessHeadId ?? null,
       capturedByName: req.user!.name,
       // Paid in full: a plain paid expense. Otherwise it is a bill on credit, with the deposit (if any) recorded as a payment against it.
       paid: fullyPaid,

@@ -321,6 +321,17 @@ export default function MasterData() {
     }
   }
 
+  // The line of business a material is normally bought for — purchases of it are tagged to it by default.
+  async function saveMaterialHead(materialId: number, value: string) {
+    setError(null);
+    try {
+      await api.put(`/master-data/materials/${materialId}`, { businessHeadId: value ? Number(value) : null });
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update the material');
+    }
+  }
+
   async function saveReorderLevel(materialId: number, value: string) {
     const level = Number(value);
     if (Number.isNaN(level) || level < 0) return;
@@ -773,6 +784,7 @@ export default function MasterData() {
             <thead>
               <tr>
                 <th>Item</th>
+                <th>Business head</th>
                 <th>Price</th>
                 <th>Stock on hand</th>
                 <th>Reorder level</th>
@@ -785,6 +797,16 @@ export default function MasterData() {
                 return (
                   <tr key={mt.id}>
                     <td>{mt.name}</td>
+                    <td>
+                      <select className="input" style={{ width: 170 }} value={mt.businessHeadId ?? ''} onChange={(e) => saveMaterialHead(mt.id, e.target.value)}>
+                        <option value="">—</option>
+                        {heads.filter((h) => h.active || h.id === mt.businessHeadId).map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td>{fmtKsh(mt.price)}</td>
                     <td>{mt.stockQty}</td>
                     <td>
@@ -803,7 +825,7 @@ export default function MasterData() {
             </tbody>
           </table>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Stock on hand increases via approved requisitions or a stock take under Stock. Reorder level is editable
+            The business head is the line of business a material is normally bought for — its purchases are tagged to it by default (you can change that on the purchase order). Stock on hand increases when the store manager receives a purchase order, or by a stock take under Stock. Reorder level is editable
             here — items at or below it are flagged for reorder.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 640 }}>

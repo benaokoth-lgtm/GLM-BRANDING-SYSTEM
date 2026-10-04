@@ -156,8 +156,8 @@ export class PaymentError extends Error {
 
 /**
  * Records one or more payments against an order inside a transaction, and moves the order along: a payment of any
- * size against a quote converts it to an invoice (the client has accepted); a walk-in/DTF order sitting at 'Invoice'
- * settles back to 'Order' once the balance is cleared. An M-Pesa reference that matches a received statement line
+ * size against a quote converts it to an invoice (the client has accepted). An invoice stays an invoice once it is paid in full — it
+ * is tracked as one, through production, to completion — so nothing here ever turns it back into an 'Order'. An M-Pesa reference that matches a received statement line
  * (Paybill/Till or an uploaded statement) is linked to it, so the money is matched rather than counted twice.
  */
 export async function recordOrderPayments(
@@ -202,14 +202,6 @@ export async function recordOrderPayments(
 
   if (order.status === 'Quote') {
     await convertQuoteToInvoice(tx, order);
-  } else if (order.kind !== 'corporate' && order.status === 'Invoice') {
-    const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
-    const lineItems = full!.lineItems.map(toLineItemInput);
-    const payments: PaymentRecord[] = full!.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
-    const totals = computeOrderTotals({ lineItems, orderDiscountPct: full!.orderDiscountPct, orderDiscountAmt: full!.orderDiscountAmt }, payments);
-    if (totals.balanceDue <= 0) {
-      await tx.order.update({ where: { id: order.id }, data: { status: 'Order', dueDate: null } });
-    }
   }
 }
 

@@ -49752,14 +49752,6 @@ async function recordOrderPayments(tx, order, lines, staffId, date = todayStr())
   }
   if (order.status === "Quote") {
     await convertQuoteToInvoice(tx, order);
-  } else if (order.kind !== "corporate" && order.status === "Invoice") {
-    const full = await tx.order.findUnique({ where: { id: order.id }, include: orderInclude });
-    const lineItems = full.lineItems.map(toLineItemInput);
-    const payments = full.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }));
-    const totals = computeOrderTotals({ lineItems, orderDiscountPct: full.orderDiscountPct, orderDiscountAmt: full.orderDiscountAmt }, payments);
-    if (totals.balanceDue <= 0) {
-      await tx.order.update({ where: { id: order.id }, data: { status: "Order", dueDate: null } });
-    }
   }
 }
 ordersRouter.get("/", async (req, res) => {
@@ -52660,21 +52652,6 @@ async function syncOrderPayment(tx, orderId, topUp) {
   const order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
   if (!order) return;
   await tx.payment.create({ data: { orderId, date: todayStr(), amount: topUp, method: "Cash" } });
-  const lineItems = order.lineItems.map((li) => ({
-    itemType: li.itemType,
-    serviceId: li.serviceId,
-    materialId: li.materialId,
-    qty: li.qty,
-    unitPrice: li.unitPrice,
-    discountPct: li.discountPct,
-    discountAmt: li.discountAmt,
-    heatPressFee: li.heatPressFee
-  }));
-  const payments = [...order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method })), { date: todayStr(), amount: topUp, method: "Cash" }];
-  const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
-  if (totals.balanceDue <= 0 && order.status === "Invoice") {
-    await tx.order.update({ where: { id: orderId }, data: { status: "Order", dueDate: null } });
-  }
 }
 dtfRouter.patch("/sales/:id/paid", manageOnly, async (req, res) => {
   const amountPaid = Number(req.body.amountPaid);

@@ -353,7 +353,7 @@ dtfRouter.post('/sales', async (req, res) => {
   }
 });
 
-// Keeps the linked Order's Payment/status in sync when a sale's amountPaid
+// Keeps the linked Order's Payment in sync when a sale's amountPaid
 // is topped up here — otherwise "Mark paid" would settle the sale for roll
 // revenue purposes while its printed invoice (and Accounts Receivable) kept
 // showing it as still owed. Only handles a top-up (the only way this route
@@ -365,21 +365,7 @@ async function syncOrderPayment(tx: Prisma.TransactionClient, orderId: number | 
   const order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
   if (!order) return;
   await tx.payment.create({ data: { orderId, date: todayStr(), amount: topUp, method: 'Cash' } });
-  const lineItems: LineItemInput[] = order.lineItems.map((li) => ({
-    itemType: li.itemType as LineItemInput['itemType'],
-    serviceId: li.serviceId,
-    materialId: li.materialId,
-    qty: li.qty,
-    unitPrice: li.unitPrice,
-    discountPct: li.discountPct,
-    discountAmt: li.discountAmt,
-    heatPressFee: li.heatPressFee,
-  }));
-  const payments = [...order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentMethod })), { date: todayStr(), amount: topUp, method: 'Cash' as PaymentMethod }];
-  const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
-  if (totals.balanceDue <= 0 && order.status === 'Invoice') {
-    await tx.order.update({ where: { id: orderId }, data: { status: 'Order', dueDate: null } });
-  }
+  // An invoice stays an invoice once it is paid in full (it is tracked to completion), so the status is left alone.
 }
 
 dtfRouter.patch('/sales/:id/paid', manageOnly, async (req, res) => {

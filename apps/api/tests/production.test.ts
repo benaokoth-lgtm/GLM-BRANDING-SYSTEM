@@ -179,10 +179,10 @@ describe('production → quality → handover', () => {
     const ar = await buildReceivablesAging('9999-12-31');
     assert.equal(ar.rows.find((r) => r.ref === 'P-3')?.outstanding, 3000);
 
-    // paying the rest through the normal payment route settles the invoice back to an order
+    // paying the rest through the normal payment route settles the balance — but it stays an invoice, tracked to completion
     const paid = await call('manager', 'POST', `/orders/${order.id}/payments`, { payments: [{ method: 'Cash', amount: 3000 }] });
     assert.equal(paid.status, 200);
-    assert.equal(paid.body.status, 'Order');
+    assert.equal(paid.body.status, 'Invoice');
     assert.equal(paid.body.totals.balanceDue, 0);
   });
 

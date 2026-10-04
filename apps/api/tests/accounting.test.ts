@@ -70,7 +70,7 @@ describe('accounting module', () => {
     assert.equal(await bal('1030'), 1500);
     const paid = await prisma.order.findUniqueOrThrow({ where: { id: o.id }, include: { payments: true } });
     assert.equal(paid.payments.length, 2);
-    assert.equal(paid.status, 'Order'); // cleared a walk-in invoice
+    assert.equal(paid.status, 'Invoice'); // a paid invoice stays an invoice, tracked to completion
   });
 
   it('refuses to count one M-Pesa receipt twice', async () => {
@@ -173,7 +173,7 @@ describe('accounting module', () => {
     assert.equal((await importStatement(csv, 'Tester')).duplicates, 3); // re-uploading is harmless
 
     const paid = await prisma.order.findUniqueOrThrow({ where: { id: o.id }, include: { payments: true } });
-    assert.equal(paid.status, 'Order');
+    assert.equal(paid.status, 'Invoice');
     assert.equal(paid.payments[0]!.reference, 'SGH1A2B3C4');
     assert.equal(await bal('2310'), 580 + 999); // two receipts still waiting, held in suspense
 

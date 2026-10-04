@@ -20,6 +20,8 @@ export default function Orders({ scope }: Props) {
   // My Orders keeps three kinds of document apart: an Order (paid in full), an Invoice (still has a balance, collected as it is paid)
   // and a Quotation (an offer nobody has accepted yet).
   const [kind, setKind] = useState<'Order' | 'Invoice' | 'Quote'>('Order');
+  // An invoice stays an invoice once it is paid in full: it is tracked through production to completion.
+  const [invoiceView, setInvoiceView] = useState<'all' | 'open' | 'done'>('all');
 
   function load() {
     setLoading(true);
@@ -40,7 +42,12 @@ export default function Orders({ scope }: Props) {
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
 
   const count = (s: string) => orders.filter((o) => o.status === s).length;
-  const shown = scope === 'mine' ? orders.filter((o) => o.status === kind) : orders;
+  const invoices = orders.filter((o) => o.status === 'Invoice');
+  const invoiceOpen = invoices.filter((o) => o.stage !== 'Completed').length;
+  const shown =
+    scope === 'mine'
+      ? orders.filter((o) => o.status === kind && (kind !== 'Invoice' || invoiceView === 'all' || (invoiceView === 'open' ? o.stage !== 'Completed' : o.stage === 'Completed')))
+      : orders;
   const showDue = scope === 'mine' && kind === 'Invoice';
 
   const kpis =
@@ -86,9 +93,25 @@ export default function Orders({ scope }: Props) {
               </label>
             ))}
           </div>
+          {kind === 'Invoice' && (
+            <div className="seg" role="radiogroup" style={{ marginBottom: 'var(--space-2)', maxWidth: 520 }}>
+              {(
+                [
+                  ['all', `All (${invoices.length})`],
+                  ['open', `Not yet completed (${invoiceOpen})`],
+                  ['done', `Completed (${invoices.length - invoiceOpen})`],
+                ] as ['all' | 'open' | 'done', string][]
+              ).map(([k, label]) => (
+                <label key={k} className={'seg-opt' + (invoiceView === k ? ' checked' : '')}>
+                  <input type="radio" name="invview" checked={invoiceView === k} onChange={() => setInvoiceView(k)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
           <p className="note" style={{ marginTop: 0 }}>
-            {kind === 'Order' && 'Orders are paid in full. Anything that still has a balance is an invoice.'}
-            {kind === 'Invoice' && 'Invoices still have a balance to collect (or were handed over on credit). They move to Orders once paid in full.'}
+            {kind === 'Order' && 'Orders are paid in full when they are captured. Anything captured with a balance is an invoice.'}
+            {kind === 'Invoice' && 'An invoice stays an invoice once it is paid — it is tracked through production to completion, with its payment status shown beside it.'}
             {kind === 'Quote' && 'Quotations are offers not yet accepted — a deposit payment turns one into an invoice.'}
           </p>
         </>

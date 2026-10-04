@@ -5,7 +5,7 @@ import { requireAuth, requirePermission, requireRole } from '../middleware/auth'
 import { ACCOUNT_TYPES, ACCT, PAYOUT_METHODS, SYSTEM_ACCOUNT_CODES, DEPRECIATION_METHODS, matchPayment, suggestionsFor, round2, todayStr } from '@glm/shared';
 import { ensureChartOnce, validateAccountChoice } from '../accounting/chart';
 import { loadLedger, naturalBalance, sumByAccount } from '../accounting/ledger';
-import { buildAccountLedger, buildBalanceSheet, buildCashFlowStatement, buildPayablesAging, buildProfitLoss, buildReceivablesAging, buildTrialBalance } from '../accounting/reports';
+import { buildAccountLedger, buildBalanceSheet, buildCashFlowStatement, buildPayablesAging, buildProfitLoss, buildProfitLossDashboard, buildReceivablesAging, buildTrialBalance } from '../accounting/reports';
 import { reconcile } from '../accounting/reconcile';
 import { creditableLines, issueCreditNote, issueDebitNote, issueSupplierDebitNote, NoteError } from '../accounting/notes';
 import { depreciationSchedule, runDepreciationOnce } from '../accounting/depreciation';
@@ -183,10 +183,12 @@ accountingRouter.get('/ledger', ...accountingOnly, async (req, res) => {
   if (!out) return res.status(404).json({ error: 'Account not found' });
   res.json(out);
 });
-accountingRouter.get('/profit-loss', ...accountingOnly, async (req, res) => {
+// Profit & Loss — also open to anyone with the P&L permission, who has no other Accounting screen.
+accountingRouter.get('/profit-loss', requirePermission('canAccessAccounting', 'canAccessPnl'), prepare, async (req, res) => {
   const r = range(req);
   if (!r) return res.status(400).json({ error: 'from and to are required (YYYY-MM-DD)' });
-  res.json(await buildProfitLoss(r.from, r.to));
+  const pl = await buildProfitLoss(r.from, r.to);
+  res.json({ ...pl, dashboard: await buildProfitLossDashboard(r.from, r.to, { income: pl.income.total, netProfit: pl.netProfit }) });
 });
 accountingRouter.get('/balance-sheet', ...accountingOnly, async (req, res) => res.json(await buildBalanceSheet(asOfOf(req))));
 accountingRouter.get('/trial-balance', ...accountingOnly, async (req, res) => res.json(await buildTrialBalance(asOfOf(req))));

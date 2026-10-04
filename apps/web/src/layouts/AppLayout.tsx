@@ -38,12 +38,11 @@ function buildTabs(user: CurrentUser): [string, string][] {
   if (!hasFinance && (isAdmin || p.canViewAllOrders)) tabs.push(['/orders/all', 'All Orders']);
   if (!hasFinance && (isAdmin || p.canManagePayments)) tabs.push(['/payments', 'Payments']);
   if (isAdmin) tabs.push(['/master-data', 'Master Data']);
-  if (!hasFinance && (isAdmin || p.canAccessPnl)) tabs.push(['/pnl', 'P&L']);
   if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
   // Accounting (books, statements, notes, M-Pesa matching). Someone who can manage payments but isn't in Accounting
   // still gets M-Pesa matching, as its own entry.
   if (isAdmin || p.canAccessAccounting) tabs.push(['/accounting', 'Accounting']);
-  else if (p.canManagePayments) tabs.push(['/accounting', 'M-Pesa Matching']);
+  else if (p.canManagePayments || p.canAccessPnl) tabs.push(['/accounting', p.canAccessPnl && p.canManagePayments ? 'P&L & M-Pesa' : p.canAccessPnl ? 'P&L' : 'M-Pesa Matching']);
   if (isAdmin || p.canAccessReports) tabs.push(['/reports', 'Reports']);
   if (isAdmin || p.canAccessStock) tabs.push(['/stock', 'Stock']);
   if (isAdmin || p.canManageDtf) tabs.push(['/dtf', 'DTF']);

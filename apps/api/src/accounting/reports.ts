@@ -94,6 +94,45 @@ export async function buildProfitLoss(from: string, to: string) {
   };
 }
 
+// The four figures at the top of the Profit & Loss dashboard, with the comparison and the trend that sit beside them. Everything here
+// comes from the same ledger as the statement below it, so the cards always agree with it.
+//   • Revenue (accrual)       — income in the period, VAT out, net of credit notes (the statement's Income total)
+//   • Revenue (cash received) — the money actually received from customers in the period (VAT included)
+//   • Gross profit / Net profit — the statement's own figures
+// The comparison is with the period of the same length just before it; the trend is the six months ending with the month of `to`.
+function priorRange(from: string, to: string) {
+  const fromD = new Date(from + 'T00:00:00Z');
+  const toD = new Date(to + 'T00:00:00Z');
+  const lengthMs = toD.getTime() - fromD.getTime();
+  const priorTo = new Date(fromD.getTime() - 86400000);
+  const priorFrom = new Date(priorTo.getTime() - lengthMs);
+  return { from: priorFrom.toISOString().slice(0, 10), to: priorTo.toISOString().slice(0, 10) };
+}
+
+const pctChange = (cur: number, prev: number): number | null => (prev ? Math.round(((cur - prev) / Math.abs(prev)) * 1000) / 10 : null);
+
+export async function buildProfitLossDashboard(from: string, to: string, current: { income: number; netProfit: number }) {
+  const prior = priorRange(from, to);
+  // six whole months ending with the month of `to`
+  const y = Number(to.slice(0, 4));
+  const m = Number(to.slice(5, 7));
+  const first = new Date(Date.UTC(y, m - 1 - 5, 1)).toISOString().slice(0, 10);
+  const last = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const [priorPl, trendPl, cash] = await Promise.all([
+    buildProfitLoss(prior.from, prior.to),
+    buildProfitLoss(first, last),
+    prisma.payment.aggregate({ _sum: { amount: true }, where: { date: { gte: from, lte: to } } }),
+  ]);
+  return {
+    cashReceived: round2(cash._sum.amount ?? 0),
+    revChangePct: pctChange(current.income, priorPl.income.total),
+    profitChangePct: pctChange(current.netProfit, priorPl.netProfit),
+    priorFrom: prior.from,
+    priorTo: prior.to,
+    trend: trendPl.months.map((month, i) => ({ label: `${month.slice(5, 7)}/${month.slice(2, 4)}`, revenue: trendPl.income.byMonth[i]!, netProfit: trendPl.netByMonth[i]! })),
+  };
+}
+
 export async function buildBalanceSheet(asOf: string) {
   const ledger = await loadLedger();
   const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);

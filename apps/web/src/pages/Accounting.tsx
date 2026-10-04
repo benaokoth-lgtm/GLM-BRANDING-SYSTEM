@@ -15,7 +15,7 @@ import { BooksCheckTab } from './accounting/BooksCheckTab';
 // and debit notes, M-Pesa receipts and asset depreciation post themselves; journals cover only what has no screen of its own.
 // Expenses, petty cash and the asset register are still captured under Finance (and wages under Compliance).
 const TABS = [
-  { id: 'pl', label: 'Profit & Loss' },
+  { id: 'pl', label: 'Profit & Loss', alsoPnl: true },
   { id: 'bs', label: 'Balance Sheet' },
   { id: 'cash-flow', label: 'Cash Flow' },
   { id: 'receivables', label: 'Receivables' },
@@ -37,7 +37,9 @@ export default function Accounting() {
   const { user } = useAuth();
   const fullAccess = user?.role === 'Admin' || !!user?.permissions.canAccessAccounting;
   // A cashier who can manage payments (but isn't in Accounting) only gets M-Pesa matching.
-  const tabs = TABS.filter((t) => fullAccess || ('alsoPayments' in t && t.alsoPayments));
+  // Someone with only the P&L permission gets just the Profit & Loss.
+  const perms = user?.permissions;
+  const tabs = TABS.filter((t) => fullAccess || ('alsoPayments' in t && t.alsoPayments && !!perms?.canManagePayments) || ('alsoPnl' in t && t.alsoPnl && !!perms?.canAccessPnl));
   const [params] = useSearchParams();
   const [picked, setPicked] = useState<TabId | null>(() => {
     const fromLink = params.get('tab') as TabId | null;

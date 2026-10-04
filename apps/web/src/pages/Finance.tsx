@@ -9,16 +9,15 @@ import CorporateOrderForm from '../components/CorporateOrderForm';
 import AssetRegister from '../components/AssetRegister';
 import Orders from './Orders';
 import Payments from './Payments';
-import PnL from './PnL';
 
-// Quotation, Invoice, All Orders, Payments and P&L all moved in here from
+// Quotation, Invoice, All Orders and Payments all moved in here from
 // their own top-level nav entries — one "Finance" tab for everything a
 // Finance Manager/General Manager/Admin does, instead of six scattered
 // links (see AppLayout.tsx's buildTabs). Supervisor, who has order/payment
 // oversight but not Finance access, still reaches All Orders/Payments as
 // their own top-level entries — this consolidation only applies once
 // canAccessFinance is already true.
-type FinanceTab = 'quotation' | 'invoice' | 'allOrders' | 'payments' | 'pnl' | 'expenses' | 'pettycash' | 'assets';
+type FinanceTab = 'quotation' | 'invoice' | 'allOrders' | 'payments' | 'expenses' | 'pettycash' | 'assets';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [FinanceTab, string][] = [
@@ -26,7 +25,6 @@ const TABS: [FinanceTab, string][] = [
   ['invoice', 'Invoice'],
   ['allOrders', 'All Orders'],
   ['payments', 'Payments'],
-  ['pnl', 'P&L'],
   ['expenses', 'Expenses'],
   ['pettycash', 'Petty Cash'],
   ['assets', 'Asset Register'],
@@ -35,7 +33,7 @@ const TABS: [FinanceTab, string][] = [
 // Tabs that manage their own data/date-range internally — the shared
 // preset/from-to filter bar below (and the Expenses/Petty Cash data load)
 // isn't relevant to them.
-const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'allOrders', 'payments', 'pnl', 'assets'];
+const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'allOrders', 'payments', 'assets'];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
   const y = today.slice(0, 4);
@@ -505,7 +503,6 @@ export default function Finance() {
       {tab === 'invoice' && <CorporateOrderForm kind="invoice" onCreated={(orderNo) => handleOrderCreated('invoice', orderNo)} />}
       {tab === 'allOrders' && <Orders scope="all" />}
       {tab === 'payments' && <Payments />}
-      {tab === 'pnl' && <PnL />}
       {tab === 'assets' && <AssetRegister />}
 
       {error && (

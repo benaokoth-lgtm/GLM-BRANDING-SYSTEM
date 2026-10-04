@@ -10,7 +10,6 @@ import NewArtworkOrder from './pages/NewArtworkOrder';
 import Orders from './pages/Orders';
 import Payments from './pages/Payments';
 import MasterData from './pages/MasterData';
-import PnL from './pages/PnL';
 import Finance from './pages/Finance';
 import Compliance from './pages/Compliance';
 import Accounting from './pages/Accounting';
@@ -91,14 +90,8 @@ export default function App() {
             </RequireRole>
           }
         />
-        <Route
-          path="/pnl"
-          element={
-            <RequirePermission keys={['canAccessPnl']}>
-              <PnL />
-            </RequirePermission>
-          }
-        />
+        {/* The Profit & Loss now lives in Accounting; an old bookmark lands there. */}
+        <Route path="/pnl" element={<Navigate to="/accounting?tab=pl" replace />} />
         <Route
           path="/finance"
           element={
@@ -134,7 +127,7 @@ export default function App() {
         <Route
           path="/accounting"
           element={
-            <RequirePermission keys={['canAccessAccounting', 'canManagePayments']}>
+            <RequirePermission keys={['canAccessAccounting', 'canManagePayments', 'canAccessPnl']}>
               <Accounting />
             </RequirePermission>
           }

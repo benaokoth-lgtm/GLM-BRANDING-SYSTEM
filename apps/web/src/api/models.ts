@@ -158,34 +158,6 @@ export interface DeletionRequest {
   decidedAt: string | null;
 }
 
-export interface PnlTrendPoint {
-  label: string;
-  revenue: number;
-  netProfit: number;
-}
-
-export interface PnlData {
-  fromDate: string;
-  toDate: string;
-  revAccrualWalkin: number;
-  revAccrualCorp: number;
-  revAccrual: number;
-  revCash: number;
-  cogs: number;
-  grossProfit: number;
-  byCategory: Record<string, number>;
-  totalExpenses: number;
-  netProfit: number;
-  netMarginPct: number;
-  revChangePct: number | null;
-  profitChangePct: number | null;
-  priorFrom: string;
-  priorTo: string;
-  trend: PnlTrendPoint[];
-  expenseCategories: readonly string[];
-  expenseMethods?: readonly string[];
-}
-
 export interface PayrollRow {
   id: number;
   date: string;

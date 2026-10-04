@@ -23324,7 +23324,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router17 = require_router();
+    var Router16 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -23389,7 +23389,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router17({
+        this._router = new Router16({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -25253,7 +25253,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router17 = require_router();
+    var Router16 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -25276,7 +25276,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router17;
+    exports2.Router = Router16;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -31184,7 +31184,7 @@ var require_jsonwebtoken = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express16 = __toESM(require_express2());
+var import_express15 = __toESM(require_express2());
 var import_cors = __toESM(require_lib4());
 
 // node_modules/express-async-errors/index.js
@@ -50161,136 +50161,11 @@ ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canView
   res.json(serializeDetail(updated));
 });
 
-// apps/api/src/routes/pnl.ts
-var import_express4 = __toESM(require_express2());
-var pnlRouter = (0, import_express4.Router)();
-pnlRouter.use(requireAuth, requirePermission("canAccessPnl"));
-async function loadOrdersForPnl() {
-  const orders = await prisma.order.findMany({ include: { lineItems: true, payments: true } });
-  return orders.map((o) => ({
-    kind: o.kind,
-    status: o.status,
-    createdDate: o.createdDate,
-    orderDiscountPct: o.orderDiscountPct,
-    orderDiscountAmt: o.orderDiscountAmt,
-    lineItems: o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    })),
-    payments: o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method }))
-  }));
-}
-function inRange(d, from, to) {
-  return d >= from && d <= to;
-}
-var SALARIES_CATEGORY = "Salaries & wages";
-var PURCHASE_CATEGORY = "Printing Materials & Consumables";
-var COST_OF_SALES_CATEGORIES = /* @__PURE__ */ new Set([PURCHASE_CATEGORY, "Outsourced Services"]);
-function computeAgg(orders, expenses, payroll, cosItems, cosExpenseIds, from, to) {
-  let revAccrualWalkin = 0;
-  let revAccrualCorp = 0;
-  let revCash = 0;
-  for (const o of orders) {
-    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
-    if (isRevenueOrder && inRange(o.createdDate, from, to)) {
-      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      if (o.kind === "walkin") revAccrualWalkin += totals.grandTotal;
-      else revAccrualCorp += totals.grandTotal;
-    }
-    for (const p of o.payments) {
-      if (inRange(p.date, from, to)) revCash += p.amount;
-    }
-  }
-  const revAccrual = revAccrualWalkin + revAccrualCorp;
-  const cogs = cosItems.filter((c) => inRange(c.date, from, to)).reduce((a2, c) => a2 + c.amount, 0);
-  const grossProfit = revAccrual - cogs;
-  const expensesInRange = expenses.filter((e) => inRange(e.date, from, to) && !cosExpenseIds.has(e.id));
-  const payrollInRange = payroll.filter((p) => inRange(p.date, from, to));
-  const salariesTotal = payrollInRange.reduce((a2, p) => a2 + p.grossPay, 0);
-  const totalExpenses = expensesInRange.reduce((a2, e) => a2 + e.amount, 0) + salariesTotal;
-  const netProfit = grossProfit - totalExpenses;
-  const byCategory = {};
-  for (const e of expensesInRange) byCategory[e.category] = (byCategory[e.category] || 0) + e.amount;
-  if (salariesTotal > 0) byCategory[SALARIES_CATEGORY] = (byCategory[SALARIES_CATEGORY] || 0) + salariesTotal;
-  return { revAccrualWalkin, revAccrualCorp, revAccrual, revCash, cogs, grossProfit, totalExpenses, netProfit, byCategory };
-}
-function priorRange(from, to) {
-  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00");
-  const toD = /* @__PURE__ */ new Date(to + "T00:00:00");
-  const lengthMs = toD.getTime() - fromD.getTime();
-  const priorTo = new Date(fromD);
-  priorTo.setDate(priorTo.getDate() - 1);
-  const priorFrom = new Date(priorTo.getTime() - lengthMs);
-  const fmtD = (d) => d.toISOString().slice(0, 10);
-  return { from: fmtD(priorFrom), to: fmtD(priorTo) };
-}
-function pctChange(cur, prev) {
-  return prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
-}
-pnlRouter.get("/", async (req, res) => {
-  const from = String(req.query.from || "");
-  const to = String(req.query.to || "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  }
-  const [orders, allExpenses, allPayroll, purchases] = await Promise.all([
-    loadOrdersForPnl(),
-    prisma.expense.findMany({ orderBy: { date: "desc" } }),
-    prisma.payrollEntry.findMany({ select: { date: true, grossPay: true } }),
-    prisma.purchase.findMany({ where: { status: { not: "Rejected" } }, select: { date: true, totalCost: true, expenseId: true } })
-  ]);
-  const purchaseExpenseIds = new Set(purchases.filter((p) => p.expenseId != null).map((p) => p.expenseId));
-  const cosExpenseIds = new Set(allExpenses.filter((e) => purchaseExpenseIds.has(e.id) || COST_OF_SALES_CATEGORIES.has(e.category)).map((e) => e.id));
-  const cosItems = [
-    ...allExpenses.filter((e) => cosExpenseIds.has(e.id)).map((e) => ({ date: e.date, amount: e.amount })),
-    ...purchases.filter((p) => p.expenseId == null).map((p) => ({ date: p.date, amount: p.totalCost }))
-  ];
-  const agg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, from, to);
-  const prior = priorRange(from, to);
-  const priorAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, prior.from, prior.to);
-  const toDateObj = /* @__PURE__ */ new Date(to + "T00:00:00");
-  const trend = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(toDateObj.getFullYear(), toDateObj.getMonth() - i, 1);
-    const mFrom = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-    const monthEnd2 = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    const mTo = monthEnd2.toISOString().slice(0, 10);
-    const mAgg = computeAgg(orders, allExpenses, allPayroll, cosItems, cosExpenseIds, mFrom, mTo);
-    trend.push({ label: `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(2)}`, revenue: mAgg.revAccrual, netProfit: mAgg.netProfit });
-  }
-  res.json({
-    fromDate: from,
-    toDate: to,
-    revAccrualWalkin: agg.revAccrualWalkin,
-    revAccrualCorp: agg.revAccrualCorp,
-    revAccrual: agg.revAccrual,
-    revCash: agg.revCash,
-    cogs: agg.cogs,
-    grossProfit: agg.grossProfit,
-    byCategory: agg.byCategory,
-    totalExpenses: agg.totalExpenses,
-    netProfit: agg.netProfit,
-    netMarginPct: agg.revAccrual > 0 ? Math.round(agg.netProfit / agg.revAccrual * 1e3) / 10 : 0,
-    revChangePct: pctChange(agg.revAccrual, priorAgg.revAccrual),
-    profitChangePct: pctChange(agg.netProfit, priorAgg.netProfit),
-    priorFrom: prior.from,
-    priorTo: prior.to,
-    trend,
-    expenseCategories: [SALARIES_CATEGORY, ...EXPENSE_CATEGORIES]
-  });
-});
-
 // apps/api/src/routes/finance.ts
-var import_express5 = __toESM(require_express2());
-var financeRouter = (0, import_express5.Router)();
+var import_express4 = __toESM(require_express2());
+var financeRouter = (0, import_express4.Router)();
 financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
-function inRange2(d, from, to) {
+function inRange(d, from, to) {
   return d >= from && d <= to;
 }
 function parseRange(req) {
@@ -50414,7 +50289,7 @@ financeRouter.get("/vat", async (req, res) => {
   let corporateSales = 0;
   for (const o of forVat) {
     const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
-    if (isRevenueOrder && inRange2(o.createdDate, range2.from, range2.to)) {
+    if (isRevenueOrder && inRange(o.createdDate, range2.from, range2.to)) {
       const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
       if (o.kind === "walkin") walkinSales += totals.grandTotal;
       else corporateSales += totals.grandTotal;
@@ -50610,7 +50485,7 @@ financeRouter.get("/petty-cash", async (req, res) => {
     prisma.payment.findMany({ where: { method: "Cash", date: { gte: range2.from, lte: range2.to } } })
   ]);
   const petty = ledger.byCode.get("1010");
-  const mine = petty ? ledger.postings.filter((p) => p.accountId === petty.id && inRange2(p.date, range2.from, range2.to)) : [];
+  const mine = petty ? ledger.postings.filter((p) => p.accountId === petty.id && inRange(p.date, range2.from, range2.to)) : [];
   const balance = await computePettyCashBalance(range2.to);
   const rows = mine.map((p, i) => {
     const isTopUp = p.source === "Petty cash top-up";
@@ -50712,7 +50587,7 @@ financeRouter.post("/deletion-requests/:id/approve", (req, res) => decideDeletio
 financeRouter.post("/deletion-requests/:id/reject", (req, res) => decideDeletionRequest(req, res, false));
 
 // apps/api/src/routes/stock.ts
-var import_express6 = __toESM(require_express2());
+var import_express5 = __toESM(require_express2());
 
 // apps/api/src/requisitions.ts
 var formatRequisitionRef = (n) => `REQ-${String(n).padStart(4, "0")}`;
@@ -50744,7 +50619,7 @@ function ensureRequisitionsOnce() {
 }
 
 // apps/api/src/routes/stock.ts
-var stockRouter = (0, import_express6.Router)();
+var stockRouter = (0, import_express5.Router)();
 stockRouter.use(requireAuth, requirePermission("canAccessStock"));
 var PURCHASE_EXPENSE_CATEGORY = "Printing Materials & Consumables";
 var requisitionInclude = { lines: { include: { material: true }, orderBy: { id: "asc" } } };
@@ -51247,10 +51122,10 @@ stockRouter.post("/imports", async (req, res) => {
 });
 
 // apps/api/src/routes/reports.ts
-var import_express7 = __toESM(require_express2());
-var reportsRouter = (0, import_express7.Router)();
+var import_express6 = __toESM(require_express2());
+var reportsRouter = (0, import_express6.Router)();
 reportsRouter.use(requireAuth, requirePermission("canAccessReports"));
-function inRange3(d, from, to) {
+function inRange2(d, from, to) {
   return d >= from && d <= to;
 }
 function parseRange2(req) {
@@ -51270,7 +51145,7 @@ reportsRouter.get("/sales-by-category", async (req, res) => {
   let materialsQty = 0;
   let materialsRevenue = 0;
   for (const o of orders) {
-    if (!inRange3(o.createdDate, range2.from, range2.to)) continue;
+    if (!inRange2(o.createdDate, range2.from, range2.to)) continue;
     for (const li of o.lineItems) {
       const input = {
         itemType: li.itemType,
@@ -51315,7 +51190,7 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
       include: { lineItems: { where: { serviceId: embroideryService.id } } }
     });
     for (const o of orders) {
-      if (!inRange3(o.createdDate, range2.from, range2.to)) continue;
+      if (!inRange2(o.createdDate, range2.from, range2.to)) continue;
       for (const li of o.lineItems) {
         const lineTotal = buildLineTotal({
           itemType: li.itemType,
@@ -51342,7 +51217,7 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
   const breakdownMap = /* @__PURE__ */ new Map();
   let consumablesCost = 0;
   for (const p of purchases) {
-    if (!inRange3(p.date, range2.from, range2.to)) continue;
+    if (!inRange2(p.date, range2.from, range2.to)) continue;
     consumablesCost += p.totalCost;
     const b = breakdownMap.get(p.material.name) ?? { qty: 0, totalCost: 0 };
     b.qty += p.qty;
@@ -51510,8 +51385,8 @@ reportsRouter.get("/sales-by-business-head", async (req, res) => {
 });
 
 // apps/api/src/routes/email.ts
-var import_express8 = __toESM(require_express2());
-var emailRouter = (0, import_express8.Router)();
+var import_express7 = __toESM(require_express2());
+var emailRouter = (0, import_express7.Router)();
 emailRouter.use(requireAuth);
 var sendSchema = external_exports.object({
   to: external_exports.string().email(),
@@ -51541,11 +51416,11 @@ emailRouter.post("/send", async (req, res) => {
 });
 
 // apps/api/src/routes/mpesa.ts
-var import_express9 = __toESM(require_express2());
+var import_express8 = __toESM(require_express2());
 var import_crypto4 = require("crypto");
 
 // apps/api/src/accounting/reports.ts
-var inRange4 = (d, from, to) => d >= from && d <= to;
+var inRange3 = (d, from, to) => d >= from && d <= to;
 function monthsOf(from, to) {
   const out = [];
   let y = Number(from.slice(0, 4));
@@ -51573,7 +51448,7 @@ async function buildProfitLoss(from, to) {
     const acc = ledger.byId.get(p.accountId);
     if (!acc || acc.type !== "Income" && acc.type !== "Expense") continue;
     const signed = acc.type === "Income" ? p.credit - p.debit : p.debit - p.credit;
-    if (!inRange4(p.date, from, to)) {
+    if (!inRange3(p.date, from, to)) {
       const side = p.date < from ? outside.before : outside.after;
       if (acc.type === "Income") side.income += signed;
       else side.expenses += signed;
@@ -51615,6 +51490,35 @@ async function buildProfitLoss(from, to) {
       before: { income: round2(outside.before.income), expenses: round2(outside.before.expenses) },
       after: { income: round2(outside.after.income), expenses: round2(outside.after.expenses) }
     }
+  };
+}
+function priorRange(from, to) {
+  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00Z");
+  const toD = /* @__PURE__ */ new Date(to + "T00:00:00Z");
+  const lengthMs = toD.getTime() - fromD.getTime();
+  const priorTo = new Date(fromD.getTime() - 864e5);
+  const priorFrom = new Date(priorTo.getTime() - lengthMs);
+  return { from: priorFrom.toISOString().slice(0, 10), to: priorTo.toISOString().slice(0, 10) };
+}
+var pctChange = (cur, prev) => prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
+async function buildProfitLossDashboard(from, to, current) {
+  const prior = priorRange(from, to);
+  const y = Number(to.slice(0, 4));
+  const m = Number(to.slice(5, 7));
+  const first = new Date(Date.UTC(y, m - 1 - 5, 1)).toISOString().slice(0, 10);
+  const last2 = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const [priorPl, trendPl, cash] = await Promise.all([
+    buildProfitLoss(prior.from, prior.to),
+    buildProfitLoss(first, last2),
+    prisma.payment.aggregate({ _sum: { amount: true }, where: { date: { gte: from, lte: to } } })
+  ]);
+  return {
+    cashReceived: round2(cash._sum.amount ?? 0),
+    revChangePct: pctChange(current.income, priorPl.income.total),
+    profitChangePct: pctChange(current.netProfit, priorPl.netProfit),
+    priorFrom: prior.from,
+    priorTo: prior.to,
+    trend: trendPl.months.map((month, i) => ({ label: `${month.slice(5, 7)}/${month.slice(2, 4)}`, revenue: trendPl.income.byMonth[i], netProfit: trendPl.netByMonth[i] }))
   };
 }
 async function buildBalanceSheet(asOf) {
@@ -51662,7 +51566,7 @@ async function buildAccountLedger(accountId, from, to) {
   const sign2 = (p) => acc.type === "Asset" || acc.type === "Expense" ? p.debit - p.credit : p.credit - p.debit;
   const opening = round2(mine.filter((p) => p.date < from).reduce((a2, p) => a2 + sign2(p), 0));
   let running2 = opening;
-  const rows = mine.filter((p) => inRange4(p.date, from, to)).map((p) => {
+  const rows = mine.filter((p) => inRange3(p.date, from, to)).map((p) => {
     running2 = round2(running2 + sign2(p));
     return { date: p.date, source: p.source, ref: p.ref, memo: p.memo, debit: p.debit, credit: p.credit, balance: running2 };
   });
@@ -51739,10 +51643,10 @@ async function buildCashFlowStatement(from, to) {
   const cashBalanceAsOf = (cutoff) => ledger.postings.filter((p) => isCash(p) && cutoff(p.date)).reduce((a2, p) => a2 + p.debit - p.credit, 0);
   const openingCash = round2(cashBalanceAsOf((d) => d < from));
   const closingCash = round2(cashBalanceAsOf((d) => d <= to));
-  const moves = ledger.postings.filter((p) => isCash(p) && inRange4(p.date, from, to) && p.source !== "Opening");
+  const moves = ledger.postings.filter((p) => isCash(p) && inRange3(p.date, from, to) && p.source !== "Opening");
   const legsByEntry = /* @__PURE__ */ new Map();
   for (const p of ledger.postings) {
-    if (!inRange4(p.date, from, to)) continue;
+    if (!inRange3(p.date, from, to)) continue;
     const k = `${p.source}\0${p.ref}\0${p.date}`;
     legsByEntry.set(k, [...legsByEntry.get(k) || [], p]);
   }
@@ -52021,7 +51925,7 @@ function darajaTimestamp() {
 }
 
 // apps/api/src/routes/mpesa.ts
-var mpesaRouter = (0, import_express9.Router)();
+var mpesaRouter = (0, import_express8.Router)();
 var NOT_SET_UP = "M-Pesa isn't set up (or is switched off) \u2014 an Admin can set it up under Master Data \u2192 M-Pesa";
 function normalizePhone(raw) {
   const digits = raw.replace(/[^\d]/g, "");
@@ -52270,9 +52174,9 @@ mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
 });
 
 // apps/api/src/routes/assets.ts
-var import_express10 = __toESM(require_express2());
+var import_express9 = __toESM(require_express2());
 var ASSET_FUNDING2 = ["Bank", "Cash", "M-Pesa", "Owner Capital", "Opening Balance"];
-var assetsRouter = (0, import_express10.Router)();
+var assetsRouter = (0, import_express9.Router)();
 assetsRouter.use(requireAuth, requirePermission("canAccessFinance"));
 assetsRouter.get("/", async (req, res) => {
   const { category, condition } = req.query;
@@ -52384,9 +52288,9 @@ assetsRouter.delete("/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/dtf.ts
-var import_express11 = __toESM(require_express2());
+var import_express10 = __toESM(require_express2());
 var import_client3 = require("@prisma/client");
-var dtfRouter = (0, import_express11.Router)();
+var dtfRouter = (0, import_express10.Router)();
 dtfRouter.use(requireAuth, requirePermission("canAccessDtf", "canManageDtf"));
 var manageOnly = requirePermission("canManageDtf");
 var dateStr2 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
@@ -52748,7 +52652,7 @@ dtfRouter.delete("/jobs/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/accounting.ts
-var import_express12 = __toESM(require_express2());
+var import_express11 = __toESM(require_express2());
 
 // apps/api/src/accounting/reconcile.ts
 var key = (source, ref) => `${source}\0${ref}`;
@@ -53154,7 +53058,7 @@ async function depreciationSchedule(from, to, asOf) {
 }
 
 // apps/api/src/routes/accounting.ts
-var accountingRouter = (0, import_express12.Router)();
+var accountingRouter = (0, import_express11.Router)();
 accountingRouter.use(requireAuth);
 var dateStr3 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 var isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -53298,10 +53202,11 @@ accountingRouter.get("/ledger", ...accountingOnly, async (req, res) => {
   if (!out) return res.status(404).json({ error: "Account not found" });
   res.json(out);
 });
-accountingRouter.get("/profit-loss", ...accountingOnly, async (req, res) => {
+accountingRouter.get("/profit-loss", requirePermission("canAccessAccounting", "canAccessPnl"), prepare, async (req, res) => {
   const r = range(req);
   if (!r) return res.status(400).json({ error: "from and to are required (YYYY-MM-DD)" });
-  res.json(await buildProfitLoss(r.from, r.to));
+  const pl = await buildProfitLoss(r.from, r.to);
+  res.json({ ...pl, dashboard: await buildProfitLossDashboard(r.from, r.to, { income: pl.income.total, netProfit: pl.netProfit }) });
 });
 accountingRouter.get("/balance-sheet", ...accountingOnly, async (req, res) => res.json(await buildBalanceSheet(asOfOf(req))));
 accountingRouter.get("/trial-balance", ...accountingOnly, async (req, res) => res.json(await buildTrialBalance(asOfOf(req))));
@@ -53493,7 +53398,7 @@ accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => 
 });
 
 // apps/api/src/routes/production.ts
-var import_express13 = __toESM(require_express2());
+var import_express12 = __toESM(require_express2());
 
 // apps/api/src/production.ts
 async function ensureProduction() {
@@ -53554,7 +53459,7 @@ function productionSummary(o) {
 }
 
 // apps/api/src/routes/production.ts
-var productionRouter = (0, import_express13.Router)();
+var productionRouter = (0, import_express12.Router)();
 productionRouter.use(requireAuth, requirePermission("canAccessProduction", "canManageProduction"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -53746,8 +53651,8 @@ productionRouter.get("/productivity", async (req, res) => {
 });
 
 // apps/api/src/routes/quality.ts
-var import_express14 = __toESM(require_express2());
-var qualityRouter = (0, import_express14.Router)();
+var import_express13 = __toESM(require_express2());
+var qualityRouter = (0, import_express13.Router)();
 qualityRouter.use(requireAuth, requirePermission("canAccessQuality"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -53868,8 +53773,8 @@ qualityRouter.post("/orders/:orderId/check", async (req, res) => {
 });
 
 // apps/api/src/routes/commission.ts
-var import_express15 = __toESM(require_express2());
-var commissionRouter = (0, import_express15.Router)();
+var import_express14 = __toESM(require_express2());
+var commissionRouter = (0, import_express14.Router)();
 commissionRouter.use(requireAuth, async (_req, _res, next) => {
   await ensureCommissionAccessOnce();
   next();
@@ -54075,14 +53980,13 @@ commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
 
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express16.default)();
+var app = (0, import_express15.default)();
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express16.default.json({ limit: "5mb" }));
+app.use(import_express15.default.json({ limit: "5mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
 app.use("/api/master-data", masterDataRouter);
 app.use("/api/orders", ordersRouter);
-app.use("/api/pnl", pnlRouter);
 app.use("/api/finance", financeRouter);
 app.use("/api/stock", stockRouter);
 app.use("/api/reports", reportsRouter);

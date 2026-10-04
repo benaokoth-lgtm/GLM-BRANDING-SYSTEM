@@ -27,7 +27,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canCaptureOrders: 'Capture orders',
   canViewAllOrders: 'View all orders',
   canManagePayments: 'Payments',
-  canAccessPnl: 'P&L',
+  canAccessPnl: 'P&L (Accounting → Profit & Loss)',
   canAccessFinance: 'Finance / Compliance',
   canAccessStock: 'Stock',
   canApproveStock: 'Approve stock',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fmtDate } from '@glm/shared';
+import { fmtDate, fmtKsh } from '@glm/shared';
 import { AsOfBar, Card, DateRangeBar, Loading, Tag, money, numStyle, printPage, useLoad, ymd } from './shared';
 import type { Range } from './shared';
 
@@ -25,7 +25,36 @@ interface PlData {
   netByMonth: number[];
   margin: number | null;
   outside: { before: { income: number; expenses: number }; after: { income: number; expenses: number } };
+  // The four dashboard figures' extras: money received, the comparison with the period before, and a six-month trend.
+  dashboard: {
+    cashReceived: number;
+    revChangePct: number | null;
+    profitChangePct: number | null;
+    priorFrom: string;
+    priorTo: string;
+    trend: { label: string; revenue: number; netProfit: number }[];
+  };
 }
+
+function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="card blueprint elev-sm">
+      <i className="corner tl"></i>
+      <i className="corner tr"></i>
+      <i className="corner bl"></i>
+      <i className="corner br"></i>
+      <div className="card-kicker">{label}</div>
+      <div className="card-title">{value}</div>
+      {sub && (
+        <div className="text-muted" style={{ fontSize: 11 }}>
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const vsPrior = (pct: number | null) => (pct === null ? 'No prior data' : `${pct >= 0 ? '+' : ''}${pct}% vs prior period`);
 
 export function ProfitLossTab({ range }: { range: Range }) {
   const { data, error, loading } = useLoad<PlData>(`/accounting/profit-loss?from=${range.from}&to=${range.to}`);
@@ -67,6 +96,19 @@ export function ProfitLossTab({ range }: { range: Range }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <DateRangeBar range={range} />
       <Loading loading={loading} error={error} />
+      {data && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 'var(--space-3)' }}>
+            <Kpi label="Revenue (accrual)" value={fmtKsh(data.income.total)} sub={vsPrior(data.dashboard.revChangePct)} />
+            <Kpi label="Revenue (cash received)" value={fmtKsh(data.dashboard.cashReceived)} sub="money received, VAT included" />
+            <Kpi label="Gross profit" value={fmtKsh(data.grossProfit)} sub={data.grossMargin != null ? `${data.grossMargin}% gross margin` : undefined} />
+            <Kpi label={data.netProfit >= 0 ? 'Net profit' : 'Net loss'} value={fmtKsh(data.netProfit)} sub={`${vsPrior(data.dashboard.profitChangePct)}${data.margin != null ? ` · ${data.margin}% margin` : ''}`} />
+          </div>
+          <p className="note" style={{ margin: 0 }}>
+            Prior comparison period: {fmtDate(data.dashboard.priorFrom)} → {fmtDate(data.dashboard.priorTo)}. Revenue (accrual) is income for the period with VAT taken out; cash received is the money that actually came in.
+          </p>
+        </>
+      )}
       {data && (
         <Card
           title="Profit & Loss"
@@ -119,6 +161,37 @@ export function ProfitLossTab({ range }: { range: Range }) {
               Outside these dates the books also hold income {money(data.outside.before.income + data.outside.after.income)} and expenses {money(data.outside.before.expenses + data.outside.after.expenses)}.
             </p>
           )}
+        </Card>
+      )}
+      {data && (
+        <Card title="Revenue & net profit — last 6 months" hint="The six months ending with the month of the end date.">
+          {(() => {
+            const max = Math.max(1, ...data.dashboard.trend.map((t) => Math.max(t.revenue, Math.abs(t.netProfit))));
+            return (
+              <>
+                <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'flex-end', height: 150 }}>
+                  {data.dashboard.trend.map((t) => (
+                    <div key={t.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, flex: 1 }}>
+                      <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 120 }}>
+                        <div style={{ width: 14, height: Math.round((Math.max(0, t.revenue) / max) * 120), background: 'var(--color-accent-300)' }} title={fmtKsh(t.revenue)} />
+                        <div
+                          style={{ width: 14, height: Math.round((Math.abs(t.netProfit) / max) * 120), background: t.netProfit >= 0 ? 'var(--color-accent-600)' : '#b23b2e' }}
+                          title={fmtKsh(t.netProfit)}
+                        />
+                      </div>
+                      <div className="text-muted" style={{ fontSize: 11 }}>
+                        {t.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-muted" style={{ display: 'flex', gap: 'var(--space-4)', marginTop: 'var(--space-2)', fontSize: 11 }}>
+                  <span>Revenue</span>
+                  <span>Net profit</span>
+                </div>
+              </>
+            );
+          })()}
         </Card>
       )}
     </div>

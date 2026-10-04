@@ -49,6 +49,65 @@ export default function DtfDashboard({ data, go }: { data: DtfData; go: (tab: 's
         ))}
       </div>
 
+      <Card title="What discounts cost — roll by roll">
+        <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-3)' }}>
+          {[
+            ['Discounts given', fmtKsh(d.discountGiven)],
+            ['Profit at full prices', fmtKsh(d.profitBeforeDiscounts)],
+            ['Profit taken by discounts', d.profitLostPct == null ? '—' : `${fmtNum(d.profitLostPct, 1)}%`],
+            ['Earned above standard price', fmtKsh(d.premiumEarned)],
+          ].map(([k, v]) => (
+            <div key={k} style={{ minWidth: 150 }}>
+              <div className="card-kicker">{k}</div>
+              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 24 }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ whiteSpace: 'nowrap' }}>
+            <thead>
+              <tr>
+                <th>Roll</th>
+                <th style={right}>Revenue at full price</th>
+                <th style={right}>Discounts</th>
+                <th style={right}>% of revenue</th>
+                <th style={right}>Revenue</th>
+                <th style={right}>Roll cost</th>
+                <th style={right}>Profit at full price</th>
+                <th style={right}>Profit</th>
+                <th style={right}>Profit lost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {started.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="text-muted">No rolls yet.</td>
+                </tr>
+              )}
+              {started.map((r) => (
+                <tr key={r.roll.id}>
+                  <td>
+                    {r.roll.id} {r.pendingJobs > 0 && <span className="tag tag-outline">{r.pendingJobs} pending</span>}
+                  </td>
+                  <td style={right}>{fmtKsh(r.revenueBeforeDiscounts)}</td>
+                  <td style={{ ...right, color: r.discountGiven > 0 ? '#a33' : undefined, fontWeight: r.discountGiven > 0 ? 700 : undefined }}>{r.discountGiven > 0 ? fmtKsh(r.discountGiven) : '—'}</td>
+                  <td style={right}>{r.discountPctOfRevenue == null || r.discountGiven === 0 ? '—' : `${fmtNum(r.discountPctOfRevenue, 1)}%`}</td>
+                  <td style={right}>{fmtKsh(r.revenue)}</td>
+                  <td style={right}>{fmtKsh(r.rollCost)}</td>
+                  <td style={right}>{fmtKsh(r.profitBeforeDiscounts)}</td>
+                  <td style={{ ...right, fontWeight: 700 }}>{fmtKsh(r.profit)}</td>
+                  <td style={{ ...right, color: (r.profitLostPct ?? 0) > 0 ? '#a33' : undefined }}>{r.profitLostPct == null || r.discountGiven === 0 ? '—' : `${fmtNum(r.profitLostPct, 1)}%`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+          A discount is film sold below its standard price, or an artwork job charged below the recommended price (approved ones only — a job waiting for approval earns nothing yet). “At full price”
+          adds the discounts back, so “profit lost” is the share of what the roll would have made that the discounts took. Roll cost includes the wastage when a roll is closed.
+        </p>
+      </Card>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: 'var(--space-6)' }}>
         <Card title="Printed film vs artwork">
           <table className="table">

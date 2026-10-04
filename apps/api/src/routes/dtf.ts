@@ -194,7 +194,10 @@ dtfRouter.get('/data', async (req, res) => {
       fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob,
       minPricePerPieceAtJob: j.minPricePerPieceAtJob,
       chargedPerPiece: j.chargedPerPiece,
+      approvalStatus: j.approvalStatus,
+      orderId: j.orderId,
     })),
+    pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: 'Pending' } }) : 0,
   });
 });
 
@@ -404,9 +407,11 @@ const jobSchema = z.object({
   phone: z.string().max(40).default(''),
   runningMetres: z.number().positive('Running metres must be greater than 0'),
   pieces: z.number().int().positive('Pieces must be at least 1'),
-  heatPressFee: z.number().positive().nullable().optional(), // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
-  // Price per piece actually charged. Blank = the system-recommended price; it can never be lower, and anything above it is the staff
-  // member's commission base.
+  // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS. Required: no artwork job is processed without it.
+  heatPressFee: z.number({ required_error: 'Choose the heat press fee — a job cannot be processed without it', invalid_type_error: 'Choose the heat press fee — a job cannot be processed without it' }).positive('Choose the heat press fee — a job cannot be processed without it'),
+  // Price per piece actually charged. Blank = the system-recommended price. Above it, the extra is the staff member's commission base.
+  // Below it (but not under the per-piece floor) is a discount: it needs a manager's approval before the job is paid for or produced, and
+  // no other discount applies on top of it.
   pricePerPiece: z.number().positive().nullable().optional(),
   sourcedBy: z.number().int().nullable().optional(),
   amountPaid: z.number().min(0).default(0),
@@ -427,16 +432,18 @@ dtfRouter.post('/jobs', async (req, res) => {
   if ('error' in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
   const sys = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
-  if (d.pricePerPiece != null && d.pricePerPiece < sys.finalPerPiece - 0.005) {
-    return res.status(400).json({ error: `The price per piece cannot be below the recommended ${sys.finalPerPiece} KES` });
+  if (d.pricePerPiece != null && d.pricePerPiece < settings.minPricePerPiece - 0.005) {
+    return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${settings.minPricePerPiece} KES` });
   }
-  const chargedPerPiece = d.pricePerPiece != null && d.pricePerPiece > sys.finalPerPiece + 0.005 ? Math.round(d.pricePerPiece * 100) / 100 : null;
+  const chargedPerPiece = d.pricePerPiece != null && Math.abs(d.pricePerPiece - sys.finalPerPiece) > 0.005 ? Math.round(d.pricePerPiece * 100) / 100 : null;
+  const needsApproval = chargedPerPiece != null && chargedPerPiece < sys.finalPerPiece - 0.005;
   const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
   const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
   if (claim) return res.status(400).json({ error: claim });
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   if (paid > jobTotal) return res.status(400).json({ error: 'Amount paid cannot exceed the job total' });
+  if (needsApproval && paid > 0) return res.status(400).json({ error: 'A price below the recommended price needs a manager’s approval first — take the payment once it is approved' });
 
   try {
     const { job, order } = await prisma.$transaction(async (tx) => {
@@ -461,16 +468,77 @@ dtfRouter.post('/jobs', async (req, res) => {
           fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
           minPricePerPieceAtJob: settings.minPricePerPiece,
           chargedPerPiece,
+          approvalStatus: needsApproval ? 'Pending' : 'Approved',
           capturedByName: req.user!.name,
           orderId: order.id,
         },
       });
+      if (needsApproval) {
+        await tx.priceApproval.create({
+          data: {
+            orderId: order.id,
+            orderNo: order.orderNo,
+            rollId: d.rollId,
+            client: d.client.trim() || WALK_IN_CLIENT,
+            pieces: d.pieces,
+            runningMetres: d.runningMetres,
+            systemPerPiece: sys.finalPerPiece,
+            chargedPerPiece: chargedPerPiece!,
+            shortfall: Math.round((sys.finalPerPiece - chargedPerPiece!) * d.pieces * 100) / 100,
+            valueAtRecommended: Math.round(sys.finalPerPiece * d.pieces * 100) / 100,
+            valueAtCharged: Math.round(chargedPerPiece! * d.pieces * 100) / 100,
+            requestedById: req.user!.id,
+            requestedByName: req.user!.name,
+          },
+        });
+      }
       return { job, order };
     });
-    res.status(201).json({ job, order: serializeDetail(order) });
+    // The order is re-read so its summary carries the approval flag.
+    const fresh = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
+    res.status(201).json({ job, order: serializeDetail(fresh), approval: needsApproval ? 'Pending' : null });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record job') });
   }
+});
+
+// ── Price approvals — a job priced below the recommended price is held until a DTF manager decides ──
+dtfRouter.get('/approvals', manageOnly, async (_req, res) => {
+  const rows = await prisma.priceApproval.findMany({ orderBy: [{ status: 'asc' }, { id: 'desc' }], take: 200 });
+  res.json(rows.map((r) => ({ ...r, requestedAt: r.requestedAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null, pctBelow: r.systemPerPiece > 0 ? Math.round(((r.systemPerPiece - r.chargedPerPiece) / r.systemPerPiece) * 1000) / 10 : 0 })));
+});
+
+// Approving releases the job: it can now be paid for and produced, and its revenue counts on the roll. Whoever captured it cannot approve it.
+dtfRouter.post('/approvals/:id/approve', manageOnly, async (req, res) => {
+  const a = await prisma.priceApproval.findUnique({ where: { id: Number(req.params.id) } });
+  if (!a) return res.status(404).json({ error: 'Approval request not found' });
+  if (a.status !== 'Pending') return res.status(400).json({ error: `This request has already been ${a.status.toLowerCase()}` });
+  if (a.requestedById === req.user!.id) return res.status(400).json({ error: 'You cannot approve a price you captured yourself' });
+  await prisma.$transaction(async (tx) => {
+    if (a.orderId) await tx.dtfArtworkJob.updateMany({ where: { orderId: a.orderId }, data: { approvalStatus: 'Approved' } });
+    await tx.priceApproval.update({ where: { id: a.id }, data: { status: 'Approved', decidedByName: req.user!.name, decidedAt: new Date() } });
+  });
+  res.json({ ok: true });
+});
+
+// Rejecting removes the order and the job (nothing was paid or produced, and the film metres go back on the roll); the request stays as the record.
+dtfRouter.post('/approvals/:id/reject', manageOnly, async (req, res) => {
+  const parsed = z.object({ reason: z.string().trim().min(1, 'Give a reason for rejecting this price').max(300) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const a = await prisma.priceApproval.findUnique({ where: { id: Number(req.params.id) } });
+  if (!a) return res.status(404).json({ error: 'Approval request not found' });
+  if (a.status !== 'Pending') return res.status(400).json({ error: `This request has already been ${a.status.toLowerCase()}` });
+  if (a.requestedById === req.user!.id) return res.status(400).json({ error: 'You cannot reject a price you captured yourself' });
+  await prisma.$transaction(async (tx) => {
+    if (a.orderId) {
+      await tx.dtfArtworkJob.deleteMany({ where: { orderId: a.orderId } });
+      await tx.orderLineItem.deleteMany({ where: { orderId: a.orderId } });
+      await tx.payment.deleteMany({ where: { orderId: a.orderId } });
+      await tx.order.delete({ where: { id: a.orderId } });
+    }
+    await tx.priceApproval.update({ where: { id: a.id }, data: { status: 'Rejected', orderId: null, reason: parsed.data.reason, decidedByName: req.user!.name, decidedAt: new Date() } });
+  });
+  res.json({ ok: true });
 });
 
 dtfRouter.delete('/jobs/:id', requireRole('Admin'), async (req, res) => {

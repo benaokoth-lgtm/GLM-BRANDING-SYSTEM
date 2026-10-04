@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, todayStr } from '@glm/shared';
+import { VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, summariseRoll, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import type { DtfData } from '../components/dtf/shared';
@@ -49,18 +49,31 @@ export default function NewArtworkOrder() {
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
   const rollLen = roll?.rollLengthM || settings.rollLengthM;
   const overRoll = !!roll && used + run > rollLen;
-  // The system's price is the recommended one. Staff may charge MORE (blank = the recommended price) and are rewarded on the extra.
+  // The system's price is the recommended one (blank = charge it). Charging MORE earns commission on the extra. Charging LESS — down to
+  // the per-piece floor — is a discount: it needs a manager's approval before the job is paid for or produced, and no other discount applies.
   const system = c.finalPerPiece;
+  const floor = settings.minPricePerPiece;
   const priceIn = f.price.trim() === '' ? null : num(f.price);
-  const tooLow = priceIn != null && pcs > 0 && priceIn < system - 0.005;
-  const chosen = priceIn != null && priceIn > system ? priceIn : system;
+  const belowFloor = priceIn != null && pcs > 0 && priceIn < floor - 0.005;
+  const chosen = priceIn != null && !belowFloor && Math.abs(priceIn - system) > 0.005 ? priceIn : system;
+  const belowSystem = pcs > 0 && chosen < system - 0.005;
+  const discountTotal = belowSystem ? Math.round((system - chosen) * pcs * 100) / 100 : 0;
   const jobTotal = Math.round(chosen * pcs * 100) / 100;
-  const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && !tooLow;
+  const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && !belowFloor;
+  // What this discount does to the roll's profit (managers see roll costs; staff just see the discount).
+  const impact =
+    belowSystem && roll && data.canManage
+      ? (() => {
+          const hypothetical = { id: 'new', rollId, jobOn: todayStr(), client: '', runningMetres: run, pieces: pcs, fixedChargePerMetreAtJob: settings.fixedChargePerMetre, minPricePerPieceAtJob: settings.minPricePerPiece, chargedPerPiece: chosen, approvalStatus: 'Approved' as const };
+          return { now: summariseRoll(settings, roll, data.sales, data.jobs), after: summariseRoll(settings, roll, data.sales, [...data.jobs, hypothetical]) };
+        })()
+      : null;
 
   const lines: [string, string, string][] = [
     ['Fixed charge', `${fmtKsh(settings.fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m ÷ ${fmtNum(pcs)} pcs`, pcs > 0 ? fmtKsh((c.finalPerPiece - settings.minPricePerPiece)) : '—'],
     ['Recommended price / piece', `${fmtKsh(settings.minPricePerPiece)} floor + fixed charge`, fmtKsh(system)],
-    ...(chosen > system ? ([['Price charged / piece', `${fmtKsh(chosen - system)} above recommended`, fmtKsh(chosen)]] as [string, string, string][]) : []),
+    ...(chosen > system + 0.005 ? ([['Price charged / piece', `${fmtKsh(chosen - system)} above recommended`, fmtKsh(chosen)]] as [string, string, string][]) : []),
+    ...(belowSystem ? ([['Price charged / piece', `${fmtKsh(system - chosen)} below recommended — needs approval`, fmtKsh(chosen)]] as [string, string, string][]) : []),
   ];
 
   return (
@@ -114,10 +127,22 @@ export default function NewArtworkOrder() {
         <label>Price / piece (optional)</label>
         <input className="input" style={{ maxWidth: 200 }} inputMode="decimal" placeholder={pcs > 0 ? String(system) : 'recommended'} value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} />
         <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
-          Leave blank to charge the recommended price. You may charge more — you earn commission on the amount above the recommended price, never on the recommended price itself.
+          Leave blank to charge the recommended price. Charge more and you earn commission on the amount above it. Charge less (not under {fmtKsh(floor)}) and the job needs a manager’s approval first.
         </p>
-        {tooLow && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Blocked — the price cannot be below the recommended {fmtKsh(system)}.</p>}
-        {!tooLow && chosen > system && artworkRate != null && (
+        {belowFloor && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Blocked — the price cannot be below the minimum of {fmtKsh(floor)} a piece.</p>}
+        {belowSystem && (
+          <div className="note" style={{ margin: 'var(--space-1) 0 0', borderLeft: '2px solid #a33', paddingLeft: 'var(--space-2)' }}>
+            <b>Discount: {fmtKsh(discountTotal)}</b> ({fmtNum(((system - chosen) / system) * 100, 1)}% below the recommended {fmtKsh(system)}). The lower price <i>is</i> the discount — no other discount applies. It goes to a manager for approval first;
+            payment is taken and production starts once it is approved. No commission premium is earned on it.
+            {impact && (
+              <div style={{ marginTop: 4 }}>
+                Roll {rollId} profit so far {fmtKsh(impact.now.profit)} → <b>{fmtKsh(impact.after.profit)}</b> if approved; its discounts would then take{' '}
+                <b>{impact.after.profitLostPct == null ? '—' : `${fmtNum(impact.after.profitLostPct, 1)}%`}</b> of the profit it would make at full prices.
+              </div>
+            )}
+          </div>
+        )}
+        {!belowFloor && chosen > system + 0.005 && artworkRate != null && (
           <p className="note" style={{ margin: 'var(--space-1) 0 0', borderLeft: '2px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
             {fmtKsh(chosen - system)} above recommended on each piece — worth about <b>{fmtKsh(artworkPremiumCommission(pcs, chosen, system, artworkRate, VAT_RATE))}</b> commission to you, earned as the customer pays.
           </p>
@@ -172,9 +197,10 @@ export default function NewArtworkOrder() {
             client: f.client,
             runningMetres: run,
             pieces: pcs,
-            pricePerPiece: chosen > system ? chosen : null,
+            pricePerPiece: Math.abs(chosen - system) > 0.005 ? chosen : null,
           }}
           qty={pcs}
+          needsApproval={belowSystem}
           unitPrice={chosen}
           client={f.client}
           onClose={() => setShowOrderDialog(false)}

@@ -152,23 +152,24 @@ describe('staff sales commission', () => {
 
   it('artwork earns only on the price charged above the recommended one', async () => {
     // 2 running metres, 108 pieces → recommended 30 + 2160×2/108 = 70 per piece
-    const job = (price: number | undefined, paid: number) => call('amina', 'POST', '/dtf/jobs', { rollId: 'ROLL-001', client: 'Print Client', runningMetres: 2, pieces: 108, pricePerPiece: price, amountPaid: paid });
+    const job = (price: number | undefined, paid: number) => call('amina', 'POST', '/dtf/jobs', { rollId: 'ROLL-001', client: 'Print Client', runningMetres: 2, pieces: 108, heatPressFee: 20, pricePerPiece: price, amountPaid: paid });
 
-    const tooLow = await job(60, 0);
-    assert.equal(tooLow.status, 400);
-    assert.match(tooLow.body.error, /recommended 70/);
+    // (a heat press fee of 20 a piece is on every job — it is mandatory — so each order is 2,160 more than the print price)
+    const belowFloor = await job(20, 0);
+    assert.equal(belowFloor.status, 400);
+    assert.match(belowFloor.body.error, /minimum of 30/);
 
     // At the recommended price: no commission line at all
-    const plain = await job(undefined, 7560);
+    const plain = await job(undefined, 9720);
     assert.equal(plain.status, 201);
     assert.equal((await mine('amina')).artwork.commission, 0);
 
     // 80 per piece, half paid: 108 × 10 = 1,080 → 931.03 net → 50% = 465.52 → half is 232.76
-    const high = await job(80, 4320);
+    const high = await job(80, 5400);
     assert.equal(high.status, 201);
-    assert.equal(high.body.order.totals.grandTotal, 8640);
+    assert.equal(high.body.order.totals.grandTotal, 10800); // 80 × 108 + the 20 × 108 heat press fee
     assert.equal((await mine('amina')).artwork.commission, 232.76);
-    await call('amina', 'POST', `/orders/${high.body.order.id}/payments`, { amount: 4320, method: 'Cash' });
+    await call('amina', 'POST', `/orders/${high.body.order.id}/payments`, { amount: 5400, method: 'Cash' });
     assert.equal((await mine('amina')).artwork.commission, 465.52);
     assert.equal((await mine('amina')).productivity.artworkExtraCharged, 1080);
   });
@@ -262,7 +263,7 @@ describe('staff sales commission', () => {
     assert.equal(film.status, 201, JSON.stringify(film.body));
     assert.equal(film.body.sale.client, 'Walk-in');
     assert.equal(film.body.order.customerName, 'Walk-in');
-    const art = await call('amina', 'POST', '/dtf/jobs', { rollId: 'ROLL-001', runningMetres: 2, pieces: 108, amountPaid: 7560 });
+    const art = await call('amina', 'POST', '/dtf/jobs', { rollId: 'ROLL-001', runningMetres: 2, pieces: 108, heatPressFee: 20, amountPaid: 9720 });
     assert.equal(art.status, 201, JSON.stringify(art.body));
     assert.equal(art.body.job.client, 'Walk-in');
     // claiming on a film order without the details is refused too

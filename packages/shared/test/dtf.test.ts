@@ -45,6 +45,38 @@ const roll = (o: Partial<DtfRoll> = {}): DtfRoll => ({
   id: 'ROLL-001', installedOn: '2026-01-01', finishedOn: null, status: 'open',
   filmCost: 9000, inkPowderCost: 6000, rollLengthM: 100, ...o,
 });
+test('discounts: what pricing below standard or recommended costs a roll, and what it does to the profit', () => {
+  const roll: DtfRoll = { id: 'ROLL-002', installedOn: '2026-01-01', finishedOn: null, status: 'open', filmCost: 6000, inkPowderCost: 4000, rollLengthM: 100 };
+  // film: 10 m at the standard 500 and 10 m at 450 (50/m off → 500 given away)
+  const sales: DtfFilmSale[] = [
+    { id: 'a', rollId: 'ROLL-002', soldOn: '2026-01-02', client: 'x', metres: 10, pricePerM: 500, stdPriceAtSale: 500, amountPaid: 0 },
+    { id: 'b', rollId: 'ROLL-002', soldOn: '2026-01-03', client: 'x', metres: 10, pricePerM: 450, stdPriceAtSale: 500, amountPaid: 0 },
+    { id: 'c', rollId: 'ROLL-002', soldOn: '2026-01-04', client: 'x', metres: 4, pricePerM: 520, stdPriceAtSale: 500, amountPaid: 0 }, // above standard: a premium, not a discount
+  ];
+  // artwork: 2 running metres, 108 pieces → recommended 70; one job at 60 (10 off × 108 = 1,080), one at the recommended price
+  const job = (id: string, charged: number | null, approvalStatus: 'Pending' | 'Approved' = 'Approved'): DtfArtworkJob => ({ id, rollId: 'ROLL-002', jobOn: '2026-01-05', client: 'y', runningMetres: 2, pieces: 108, fixedChargePerMetreAtJob: 2160, minPricePerPieceAtJob: 30, chargedPerPiece: charged, approvalStatus });
+  const r = summariseRoll(S, roll, sales, [job('j1', 60), job('j2', null), job('j3', 50, 'Pending')]);
+  assert.equal(r.filmDiscount, 500);
+  assert.equal(r.artworkDiscount, 1080); // the pending job is not counted until it is approved
+  assert.equal(r.discountGiven, 1580);
+  assert.equal(r.premiumEarned, 80); // 4 m × 20
+  assert.equal(r.discountedCount, 2); // one film sale and one approved artwork job
+  assert.equal(r.discountedM, 12);
+  assert.equal(r.pendingJobs, 1);
+  // revenue: film 5000 + 4500 + 2080, artwork 6480 + 7560 (the pending job earns nothing yet)
+  assert.equal(r.revenue, 5000 + 4500 + 2080 + 6480 + 7560);
+  assert.equal(r.profit, r.revenue - 10000);
+  assert.equal(r.revenueBeforeDiscounts, r.revenue + 1580);
+  assert.equal(r.profitBeforeDiscounts, r.profit + 1580);
+  assert.equal(r.profitLostPct, Math.round((1580 / (r.profit + 1580)) * 10000) / 100);
+  // its metres are reserved though: 24 film + 6 artwork (three jobs of 2 m)
+  assert.equal(r.artM, 6);
+  // no discounts at all: nothing lost
+  const none = summariseRoll(S, roll, [sales[0]!], [job('k', null)]);
+  assert.equal(none.discountGiven, 0);
+  assert.equal(none.profitLostPct, 0);
+});
+
 const sale = (rollId: string, metres: number, price = 500): DtfFilmSale => ({
   id: 's' + metres + rollId, rollId, soldOn: '2026-01-02', client: 'x', metres, pricePerM: price, stdPriceAtSale: 500, amountPaid: 0,
 });

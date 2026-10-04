@@ -177,6 +177,11 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
               <div>{fmtDate(detail.createdDate)}</div>
             </div>
           </div>
+          {detail.priceApproval === 'Pending' && (
+            <p className="note" style={{ borderLeft: '2px solid #a33', paddingLeft: 'var(--space-2)' }}>
+              <span className="tag tag-outline">Awaiting price approval</span> This artwork job is priced below the recommended price. A manager has to approve it before it can be paid for or produced.
+            </p>
+          )}
           {detail.salesSource === 'sourced' && detail.sourcedByName && (
             <p className="note" style={{ marginTop: 'calc(-1 * var(--space-2))' }}>
               Credited to <b>{detail.sourcedByName}</b> — their sourced client, so this order counts towards their commission.

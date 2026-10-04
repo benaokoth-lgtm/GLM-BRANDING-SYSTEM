@@ -49635,7 +49635,8 @@ var orderInclude = import_client2.Prisma.validator()({
   staff: true,
   corporateClient: true,
   lineItems: { include: { service: true, material: true } },
-  payments: { orderBy: { id: "asc" } }
+  payments: { orderBy: { id: "asc" } },
+  dtfArtworkJob: { select: { approvalStatus: true } }
 });
 function toLineItemInput(li) {
   return {
@@ -49668,7 +49669,9 @@ function serializeSummary(order) {
     stage: order.stage,
     dueDate: order.dueDate,
     totals,
-    overdue
+    overdue,
+    // An artwork job priced below the recommended price is on hold until a manager approves it.
+    priceApproval: order.dtfArtworkJob?.approvalStatus === "Pending" ? "Pending" : null
   };
 }
 function serializeDetail(order, opts = {}) {
@@ -49953,6 +49956,9 @@ ordersRouter.post("/:id/payments", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const lines = parsed.data.payments?.length ? parsed.data.payments : [{ method: parsed.data.method, amount: parsed.data.amount, reference: parsed.data.reference ?? null }];
   const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  if (current?.dtfArtworkJob?.approvalStatus === "Pending") {
+    return res.status(400).json({ error: "This job is priced below the recommended price and is waiting for a manager\u2019s approval \u2014 payment is taken once it is approved" });
+  }
   const before = serializeSummary(current).totals;
   const paying = lines.reduce((a2, p) => a2 + p.amount, 0);
   if (paying > before.balanceDue + 0.01) {
@@ -52426,8 +52432,11 @@ dtfRouter.get("/data", async (req, res) => {
       pieces: j.pieces,
       fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob,
       minPricePerPieceAtJob: j.minPricePerPieceAtJob,
-      chargedPerPiece: j.chargedPerPiece
-    }))
+      chargedPerPiece: j.chargedPerPiece,
+      approvalStatus: j.approvalStatus,
+      orderId: j.orderId
+    })),
+    pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending" } }) : 0
   });
 });
 var settingsSchema3 = external_exports.object({
@@ -52591,10 +52600,11 @@ var jobSchema = external_exports.object({
   phone: external_exports.string().max(40).default(""),
   runningMetres: external_exports.number().positive("Running metres must be greater than 0"),
   pieces: external_exports.number().int().positive("Pieces must be at least 1"),
-  heatPressFee: external_exports.number().positive().nullable().optional(),
-  // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS
-  // Price per piece actually charged. Blank = the system-recommended price; it can never be lower, and anything above it is the staff
-  // member's commission base.
+  // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS. Required: no artwork job is processed without it.
+  heatPressFee: external_exports.number({ required_error: "Choose the heat press fee \u2014 a job cannot be processed without it", invalid_type_error: "Choose the heat press fee \u2014 a job cannot be processed without it" }).positive("Choose the heat press fee \u2014 a job cannot be processed without it"),
+  // Price per piece actually charged. Blank = the system-recommended price. Above it, the extra is the staff member's commission base.
+  // Below it (but not under the per-piece floor) is a discount: it needs a manager's approval before the job is paid for or produced, and
+  // no other discount applies on top of it.
   pricePerPiece: external_exports.number().positive().nullable().optional(),
   sourcedBy: external_exports.number().int().nullable().optional(),
   amountPaid: external_exports.number().min(0).default(0),
@@ -52610,16 +52620,18 @@ dtfRouter.post("/jobs", async (req, res) => {
   if ("error" in found) return res.status(400).json({ error: found.error });
   const settings = await getSettings();
   const sys = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
-  if (d.pricePerPiece != null && d.pricePerPiece < sys.finalPerPiece - 5e-3) {
-    return res.status(400).json({ error: `The price per piece cannot be below the recommended ${sys.finalPerPiece} KES` });
+  if (d.pricePerPiece != null && d.pricePerPiece < settings.minPricePerPiece - 5e-3) {
+    return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${settings.minPricePerPiece} KES` });
   }
-  const chargedPerPiece = d.pricePerPiece != null && d.pricePerPiece > sys.finalPerPiece + 5e-3 ? Math.round(d.pricePerPiece * 100) / 100 : null;
+  const chargedPerPiece = d.pricePerPiece != null && Math.abs(d.pricePerPiece - sys.finalPerPiece) > 5e-3 ? Math.round(d.pricePerPiece * 100) / 100 : null;
+  const needsApproval = chargedPerPiece != null && chargedPerPiece < sys.finalPerPiece - 5e-3;
   const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
   const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
   if (claim) return res.status(400).json({ error: claim });
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   if (paid > jobTotal) return res.status(400).json({ error: "Amount paid cannot exceed the job total" });
+  if (needsApproval && paid > 0) return res.status(400).json({ error: "A price below the recommended price needs a manager\u2019s approval first \u2014 take the payment once it is approved" });
   try {
     const { job, order } = await prisma.$transaction(async (tx) => {
       const service = await tx.service.findFirst({ where: { name: "DTF Printing" } });
@@ -52643,16 +52655,70 @@ dtfRouter.post("/jobs", async (req, res) => {
           fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
           minPricePerPieceAtJob: settings.minPricePerPiece,
           chargedPerPiece,
+          approvalStatus: needsApproval ? "Pending" : "Approved",
           capturedByName: req.user.name,
           orderId: order2.id
         }
       });
+      if (needsApproval) {
+        await tx.priceApproval.create({
+          data: {
+            orderId: order2.id,
+            orderNo: order2.orderNo,
+            rollId: d.rollId,
+            client: d.client.trim() || WALK_IN_CLIENT,
+            pieces: d.pieces,
+            runningMetres: d.runningMetres,
+            systemPerPiece: sys.finalPerPiece,
+            chargedPerPiece,
+            shortfall: Math.round((sys.finalPerPiece - chargedPerPiece) * d.pieces * 100) / 100,
+            valueAtRecommended: Math.round(sys.finalPerPiece * d.pieces * 100) / 100,
+            valueAtCharged: Math.round(chargedPerPiece * d.pieces * 100) / 100,
+            requestedById: req.user.id,
+            requestedByName: req.user.name
+          }
+        });
+      }
       return { job: job2, order: order2 };
     });
-    res.status(201).json({ job, order: serializeDetail(order) });
+    const fresh = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
+    res.status(201).json({ job, order: serializeDetail(fresh), approval: needsApproval ? "Pending" : null });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record job") });
   }
+});
+dtfRouter.get("/approvals", manageOnly, async (_req, res) => {
+  const rows = await prisma.priceApproval.findMany({ orderBy: [{ status: "asc" }, { id: "desc" }], take: 200 });
+  res.json(rows.map((r) => ({ ...r, requestedAt: r.requestedAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null, pctBelow: r.systemPerPiece > 0 ? Math.round((r.systemPerPiece - r.chargedPerPiece) / r.systemPerPiece * 1e3) / 10 : 0 })));
+});
+dtfRouter.post("/approvals/:id/approve", manageOnly, async (req, res) => {
+  const a2 = await prisma.priceApproval.findUnique({ where: { id: Number(req.params.id) } });
+  if (!a2) return res.status(404).json({ error: "Approval request not found" });
+  if (a2.status !== "Pending") return res.status(400).json({ error: `This request has already been ${a2.status.toLowerCase()}` });
+  if (a2.requestedById === req.user.id) return res.status(400).json({ error: "You cannot approve a price you captured yourself" });
+  await prisma.$transaction(async (tx) => {
+    if (a2.orderId) await tx.dtfArtworkJob.updateMany({ where: { orderId: a2.orderId }, data: { approvalStatus: "Approved" } });
+    await tx.priceApproval.update({ where: { id: a2.id }, data: { status: "Approved", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() } });
+  });
+  res.json({ ok: true });
+});
+dtfRouter.post("/approvals/:id/reject", manageOnly, async (req, res) => {
+  const parsed = external_exports.object({ reason: external_exports.string().trim().min(1, "Give a reason for rejecting this price").max(300) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const a2 = await prisma.priceApproval.findUnique({ where: { id: Number(req.params.id) } });
+  if (!a2) return res.status(404).json({ error: "Approval request not found" });
+  if (a2.status !== "Pending") return res.status(400).json({ error: `This request has already been ${a2.status.toLowerCase()}` });
+  if (a2.requestedById === req.user.id) return res.status(400).json({ error: "You cannot reject a price you captured yourself" });
+  await prisma.$transaction(async (tx) => {
+    if (a2.orderId) {
+      await tx.dtfArtworkJob.deleteMany({ where: { orderId: a2.orderId } });
+      await tx.orderLineItem.deleteMany({ where: { orderId: a2.orderId } });
+      await tx.payment.deleteMany({ where: { orderId: a2.orderId } });
+      await tx.order.delete({ where: { id: a2.orderId } });
+    }
+    await tx.priceApproval.update({ where: { id: a2.id }, data: { status: "Rejected", orderId: null, reason: parsed.data.reason, decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() } });
+  });
+  res.json({ ok: true });
 });
 dtfRouter.delete("/jobs/:id", requireRole("Admin"), async (req, res) => {
   await prisma.dtfArtworkJob.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
@@ -53501,12 +53567,12 @@ productionRouter.get("/queue", async (req, res) => {
     }),
     manager ? prisma.order.findMany({
       where: { status: { not: "Quote" }, stage: { in: [STAGE_WAITING, STAGE_IN_PRODUCTION] } },
-      include: { ...orderForProductionInclude, productionTasks: { where: { status: { in: ACTIVE_TASK_STATUSES } } } },
+      include: { ...orderForProductionInclude, productionTasks: { where: { status: { in: ACTIVE_TASK_STATUSES } } }, dtfArtworkJob: { select: { approvalStatus: true } } },
       orderBy: { id: "asc" }
     }) : Promise.resolve([]),
     prisma.order.count({ where: { status: { not: "Quote" }, stage: STAGE_QUALITY } })
   ]);
-  const waiting = stageOrders.filter((o) => o.productionTasks.length === 0).map(productionSummary);
+  const waiting = stageOrders.filter((o) => o.productionTasks.length === 0 && o.dtfArtworkJob?.approvalStatus !== "Pending").map(productionSummary);
   let staff = [];
   if (manager) {
     const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
@@ -53528,9 +53594,10 @@ productionRouter.post("/orders/:orderId/assign", async (req, res) => {
   if (!await isProductionManager(req.user)) return res.status(403).json({ error: "Only a production manager can assign orders" });
   const parsed = assignSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true } });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true, dtfArtworkJob: { select: { approvalStatus: true } } } });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (order.status === "Quote") return res.status(400).json({ error: "A quotation has not been accepted yet \u2014 it cannot go into production" });
+  if (order.dtfArtworkJob?.approvalStatus === "Pending") return res.status(400).json({ error: "This job is priced below the recommended price \u2014 a manager has to approve the price before it can go into production" });
   if (order.stage !== STAGE_WAITING && order.stage !== STAGE_IN_PRODUCTION) {
     return res.status(400).json({ error: `This order is already at \u201C${order.stage}\u201D \u2014 it can only be assigned while it is waiting or in production` });
   }

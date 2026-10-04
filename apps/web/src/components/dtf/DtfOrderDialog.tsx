@@ -25,6 +25,8 @@ interface Props {
   qty: number;
   unitPrice: number;
   client: string;
+  /** A job priced below the recommended price: held for a manager's approval — no payment, no receipt yet. */
+  needsApproval?: boolean;
   onClose: () => void;
   onDone: () => void;
 }
@@ -35,7 +37,7 @@ interface Props {
 // Print is what actually creates the order (and, server-side, the linked
 // DtfFilmSale/DtfArtworkJob roll-consumption row) and prints two thermal
 // receipts — nothing is saved before that.
-export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPrice, client, onClose, onDone }: Props) {
+export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPrice, client, needsApproval = false, onClose, onDone }: Props) {
   const { materials } = useCatalog();
   const { user } = useAuth();
   const [phone, setPhone] = useState('');
@@ -46,6 +48,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [newPaymentRow()]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sentFor, setSentFor] = useState<string | null>(null); // order number, once it has been sent for approval
 
   const heatPress = mode === 'job' ? Number(heatPressFee) || 0 : 0;
   const serviceLineTotal = qty * (unitPrice + heatPress);
@@ -56,7 +59,9 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   }, 0);
   const grandTotal = Math.round((serviceLineTotal + materialsTotal) * 100) / 100;
   const paid = paymentsTotal(paymentRows);
-  const payProblem = paymentProblem(paymentRows, grandTotal);
+  const payProblem = needsApproval ? null : paymentProblem(paymentRows, grandTotal);
+  // No artwork job is processed without the heat press fee.
+  const heatPressMissing = mode === 'job' && !(heatPress > 0);
   // Name and phone are optional (a blank client is recorded as "Walk-in") — except when the client is credited to a staff member.
   const sourcingIncomplete = sourced && (!phone.trim() || !isNamedClient(client));
 
@@ -77,23 +82,28 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
     setError(null);
     // Both popups must open synchronously in this click handler, before any
     // await, so popup blockers treat them as user-initiated.
-    const customerWin = window.open('', '_blank');
-    const shopWin = window.open('', '_blank');
+    const customerWin = needsApproval ? null : window.open('', '_blank');
+    const shopWin = needsApproval ? null : window.open('', '_blank');
     try {
       const payload = {
         ...basePayload,
         phone,
         sourcedBy: sourced && user ? user.id : null,
-        payments: toApiPayments(paymentRows),
+        payments: needsApproval ? [] : toApiPayments(paymentRows),
         materialLines: materialLines
           .filter((l) => Number(l.qty) > 0)
           .map((l) => ({ materialId: l.materialId, qty: Number(l.qty) })),
-        ...(mode === 'job' ? { heatPressFee: heatPress > 0 ? heatPress : null } : {}),
+        ...(mode === 'job' ? { heatPressFee: heatPress } : {}),
       };
-      const [{ order }, company] = await Promise.all([
-        api.post<{ order: OrderDetail }>(postUrl, payload),
+      const [{ order, approval }, company] = await Promise.all([
+        api.post<{ order: OrderDetail; approval?: string | null }>(postUrl, payload),
         api.get<CompanySettings>('/master-data/settings'),
       ]);
+      if (approval === 'Pending') {
+        // Held for a manager's approval: nothing is printed or paid yet.
+        setSentFor(order.orderNo);
+        return;
+      }
       printWalkinReceipt(customerWin, order, company);
       printWalkinReceipt(shopWin, order, company, 'Duplicate copy');
       onDone();
@@ -111,6 +121,26 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
       <div className="dialog blueprint" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <Corners />
         <div className="dialog-title">Complete {mode === 'sale' ? 'film sale' : 'artwork job'} order</div>
+        {sentFor ? (
+          <>
+            <div className="dialog-body">
+              <p style={{ marginTop: 0 }}>
+                <span className="tag tag-accent">Sent for approval</span> <b>{sentFor}</b>
+              </p>
+              <p className="note">
+                The price is below the recommended price, so a manager has to approve it first. Payment is taken and production starts once it is approved — it shows in My Orders as “awaiting price
+                approval”. If it is rejected the order is removed.
+              </p>
+            </div>
+            <div className="dialog-actions">
+              <button type="button" className="btn btn-primary blueprint" onClick={onDone}>
+                <Corners />
+                Done
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
         <div className="dialog-body">
         <p className="note" style={{ marginTop: 0 }}>
           {client ? `Client: ${client}` : 'Walk-in client'} — {mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
@@ -124,9 +154,9 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
           <SourcingField phone={phone} name={client} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} />
 
           {mode === 'job' && (
-            <Field label="Heat press fee (Ksh/pc) — optional">
-              <select className="input" value={heatPressFee} onChange={(e) => setHeatPressFee(e.target.value)}>
-                <option value="">None</option>
+            <Field label="Heat press fee (Ksh/pc) — required">
+              <select className="input" value={heatPressFee} onChange={(e) => setHeatPressFee(e.target.value)} style={heatPressMissing ? { borderColor: '#a33' } : undefined}>
+                <option value="">Select a fee…</option>
                 {HEAT_PRESS_FEE_OPTIONS.map((fee) => (
                   <option key={fee} value={fee}>
                     Ksh {fee}
@@ -165,7 +195,12 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
               <span>Grand total</span>
               <span>{fmtKsh(grandTotal)}</span>
             </div>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+            {needsApproval && (
+              <p className="note" style={{ borderLeft: '2px solid #a33', paddingLeft: 'var(--space-2)' }}>
+                This price is below the recommended price, so it goes to a manager for approval. <b>No payment is taken now</b> and no receipt is printed — payment and production follow once it is approved.
+              </p>
+            )}
+            <div style={{ display: needsApproval ? 'none' : 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPaymentRows([{ ...paymentRows[0]!, amount: String(grandTotal) }])}>
                 Pay in full
               </button>
@@ -173,7 +208,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
                 Deposit / pay later
               </button>
             </div>
-            <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={client || 'DTF order'} />
+            {!needsApproval && <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={client || 'DTF order'} />}
             {payProblem && <p className="note" style={{ color: '#a33' }}>{payProblem}</p>}
           </div>
 
@@ -189,11 +224,13 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
             <Corners />
             Cancel
           </button>
-          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!payProblem || sourcingIncomplete}>
+          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!payProblem || sourcingIncomplete || heatPressMissing}>
             <Corners />
-            Print
+            {needsApproval ? 'Send for approval' : 'Print'}
           </button>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -876,6 +876,9 @@ model DtfArtworkJob {
   // What was really charged per piece when staff charged MORE than the system-recommended price (null = the recommended price). The
   // amount above the recommendation is what earns the staff member commission.
   chargedPerPiece  Float?
+  // A job priced BELOW the recommended price waits for a manager's approval ('Pending') before it can be paid for or produced. Its film
+  // metres are reserved on the roll meanwhile, but its revenue is not counted. Rejected jobs are removed (the PriceApproval row keeps the record).
+  approvalStatus   String   @default("Approved") // Pending | Approved
   capturedByName   String   @default("")
   createdAt        DateTime @default(now())
   // The Order this job's "Record job" popup generated — see POST /dtf/jobs.
@@ -942,4 +945,28 @@ model CommissionPayout {
   expenseId     Int?
 
   @@unique([period, staffId])
+}
+
+// A request to charge less than the recommended price on an artwork job. The job (and its order) stay on hold until a DTF manager
+// approves or rejects it; the person who captured it cannot decide it. Rejecting removes the order and the job — this row is the record.
+model PriceApproval {
+  id               Int      @id @default(autoincrement())
+  orderId          Int?     // cleared when a rejection removes the order
+  orderNo          String
+  rollId           String
+  client           String   @default("")
+  pieces           Int
+  runningMetres    Float
+  systemPerPiece   Float
+  chargedPerPiece  Float
+  shortfall        Float    // (recommended − charged) × pieces — what is being given away
+  valueAtRecommended Float
+  valueAtCharged   Float
+  requestedById    Int
+  requestedByName  String
+  requestedAt      DateTime @default(now())
+  status           String   @default("Pending") // Pending | Approved | Rejected
+  decidedByName    String?
+  decidedAt        DateTime?
+  reason           String?
 }

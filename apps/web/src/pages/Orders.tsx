@@ -172,7 +172,10 @@ export default function Orders({ scope }: Props) {
             const overdueClass = row.overdue ? 'tag tag-accent' : row.totals.balanceDue > 0 ? 'tag tag-outline' : 'tag tag-neutral';
             return (
               <tr key={row.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(row.id)}>
-                <td>{row.orderNo}</td>
+                <td>
+                  {row.orderNo}
+                  {row.priceApproval === 'Pending' && <div><span className="tag tag-outline">Awaiting price approval</span></div>}
+                </td>
                 <td className="text-muted">{fmtDate(row.createdDate)}</td>
                 <td>{row.kind === 'corporate' ? 'Corporate' : row.channel === 'dtf' ? 'Film/Artwork' : 'Walk-in'}</td>
                 <td>{row.kind === 'corporate' ? row.corporateClient?.name ?? '—' : row.customerName ?? '—'}</td>

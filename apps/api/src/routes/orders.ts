@@ -22,6 +22,7 @@ export const orderInclude = Prisma.validator<Prisma.OrderInclude>()({
   corporateClient: true,
   lineItems: { include: { service: true, material: true } },
   payments: { orderBy: { id: 'asc' } },
+  dtfArtworkJob: { select: { approvalStatus: true } },
 });
 
 export type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
@@ -70,6 +71,8 @@ export function serializeSummary(order: FullOrder) {
     dueDate: order.dueDate,
     totals,
     overdue,
+    // An artwork job priced below the recommended price is on hold until a manager approves it.
+    priceApproval: order.dtfArtworkJob?.approvalStatus === 'Pending' ? ('Pending' as const) : null,
   };
 }
 
@@ -452,6 +455,9 @@ ordersRouter.post('/:id/payments', async (req, res) => {
     : [{ method: parsed.data.method!, amount: parsed.data.amount!, reference: parsed.data.reference ?? null }];
 
   const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
+  if (current?.dtfArtworkJob?.approvalStatus === 'Pending') {
+    return res.status(400).json({ error: 'This job is priced below the recommended price and is waiting for a manager’s approval — payment is taken once it is approved' });
+  }
   const before = serializeSummary(current!).totals;
   const paying = lines.reduce((a, p) => a + p.amount, 0);
   if (paying > before.balanceDue + 0.01) {

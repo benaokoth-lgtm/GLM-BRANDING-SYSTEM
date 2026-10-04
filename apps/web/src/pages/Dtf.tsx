@@ -5,9 +5,10 @@ import DtfRolls from '../components/dtf/DtfRolls';
 import DtfSales from '../components/dtf/DtfSales';
 import DtfJobs from '../components/dtf/DtfJobs';
 import DtfSetup from '../components/dtf/DtfSetup';
+import DtfApprovals from '../components/dtf/DtfApprovals';
 import type { DtfData } from '../components/dtf/shared';
 
-type Tab = 'dashboard' | 'rolls' | 'sales' | 'jobs' | 'setup';
+type Tab = 'dashboard' | 'rolls' | 'sales' | 'jobs' | 'approvals' | 'setup';
 
 // Recording a new sale/job now happens on its own page next to New Walk-in
 // Order (see pages/NewFilmOrder.tsx / NewArtworkOrder.tsx) — this page is
@@ -19,6 +20,7 @@ const MANAGER_TABS: [Tab, string][] = [
   ['rolls', 'Rolls'],
   ['sales', 'Film Sales'],
   ['jobs', 'Artwork Jobs'],
+  ['approvals', 'Price Approvals'],
   ['setup', 'Setup'],
 ];
 
@@ -58,6 +60,7 @@ export default function Dtf() {
         {tabs.map(([t, label]) => (
           <button key={t} type="button" className={`btn ${active === t ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(t)}>
             {label}
+            {t === 'approvals' && !!data.pendingApprovals && <span className="tag tag-accent" style={{ marginLeft: 6 }}>{data.pendingApprovals}</span>}
           </button>
         ))}
       </div>
@@ -72,6 +75,7 @@ export default function Dtf() {
       {active === 'rolls' && <DtfRolls {...props} />}
       {active === 'sales' && <DtfSales {...props} />}
       {active === 'jobs' && <DtfJobs {...props} />}
+      {active === 'approvals' && <DtfApprovals {...props} />}
       {active === 'setup' && <DtfSetup {...props} />}
     </>
   );

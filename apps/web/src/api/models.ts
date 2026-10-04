@@ -65,6 +65,8 @@ export interface OrderSummary {
   dueDate: string | null;
   totals: OrderTotals;
   overdue: boolean;
+  /** An artwork job priced below the recommended price waits for a manager's approval. */
+  priceApproval?: 'Pending' | null;
 }
 
 export interface OrderLineItemView {

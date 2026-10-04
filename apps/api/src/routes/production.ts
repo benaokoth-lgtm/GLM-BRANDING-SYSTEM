@@ -49,7 +49,7 @@ productionRouter.get('/queue', async (req, res) => {
     manager
       ? prisma.order.findMany({
           where: { status: { not: 'Quote' }, stage: { in: [STAGE_WAITING, STAGE_IN_PRODUCTION] } },
-          include: { ...orderForProductionInclude, productionTasks: { where: { status: { in: ACTIVE_TASK_STATUSES } } } },
+          include: { ...orderForProductionInclude, productionTasks: { where: { status: { in: ACTIVE_TASK_STATUSES } } }, dtfArtworkJob: { select: { approvalStatus: true } } },
           orderBy: { id: 'asc' },
         })
       : Promise.resolve([]),
@@ -57,7 +57,8 @@ productionRouter.get('/queue', async (req, res) => {
   ]);
 
   // Waiting to be assigned: not yet started on, or "in production" with nobody actually assigned (older orders).
-  const waiting = stageOrders.filter((o) => o.productionTasks.length === 0).map(productionSummary);
+  // (An artwork job priced below the recommended price waits for approval first — it is not offered for production until then.)
+  const waiting = stageOrders.filter((o) => o.productionTasks.length === 0 && o.dtfArtworkJob?.approvalStatus !== 'Pending').map(productionSummary);
 
   let staff: { id: number; name: string; role: string; active: number }[] = [];
   if (manager) {
@@ -85,9 +86,10 @@ productionRouter.post('/orders/:orderId/assign', async (req, res) => {
   const parsed = assignSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
 
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true } });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true, dtfArtworkJob: { select: { approvalStatus: true } } } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (order.status === 'Quote') return res.status(400).json({ error: 'A quotation has not been accepted yet — it cannot go into production' });
+  if (order.dtfArtworkJob?.approvalStatus === 'Pending') return res.status(400).json({ error: 'This job is priced below the recommended price — a manager has to approve the price before it can go into production' });
   if (order.stage !== STAGE_WAITING && order.stage !== STAGE_IN_PRODUCTION) {
     return res.status(400).json({ error: `This order is already at “${order.stage}” — it can only be assigned while it is waiting or in production` });
   }

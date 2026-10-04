@@ -62,6 +62,10 @@ export interface DtfArtworkJob {
   minPricePerPieceAtJob: number; // Setup snapshot, same reasoning
   /** What was actually charged per piece, when staff charged more than the system-recommended price. Null/absent = the recommended price. */
   chargedPerPiece?: number | null;
+  /** A job priced below the recommended price waits for a manager's approval before it can be produced; its revenue counts once approved. */
+  approvalStatus?: 'Pending' | 'Approved';
+  /** The order this job generated. */
+  orderId?: number | null;
 }
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -138,13 +142,18 @@ export function systemJobCalc(j: DtfArtworkJob): JobCalc {
   return jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob);
 }
 
-/** What the job really brings in: the recommended price, or the higher price the staff member charged. */
+/** What the job really brings in: the price actually charged per piece (higher or lower than recommended), else the recommended price. */
 export function jobTotals(j: DtfArtworkJob): JobCalc {
   const sys = systemJobCalc(j);
-  if (j.chargedPerPiece != null && j.chargedPerPiece > sys.finalPerPiece) {
+  if (j.chargedPerPiece != null && j.chargedPerPiece > 0 && Math.abs(j.chargedPerPiece - sys.finalPerPiece) > 0.004) {
     return { finalPerPiece: r2(j.chargedPerPiece), jobTotal: r2(j.chargedPerPiece * j.pieces) };
   }
   return sys;
+}
+
+/** Per-piece amount charged below the recommended price (0 when charged at or above it). */
+export function jobDiscountPerPiece(j: DtfArtworkJob): number {
+  return r2(Math.max(0, systemJobCalc(j).finalPerPiece - jobTotals(j).finalPerPiece));
 }
 
 // ---------- Roll roll-up (the workbook's Rolls sheet / roll_summary view) ----------
@@ -168,6 +177,24 @@ export interface RollSummary {
   profit: number;
   filmRevPerM: number | null;
   artRevPerM: number | null;
+  // The effect of discounts — a price below the standard film price, or below the recommended artwork price — on this roll's profit.
+  filmDiscount: number;
+  artworkDiscount: number;
+  /** Everything given away by pricing below standard/recommended. */
+  discountGiven: number;
+  /** Extra earned by pricing above standard/recommended. */
+  premiumEarned: number;
+  /** Metres of film sold or printed at a discount, and how many sales/jobs they were. */
+  discountedM: number;
+  discountedCount: number;
+  revenueBeforeDiscounts: number;
+  profitBeforeDiscounts: number;
+  /** Discounts as a % of the revenue the same work would have brought in at full price. */
+  discountPctOfRevenue: number | null;
+  /** Share of the profit the roll would have made at full price that the discounts took away. */
+  profitLostPct: number | null;
+  /** Jobs held back for price approval (their metres are reserved, their revenue is not counted yet). */
+  pendingJobs: number;
 }
 
 export function summariseRoll(
@@ -178,6 +205,8 @@ export function summariseRoll(
 ): RollSummary {
   const mine = sales.filter((x) => x.rollId === roll.id);
   const myJobs = jobs.filter((x) => x.rollId === roll.id);
+  // A job waiting for price approval keeps its metres reserved on the roll, but earns nothing until it is approved.
+  const approvedJobs = myJobs.filter((x) => x.approvalStatus !== 'Pending');
   const filmM = mine.reduce((a, x) => a + x.metres, 0);
   const artM = myJobs.reduce((a, x) => a + x.runningMetres, 0);
   const usedM = filmM + artM;
@@ -189,8 +218,18 @@ export function summariseRoll(
   const wastagePct = closed ? div(wastageM, len) * 100 : 0;
   const wastageKes = closed ? div(wastageM * rollCost, len) : 0;
   const filmRev = mine.reduce((a, x) => a + saleTotals(x).total, 0);
-  const artRev = myJobs.reduce((a, x) => a + jobTotals(x).jobTotal, 0);
+  const artRev = approvedJobs.reduce((a, x) => a + jobTotals(x).jobTotal, 0);
   const revenue = filmRev + artRev;
+  const filmDiscount = r2(mine.reduce((a, x) => a + x.metres * Math.max(0, x.stdPriceAtSale - x.pricePerM), 0));
+  const artworkDiscount = r2(approvedJobs.reduce((a, x) => a + x.pieces * jobDiscountPerPiece(x), 0));
+  const premiumEarned = r2(
+    mine.reduce((a, x) => a + x.metres * Math.max(0, x.pricePerM - x.stdPriceAtSale), 0) +
+      approvedJobs.reduce((a, x) => a + x.pieces * Math.max(0, jobTotals(x).finalPerPiece - systemJobCalc(x).finalPerPiece), 0),
+  );
+  const discountGiven = r2(filmDiscount + artworkDiscount);
+  const discountedSales = mine.filter((x) => x.pricePerM < x.stdPriceAtSale);
+  const discountedJobs = approvedJobs.filter((x) => jobDiscountPerPiece(x) > 0);
+  const profit = revenue - rollCost;
   return {
     roll,
     started: !!roll.installedOn,
@@ -208,9 +247,20 @@ export function summariseRoll(
     artRev,
     revenue,
     // Wastage is already inside the full roll cost — never subtract it again.
-    profit: revenue - rollCost,
+    profit,
     filmRevPerM: filmM > 0 ? filmRev / filmM : null,
     artRevPerM: artM > 0 ? artRev / artM : null,
+    filmDiscount,
+    artworkDiscount,
+    discountGiven,
+    premiumEarned,
+    discountedM: discountedSales.reduce((a, x) => a + x.metres, 0) + discountedJobs.reduce((a, x) => a + x.runningMetres, 0),
+    discountedCount: discountedSales.length + discountedJobs.length,
+    revenueBeforeDiscounts: r2(revenue + discountGiven),
+    profitBeforeDiscounts: r2(profit + discountGiven),
+    discountPctOfRevenue: revenue + discountGiven > 0 ? r2((discountGiven / (revenue + discountGiven)) * 100) : null,
+    profitLostPct: profit + discountGiven > 0 ? r2((discountGiven / (profit + discountGiven)) * 100) : null,
+    pendingJobs: myJobs.length - approvedJobs.length,
   };
 }
 
@@ -239,6 +289,10 @@ export interface DtfDashboard {
   profitPerClosedRoll: number | null;
   wastageM: number;
   wastageKes: number;
+  discountGiven: number;
+  premiumEarned: number;
+  profitBeforeDiscounts: number;
+  profitLostPct: number | null;
   /** Sales/jobs pointing at a roll that hasn't started (or doesn't exist). */
   orphanCount: number;
 }
@@ -286,6 +340,13 @@ export function dtfDashboard(
     profitPerClosedRoll: closed.length ? closed.reduce((a, r) => a + r.profit, 0) / closed.length : null,
     wastageM: closed.reduce((a, r) => a + r.wastageM, 0),
     wastageKes: closed.reduce((a, r) => a + r.wastageKes, 0),
+    discountGiven: r2(started.reduce((a, r) => a + r.discountGiven, 0)),
+    premiumEarned: r2(started.reduce((a, r) => a + r.premiumEarned, 0)),
+    profitBeforeDiscounts: r2(started.reduce((a, r) => a + r.profitBeforeDiscounts, 0)),
+    profitLostPct: (() => {
+      const before = started.reduce((a, r) => a + r.profitBeforeDiscounts, 0);
+      return before > 0 ? r2((started.reduce((a, r) => a + r.discountGiven, 0) / before) * 100) : null;
+    })(),
     orphanCount:
       sales.filter((x) => !startedIds.has(x.rollId)).length + jobs.filter((x) => !startedIds.has(x.rollId)).length,
   };

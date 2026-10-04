@@ -7,6 +7,8 @@ export interface DtfData {
   rolls: DtfRoll[];
   sales: DtfFilmSale[];
   jobs: DtfArtworkJob[];
+  /** Artwork jobs priced below the recommended price, waiting for a manager (managers only). */
+  pendingApprovals?: number;
 }
 
 export interface DtfTabProps {

@@ -93,6 +93,9 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
                 <Spec label="Film Ksh/m" value={r.filmRevPerM == null ? '—' : fmtKsh(r.filmRevPerM)} />
                 <Spec label="Art Ksh/m" value={r.artRevPerM == null ? '—' : fmtKsh(r.artRevPerM)} />
                 <Spec label="Wastage" value={r.closed ? `${fmtNum(r.wastagePct, 1)}% · ${fmtKsh(r.wastageKes)}` : '—'} />
+                <Spec label="Discounts given" value={r.discountGiven > 0 ? fmtKsh(r.discountGiven) : '—'} />
+                <Spec label="Profit lost to discounts" value={r.profitLostPct == null || r.discountGiven === 0 ? '—' : `${fmtNum(r.profitLostPct, 1)}%`} />
+                <Spec label="Pending approval" value={r.pendingJobs ? `${r.pendingJobs} job${r.pendingJobs === 1 ? '' : 's'}` : '—'} />
               </div>
 
               <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-4)', flexWrap: 'wrap' }}>

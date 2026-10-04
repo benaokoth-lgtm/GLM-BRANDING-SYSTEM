@@ -112,6 +112,7 @@ test('an artwork job keeps the recommended price unless a higher one was charged
   assert.equal(jobTotals(higher).finalPerPiece, 80);
   assert.equal(jobTotals(higher).jobTotal, 8640);
   assert.equal(systemJobCalc(higher).finalPerPiece, 70); // the recommendation itself is unchanged
-  // a lower "charged" figure is ignored — the recommended price is the floor
-  assert.equal(jobTotals({ ...job, chargedPerPiece: 50 }).finalPerPiece, 70);
+  // a lower price is honoured too (it needs approval before production, enforced by the API)
+  assert.equal(jobTotals({ ...job, chargedPerPiece: 50 }).finalPerPiece, 50);
+  assert.equal(jobTotals({ ...job, chargedPerPiece: 50 }).jobTotal, 5400);
 });

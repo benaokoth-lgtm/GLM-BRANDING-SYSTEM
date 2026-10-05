@@ -379,7 +379,7 @@ export default function Reports() {
           </div>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
             Sales are raised in the period (orders and invoices, not quotations), after discounts and with the 16% VAT taken out, before credit notes. Costs are what was bought for each head
-            (purchase orders, tagged line by line) plus the expenses tagged to it, as recorded — VAT included, since input VAT is not reclaimed. An expense that backs a purchase order is counted once,
+            (purchase orders, tagged line by line) plus the expenses tagged to it, as recorded — VAT included (the VAT claimed back on them is in Compliance → VAT). An expense that backs a purchase order is counted once,
             through the purchase. Click a head to see the sales, purchases and expenses behind its figures (and an order in it to open it). Tag a service, a material, a purchase line or an expense to a head to move its figures; whatever is untagged stays under Shared. Rejected purchases cost nothing.
           </p>
         </div>

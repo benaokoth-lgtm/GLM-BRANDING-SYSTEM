@@ -10,6 +10,7 @@ import {
   PETTY_CASH_METHOD,
   ACCT,
   VAT_RATE,
+  defaultExpenseVatApplicable,
   round2,
   splitGross,
 } from '@glm/shared';
@@ -201,9 +202,12 @@ financeRouter.get('/vat', async (req, res) => {
   const totalSales = walkinSales + corporateSales + debitNotes - creditNotes;
   const netSales = totalSales - outputVat;
 
-  // Purchases and expenses in the period, with the VAT claimed on each. A claim needs a supplier invoice, so an expense with an invoice
-  // number can be claimed in one go; anything else is ticked by hand.
+  // Purchases and expenses in the period, each with the input VAT it carries — worked out from its expense head (so nothing is claimed by hand).
+  // An expense with no invoice/receipt number is flagged: the VAT is counted, but a KRA claim needs the supplier's tax invoice on file.
+  await ensureChartOnce();
   const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId as number));
+  const headRows = await prisma.expenseHead.findMany({ orderBy: { name: 'asc' } });
+  const vatOf = (category: string) => headRows.find((h) => h.name === category)?.vatApplicable ?? defaultExpenseVatApplicable(category);
   const expenses = await prisma.expense.findMany({ where: { date: { gte: range.from, lte: range.to } }, orderBy: [{ date: 'desc' }, { id: 'desc' }] });
   const purchases = expenses.map((e) => ({
     id: e.id,
@@ -213,12 +217,11 @@ financeRouter.get('/vat', async (req, res) => {
     invoiceNumber: e.invoiceNumber,
     note: e.note,
     amount: round2(e.amount),
-    vatAmount: round2(e.vatAmount),
+    vatAmount: vatOf(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0,
     isStockPurchase: purchaseExpenseIds.has(e.id),
-    // what claiming would be worth, for a row not yet claimed
-    claimableVat: splitGross(e.amount, VAT_RATE).vat,
   }));
-  const unclaimedWithInvoice = purchases.filter((p) => p.vatAmount === 0 && !!p.invoiceNumber?.trim());
+  // How each expense head is treated (set once; the standing answer applies until an Admin changes it).
+  const heads = headRows.map((h) => ({ id: h.id, name: h.name, applicable: vatOf(h.name), isDefault: h.vatApplicable == null }));
 
   res.json({
     fromDate: range.from,
@@ -234,33 +237,19 @@ financeRouter.get('/vat', async (req, res) => {
     otherVat: round2(otherVat),
     netVatPayable: round2(outputVat - inputVat + otherVat),
     purchases,
-    unclaimedWithInvoice: { count: unclaimedWithInvoice.length, vat: round2(unclaimedWithInvoice.reduce((a, p) => a + p.claimableVat, 0)) },
+    heads,
   });
 });
 
-// Claim (or stop claiming) the input VAT on one expense: 16/116 of what was paid, or none. Like tagging a business head this moves no cash, so
-// it needs no amendment request.
-financeRouter.patch('/expenses/:id/vat', async (req, res) => {
-  const parsed = z.object({ claim: z.boolean() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'claim (true or false) is required' });
-  const e = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
-  if (!e) return res.status(404).json({ error: 'Expense not found' });
-  const updated = await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: parsed.data.claim ? splitGross(e.amount, VAT_RATE).vat : 0 } });
-  res.json(updated);
-});
-
-// Claim the input VAT on every expense in the period that has a supplier invoice number and has not been claimed yet.
-financeRouter.post('/expenses/claim-vat', async (req, res) => {
-  const range = parseRange({ query: req.body as Record<string, unknown> });
-  if (!range) return res.status(400).json({ error: 'from and to (YYYY-MM-DD) are required' });
-  const rows = await prisma.expense.findMany({ where: { date: { gte: range.from, lte: range.to }, vatAmount: 0, invoiceNumber: { not: null } } });
-  let claimed = 0;
-  for (const e of rows) {
-    if (!e.invoiceNumber?.trim()) continue;
-    await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: splitGross(e.amount, VAT_RATE).vat } });
-    claimed++;
-  }
-  res.json({ claimed });
+// Whether spending on an expense head carries claimable input VAT. Set once per head (null goes back to the standing answer for its name);
+// every expense and purchase under the head follows, past and future, so nothing is claimed item by item.
+financeRouter.patch('/expense-heads/:id/vat', requirePermission('canAccessFinance'), async (req, res) => {
+  const parsed = z.object({ applicable: z.boolean().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'applicable (true, false or null) is required' });
+  const head = await prisma.expenseHead.findUnique({ where: { id: Number(req.params.id) } });
+  if (!head) return res.status(404).json({ error: 'Expense head not found' });
+  const updated = await prisma.expenseHead.update({ where: { id: head.id }, data: { vatApplicable: parsed.data.applicable } });
+  res.json({ id: updated.id, name: updated.name, applicable: updated.vatApplicable ?? defaultExpenseVatApplicable(updated.name), isDefault: updated.vatApplicable == null });
 });
 
 // ── Operating expenses (capture) — P&L reads/aggregates the same table ──────
@@ -306,8 +295,6 @@ const expenseSchema = z.object({
   dueDate: dateStr.optional().nullable(),
   // The line of business this cost belongs to (see Master Data → Business Heads); blank = shared, not tagged to one.
   businessHeadId: z.number().int().nullable().optional(),
-  // The supplier's invoice includes 16% VAT that is being claimed back (input VAT).
-  includesVat: z.boolean().optional(),
 });
 
 financeRouter.post('/expenses', async (req, res) => {
@@ -330,7 +317,6 @@ financeRouter.post('/expenses', async (req, res) => {
       category: d.category,
       note: d.note ?? '',
       amount: d.amount,
-      vatAmount: d.includesVat ? splitGross(d.amount, VAT_RATE).vat : 0,
       invoiceNumber: d.invoiceNumber,
       method: d.paid ? d.method : PETTY_CASH_METHOD,
       paid: d.paid,

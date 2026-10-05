@@ -62,8 +62,6 @@ interface ExpenseDraft {
   dueDate: string;
   // The business head this cost belongs to ('' = shared, not tagged to one).
   businessHeadId: string;
-  // The supplier's invoice includes 16% VAT that is claimed back as input VAT (Compliance → VAT).
-  includesVat?: boolean;
 }
 
 function ExpenseCaptureForm({
@@ -121,10 +119,6 @@ function ExpenseCaptureForm({
         Add
       </button>
     </div>
-    <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-3)' }}>
-      <input type="checkbox" checked={!!draft.includesVat} onChange={(e) => setDraft((d) => ({ ...d, includesVat: e.target.checked }))} />
-      <span>The supplier's invoice includes 16% VAT — claim it back (input VAT)</span>
-    </label>
     <div className="field" style={{ maxWidth: 320, marginTop: 'var(--space-3)' }}>
       <label>Business head (optional)</label>
       <select className="input" value={draft.businessHeadId} onChange={(e) => setDraft((d) => ({ ...d, businessHeadId: e.target.value }))}>
@@ -298,7 +292,6 @@ export default function Finance() {
         supplier: draft.supplier || undefined,
         dueDate: draft.onCredit && draft.dueDate ? draft.dueDate : undefined,
         businessHeadId: draft.businessHeadId ? Number(draft.businessHeadId) : null,
-        includesVat: !!draft.includesVat,
       });
       reset();
       load();
@@ -525,7 +518,7 @@ export default function Finance() {
               Operating expenses
             </div>
 
-            <ExpenseCaptureForm full categories={expenses.expenseCategories} heads={activeHeads} draft={newExpense} setDraft={setNewExpense} busy={busy} onSubmit={() => submitExpense(newExpense, () => setNewExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '', supplier: '', dueDate: '', includesVat: false })))} />
+            <ExpenseCaptureForm full categories={expenses.expenseCategories} heads={activeHeads} draft={newExpense} setDraft={setNewExpense} busy={busy} onSubmit={() => submitExpense(newExpense, () => setNewExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '', supplier: '', dueDate: '' })))} />
 
             <table className="table" style={{ marginTop: 'var(--space-4)' }}>
               <thead>
@@ -846,7 +839,7 @@ export default function Finance() {
               draft={newPettyExpense}
               setDraft={setNewPettyExpense}
               busy={busy}
-              onSubmit={() => submitExpense(newPettyExpense, () => setNewPettyExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '', includesVat: false })))}
+              onSubmit={() => submitExpense(newPettyExpense, () => setNewPettyExpense((d) => ({ ...d, note: '', amount: '', invoiceNumber: '' })))}
             />
           </div>
 

@@ -4,6 +4,18 @@
 
 export const VAT_RATE = 0.16; // standard VAT rate, treated as inclusive in GLM's sale prices
 
+/**
+ * Does spending on this expense head normally carry 16% VAT that can be claimed back (input VAT)? The standing answer, by head name, until an
+ * Admin sets it for a head (Compliance → VAT). Wages, bank charges, refreshments/entertainment (not claimable), staff commission and anything
+ * unrecognised are no; materials, stock, transport, utilities, repairs, supplies, courier, airtime/data, cleaning and outsourced services
+ * (the supplier's bill carries VAT, claimed back) are yes.
+ */
+export function defaultExpenseVatApplicable(head: string): boolean {
+  const h = head.trim().toLowerCase();
+  if (/labou?r|wage|salar|payroll|commission|bank|refreshment|entertain|tea\b|lunch|miscellaneous|tax|licen[cs]e|insurance|interest|depreciation/.test(h)) return false;
+  return /material|consumable|stock|transport|fuel|utilit|electric|maintenance|repair|office|stationer|courier|delivery|airtime|data|internet|cleaning|outsourc|rent|advert|marketing|professional|software|equipment|packag/.test(h);
+}
+
 export const NSSF_RATE = 0.12; // 6% employee + 6% employer, combined
 export const SHIF_RATE = 0.0275; // Social Health Insurance, of gross pay (min Ksh 300)
 export const HOUSING_LEVY_RATE = 0.03; // 1.5% employee + 1.5% employer, combined

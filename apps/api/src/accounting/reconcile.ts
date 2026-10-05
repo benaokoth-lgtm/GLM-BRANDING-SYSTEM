@@ -64,6 +64,8 @@ export async function reconcile(from: string, to: string, asOf: string): Promise
     const k = key(p.source, p.ref);
     if (p.source === 'Order' && (a.type === 'Income' || a.code === ACCT.vatPayable)) add(salesPosted, k, p.credit - p.debit);
     if (a.type === 'Expense') add(expensePosted, k, p.debit - p.credit);
+    // an expense with input VAT posts that part to the VAT account — still part of what the expense was
+    if (p.source === 'Expense' && a.code === ACCT.vatPayable) add(expensePosted, k, p.debit - p.credit);
     if (p.source === 'Payment' && cashIds.has(a.id)) add(cashPosted, k, p.debit - p.credit);
     if (p.source === 'Payment' && a.code === ACCT.unallocatedMpesa) add(cashPosted, k, p.debit - p.credit);
   }

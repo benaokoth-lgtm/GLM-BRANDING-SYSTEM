@@ -2,6 +2,7 @@ import { prisma } from '../db';
 import {
   ACCT,
   VAT_RATE,
+  defaultExpenseVatApplicable,
   buildLineTotal,
   computeOrderTotals,
   computePay,
@@ -42,6 +43,8 @@ interface Ctx {
   byId: Map<number, LedgerAccount>;
   byCode: Map<string, LedgerAccount>;
   expenseHeadAcct: Map<string, number>;
+  /** Does an expense head carry claimable input VAT? (An Admin's setting, else the standing answer for the name.) */
+  vatApplicable: (head: string) => boolean;
 }
 
 export { round2 };
@@ -52,6 +55,10 @@ async function loadCtx(): Promise<Ctx> {
     byId: new Map(accounts.map((a) => [a.id, a])),
     byCode: new Map(accounts.map((a) => [a.code, a])),
     expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId as number])),
+    vatApplicable: (head) => {
+      const set = heads.find((h) => h.name === head)?.vatApplicable;
+      return set ?? defaultExpenseVatApplicable(head);
+    },
   };
 }
 
@@ -106,8 +113,9 @@ async function expensePostings(book: Book, ctx: Ctx) {
   for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
     const memo = [e.category, e.supplier, e.note].filter(Boolean).join(' · ');
     const ref = e.invoiceNumber || `EXP-${e.id}`;
-    // The cost is what is left once the input VAT (claimed from KRA) is taken out; the VAT sits in the VAT account.
-    const vat = Math.min(e.vatAmount ?? 0, e.amount);
+    // The cost is what is left once the input VAT (claimed from KRA) is taken out; the VAT sits in the VAT account. Which spending carries
+    // VAT is decided by the expense head — nothing is claimed by hand.
+    const vat = ctx.vatApplicable(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
     const cost = e.amount - vat;
     if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, cost, 'Expense', ref, memo);
     else book.drId(e.date, expenseAcctId(ctx, e.category), cost, 'Expense', ref, memo);
@@ -273,7 +281,7 @@ async function notePostings(book: Book, ctx: Ctx) {
     } else {
       book.dr(n.date, ACCT.payables, n.total, 'Supplier debit note', n.number, memo);
       // If the expense it reduces had input VAT claimed, the same share of the note comes back off that VAT.
-      const vatShare = n.expense && n.expense.amount > 0 ? round2(((n.expense.vatAmount ?? 0) / n.expense.amount) * n.total) : 0;
+      const vatShare = n.expense && n.expense.amount > 0 && ctx.vatApplicable(n.expense.category) ? splitGross(n.total, VAT_RATE).vat : 0;
       book.crId(n.date, n.expense ? (purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category)) : idOf(ctx, ACCT.uncategorised), round2(n.total - vatShare), 'Supplier debit note', n.number, memo);
       book.cr(n.date, ACCT.vatPayable, vatShare, 'Supplier debit note', n.number, `Input VAT — ${memo}`);
     }

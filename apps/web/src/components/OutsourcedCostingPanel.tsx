@@ -229,7 +229,7 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
           </tr>
           <tr>
             <td>
-              Profit in the books <span className="text-muted">— the sale without its 16% VAT, less the supplier's bill (their VAT isn't reclaimed)</span>
+              Profit in the books <span className="text-muted">— the sale without its 16% VAT, less the supplier's bill without its VAT (their VAT is claimed back as input VAT)</span>
             </td>
             <td style={{ textAlign: 'right', fontWeight: 700 }}>
               {fmtKsh(m.bookProfit)} <span className="text-muted">({m.bookMarginPct ?? '—'}%)</span>

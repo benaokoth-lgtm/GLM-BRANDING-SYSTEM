@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { VAT_RATE, formatPurchaseOrderRef, nextPurchaseOrderNumber, reconcileRequisition, splitGross, todayStr } from '@glm/shared';
+import { formatPurchaseOrderRef, nextPurchaseOrderNumber, reconcileRequisition, todayStr } from '@glm/shared';
 import type { PurchaseLineInput } from '@glm/shared';
 import { computePettyCashBalance } from './finance';
 import { ensureRequisitionsOnce, formatRequisitionRef, nextRequisitionNumber } from '../requisitions';
@@ -301,8 +301,7 @@ const purchaseBase = {
   lines: z.array(purchaseLineSchema).min(1, 'Add at least one item').max(40),
 };
 const purchaseSchema = z.discriminatedUnion('mode', [
-  // includesVat: the supplier's invoice includes 16% VAT, claimed back as input VAT (it comes off the cost and goes to the VAT account).
-  z.object({ mode: z.literal('new'), invoiceNumber: z.string().min(1, 'Invoice/receipt number is required'), includesVat: z.boolean().optional(), ...purchaseBase }),
+  z.object({ mode: z.literal('new'), invoiceNumber: z.string().min(1, 'Invoice/receipt number is required'), ...purchaseBase }),
   z.object({ mode: z.literal('existing'), expenseId: z.number().int(), ...purchaseBase }),
 ]);
 
@@ -388,7 +387,6 @@ stockRouter.post('/purchases', async (req, res) => {
               category: PURCHASE_EXPENSE_CATEGORY,
               note: `Stock purchase ${poRef} — ${lines.length} item${lines.length === 1 ? '' : 's'} — invoice/receipt ${invoiceNumber}`,
               amount: total,
-              vatAmount: data.mode === 'new' && data.includesVat ? splitGross(total, VAT_RATE).vat : 0,
               invoiceNumber,
               supplier: data.supplier ?? '',
               businessHeadId: expenseHead,

@@ -2,6 +2,7 @@
 // deposit become cost of sales and Accounts Payable, and the job goes to the supplier and back through Quality Control.
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { VAT_RATE, splitGross } from '@glm/shared';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { app } from '../src/app';
@@ -109,7 +110,7 @@ describe('outsourced services', () => {
     assert.equal(put.body.margin.grossProfit, 4000);
     assert.equal(put.body.margin.markupPct, 50);
     assert.equal(put.body.margin.marginPct, 33.33);
-    assert.equal(put.body.margin.bookProfit, 2344.83); // the books take VAT out of the sale, and the supplier's VAT stays in the cost
+    assert.equal(put.body.margin.bookProfit, 3448.28); // the books take VAT out of the sale (10,344.83) and out of the supplier's bill (6,896.55) — their VAT is claimed back
     // a non-outsourced line can't be "costed"
     const other = await prisma.order.create({ data: { orderNo: 'W-OTHER', kind: 'walkin', staffId: ids.boss!, createdDate: '2031-04-01', status: 'Invoice', stage: 'Order Received', lineItems: { create: [{ itemType: 'service', serviceId: inhouse, qty: 1, unitPrice: 100 }] } }, include: { lineItems: true } });
     assert.equal((await call('boss', 'PUT', `/orders/${other.id}/costing`, { lines: [{ lineId: other.lineItems[0]!.id, supplierCost: 5 }] })).status, 400);
@@ -129,7 +130,8 @@ describe('outsourced services', () => {
     assert.equal(r.body.owing, 5000);
     assert.equal(r.body.costBasis, 'supplier bills');
 
-    assert.equal((await bal('5000')) - cosBefore, 8000); // the whole bill is cost of sales as soon as the supplier takes the job
+    // the bill is cost of sales as soon as the supplier takes the job — without its VAT, which is claimed back as input VAT (Compliance → VAT)
+    assert.equal(Math.round(((await bal('5000')) - cosBefore) * 100) / 100, Math.round((8000 - splitGross(8000, VAT_RATE).vat) * 100) / 100);
     const ap = await buildPayablesAging('9999-12-31');
     assert.equal(ap.rows.find((x) => x.supplier === 'Print House')?.outstanding, 5000); // the balance is owed to the supplier
     assert.equal(Math.round(((await bal('1050')) - bankBefore) * 100) / 100, -3000); // the deposit left the bank (rounded: other test files share this database)

@@ -43872,6 +43872,11 @@ var EMBROIDERY_CONSUMABLE_MATERIAL_NAMES = ["Embroidery Thread", "Embroidery Nee
 
 // packages/shared/src/tax.ts
 var VAT_RATE = 0.16;
+function defaultExpenseVatApplicable(head) {
+  const h = head.trim().toLowerCase();
+  if (/labou?r|wage|salar|payroll|commission|bank|refreshment|entertain|tea\b|lunch|miscellaneous|tax|licen[cs]e|insurance|interest|depreciation/.test(h)) return false;
+  return /material|consumable|stock|transport|fuel|utilit|electric|maintenance|repair|office|stationer|courier|delivery|airtime|data|internet|cleaning|outsourc|rent|advert|marketing|professional|software|equipment|packag/.test(h);
+}
 var NSSF_RATE = 0.12;
 var SHIF_RATE = 0.0275;
 var HOUSING_LEVY_RATE = 0.03;
@@ -44246,12 +44251,13 @@ function dailyOutput(tasks, from, to) {
 // packages/shared/src/outsourced.ts
 var MARKUP_TYPES = ["percent", "amount"];
 var round22 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-function jobMargin(sale, cost, vatRate) {
+function jobMargin(sale, cost, vatRate, supplierVatClaimed = false) {
   const s = round22(sale);
   const c = round22(cost);
   const saleExVat = round22(s / (1 + vatRate));
   const gross = round22(s - c);
-  const book = round22(saleExVat - c);
+  const costExVat = round22(c / (1 + vatRate));
+  const book = round22(saleExVat - (supplierVatClaimed ? costExVat : c));
   return {
     sale: s,
     cost: c,
@@ -44259,6 +44265,7 @@ function jobMargin(sale, cost, vatRate) {
     marginPct: s > 0 ? round22(gross / s * 100) : null,
     grossProfit: gross,
     saleExVat,
+    costExVat,
     bookProfit: book,
     bookMarginPct: saleExVat > 0 ? round22(book / saleExVat * 100) : null
   };
@@ -49415,7 +49422,11 @@ async function loadCtx() {
   return {
     byId: new Map(accounts.map((a2) => [a2.id, a2])),
     byCode: new Map(accounts.map((a2) => [a2.code, a2])),
-    expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId]))
+    expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId])),
+    vatApplicable: (head) => {
+      const set = heads.find((h) => h.name === head)?.vatApplicable;
+      return set ?? defaultExpenseVatApplicable(head);
+    }
   };
 }
 function idOf(ctx, code) {
@@ -49461,7 +49472,7 @@ async function expensePostings(book, ctx) {
   for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
     const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
     const ref = e.invoiceNumber || `EXP-${e.id}`;
-    const vat = Math.min(e.vatAmount ?? 0, e.amount);
+    const vat = ctx.vatApplicable(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
     const cost = e.amount - vat;
     if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, cost, "Expense", ref, memo);
     else book.drId(e.date, expenseAcctId(ctx, e.category), cost, "Expense", ref, memo);
@@ -49594,7 +49605,7 @@ async function notePostings(book, ctx) {
       book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
     } else {
       book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
-      const vatShare = n.expense && n.expense.amount > 0 ? round2((n.expense.vatAmount ?? 0) / n.expense.amount * n.total) : 0;
+      const vatShare = n.expense && n.expense.amount > 0 && ctx.vatApplicable(n.expense.category) ? splitGross(n.total, VAT_RATE).vat : 0;
       book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), round2(n.total - vatShare), "Supplier debit note", n.number, memo);
       book.cr(n.date, ACCT.vatPayable, vatShare, "Supplier debit note", n.number, `Input VAT \u2014 ${memo}`);
     }
@@ -50044,6 +50055,7 @@ async function jobCosting(orderId) {
     include: { ...orderInclude, expenses: { where: { category: BILL_CATEGORY }, include: { payments: true }, orderBy: { id: "asc" } } }
   });
   if (!order) return null;
+  const supplierVatClaimed = (await prisma.expenseHead.findUnique({ where: { name: BILL_CATEGORY } }))?.vatApplicable ?? defaultExpenseVatApplicable(BILL_CATEGORY);
   const inputs = order.lineItems.map(toLineItemInput);
   const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
   const totals = computeOrderTotals({ lineItems: inputs, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt });
@@ -50081,7 +50093,8 @@ async function jobCosting(orderId) {
     paid,
     owing: round2(billed - paid),
     costBasis: billed > 0 ? "supplier bills" : estimated > 0 ? "quote (no bill recorded yet)" : "not costed",
-    margin: jobMargin(sale, cost, VAT_RATE),
+    // The supplier's VAT is claimed back as input VAT when the Outsourced Services head carries VAT (the standing treatment).
+    margin: jobMargin(sale, cost, VAT_RATE, supplierVatClaimed),
     unbilledQuote: billed > 0 ? round2(Math.max(0, estimated - billed)) : estimated
   };
 }
@@ -50378,7 +50391,10 @@ financeRouter.get("/vat", async (req, res) => {
   const debitNotes = notes.filter((n) => n.type === "Debit").reduce((a2, n) => a2 + n.total, 0);
   const totalSales = walkinSales + corporateSales + debitNotes - creditNotes;
   const netSales = totalSales - outputVat;
+  await ensureChartOnce();
   const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
+  const headRows = await prisma.expenseHead.findMany({ orderBy: { name: "asc" } });
+  const vatOf = (category) => headRows.find((h) => h.name === category)?.vatApplicable ?? defaultExpenseVatApplicable(category);
   const expenses = await prisma.expense.findMany({ where: { date: { gte: range2.from, lte: range2.to } }, orderBy: [{ date: "desc" }, { id: "desc" }] });
   const purchases = expenses.map((e) => ({
     id: e.id,
@@ -50388,12 +50404,10 @@ financeRouter.get("/vat", async (req, res) => {
     invoiceNumber: e.invoiceNumber,
     note: e.note,
     amount: round2(e.amount),
-    vatAmount: round2(e.vatAmount),
-    isStockPurchase: purchaseExpenseIds.has(e.id),
-    // what claiming would be worth, for a row not yet claimed
-    claimableVat: splitGross(e.amount, VAT_RATE).vat
+    vatAmount: vatOf(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0,
+    isStockPurchase: purchaseExpenseIds.has(e.id)
   }));
-  const unclaimedWithInvoice = purchases.filter((p) => p.vatAmount === 0 && !!p.invoiceNumber?.trim());
+  const heads = headRows.map((h) => ({ id: h.id, name: h.name, applicable: vatOf(h.name), isDefault: h.vatApplicable == null }));
   res.json({
     fromDate: range2.from,
     toDate: range2.to,
@@ -50408,28 +50422,16 @@ financeRouter.get("/vat", async (req, res) => {
     otherVat: round2(otherVat),
     netVatPayable: round2(outputVat - inputVat + otherVat),
     purchases,
-    unclaimedWithInvoice: { count: unclaimedWithInvoice.length, vat: round2(unclaimedWithInvoice.reduce((a2, p) => a2 + p.claimableVat, 0)) }
+    heads
   });
 });
-financeRouter.patch("/expenses/:id/vat", async (req, res) => {
-  const parsed = external_exports.object({ claim: external_exports.boolean() }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "claim (true or false) is required" });
-  const e = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
-  if (!e) return res.status(404).json({ error: "Expense not found" });
-  const updated = await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: parsed.data.claim ? splitGross(e.amount, VAT_RATE).vat : 0 } });
-  res.json(updated);
-});
-financeRouter.post("/expenses/claim-vat", async (req, res) => {
-  const range2 = parseRange({ query: req.body });
-  if (!range2) return res.status(400).json({ error: "from and to (YYYY-MM-DD) are required" });
-  const rows = await prisma.expense.findMany({ where: { date: { gte: range2.from, lte: range2.to }, vatAmount: 0, invoiceNumber: { not: null } } });
-  let claimed = 0;
-  for (const e of rows) {
-    if (!e.invoiceNumber?.trim()) continue;
-    await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: splitGross(e.amount, VAT_RATE).vat } });
-    claimed++;
-  }
-  res.json({ claimed });
+financeRouter.patch("/expense-heads/:id/vat", requirePermission("canAccessFinance"), async (req, res) => {
+  const parsed = external_exports.object({ applicable: external_exports.boolean().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "applicable (true, false or null) is required" });
+  const head = await prisma.expenseHead.findUnique({ where: { id: Number(req.params.id) } });
+  if (!head) return res.status(404).json({ error: "Expense head not found" });
+  const updated = await prisma.expenseHead.update({ where: { id: head.id }, data: { vatApplicable: parsed.data.applicable } });
+  res.json({ id: updated.id, name: updated.name, applicable: updated.vatApplicable ?? defaultExpenseVatApplicable(updated.name), isDefault: updated.vatApplicable == null });
 });
 async function expenseHeadNames() {
   await ensureChartOnce();
@@ -50468,9 +50470,7 @@ var expenseSchema = external_exports.object({
   supplier: external_exports.string().max(120).optional(),
   dueDate: dateStr.optional().nullable(),
   // The line of business this cost belongs to (see Master Data → Business Heads); blank = shared, not tagged to one.
-  businessHeadId: external_exports.number().int().nullable().optional(),
-  // The supplier's invoice includes 16% VAT that is being claimed back (input VAT).
-  includesVat: external_exports.boolean().optional()
+  businessHeadId: external_exports.number().int().nullable().optional()
 });
 financeRouter.post("/expenses", async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
@@ -50489,7 +50489,6 @@ financeRouter.post("/expenses", async (req, res) => {
       category: d.category,
       note: d.note ?? "",
       amount: d.amount,
-      vatAmount: d.includesVat ? splitGross(d.amount, VAT_RATE).vat : 0,
       invoiceNumber: d.invoiceNumber,
       method: d.paid ? d.method : PETTY_CASH_METHOD,
       paid: d.paid,
@@ -50984,8 +50983,7 @@ var purchaseBase = {
   lines: external_exports.array(purchaseLineSchema).min(1, "Add at least one item").max(40)
 };
 var purchaseSchema = external_exports.discriminatedUnion("mode", [
-  // includesVat: the supplier's invoice includes 16% VAT, claimed back as input VAT (it comes off the cost and goes to the VAT account).
-  external_exports.object({ mode: external_exports.literal("new"), invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"), includesVat: external_exports.boolean().optional(), ...purchaseBase }),
+  external_exports.object({ mode: external_exports.literal("new"), invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"), ...purchaseBase }),
   external_exports.object({ mode: external_exports.literal("existing"), expenseId: external_exports.number().int(), ...purchaseBase })
 ]);
 stockRouter.post("/purchases", async (req, res) => {
@@ -51061,7 +51059,6 @@ stockRouter.post("/purchases", async (req, res) => {
               category: PURCHASE_EXPENSE_CATEGORY,
               note: `Stock purchase ${poRef} \u2014 ${lines.length} item${lines.length === 1 ? "" : "s"} \u2014 invoice/receipt ${invoiceNumber}`,
               amount: total,
-              vatAmount: data.mode === "new" && data.includesVat ? splitGross(total, VAT_RATE).vat : 0,
               invoiceNumber,
               supplier: data.supplier ?? "",
               businessHeadId: expenseHead,
@@ -52951,6 +52948,7 @@ async function reconcile(from, to, asOf) {
     const k = key(p.source, p.ref);
     if (p.source === "Order" && (a2.type === "Income" || a2.code === ACCT.vatPayable)) add(salesPosted, k, p.credit - p.debit);
     if (a2.type === "Expense") add(expensePosted, k, p.debit - p.credit);
+    if (p.source === "Expense" && a2.code === ACCT.vatPayable) add(expensePosted, k, p.debit - p.credit);
     if (p.source === "Payment" && cashIds.has(a2.id)) add(cashPosted, k, p.debit - p.credit);
     if (p.source === "Payment" && a2.code === ACCT.unallocatedMpesa) add(cashPosted, k, p.debit - p.credit);
   }

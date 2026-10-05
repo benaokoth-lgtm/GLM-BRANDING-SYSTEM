@@ -8,6 +8,7 @@ import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
+import { defaultExpenseVatApplicable } from '@glm/shared';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
@@ -508,6 +509,7 @@ async function jobCosting(orderId: number) {
     include: { ...orderInclude, expenses: { where: { category: BILL_CATEGORY }, include: { payments: true }, orderBy: { id: 'asc' } } },
   });
   if (!order) return null;
+  const supplierVatClaimed = (await prisma.expenseHead.findUnique({ where: { name: BILL_CATEGORY } }))?.vatApplicable ?? defaultExpenseVatApplicable(BILL_CATEGORY);
   const inputs = order.lineItems.map(toLineItemInput);
   const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
   const totals = computeOrderTotals({ lineItems: inputs, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt });
@@ -550,7 +552,8 @@ async function jobCosting(orderId: number) {
     paid,
     owing: round2(billed - paid),
     costBasis: billed > 0 ? 'supplier bills' : estimated > 0 ? 'quote (no bill recorded yet)' : 'not costed',
-    margin: jobMargin(sale, cost, VAT_RATE),
+    // The supplier's VAT is claimed back as input VAT when the Outsourced Services head carries VAT (the standing treatment).
+    margin: jobMargin(sale, cost, VAT_RATE, supplierVatClaimed),
     unbilledQuote: billed > 0 ? round2(Math.max(0, estimated - billed)) : estimated,
   };
 }

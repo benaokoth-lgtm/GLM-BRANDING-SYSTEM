@@ -35,21 +35,24 @@ export interface JobMargin {
   grossProfit: number;
   /** Sale with its VAT taken out — what reaches income in the books. */
   saleExVat: number;
+  /** The supplier's bill with its VAT taken out (what the cost is once that VAT is claimed back). */
+  costExVat: number;
   /**
-   * Profit as the books see it: income ex-VAT less the supplier's bill. The supplier's VAT is not claimed back (input VAT isn't
-   * tracked), so it sits in the cost — this is lower than the VAT-inclusive profit.
+   * Profit as the books see it: income ex-VAT less the supplier's bill. When the supplier's VAT is claimed back as input VAT (the standing
+   * treatment of Outsourced Services) the cost is the bill without it; if it is not claimed, the VAT sits in the cost and the profit is lower.
    */
   bookProfit: number;
   bookMarginPct: number | null;
 }
 
-/** `vatRate` is the VAT rate included in sale prices (VAT_RATE in tax.ts). */
-export function jobMargin(sale: number, cost: number, vatRate: number): JobMargin {
+/** `vatRate` is the VAT rate included in sale prices and in the supplier's bill (VAT_RATE in tax.ts); `supplierVatClaimed` says whether the supplier's VAT is claimed back. */
+export function jobMargin(sale: number, cost: number, vatRate: number, supplierVatClaimed = false): JobMargin {
   const s = round2(sale);
   const c = round2(cost);
   const saleExVat = round2(s / (1 + vatRate));
   const gross = round2(s - c);
-  const book = round2(saleExVat - c);
+  const costExVat = round2(c / (1 + vatRate));
+  const book = round2(saleExVat - (supplierVatClaimed ? costExVat : c));
   return {
     sale: s,
     cost: c,
@@ -57,6 +60,7 @@ export function jobMargin(sale: number, cost: number, vatRate: number): JobMargi
     marginPct: s > 0 ? round2((gross / s) * 100) : null,
     grossProfit: gross,
     saleExVat,
+    costExVat,
     bookProfit: book,
     bookMarginPct: saleExVat > 0 ? round2((book / saleExVat) * 100) : null,
   };

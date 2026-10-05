@@ -124,7 +124,6 @@ export interface ExpenseRow {
   capturedByName: string;
   businessHeadId?: number | null;
   method: string; // 'Petty Cash' | 'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'
-  vatAmount?: number; // input VAT claimed on it
   paid: boolean; // false = bought on credit (sits in Accounts Payable)
   supplier: string;
   dueDate: string | null;
@@ -214,7 +213,14 @@ export interface VatData {
   otherVat: number;
   netVatPayable: number;
   purchases: VatPurchaseRow[];
-  unclaimedWithInvoice: { count: number; vat: number };
+  heads: VatHeadRow[];
+}
+
+export interface VatHeadRow {
+  id: number;
+  name: string;
+  applicable: boolean;
+  isDefault: boolean;
 }
 
 export interface VatPurchaseRow {
@@ -227,7 +233,6 @@ export interface VatPurchaseRow {
   amount: number;
   vatAmount: number;
   isStockPurchase: boolean;
-  claimableVat: number;
 }
 
 export interface ExpensesData {

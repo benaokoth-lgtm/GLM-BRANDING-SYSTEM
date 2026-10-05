@@ -128,6 +128,11 @@ var EXPENSE_CATEGORIES = [
 
 // packages/shared/src/tax.ts
 var VAT_RATE = 0.16;
+function defaultExpenseVatApplicable(head) {
+  const h = head.trim().toLowerCase();
+  if (/labou?r|wage|salar|payroll|commission|bank|refreshment|entertain|tea\b|lunch|miscellaneous|tax|licen[cs]e|insurance|interest|depreciation/.test(h)) return false;
+  return /material|consumable|stock|transport|fuel|utilit|electric|maintenance|repair|office|stationer|courier|delivery|airtime|data|internet|cleaning|outsourc|rent|advert|marketing|professional|software|equipment|packag/.test(h);
+}
 var NSSF_RATE = 0.12;
 var SHIF_RATE = 0.0275;
 var HOUSING_LEVY_RATE = 0.03;
@@ -456,7 +461,11 @@ async function loadCtx() {
   return {
     byId: new Map(accounts.map((a2) => [a2.id, a2])),
     byCode: new Map(accounts.map((a2) => [a2.code, a2])),
-    expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId]))
+    expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId])),
+    vatApplicable: (head) => {
+      const set = heads.find((h) => h.name === head)?.vatApplicable;
+      return set ?? defaultExpenseVatApplicable(head);
+    }
   };
 }
 function idOf(ctx, code) {
@@ -502,7 +511,7 @@ async function expensePostings(book, ctx) {
   for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
     const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
     const ref = e.invoiceNumber || `EXP-${e.id}`;
-    const vat = Math.min(e.vatAmount ?? 0, e.amount);
+    const vat = ctx.vatApplicable(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
     const cost = e.amount - vat;
     if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, cost, "Expense", ref, memo);
     else book.drId(e.date, expenseAcctId(ctx, e.category), cost, "Expense", ref, memo);
@@ -635,7 +644,7 @@ async function notePostings(book, ctx) {
       book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
     } else {
       book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
-      const vatShare = n.expense && n.expense.amount > 0 ? round2((n.expense.vatAmount ?? 0) / n.expense.amount * n.total) : 0;
+      const vatShare = n.expense && n.expense.amount > 0 && ctx.vatApplicable(n.expense.category) ? splitGross(n.total, VAT_RATE).vat : 0;
       book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), round2(n.total - vatShare), "Supplier debit note", n.number, memo);
       book.cr(n.date, ACCT.vatPayable, vatShare, "Supplier debit note", n.number, `Input VAT \u2014 ${memo}`);
     }
@@ -872,6 +881,7 @@ async function reconcile(from, to, asOf) {
     const k = key(p.source, p.ref);
     if (p.source === "Order" && (a2.type === "Income" || a2.code === ACCT.vatPayable)) add(salesPosted, k, p.credit - p.debit);
     if (a2.type === "Expense") add(expensePosted, k, p.debit - p.credit);
+    if (p.source === "Expense" && a2.code === ACCT.vatPayable) add(expensePosted, k, p.debit - p.credit);
     if (p.source === "Payment" && cashIds.has(a2.id)) add(cashPosted, k, p.debit - p.credit);
     if (p.source === "Payment" && a2.code === ACCT.unallocatedMpesa) add(cashPosted, k, p.debit - p.credit);
   }

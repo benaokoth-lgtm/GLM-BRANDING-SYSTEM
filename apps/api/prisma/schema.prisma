@@ -220,8 +220,8 @@ model Expense {
   category        String
   note            String   @default("")
   amount          Float
-  // The input VAT claimed on this expense: the part of `amount` that is VAT on a supplier's tax invoice (16/116 of it), which comes off what
-  // is owed to KRA. The books carry it in the VAT account instead of the cost. 0 = no VAT claimed (the default).
+  // RETIRED — input VAT is now worked out automatically from the expense head (ExpenseHead.vatApplicable), not stored per expense. The
+  // column is kept only so databases that already have it need no destructive change.
   vatAmount       Float    @default(0)
   // Invoice/receipt number — optional for expenses generally, but required
   // for a "Printing Materials & Consumables" expense to be linkable to a
@@ -265,6 +265,9 @@ model ExpensePayment {
 model ExpenseHead {
   id        Int      @id @default(autoincrement())
   name      String   @unique
+  // Does spending on this head carry 16% VAT that is claimed back (input VAT)? null = the standing answer for its name (see
+  // defaultExpenseVatApplicable in shared/tax.ts); an Admin can set it either way on Compliance → VAT.
+  vatApplicable Boolean?
   accountId Int?
   account   Account? @relation("ExpenseHeadAccount", fields: [accountId], references: [id])
 }

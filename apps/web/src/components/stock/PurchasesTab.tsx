@@ -47,8 +47,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
   const [busy, setBusy] = useState(false);
 
   const [mode, setMode] = useState<Mode>('new');
-  // includesVat: the supplier's invoice includes 16% VAT, claimed back as input VAT (Compliance → VAT). Ticked by default — a purchase has an invoice.
-  const [form, setForm] = useState({ requisitionKey: STANDALONE, supplier: '', invoiceNumber: '', expenseId: null as number | null, date: todayStr(), includesVat: true });
+  const [form, setForm] = useState({ requisitionKey: STANDALONE, supplier: '', invoiceNumber: '', expenseId: null as number | null, date: todayStr() });
   const [lines, setLines] = useState<Line[]>([blankLine()]);
 
   const [receivingId, setReceivingId] = useState<number | null>(null);
@@ -115,7 +114,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
     setBusy(true);
     try {
       const base = { requisitionId: requisition?.id, supplier: form.supplier, date: form.date, lines: payloadLines };
-      const created = await api.post<PurchaseRow>('/stock/purchases', mode === 'new' ? { mode, invoiceNumber: form.invoiceNumber, includesVat: form.includesVat, ...base } : { mode, expenseId: form.expenseId, ...base });
+      const created = await api.post<PurchaseRow>('/stock/purchases', mode === 'new' ? { mode, invoiceNumber: form.invoiceNumber, ...base } : { mode, expenseId: form.expenseId, ...base });
       setNotice(`Purchase order ${created.poRef} captured — it is held until the store manager receives it`);
       setForm((f) => ({ ...f, requisitionKey: STANDALONE, supplier: '', invoiceNumber: '', expenseId: null }));
       setLines([blankLine()]);
@@ -309,10 +308,6 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
             <div className="field" style={{ margin: 0 }}>
               <label>Invoice/receipt #</label>
               <input className="input" value={form.invoiceNumber} onChange={(e) => setForm((f) => ({ ...f, invoiceNumber: e.target.value }))} placeholder="Required" />
-              <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-2)', fontWeight: 400 }}>
-                <input type="checkbox" checked={form.includesVat} onChange={(e) => setForm((f) => ({ ...f, includesVat: e.target.checked }))} />
-                <span>The invoice includes 16% VAT — claim it back (input VAT)</span>
-              </label>
             </div>
           ) : (
             <div className="field" style={{ margin: 0 }}>

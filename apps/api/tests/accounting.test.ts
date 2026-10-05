@@ -2,6 +2,7 @@
 // same functions the routes do, so a pass means: every operational record reaches a balanced ledger, and the reports agree.
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { VAT_RATE, splitGross } from '@glm/shared';
 import { prisma } from '../src/db';
 import { ensureChartOfAccounts } from '../src/accounting/chart';
 import { loadLedger, pettyCashBalance, pettyCashShortfall, sumByAccount, naturalBalance } from '../src/accounting/ledger';
@@ -197,7 +198,9 @@ describe('accounting module', () => {
     await prisma.purchase.create({ data: { materialId: mat.id, date: '2031-03-13', qty: 5, unitCost: 10, totalCost: 50, capturedByName: 't', status: 'Rejected' } });
     // 4) the materials expense head is cost of sales too, with no purchase record at all
     await prisma.expense.create({ data: { date: '2031-03-14', category: 'Printing Materials & Consumables', amount: 700, method: 'Cash' } });
-    assert.equal(await bal('5000'), before + 1000 + 3000 + 700);
+    // the two expenses are under heads that carry VAT, so the VAT in them is claimed (VAT account) and the cost is shown without it; the import batch has no expense
+    const vatOf = (n: number) => splitGross(n, VAT_RATE).vat;
+    assert.equal(Math.round((await bal('5000')) * 100) / 100, Math.round((before + (1000 - vatOf(1000)) + 3000 + (700 - vatOf(700))) * 100) / 100);
     const pl = await buildProfitLoss('2031-03-01', '2031-03-31');
     assert.ok(pl.costOfSales.rows.some((r) => r.code === '5000'));
     assert.ok(!pl.expenses.rows.some((r) => r.code === '5000'), 'cost of sales is not repeated among the operating expenses');

@@ -46,7 +46,6 @@ export default function Compliance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [vatMsg, setVatMsg] = useState<string | null>(null);
 
   const staffOnly = staff.filter((s) => s.role === 'Staff');
 
@@ -88,30 +87,15 @@ export default function Compliance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffOnly.length]);
 
-  // Claim (or stop claiming) the input VAT on one purchase/expense, or on every one in the period that has a supplier invoice number.
-  async function claimVat(id: number, claim: boolean) {
+  // Whether spending on an expense head carries VAT (true / false), or null to go back to the standing answer for its name.
+  async function setHeadVat(id: number, applicable: boolean | null) {
     setError(null);
     setBusy(true);
     try {
-      await api.patch(`/finance/expenses/${id}/vat`, { claim });
+      await api.patch(`/finance/expense-heads/${id}/vat`, { applicable });
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not change the VAT claim');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function claimAllVat() {
-    setError(null);
-    setVatMsg(null);
-    setBusy(true);
-    try {
-      const r = await api.post<{ claimed: number }>('/finance/expenses/claim-vat', { from: fromDate, to: toDate });
-      setVatMsg(`Input VAT claimed on ${r.claimed} purchase${r.claimed === 1 ? '' : 's'}/expense${r.claimed === 1 ? '' : 's'}.`);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not claim the VAT');
+      setError(err instanceof Error ? err.message : 'Could not change the VAT treatment');
     } finally {
       setBusy(false);
     }
@@ -346,8 +330,8 @@ export default function Compliance() {
               </div>
             </div>
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-              Worked out from the books, so it agrees with them. Output VAT is the 16% inside every sale price (walk-in orders and every corporate order past
-              Quotation, less credit notes). Input VAT is what you claim on purchases and expenses below — only claim it where you hold the supplier's tax invoice.
+              Worked out automatically from the books for the period you pick, so it always agrees with them. Output VAT is the 16% inside every sale price (walk-in
+              orders and every corporate order past Quotation, less credit notes). Input VAT is the VAT in your purchases and expenses (below).
             </p>
           </div>
 
@@ -356,18 +340,12 @@ export default function Compliance() {
             <i className="corner tr"></i>
             <i className="corner bl"></i>
             <i className="corner br"></i>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
-              <div className="card-title">Purchases &amp; expenses — input VAT</div>
-              {vat.unclaimedWithInvoice.count > 0 && (
-                <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={claimAllVat}>
-                  Claim VAT on all with a supplier invoice ({vat.unclaimedWithInvoice.count} · {fmtKsh(vat.unclaimedWithInvoice.vat)})
-                </button>
-              )}
+            <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+              Purchases &amp; expenses — input VAT
             </div>
-            {vatMsg && <p className="note">{vatMsg}</p>}
             <p className="note" style={{ marginTop: 0 }}>
-              Tick a row to claim the VAT in it (16/116 of what was paid, taken out of the cost and shown here). Stock purchases are ticked when they are captured.
-              Wages, rent and anything without a VAT invoice should stay unticked.
+              Every purchase and expense in the period is here and its VAT counted automatically, by its expense head (see below) — nothing to tick. The VAT is 16/116 of what was
+              paid. Keep the supplier's tax invoice for each one; a row marked <i>no invoice #</i> is counted but has no invoice number on file.
             </p>
             <table className="table">
               <thead>
@@ -377,13 +355,12 @@ export default function Compliance() {
                   <th>Invoice #</th>
                   <th style={{ textAlign: 'right' }}>Paid (incl. VAT)</th>
                   <th style={{ textAlign: 'right' }}>Input VAT</th>
-                  <th style={{ width: 90 }}>Claim</th>
                 </tr>
               </thead>
               <tbody>
                 {vat.purchases.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-muted">
+                    <td colSpan={5} className="text-muted">
                       No purchases or expenses in this period.
                     </td>
                   </tr>
@@ -398,11 +375,60 @@ export default function Compliance() {
                         {[p.supplier, p.note].filter(Boolean).join(' · ')}
                       </div>
                     </td>
-                    <td className="text-muted">{p.invoiceNumber || '—'}</td>
+                    <td className="text-muted">{p.invoiceNumber || (p.vatAmount > 0 ? <span className="tag tag-outline">no invoice #</span> : '—')}</td>
                     <td style={{ textAlign: 'right' }}>{fmtKsh(p.amount)}</td>
-                    <td style={{ textAlign: 'right', fontWeight: p.vatAmount ? 700 : undefined }}>{p.vatAmount ? fmtKsh(p.vatAmount) : <span className="text-muted">{fmtKsh(p.claimableVat)} if claimed</span>}</td>
+                    <td style={{ textAlign: 'right', fontWeight: p.vatAmount ? 700 : undefined }}>{p.vatAmount ? fmtKsh(p.vatAmount) : <span className="text-muted">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+              VAT treatment by expense head
+            </div>
+            <p className="note" style={{ marginTop: 0 }}>
+              Set once for each kind of spending. Every purchase and expense under a head follows it — past and future — so the VAT figures above always reflect it. The standing
+              answers: materials, stock, transport, utilities, repairs, supplies, courier, airtime/data, cleaning and outsourced services carry VAT; wages, bank charges, refreshments,
+              commission and anything unrecognised do not.
+            </p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Expense head</th>
+                  <th style={{ width: 220 }}>Carries VAT (claimed back)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vat.heads.map((h) => (
+                  <tr key={h.id}>
                     <td>
-                      <input type="checkbox" aria-label={`Claim VAT on ${p.category} ${p.invoiceNumber ?? ''}`} checked={p.vatAmount > 0} disabled={busy} onChange={(e) => claimVat(p.id, e.target.checked)} />
+                      {h.name} {!h.isDefault && <span className="tag tag-outline">set by you</span>}
+                    </td>
+                    <td>
+                      <div className="seg" role="radiogroup" aria-label={`VAT on ${h.name}`}>
+                        {(
+                          [
+                            [true, 'Yes'],
+                            [false, 'No'],
+                          ] as [boolean, string][]
+                        ).map(([v, label]) => (
+                          <label key={label} className={'seg-opt' + (h.applicable === v ? ' checked' : '')}>
+                            <input type="radio" name={`vat-head-${h.id}`} checked={h.applicable === v} disabled={busy} onChange={() => setHeadVat(h.id, v)} />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                      {!h.isDefault && (
+                        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setHeadVat(h.id, null)}>
+                          back to standing answer
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

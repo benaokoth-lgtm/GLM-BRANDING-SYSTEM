@@ -35,6 +35,13 @@ test('job margin: 200 eulogies quoted at 40 each, sold at 60', () => {
   assert.equal(m.bookMarginPct, 22.67);
 });
 
+test('job margin when the supplier VAT is claimed back: the books see the bill without its VAT', () => {
+  const m = jobMargin(200 * 60, 200 * 40, 0.16, true);
+  assert.equal(m.costExVat, 6896.55);
+  assert.equal(m.bookProfit, 3448.28); // 10,344.83 − 6,896.55
+  assert.equal(m.bookMarginPct, 33.33);
+});
+
 test('a job with nothing sold or costed has no percentages', () => {
   const m = jobMargin(0, 0, 0.16);
   assert.equal(m.markupPct, null);

@@ -22,6 +22,8 @@ export default function Orders() {
   const [category, setCategory] = useSubTab<string>('all');
   const [dtfPart, setDtfPart] = useSubTab<'all' | 'film' | 'artwork' | 'other'>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
+  // The summary figure (All Orders) that is opened into the orders behind it.
+  const [openKpi, setOpenKpi] = useState<'total' | 'production' | 'pending' | 'overdue' | null>(null);
   // Everything together by default (the Status column tells an order, an invoice and a quotation apart); Invoices and Quotations narrow it.
   const [kind, setKind] = useSubTab<'all' | 'Invoice' | 'Quote'>('all');
   // An invoice stays an invoice once it is paid in full: it is tracked through production to completion.
@@ -61,14 +63,25 @@ export default function Orders() {
   const shown = ofHead.filter((o) => (kind === 'all' || o.status === kind) && (kind !== 'Invoice' || invoiceView === 'all' || (invoiceView === 'open' ? o.stage !== 'Completed' : o.stage === 'Completed')));
   const showDue = kind === 'Invoice';
 
+  // The summary figures, each with the orders behind it (click one to open them). A quotation is an offer, not an order in hand or money owed,
+  // so it is left out of "in production" and "pending balance".
+  const live = ofHead.filter((o) => o.status !== 'Quote');
+  const kpiRows: Record<'total' | 'production' | 'pending' | 'overdue', OrderSummary[]> = {
+    total: ofHead,
+    production: live.filter((o) => o.stage === 'In Production'),
+    pending: live.filter((o) => o.totals.balanceDue > 0.005).sort((x, y) => y.totals.balanceDue - x.totals.balanceDue),
+    overdue: ofHead.filter((o) => o.overdue).sort((x, y) => (x.dueDate ?? '').localeCompare(y.dueDate ?? '')),
+  };
+  const pendingTotal = kpiRows.pending.reduce((acc, o) => acc + o.totals.balanceDue, 0);
   const kpis = viewAll
-    ? [
-        { label: 'Total orders', value: String(ofHead.length) },
-        { label: 'In production', value: String(ofHead.filter((o) => o.stage === 'In Production').length) },
-        { label: 'Pending balance', value: fmtKsh(ofHead.reduce((a, o) => a + o.totals.balanceDue, 0)) },
-        { label: 'Overdue invoices', value: String(ofHead.filter((o) => o.overdue).length) },
-      ]
+    ? ([
+        { key: 'total', label: 'Total orders', value: String(kpiRows.total.length), title: 'All orders', hint: 'Every order, invoice and quotation in the selection.' },
+        { key: 'production', label: 'In production', value: String(kpiRows.production.length), title: 'In production', hint: 'Orders being worked on right now.' },
+        { key: 'pending', label: 'Pending balance', value: fmtKsh(pendingTotal), title: 'Pending balances', hint: 'Orders and invoices that still have money owing, biggest balance first. Quotations are not counted.' },
+        { key: 'overdue', label: 'Overdue invoices', value: String(kpiRows.overdue.length), title: 'Overdue invoices', hint: 'Invoices past their due date that still have a balance, oldest first.' },
+      ] as const)
     : [];
+  const openDef = kpis.find((k) => k.key === openKpi) ?? null;
 
   return (
     <div>
@@ -141,16 +154,108 @@ export default function Orders() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
             {kpis.map((k) => (
-              <div key={k.label} className="card blueprint elev-sm">
+              <div
+                key={k.label}
+                className="card blueprint elev-sm"
+                role="button"
+                tabIndex={0}
+                aria-expanded={openKpi === k.key}
+                title="Show the orders behind this figure"
+                onClick={() => setOpenKpi(openKpi === k.key ? null : k.key)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setOpenKpi(openKpi === k.key ? null : k.key);
+                  }
+                }}
+                style={{ cursor: 'pointer', outline: openKpi === k.key ? '2px solid var(--color-accent)' : undefined }}
+              >
                 <i className="corner tl"></i>
                 <i className="corner tr"></i>
                 <i className="corner bl"></i>
                 <i className="corner br"></i>
-                <div className="card-kicker">{k.label}</div>
+                <div className="card-kicker">
+                  {openKpi === k.key ? '▾' : '▸'} {k.label}
+                </div>
                 <div className="card-title">{k.value}</div>
               </div>
             ))}
           </div>
+          {openDef && (
+            <div className="card blueprint" style={{ padding: 'var(--space-4)', marginTop: 'var(--space-3)' }}>
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div className="card-title">
+                  {openDef.title} ({kpiRows[openDef.key].length})
+                  {openDef.key === 'pending' && <span> — {fmtKsh(pendingTotal)} owing</span>}
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpenKpi(null)}>
+                  Close
+                </button>
+              </div>
+              <p className="note" style={{ marginTop: 'var(--space-1)' }}>
+                {openDef.hint} Click an order to open it.
+              </p>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Date</th>
+                    <th>Client</th>
+                    <th>Staff</th>
+                    <th>Status</th>
+                    <th>Stage</th>
+                    <th>Due</th>
+                    <th style={{ textAlign: 'right' }}>Total</th>
+                    <th style={{ textAlign: 'right' }}>Paid</th>
+                    <th style={{ textAlign: 'right' }}>Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kpiRows[openDef.key].length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="text-muted">
+                        Nothing here.
+                      </td>
+                    </tr>
+                  )}
+                  {kpiRows[openDef.key].map((o) => (
+                    <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(o.id)}>
+                      <td>{o.orderNo}</td>
+                      <td className="text-muted">{fmtDate(o.createdDate)}</td>
+                      <td>{o.kind === 'corporate' ? o.corporateClient?.name ?? '—' : o.customerName ?? '—'}</td>
+                      <td>{o.staff.name}</td>
+                      <td>
+                        <span className={o.status === 'Quote' ? 'tag tag-outline' : 'tag tag-accent'}>{o.status}</span>
+                      </td>
+                      <td className="text-muted">{o.status === 'Quote' ? '—' : o.stage}</td>
+                      <td className={o.overdue ? '' : 'text-muted'} style={o.overdue ? { color: '#a33', fontWeight: 700 } : undefined}>
+                        {o.dueDate ? fmtDate(o.dueDate) : '—'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(o.totals.grandTotal)}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(o.totals.paidTotal)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: o.totals.balanceDue > 0.005 ? 700 : undefined }}>{fmtKsh(o.totals.balanceDue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                {kpiRows[openDef.key].length > 0 && (
+                  <tfoot>
+                    <tr>
+                      <td colSpan={7} style={{ fontWeight: 700 }}>
+                        Total
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtKsh(kpiRows[openDef.key].reduce((acc, o) => acc + o.totals.grandTotal, 0))}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtKsh(kpiRows[openDef.key].reduce((acc, o) => acc + o.totals.paidTotal, 0))}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtKsh(kpiRows[openDef.key].reduce((acc, o) => acc + o.totals.balanceDue, 0))}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)', flexWrap: 'wrap' }}>
             <select className="input" style={{ width: 'auto' }} value={staffFilter} onChange={(e) => setStaffFilter(e.target.value)}>
               <option value="all">All staff</option>

@@ -259,6 +259,40 @@ export interface VatData {
   netVatPayable: number;
   purchases: VatPurchaseRow[];
   heads: VatHeadRow[];
+  statement: VatStatement;
+}
+
+/** The VAT statement generated from the books: income accounts (output VAT), expense accounts (input VAT) and outsourced work. */
+export interface VatStatementLine {
+  date: string;
+  ref: string;
+  memo: string;
+  net: number;
+  vat: number;
+}
+export interface VatStatementRow {
+  accountId: number;
+  code: string;
+  name: string;
+  net: number;
+  vat: number;
+  gross: number;
+  lines: VatStatementLine[];
+}
+export interface VatStatementPart {
+  rows: VatStatementRow[];
+  net: number;
+  vat: number;
+  gross: number;
+}
+export interface VatStatement {
+  income: VatStatementPart;
+  expenses: VatStatementPart;
+  outsourced: {
+    sales: { rows: { orderId: number; orderNo: string; date: string; customer: string; net: number; vat: number; gross: number; quoted: number; billed: number }[]; net: number; vat: number; gross: number };
+    bills: { rows: { expenseId: number; date: string; orderNo: string | null; supplier: string; invoiceNumber: string | null; gross: number; net: number; vat: number }[]; net: number; vat: number; gross: number };
+    netVat: number;
+  };
 }
 
 export interface VatHeadRow {

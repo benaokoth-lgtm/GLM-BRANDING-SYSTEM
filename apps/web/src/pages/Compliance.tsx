@@ -3,11 +3,12 @@ import { EMPLOYEE_TYPES, PAYROLL_PAYMENT_SOURCES, fmtDate, fmtKsh, todayStr } fr
 import type { EmployeeType, PayrollPaymentSource } from '@glm/shared';
 import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
-import type { CompanySettings, DeletableRecordType, DeletionRequest, EmployeeRow, P9Data, PayrollData, PayrollRow, VatData } from '../api/models';
+import type { CompanySettings, DeletableRecordType, DeletionRequest, EmployeeRow, P9Data, PayrollData, PayrollRow, VatData, VatStatementPart } from '../api/models';
 import { buildP9Html, buildPayrollRegisterHtml, buildPayslipsHtml, printHtml } from '../utils/printPayroll';
 import { useCatalog } from '../hooks/useCatalog';
 import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
+import OrderDetailDialog from '../components/OrderDetailDialog';
 
 type ComplianceTab = 'vat' | 'nssf' | 'shif' | 'payroll' | 'employees' | 'p9';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
@@ -36,6 +37,63 @@ function presetRange(preset: Preset, today: string): { from: string; to: string 
   return { from: d.toISOString().slice(0, 10), to: today };
 }
 
+// One block of the VAT statement: an account per row (its amount, its VAT and the total); click an account to see the documents behind it.
+function AccountStatement({ rows, totals, heads, empty }: { rows: VatStatementPart['rows']; totals: { net: number; vat: number; gross: number }; heads: [string, string, string]; empty: string }) {
+  const [open, setOpen] = useState<number | null>(null);
+  return (
+    <table className="table">
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th style={{ textAlign: 'right' }}>{heads[0]}</th>
+          <th style={{ textAlign: 'right' }}>{heads[1]}</th>
+          <th style={{ textAlign: 'right' }}>{heads[2]}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 && (
+          <tr>
+            <td colSpan={4} className="text-muted">
+              {empty}
+            </td>
+          </tr>
+        )}
+        {rows.map((r) => (
+          <Fragment key={r.accountId}>
+            <tr style={{ cursor: 'pointer' }} onClick={() => setOpen(open === r.accountId ? null : r.accountId)} aria-expanded={open === r.accountId}>
+              <td>
+                <span className="text-muted">{open === r.accountId ? '▾' : '▸'}</span> {r.code} · {r.name} <span className="text-muted">({r.lines.length})</span>
+              </td>
+              <td style={{ textAlign: 'right' }}>{fmtKsh(r.net)}</td>
+              <td style={{ textAlign: 'right', fontWeight: 700 }}>{fmtKsh(r.vat)}</td>
+              <td style={{ textAlign: 'right' }}>{fmtKsh(r.gross)}</td>
+            </tr>
+            {open === r.accountId &&
+              r.lines.map((l, i) => (
+                <tr key={i} style={{ background: 'var(--color-surface)' }}>
+                  <td className="text-muted" style={{ paddingLeft: 28, fontSize: 12 }}>
+                    {fmtDate(l.date)} · {l.memo && l.memo.startsWith(l.ref) ? l.memo : [l.ref, l.memo].filter(Boolean).join(' — ')}
+                  </td>
+                  <td style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(l.net)}</td>
+                  <td style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(l.vat)}</td>
+                  <td style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(l.net + l.vat)}</td>
+                </tr>
+              ))}
+          </Fragment>
+        ))}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td>Total</td>
+          <td style={{ textAlign: 'right' }}>{fmtKsh(totals.net)}</td>
+          <td style={{ textAlign: 'right' }}>{fmtKsh(totals.vat)}</td>
+          <td style={{ textAlign: 'right' }}>{fmtKsh(totals.gross)}</td>
+        </tr>
+      </tfoot>
+    </table>
+  );
+}
+
 export default function Compliance() {
   const today = todayStr();
   const initial = presetRange('month', today);
@@ -49,6 +107,7 @@ export default function Compliance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [vatOrderId, setVatOrderId] = useState<number | null>(null);
 
   const staffOnly = staff.filter((s) => s.role === 'Staff');
 
@@ -337,31 +396,109 @@ export default function Compliance() {
             <i className="corner tr"></i>
             <i className="corner bl"></i>
             <i className="corner br"></i>
-            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+            <div className="card-title" style={{ marginBottom: 'var(--space-1)' }}>
               VAT statement
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {(
-                [
-                  ['Walk-in sales', vat.walkinSales],
-                  ['Corporate sales (invoiced)', vat.corporateSales],
-                  ...(vat.debitNotes ? [['Debit notes (extra charged)', vat.debitNotes]] : []),
-                  ...(vat.creditNotes ? [['Credit notes (sales taken back)', -vat.creditNotes]] : []),
-                ] as [string, number][]
-              ).map(([label, v]) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0' }}>
-                  <span>{label}</span>
-                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(v)}</span>
-                </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '8px 0', borderTop: '1px solid var(--color-divider)', fontFamily: 'var(--font-heading)' }}>
-                <span>Total sales (VAT-inclusive)</span>
-                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.totalSales)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0' }}>
-                <span>Net sales (excl. VAT)</span>
-                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.netSales)}</span>
-              </div>
+            <p className="note" style={{ marginTop: 0 }}>
+              {fmtDate(vat.fromDate)} to {fmtDate(vat.toDate)} — generated from the books: Output VAT from the income accounts, Input VAT from the expense accounts. Click an account to see
+              the documents behind it.
+            </p>
+
+            <h3 style={{ margin: 'var(--space-3) 0 var(--space-1)' }}>Output VAT — sales, by income account</h3>
+            <AccountStatement rows={vat.statement.income.rows} totals={vat.statement.income} heads={['Sales (excl. VAT)', 'Output VAT', 'Total (incl. VAT)']} empty="No sales in this period — pick a wider date range above (for example Year to date)." />
+            <p className="note" style={{ marginTop: 'var(--space-1)' }}>
+              Walk-in sales {fmtKsh(vat.walkinSales)} · corporate sales {fmtKsh(vat.corporateSales)}
+              {vat.debitNotes ? ` · debit notes ${fmtKsh(vat.debitNotes)}` : ''}
+              {vat.creditNotes ? ` · credit notes −${fmtKsh(vat.creditNotes)}` : ''} (VAT-inclusive). Quotations are offers, not sales.
+            </p>
+
+            <h3 style={{ margin: 'var(--space-4) 0 var(--space-1)' }}>Outsourced services — VAT on the sale and on the supplier's bill</h3>
+            <p className="note" style={{ marginTop: 0 }}>Already included in the income and expense figures above; shown here together so the two sides of contracted-out work can be compared.</p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Sale (output VAT)</th>
+                  <th>Customer</th>
+                  <th style={{ textAlign: 'right' }}>Sales (excl. VAT)</th>
+                  <th style={{ textAlign: 'right' }}>Output VAT</th>
+                  <th style={{ textAlign: 'right' }}>Supplier billed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vat.statement.outsourced.sales.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-muted">
+                      No outsourced sales in this period.
+                    </td>
+                  </tr>
+                )}
+                {vat.statement.outsourced.sales.rows.map((r) => (
+                  <tr key={r.orderId} style={{ cursor: 'pointer' }} onClick={() => setVatOrderId(r.orderId)}>
+                    <td>
+                      {r.orderNo} <span className="text-muted">{fmtDate(r.date)}</span>
+                    </td>
+                    <td>{r.customer}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtKsh(r.net)}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtKsh(r.vat)}</td>
+                    <td style={{ textAlign: 'right' }}>{r.billed > 0 ? fmtKsh(r.billed) : <span className="tag tag-outline">not billed yet{r.quoted > 0 ? ` (quote ${fmtKsh(r.quoted)})` : ''}</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={2}>Outsourced sales</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(vat.statement.outsourced.sales.net)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(vat.statement.outsourced.sales.vat)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+            <table className="table" style={{ marginTop: 'var(--space-3)' }}>
+              <thead>
+                <tr>
+                  <th>Supplier bill (input VAT)</th>
+                  <th>Order</th>
+                  <th>Invoice #</th>
+                  <th style={{ textAlign: 'right' }}>Cost (excl. VAT)</th>
+                  <th style={{ textAlign: 'right' }}>Input VAT</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vat.statement.outsourced.bills.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="text-muted">
+                      No supplier bills in this period — record a supplier bill on the order to claim its VAT.
+                    </td>
+                  </tr>
+                )}
+                {vat.statement.outsourced.bills.rows.map((r) => (
+                  <tr key={r.expenseId}>
+                    <td>
+                      {r.supplier || '—'} <span className="text-muted">{fmtDate(r.date)}</span>
+                    </td>
+                    <td>{r.orderNo ?? '—'}</td>
+                    <td className="text-muted">{r.invoiceNumber || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtKsh(r.net)}</td>
+                    <td style={{ textAlign: 'right' }}>{r.vat > 0 ? fmtKsh(r.vat) : <span className="text-muted">no VAT (head)</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3}>Outsourced supplier bills</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(vat.statement.outsourced.bills.net)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(vat.statement.outsourced.bills.vat)}</td>
+                </tr>
+              </tfoot>
+            </table>
+            <p style={{ margin: 'var(--space-2) 0 0' }}>
+              <b>VAT on outsourced work: {fmtKsh(vat.statement.outsourced.sales.vat)} output − {fmtKsh(vat.statement.outsourced.bills.vat)} input = {fmtKsh(vat.statement.outsourced.netVat)}</b>
+            </p>
+
+            <h3 style={{ margin: 'var(--space-4) 0 var(--space-1)' }}>Input VAT — purchases and expenses, by expense account</h3>
+            <AccountStatement rows={vat.statement.expenses.rows} totals={vat.statement.expenses} heads={['Cost (excl. VAT)', 'Input VAT', 'Paid (incl. VAT)']} empty="No purchases or expenses in this period." />
+
+            <div style={{ display: 'flex', flexDirection: 'column', marginTop: 'var(--space-4)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '8px 0', borderTop: '1px solid var(--color-divider)', fontFamily: 'var(--font-heading)' }}>
                 <span>Output VAT (16%) — on sales</span>
                 <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.outputVat)}</span>
@@ -392,8 +529,8 @@ export default function Compliance() {
               </div>
             </div>
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-              Worked out automatically from the books for the period you pick, so it always agrees with them. Output VAT is the 16% inside every sale price (walk-in
-              orders and every corporate order past Quotation, less credit notes). Input VAT is the VAT in your purchases and expenses (below).
+              Output VAT is the 16% inside every sale price (walk-in orders and every corporate order past Quotation, less credit notes). Input VAT is the VAT in your purchases and expenses,
+              set once per expense head (see below). Prices are VAT-inclusive.
             </p>
           </div>
 
@@ -499,6 +636,8 @@ export default function Compliance() {
           </div>
         </>
       )}
+
+      {vatOrderId != null && <OrderDetailDialog orderId={vatOrderId} onClose={() => setVatOrderId(null)} onChanged={load} />}
 
       {tab === 'employees' && (
         <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>

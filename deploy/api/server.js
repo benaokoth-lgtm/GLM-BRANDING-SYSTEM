@@ -50556,7 +50556,7 @@ financeRouter.get("/vat", async (req, res) => {
     else if (VAT_PURCHASE_SOURCES.has(p.source)) inputVat += p.debit - p.credit;
     else otherVat += p.credit - p.debit;
   }
-  const orders = await prisma.order.findMany({ include: { lineItems: true } });
+  const orders = await prisma.order.findMany({ include: { lineItems: { include: { service: true } }, corporateClient: true } });
   let walkinSales = 0;
   let corporateSales = 0;
   for (const o of orders) {
@@ -50598,6 +50598,75 @@ financeRouter.get("/vat", async (req, res) => {
     isStockPurchase: purchaseExpenseIds.has(e.id)
   }));
   const heads = headRows.map((h) => ({ id: h.id, name: h.name, applicable: vatOf(h.name), isDefault: h.vatApplicable == null }));
+  const groups = /* @__PURE__ */ new Map();
+  for (const p of ledger.postings) {
+    if (!inRange(p.date, range2.from, range2.to) || !(VAT_SALE_SOURCES.has(p.source) || VAT_PURCHASE_SOURCES.has(p.source))) continue;
+    const k = `${p.source}\0${p.ref}`;
+    groups.set(k, [...groups.get(k) ?? [], p]);
+  }
+  const incomeRows = /* @__PURE__ */ new Map();
+  const expenseRows = /* @__PURE__ */ new Map();
+  for (const ps of groups.values()) {
+    const sale = VAT_SALE_SOURCES.has(ps[0].source);
+    const vatDoc = round2(ps.filter((p) => p.accountId === vatAcct?.id).reduce((a2, p) => a2 + (sale ? p.credit - p.debit : p.debit - p.credit), 0));
+    const parts = ps.filter((p) => ledger.byId.get(p.accountId)?.type === (sale ? "Income" : "Expense")).map((p) => ({ p, net: round2(sale ? p.credit - p.debit : p.debit - p.credit) }));
+    const total = parts.reduce((a2, x) => a2 + x.net, 0);
+    if (parts.length === 0 || total === 0) continue;
+    let left = vatDoc;
+    parts.forEach((x, i) => {
+      const vat = i === parts.length - 1 ? left : round2(vatDoc * x.net / total);
+      left = round2(left - vat);
+      const acct = ledger.byId.get(x.p.accountId);
+      const rows = sale ? incomeRows : expenseRows;
+      let row = rows.get(acct.id);
+      if (!row) rows.set(acct.id, row = { accountId: acct.id, code: acct.code, name: acct.name, net: 0, vat: 0, gross: 0, lines: [] });
+      row.net = round2(row.net + x.net);
+      row.vat = round2(row.vat + vat);
+      row.lines.push({ date: x.p.date, ref: x.p.ref, memo: x.p.memo, net: x.net, vat });
+    });
+  }
+  const finish = (rows) => {
+    const list = [...rows.values()].map((r) => ({ ...r, gross: round2(r.net + r.vat), lines: r.lines.sort((a2, b) => b.date.localeCompare(a2.date) || a2.ref.localeCompare(b.ref)) })).sort((a2, b) => a2.code.localeCompare(b.code));
+    const net8 = round2(list.reduce((a2, r) => a2 + r.net, 0));
+    const vatSum = round2(list.reduce((a2, r) => a2 + r.vat, 0));
+    return { rows: list, net: net8, vat: vatSum, gross: round2(net8 + vatSum) };
+  };
+  const outsourcedSales = [];
+  for (const o of orders) {
+    if (!(o.kind === "walkin" || o.status !== "Quote") || !inRange(o.createdDate, range2.from, range2.to)) continue;
+    const lines = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+    const total = round2(computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal);
+    if (total <= 0 || !o.lineItems.some((li) => li.service?.outsourced)) continue;
+    const { net: net8, vat } = splitGross(total, VAT_RATE);
+    const weights = o.lineItems.map((_, i) => buildLineTotal(lines[i]));
+    const wSum = weights.reduce((a2, w) => a2 + w, 0) || 1;
+    let allocated = 0;
+    let outNet = 0;
+    let quoted = 0;
+    o.lineItems.forEach((li, i) => {
+      const share = i === o.lineItems.length - 1 ? round2(net8 - allocated) : round2(net8 * weights[i] / wSum);
+      allocated += share;
+      if (li.service?.outsourced) {
+        outNet += share;
+        quoted += (li.supplierCost ?? 0) * li.qty;
+      }
+    });
+    const outVat = net8 > 0 ? round2(vat * outNet / net8) : 0;
+    outsourcedSales.push({ orderId: o.id, orderNo: o.orderNo, date: o.createdDate, customer: o.corporateClient?.name || o.customerName || "Walk-in", net: round2(outNet), vat: outVat, gross: round2(outNet + outVat), quoted: round2(quoted), billed: 0 });
+  }
+  const billedByOrder = outsourcedSales.length ? await prisma.expense.groupBy({ by: ["orderId"], where: { orderId: { in: outsourcedSales.map((s) => s.orderId) } }, _sum: { amount: true } }) : [];
+  for (const s of outsourcedSales) s.billed = round2(billedByOrder.find((b) => b.orderId === s.orderId)?._sum.amount ?? 0);
+  const orderNoById = new Map(orders.map((o) => [o.id, o.orderNo]));
+  const outsourcedBills = expenses.filter((e) => e.category === "Outsourced Services" || e.orderId != null).map((e) => {
+    const billVat = vatOf(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
+    return { expenseId: e.id, date: e.date, orderNo: e.orderId != null ? orderNoById.get(e.orderId) ?? null : null, supplier: e.supplier, invoiceNumber: e.invoiceNumber, gross: round2(e.amount), net: round2(e.amount - billVat), vat: billVat };
+  });
+  const sum = (rows, pick) => round2(rows.reduce((a2, r) => a2 + pick(r), 0));
+  const outsourced = {
+    sales: { rows: outsourcedSales, net: sum(outsourcedSales, (r) => r.net), vat: sum(outsourcedSales, (r) => r.vat), gross: sum(outsourcedSales, (r) => r.gross) },
+    bills: { rows: outsourcedBills, net: sum(outsourcedBills, (r) => r.net), vat: sum(outsourcedBills, (r) => r.vat), gross: sum(outsourcedBills, (r) => r.gross) },
+    netVat: round2(sum(outsourcedSales, (r) => r.vat) - sum(outsourcedBills, (r) => r.vat))
+  };
   res.json({
     fromDate: range2.from,
     toDate: range2.to,
@@ -50612,7 +50681,8 @@ financeRouter.get("/vat", async (req, res) => {
     otherVat: round2(otherVat),
     netVatPayable: round2(outputVat - inputVat + otherVat),
     purchases,
-    heads
+    heads,
+    statement: { income: finish(incomeRows), expenses: finish(expenseRows), outsourced }
   });
 });
 financeRouter.patch("/expense-heads/:id/vat", requirePermission("canAccessFinance"), async (req, res) => {

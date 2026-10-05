@@ -10,6 +10,7 @@ import {
   PETTY_CASH_METHOD,
   ACCT,
   VAT_RATE,
+  buildLineTotal,
   cleanKraPin,
   cleanNationalId,
   cleanShifNumber,
@@ -270,7 +271,7 @@ financeRouter.get('/vat', async (req, res) => {
   }
 
   // Sales (VAT-inclusive), split walk-in / corporate, with the notes that adjust them.
-  const orders = await prisma.order.findMany({ include: { lineItems: true } });
+  const orders = await prisma.order.findMany({ include: { lineItems: { include: { service: true } }, corporateClient: true } });
   let walkinSales = 0;
   let corporateSales = 0;
   for (const o of orders) {
@@ -317,6 +318,91 @@ financeRouter.get('/vat', async (req, res) => {
   // How each expense head is treated (set once; the standing answer applies until an Admin changes it).
   const heads = headRows.map((h) => ({ id: h.id, name: h.name, applicable: vatOf(h.name), isDefault: h.vatApplicable == null }));
 
+  // ── The statement by account, straight from the books ─────────────────────────────────────────────────────────────────────────
+  // Output VAT by INCOME account (every sale, with credit and debit notes) and input VAT by EXPENSE account (every purchase and expense), so the
+  // VAT figures can be read off the same accounts as the income statement. A document's VAT is spread over the accounts it posted to in proportion
+  // to their amounts (an order's VAT is posted once for the whole order, its sales line by line to the income accounts).
+  type StatementLine = { date: string; ref: string; memo: string; net: number; vat: number };
+  type StatementRow = { accountId: number; code: string; name: string; net: number; vat: number; gross: number; lines: StatementLine[] };
+  const groups = new Map<string, typeof ledger.postings>();
+  for (const p of ledger.postings) {
+    if (!inRange(p.date, range.from, range.to) || !(VAT_SALE_SOURCES.has(p.source) || VAT_PURCHASE_SOURCES.has(p.source))) continue;
+    const k = `${p.source}\u0000${p.ref}`;
+    groups.set(k, [...(groups.get(k) ?? []), p]);
+  }
+  const incomeRows = new Map<number, StatementRow>();
+  const expenseRows = new Map<number, StatementRow>();
+  for (const ps of groups.values()) {
+    const sale = VAT_SALE_SOURCES.has(ps[0]!.source);
+    const vatDoc = round2(ps.filter((p) => p.accountId === vatAcct?.id).reduce((a, p) => a + (sale ? p.credit - p.debit : p.debit - p.credit), 0));
+    const parts = ps
+      .filter((p) => ledger.byId.get(p.accountId)?.type === (sale ? 'Income' : 'Expense'))
+      .map((p) => ({ p, net: round2(sale ? p.credit - p.debit : p.debit - p.credit) }));
+    const total = parts.reduce((a, x) => a + x.net, 0);
+    if (parts.length === 0 || total === 0) continue;
+    let left = vatDoc;
+    parts.forEach((x, i) => {
+      const vat = i === parts.length - 1 ? left : round2((vatDoc * x.net) / total);
+      left = round2(left - vat);
+      const acct = ledger.byId.get(x.p.accountId)!;
+      const rows = sale ? incomeRows : expenseRows;
+      let row = rows.get(acct.id);
+      if (!row) rows.set(acct.id, (row = { accountId: acct.id, code: acct.code, name: acct.name, net: 0, vat: 0, gross: 0, lines: [] }));
+      row.net = round2(row.net + x.net);
+      row.vat = round2(row.vat + vat);
+      row.lines.push({ date: x.p.date, ref: x.p.ref, memo: x.p.memo, net: x.net, vat });
+    });
+  }
+  const finish = (rows: Map<number, StatementRow>) => {
+    const list = [...rows.values()].map((r) => ({ ...r, gross: round2(r.net + r.vat), lines: r.lines.sort((a, b) => b.date.localeCompare(a.date) || a.ref.localeCompare(b.ref)) })).sort((a, b) => a.code.localeCompare(b.code));
+    const net = round2(list.reduce((a, r) => a + r.net, 0));
+    const vatSum = round2(list.reduce((a, r) => a + r.vat, 0));
+    return { rows: list, net, vat: vatSum, gross: round2(net + vatSum) };
+  };
+
+  // ── Outsourced (contracted-out) work: the sale carries Output VAT, the supplier's bill carries Input VAT ─────────────────────────
+  const outsourcedSales: { orderId: number; orderNo: string; date: string; customer: string; net: number; vat: number; gross: number; quoted: number; billed: number }[] = [];
+  for (const o of orders) {
+    if (!(o.kind === 'walkin' || o.status !== 'Quote') || !inRange(o.createdDate, range.from, range.to)) continue;
+    const lines: LineItemInput[] = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+    const total = round2(computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal);
+    if (total <= 0 || !o.lineItems.some((li) => li.service?.outsourced)) continue;
+    const { net, vat } = splitGross(total, VAT_RATE);
+    // the same split of the net across the lines that the books use (by each line's value after discounts; the last line takes the cent remainder)
+    const weights = o.lineItems.map((_, i) => buildLineTotal(lines[i]!));
+    const wSum = weights.reduce((a, w) => a + w, 0) || 1;
+    let allocated = 0;
+    let outNet = 0;
+    let quoted = 0;
+    o.lineItems.forEach((li, i) => {
+      const share = i === o.lineItems.length - 1 ? round2(net - allocated) : round2((net * weights[i]!) / wSum);
+      allocated += share;
+      if (li.service?.outsourced) {
+        outNet += share;
+        quoted += (li.supplierCost ?? 0) * li.qty;
+      }
+    });
+    const outVat = net > 0 ? round2((vat * outNet) / net) : 0;
+    outsourcedSales.push({ orderId: o.id, orderNo: o.orderNo, date: o.createdDate, customer: o.corporateClient?.name || o.customerName || 'Walk-in', net: round2(outNet), vat: outVat, gross: round2(outNet + outVat), quoted: round2(quoted), billed: 0 });
+  }
+  const billedByOrder = outsourcedSales.length
+    ? await prisma.expense.groupBy({ by: ['orderId'], where: { orderId: { in: outsourcedSales.map((s) => s.orderId) } }, _sum: { amount: true } })
+    : [];
+  for (const s of outsourcedSales) s.billed = round2(billedByOrder.find((b) => b.orderId === s.orderId)?._sum.amount ?? 0);
+  const orderNoById = new Map(orders.map((o) => [o.id, o.orderNo]));
+  const outsourcedBills = expenses
+    .filter((e) => e.category === 'Outsourced Services' || e.orderId != null)
+    .map((e) => {
+      const billVat = vatOf(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
+      return { expenseId: e.id, date: e.date, orderNo: e.orderId != null ? orderNoById.get(e.orderId) ?? null : null, supplier: e.supplier, invoiceNumber: e.invoiceNumber, gross: round2(e.amount), net: round2(e.amount - billVat), vat: billVat };
+    });
+  const sum = <T,>(rows: T[], pick: (r: T) => number) => round2(rows.reduce((a, r) => a + pick(r), 0));
+  const outsourced = {
+    sales: { rows: outsourcedSales, net: sum(outsourcedSales, (r) => r.net), vat: sum(outsourcedSales, (r) => r.vat), gross: sum(outsourcedSales, (r) => r.gross) },
+    bills: { rows: outsourcedBills, net: sum(outsourcedBills, (r) => r.net), vat: sum(outsourcedBills, (r) => r.vat), gross: sum(outsourcedBills, (r) => r.gross) },
+    netVat: round2(sum(outsourcedSales, (r) => r.vat) - sum(outsourcedBills, (r) => r.vat)),
+  };
+
   res.json({
     fromDate: range.from,
     toDate: range.to,
@@ -332,6 +418,7 @@ financeRouter.get('/vat', async (req, res) => {
     netVatPayable: round2(outputVat - inputVat + otherVat),
     purchases,
     heads,
+    statement: { income: finish(incomeRows), expenses: finish(expenseRows), outsourced },
   });
 });
 

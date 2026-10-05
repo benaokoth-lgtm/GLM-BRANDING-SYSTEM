@@ -35,17 +35,29 @@ Replace `VPS_IP` with the server's IP:
 ```powershell
 ssh root@VPS_IP
 ```
-On the server, get the code and run the setup (takes a few minutes; it prints each step):
+The repository is **private**, so the server gets a **read-only deploy key** (it can read the code and nothing else — no passwords or tokens to type, and it can't change anything on GitHub).
+
+On the server, install git and make the key:
 ```bash
 apt-get update && apt-get install -y git
 ```
 ```bash
-git clone https://github.com/benaokoth-lgtm/GLM-BRANDING-SYSTEM.git /opt/glm-pos
+mkdir -p /etc/glm-pos && ssh-keygen -t ed25519 -N "" -C "glm-vps-deploy" -f /etc/glm-pos/deploy_key
+```
+Show the **public** half (this one is safe to copy and paste anywhere):
+```bash
+cat /etc/glm-pos/deploy_key.pub
+```
+On GitHub: the repository → **Settings → Deploy keys → Add deploy key**. Title `glm-vps`, paste the line above, leave **"Allow write access" unticked**, then **Add key**.
+
+Back on the server, get the code with that key, then run the setup (takes a few minutes; it prints each step):
+```bash
+GIT_SSH_COMMAND="ssh -i /etc/glm-pos/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" git clone git@github.com:benaokoth-lgtm/GLM-BRANDING-SYSTEM.git /opt/glm-pos
 ```
 ```bash
 bash /opt/glm-pos/deploy-vps/setup-server.sh
 ```
-(If the repository is private, the clone asks for credentials — tell me and I'll set up a read-only deploy key instead of you typing a token.)
+The setup hands the key to the service user, so `update.sh` can pull later with no further steps.
 
 ### A4. Make a normal admin login and lock the door
 Still as `root`. This creates the user `glmadmin` (key login only):
@@ -124,7 +136,7 @@ You should see `{"ok":true}`, the list of staff names from your real data, and `
 1. **Tell staff** the system will be down for ~15 minutes.
 2. **Freeze the old system:** cPanel → Setup Node.js App → **Stop App**. Nothing can be entered from now on.
 3. **Fresh dump** (B1), **download and upload** (B2), then **restore and update** (B3). This replaces the rehearsal copy with the final data.
-4. **Switch DNS** at the registrar: change the **A** record of `pos.glmgroup.co.ke` and of `api.glmgroup.co.ke` to the VPS IP (delete any old **AAAA** record for them unless you add the VPS's IPv6 address). Check from your computer until both show the new IP:
+4. **Switch DNS** at the registrar — **only these two names**; leave the main domain, `www`, `mail`, `webmail`, `cpanel` and all **MX** (email) records pointing at cPanel, or your company email stops. Change the **A** record of `pos.glmgroup.co.ke` and of `api.glmgroup.co.ke` to the VPS IP (delete any old **AAAA** record for them unless you add the VPS's IPv6 address). Check from your computer until both show the new IP:
    ```powershell
    nslookup api.glmgroup.co.ke
    ```

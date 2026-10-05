@@ -22,3 +22,4 @@ deploy/api/.htaccess
 
 # npm cache of the VPS service user (its home is the app folder)
 .npm/
+.ssh/

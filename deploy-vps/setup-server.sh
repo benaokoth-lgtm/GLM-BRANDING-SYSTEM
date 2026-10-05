@@ -11,7 +11,10 @@ set -euo pipefail
 
 WEB_HOST="${WEB_HOST:-pos.glmgroup.co.ke}"
 API_HOST="${API_HOST:-api.glmgroup.co.ke}"
-REPO_URL="${REPO_URL:-https://github.com/benaokoth-lgtm/GLM-BRANDING-SYSTEM.git}"
+# The repository is private, so it is reached over SSH with a read-only deploy key kept at /etc/glm-pos/deploy_key (see DEPLOYMENT-VPS.md, A3).
+REPO_URL="${REPO_URL:-git@github.com:benaokoth-lgtm/GLM-BRANDING-SYSTEM.git}"
+DEPLOY_KEY=/etc/glm-pos/deploy_key
+GIT_SSH="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 APP_DIR=/opt/glm-pos
 ENV_DIR=/etc/glm-pos
 ENV_FILE="$ENV_DIR/api.env"
@@ -45,7 +48,14 @@ id glm >/dev/null 2>&1 || adduser --system --group --home "$APP_DIR" --shell /us
 
 say "The code"
 if [ ! -d "$APP_DIR/.git" ]; then
-  git clone --branch main "$REPO_URL" "$APP_DIR"
+  GIT_SSH_COMMAND="$GIT_SSH" git clone --branch main "$REPO_URL" "$APP_DIR"
+fi
+if [ -f "$DEPLOY_KEY" ]; then
+  # the service user pulls updates with the same read-only key (ssh insists the key is private to whoever uses it)
+  chown glm:glm "$DEPLOY_KEY"
+  chmod 600 "$DEPLOY_KEY"
+  git -C "$APP_DIR" config core.sshCommand "$GIT_SSH"
+  git -C "$APP_DIR" remote set-url origin "$REPO_URL"
 fi
 chown -R glm:glm "$APP_DIR"
 chmod +x "$APP_DIR"/deploy-vps/*.sh

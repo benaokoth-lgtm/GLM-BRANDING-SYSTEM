@@ -17,11 +17,16 @@ export function orderHeads(lines: HeadLine[]): string[] {
   return [...new Set(lines.map(lineHead))];
 }
 
-/** The head an order is worked under (Production, Quality control): the one that carries most of its value. */
+/**
+ * The one head an order is counted and worked under (My Orders, Production, Quality control): the head of the service that carries most of its
+ * value. Materials (blank garments and the like) sell under General Order, but they should not outweigh the service that is the actual work —
+ * a shirt with an embroidery line is an Embroidery job — so materials only decide it when the order has no service line at all.
+ */
 export function primaryHead(lines: (HeadLine & LineItemInput)[]): string {
   if (lines.length === 0) return GENERAL_ORDER_HEAD;
+  const services = lines.filter((li) => li.service);
   const value = new Map<string, number>();
-  for (const li of lines) value.set(lineHead(li), (value.get(lineHead(li)) ?? 0) + buildLineTotal(li));
+  for (const li of services.length > 0 ? services : lines) value.set(lineHead(li), (value.get(lineHead(li)) ?? 0) + buildLineTotal(li));
   return [...value.entries()].sort((a, b) => b[1] - a[1])[0]![0];
 }
 

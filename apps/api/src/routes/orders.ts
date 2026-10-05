@@ -7,7 +7,7 @@ import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
 import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import { WALK_IN_CLIENT } from '@glm/shared';
-import { orderHeads } from '../orderHeads';
+import { orderHeads, primaryHead } from '../orderHeads';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
@@ -79,6 +79,8 @@ export function serializeSummary(order: FullOrder) {
     dtfKind: order.dtfFilmSale ? ('film' as const) : order.dtfArtworkJob ? ('artwork' as const) : null,
     // The lines of business this order sells (same rule as Sales by Business Head: a service's head, else a name-based default; materials are General Order).
     businessHeads: orderHeads(order.lineItems),
+    // The one head the order is counted under in My Orders / All Orders: the head that carries most of its value, so the heads add up to the total.
+    businessHead: primaryHead(order.lineItems.map((li) => ({ ...toLineItemInput(li), service: li.service }))),
   };
 }
 

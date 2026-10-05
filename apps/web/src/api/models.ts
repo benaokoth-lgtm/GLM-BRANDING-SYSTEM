@@ -71,6 +71,8 @@ export interface OrderSummary {
   dtfKind?: 'film' | 'artwork' | null;
   /** The business heads the order's lines belong to. */
   businessHeads?: string[];
+  /** The one head the order is counted under (the head carrying most of its value). */
+  businessHead?: string;
 }
 
 export interface OrderLineItemView {

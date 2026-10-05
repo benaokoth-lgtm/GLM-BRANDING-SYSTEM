@@ -171,6 +171,9 @@ describe('DTF daily roll-ups and business head detail', () => {
     // and which business head it sells for, so My Orders can be browsed by line of business
     assert.deepEqual(all.find((o) => o.orderNo === orderNos.s1).businessHeads, ['DTF Printing']);
     assert.deepEqual(all.find((o) => o.orderNo === orderNos.j1).businessHeads, ['DTF Printing']);
+    // every order is counted under exactly one head, so the heads add up to the total
+    assert.equal(all.find((o) => o.orderNo === orderNos.s1).businessHead, 'DTF Printing');
+    assert.ok(all.every((o) => typeof o.businessHead === 'string' && o.businessHeads.includes(o.businessHead)));
   });
 
   it('Production and Quality control put each order under its business head, with DTF Printing split into film and artwork sales', async () => {

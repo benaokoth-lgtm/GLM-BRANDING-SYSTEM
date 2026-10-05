@@ -49385,8 +49385,9 @@ function orderHeads(lines) {
 }
 function primaryHead(lines) {
   if (lines.length === 0) return GENERAL_ORDER_HEAD;
+  const services2 = lines.filter((li) => li.service);
   const value = /* @__PURE__ */ new Map();
-  for (const li of lines) value.set(lineHead(li), (value.get(lineHead(li)) ?? 0) + buildLineTotal(li));
+  for (const li of services2.length > 0 ? services2 : lines) value.set(lineHead(li), (value.get(lineHead(li)) ?? 0) + buildLineTotal(li));
   return [...value.entries()].sort((a2, b) => b[1] - a2[1])[0][0];
 }
 function headGroup(head, dtfKind) {
@@ -49703,7 +49704,9 @@ function serializeSummary(order) {
     // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
     dtfKind: order.dtfFilmSale ? "film" : order.dtfArtworkJob ? "artwork" : null,
     // The lines of business this order sells (same rule as Sales by Business Head: a service's head, else a name-based default; materials are General Order).
-    businessHeads: orderHeads(order.lineItems)
+    businessHeads: orderHeads(order.lineItems),
+    // The one head the order is counted under in My Orders / All Orders: the head that carries most of its value, so the heads add up to the total.
+    businessHead: primaryHead(order.lineItems.map((li) => ({ ...toLineItemInput(li), service: li.service })))
   };
 }
 function serializeDetail(order, opts = {}) {

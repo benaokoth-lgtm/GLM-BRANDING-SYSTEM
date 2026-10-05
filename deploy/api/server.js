@@ -44738,9 +44738,9 @@ async function buildStatements(period, only) {
 }
 
 // apps/api/src/company.ts
-async function companyName() {
+async function systemName() {
   const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-  return s.companyName.trim() || "the company";
+  return s.systemName.trim() || s.companyName.trim() || "the system";
 }
 
 // apps/api/src/routes/auth.ts
@@ -44754,7 +44754,7 @@ function initials(name2) {
 authRouter.get("/branding", async (_req, res) => {
   const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   res.set("Cache-Control", "public, max-age=300");
-  res.json({ companyName: s.companyName, logoDataUrl: s.logoDataUrl });
+  res.json({ companyName: s.companyName, systemName: s.systemName.trim() || s.companyName, logoDataUrl: s.logoDataUrl });
 });
 authRouter.get("/features", requireAuth, async (_req, res) => {
   res.json({ commission: await commissionEnabled() });
@@ -44814,7 +44814,7 @@ authRouter.post("/forgot-pin", resetLimiter, async (req, res) => {
   try {
     await mailer.sendMail({
       to: email,
-      subject: `${await companyName()} \u2014 PIN reset code`,
+      subject: `${await systemName()} \u2014 PIN reset code`,
       text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.
 
 If you didn't ask for this, ignore this email \u2014 your PIN has not changed.`
@@ -49054,7 +49054,7 @@ async function emailPin(name2, to, pin) {
   const url = mailer.config.loginUrl ? `
 Sign in at: ${mailer.config.loginUrl}
 ` : "";
-  const company = await companyName();
+  const company = await systemName();
   try {
     await mailer.sendMail({
       to,
@@ -49194,8 +49194,8 @@ masterDataRouter.post("/mail/test", requireRole("Admin"), async (req, res) => {
     await transport.sendMail({
       from: cfg.fromName ? { name: cfg.fromName, address: cfg.username } : cfg.username,
       to: parsed.data.to,
-      subject: `${await companyName()} \u2014 test email`,
-      text: `This is a test message from the ${await companyName()} system. If you can read it, your mail settings work.`
+      subject: `${await systemName()} \u2014 test email`,
+      text: `This is a test message from the ${await systemName()} system. If you can read it, your mail settings work.`
     });
   } catch (e) {
     return res.status(400).json({ error: explainMailError(e, cfg) });
@@ -49397,6 +49397,7 @@ function serializeSettings(settings) {
     companyName: settings.companyName,
     legalName: settings.legalName,
     companyAddress: settings.companyAddress,
+    systemName: settings.systemName,
     companyPhone: settings.companyPhone,
     companyPhone2: settings.companyPhone2,
     website: settings.website,
@@ -49413,6 +49414,8 @@ masterDataRouter.get("/settings", async (_req, res) => {
 var settingsSchema = external_exports.object({
   maxDiscountPct: external_exports.number().min(0).optional(),
   companyName: external_exports.string().min(1).max(200).optional(),
+  // The name on the system screens (header, browser tab, sign-in), exactly as typed; blank = use the company name.
+  systemName: external_exports.string().trim().max(200).optional(),
   // The registered company the "companyName" trading name operates under —
   // shown as a small "trading name of ..." line under the brand name on
   // printed invoices/quotations (see printInvoice.ts). Blank hides it.

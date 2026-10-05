@@ -204,8 +204,14 @@ describe('email settings and emailing login PINs', () => {
     assert.equal(r.status, 201);
     const mail = inbox.slice(before).find((m) => m.to.includes('brand@test.local'))!;
     assert.ok(mail, 'the email arrived');
-    assert.match(mail.data, /Acme Prints Ltd/);
+    assert.match(mail.data, /Acme Prints Ltd/); // no system name set: the company name is used
     assert.doesNotMatch(mail.data, /GLM Branding/);
-    await call(admin, 'PUT', '/master-data/settings', { companyName: 'GLM Branding' });
+    // a system name, when there is one, is what the system calls itself
+    await call(admin, 'PUT', '/master-data/settings', { systemName: 'Acme Counter System' });
+    const before2 = inbox.length;
+    await call(admin, 'POST', '/master-data/staff', { firstName: 'Brand', middleName: 'Two', lastName: '(mail test)', role: 'Staff', pin: '5577', email: 'brand2@test.local', emailPin: true });
+    const mail2 = inbox.slice(before2).find((m) => m.to.includes('brand2@test.local'))!;
+    assert.match(mail2.data, /Acme Counter System/);
+    await call(admin, 'PUT', '/master-data/settings', { companyName: 'GLM Branding', systemName: '' });
   });
 });

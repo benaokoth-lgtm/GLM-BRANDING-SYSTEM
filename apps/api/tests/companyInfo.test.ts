@@ -56,4 +56,17 @@ describe('company contact details', () => {
     assert.equal(cleared.status, 200);
     assert.deepEqual([cleared.body.companyPhone2, cleared.body.website, cleared.body.facebook, cleared.body.tiktok], ['', '', '', '']);
   });
+
+  it('the name on the system screen is separate from the name on documents; blank means the company name', async () => {
+    const branding = async () => (await (await fetch(`${base}/api/auth/branding`)).json()) as any; // public: the sign-in screen needs it
+    await call('admin', 'PUT', '/master-data/settings', { companyName: 'Acme Docs Ltd', systemName: '' });
+    let b = await branding();
+    assert.deepEqual([b.companyName, b.systemName], ['Acme Docs Ltd', 'Acme Docs Ltd']); // nothing set: the screens use the company name, with nothing added
+    const saved = await call('admin', 'PUT', '/master-data/settings', { systemName: '  Acme POS  ' });
+    assert.equal(saved.body.systemName, 'Acme POS');
+    b = await branding();
+    assert.deepEqual([b.companyName, b.systemName], ['Acme Docs Ltd', 'Acme POS']); // documents keep the company name
+    assert.equal((await call('staff', 'PUT', '/master-data/settings', { systemName: 'x' })).status, 403);
+    await call('admin', 'PUT', '/master-data/settings', { companyName: 'GLM Branding', systemName: '' });
+  });
 });

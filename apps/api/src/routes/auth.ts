@@ -7,7 +7,7 @@ import { explainMailError, getMailer } from '../mailer';
 import { requireAuth, signToken } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
 import { commissionEnabled } from '../commission';
-import { companyName } from '../company';
+import { systemName } from '../company';
 
 export const authRouter = Router();
 
@@ -29,7 +29,8 @@ function initials(name: string): string {
 authRouter.get('/branding', async (_req, res) => {
   const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   res.set('Cache-Control', 'public, max-age=300'); // the logo can be large; it rarely changes
-  res.json({ companyName: s.companyName, logoDataUrl: s.logoDataUrl });
+  // systemName is what the screens show (the system name if one is set, else the company name); companyName is for documents.
+  res.json({ companyName: s.companyName, systemName: s.systemName.trim() || s.companyName, logoDataUrl: s.logoDataUrl });
 });
 
 // Which optional parts of the system are switched on (read fresh each time: an Admin can change them at any moment).
@@ -109,7 +110,7 @@ authRouter.post('/forgot-pin', resetLimiter, async (req, res) => {
   try {
     await mailer.sendMail({
       to: email,
-      subject: `${await companyName()} — PIN reset code`,
+      subject: `${await systemName()} — PIN reset code`,
       text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.\n\nIf you didn't ask for this, ignore this email — your PIN has not changed.`,
     });
   } catch (e) {

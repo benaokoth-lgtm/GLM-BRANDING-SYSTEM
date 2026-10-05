@@ -230,7 +230,7 @@ function MailDialog({ current, onClose, onSaved }: { current: Mail; onClose: () 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
             <div className="field">
               <label>Send as (display name)</label>
-              <input className="input" value={f.fromName} onChange={(e) => set('fromName', e.target.value)} placeholder={`${branding?.companyName ?? 'Your company'} POS`} />
+              <input className="input" value={f.fromName} onChange={(e) => set('fromName', e.target.value)} placeholder={branding?.systemName ?? 'Your company'} />
             </div>
             <div className="field">
               <label>Sign-in address quoted in PIN emails</label>

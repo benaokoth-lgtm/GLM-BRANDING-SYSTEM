@@ -46,6 +46,8 @@ export interface CompanySettings {
   legalName: string;
   companyAddress: string;
   companyPhone: string;
+  /** The name on the system screens (header, tab, sign-in); blank = the company name. */
+  systemName?: string;
   /** A second phone number. */
   companyPhone2?: string;
   website?: string;

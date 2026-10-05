@@ -66,7 +66,7 @@ function AppLayoutInner() {
       <nav className="nav no-print" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
         <span className="nav-brand" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           {branding?.logoDataUrl && <img src={branding.logoDataUrl} alt={branding.companyName} style={{ height: 40, maxWidth: 140, objectFit: 'contain' }} />}
-          <span>{branding?.companyName ? `${branding.companyName} — ` : ''}Order &amp; POS</span>
+          <span>{branding?.systemName ?? ''}</span>
         </span>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
           {user && (

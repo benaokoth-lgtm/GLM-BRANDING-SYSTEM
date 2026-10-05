@@ -11,7 +11,7 @@ import { defaultBusinessHeadName } from '@glm/shared';
 import { ensureBusinessHeadsOnce } from '../purchases';
 import { MARKUP_TYPES } from '@glm/shared';
 import { commissionEnabled } from '../commission';
-import { companyName } from '../company';
+import { systemName } from '../company';
 import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig } from '../mailer';
 
 export const masterDataRouter = Router();
@@ -72,7 +72,7 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
   const mailer = await getMailer();
   if (!mailer) return { ok: false, error: "Email isn't set up yet — set it up under Master Data → Email first" };
   const url = mailer.config.loginUrl ? `\nSign in at: ${mailer.config.loginUrl}\n` : '';
-  const company = await companyName();
+  const company = await systemName();
   try {
     await mailer.sendMail({
       to,
@@ -221,8 +221,8 @@ masterDataRouter.post('/mail/test', requireRole('Admin'), async (req, res) => {
     await transport.sendMail({
       from: cfg.fromName ? { name: cfg.fromName, address: cfg.username } : cfg.username,
       to: parsed.data.to,
-      subject: `${await companyName()} — test email`,
-      text: `This is a test message from the ${await companyName()} system. If you can read it, your mail settings work.`,
+      subject: `${await systemName()} — test email`,
+      text: `This is a test message from the ${await systemName()} system. If you can read it, your mail settings work.`,
     });
   } catch (e) {
     return res.status(400).json({ error: explainMailError(e, cfg) });
@@ -488,6 +488,7 @@ function serializeSettings(settings: {
   companyName: string;
   legalName: string;
   companyAddress: string;
+  systemName: string;
   companyPhone: string;
   companyPhone2: string;
   website: string;
@@ -502,6 +503,7 @@ function serializeSettings(settings: {
     companyName: settings.companyName,
     legalName: settings.legalName,
     companyAddress: settings.companyAddress,
+    systemName: settings.systemName,
     companyPhone: settings.companyPhone,
     companyPhone2: settings.companyPhone2,
     website: settings.website,
@@ -523,6 +525,8 @@ const settingsSchema = z
   .object({
     maxDiscountPct: z.number().min(0).optional(),
     companyName: z.string().min(1).max(200).optional(),
+    // The name on the system screens (header, browser tab, sign-in), exactly as typed; blank = use the company name.
+    systemName: z.string().trim().max(200).optional(),
     // The registered company the "companyName" trading name operates under —
     // shown as a small "trading name of ..." line under the brand name on
     // printed invoices/quotations (see printInvoice.ts). Blank hides it.

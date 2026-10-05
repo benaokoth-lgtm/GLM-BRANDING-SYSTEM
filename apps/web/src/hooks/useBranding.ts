@@ -5,7 +5,10 @@ import { api } from '../api/client';
 // shared; Master Data announces a change with notifyBrandingChanged() so the header and tab icon update without a reload.
 
 export interface Branding {
+  /** The name on documents. */
   companyName: string;
+  /** The name on the system screens (the system name if one is set, else the company name) — exactly as set, with nothing added. */
+  systemName: string;
   logoDataUrl: string | null;
 }
 
@@ -16,7 +19,7 @@ let inflight: Promise<Branding | null> | null = null;
 function applyFavicon(b: Branding | null) {
   if (typeof document === 'undefined') return;
   // the browser tab's title follows the company name set in Master Data
-  if (b?.companyName) document.title = `${b.companyName} — Order & POS`;
+  if (b?.systemName) document.title = b.systemName;
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!b?.logoDataUrl) {
     link?.remove();

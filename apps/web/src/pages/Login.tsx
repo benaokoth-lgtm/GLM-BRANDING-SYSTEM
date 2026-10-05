@@ -70,7 +70,7 @@ export default function Login() {
 
         <div className="login-users">
           {branding?.logoDataUrl && <img src={branding.logoDataUrl} alt={branding.companyName} style={{ maxHeight: 72, maxWidth: 220, objectFit: 'contain', alignSelf: 'flex-start', marginBottom: 'var(--space-2)' }} />}
-          <div className="card-kicker">{branding?.companyName ?? ''}</div>
+          <div className="card-kicker">{branding?.systemName ?? ''}</div>
           <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
             Who's working?
           </div>
@@ -163,7 +163,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
         <i className="corner tr"></i>
         <i className="corner bl"></i>
         <i className="corner br"></i>
-        <div className="card-kicker">{branding?.companyName ?? ''}</div>
+        <div className="card-kicker">{branding?.systemName ?? ''}</div>
         <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
           Reset Admin PIN
         </div>

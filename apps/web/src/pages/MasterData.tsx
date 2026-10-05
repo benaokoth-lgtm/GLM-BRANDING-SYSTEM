@@ -117,6 +117,7 @@ export default function MasterData() {
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [legalName, setLegalName] = useState<string | null>(null);
   const [companyAddress, setCompanyAddress] = useState<string | null>(null);
+  const [companySystemName, setCompanySystemName] = useState<string | null>(null);
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
   const [companyPhone2, setCompanyPhone2] = useState<string | null>(null);
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null);
@@ -132,6 +133,7 @@ export default function MasterData() {
   const companyNameValue = companyName ?? catalog.settings.companyName;
   const legalNameValue = legalName ?? catalog.settings.legalName;
   const companyAddressValue = companyAddress ?? catalog.settings.companyAddress;
+  const companySystemNameValue = companySystemName ?? catalog.settings.systemName ?? '';
   const companyPhoneValue = companyPhone ?? catalog.settings.companyPhone;
   const companyPhone2Value = companyPhone2 ?? catalog.settings.companyPhone2 ?? '';
   const companyWebsiteValue = companyWebsite ?? catalog.settings.website ?? '';
@@ -449,6 +451,7 @@ export default function MasterData() {
     try {
       await api.put('/master-data/settings', {
         companyName: companyNameValue.trim(),
+        systemName: companySystemNameValue.trim(),
         legalName: legalNameValue.trim(),
         companyAddress: companyAddressValue,
         companyPhone: companyPhoneValue,
@@ -1024,8 +1027,14 @@ export default function MasterData() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-6)', maxWidth: 760 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               <div className="field">
-                <label>Company name (trading name)</label>
+                <label>Company name — on documents (trading name)</label>
                 <input className="input" value={companyNameValue} onChange={(e) => setCompanyName(e.target.value)} />
+                <p className="note" style={{ marginTop: 'var(--space-1)' }}>Printed on invoices, quotations, receipts, payroll and P9.</p>
+              </div>
+              <div className="field">
+                <label>Name on the system screen</label>
+                <input className="input" value={companySystemNameValue} onChange={(e) => setCompanySystemName(e.target.value)} placeholder={companyNameValue || 'same as the company name'} />
+                <p className="note" style={{ marginTop: 'var(--space-1)' }}>Shown in the header, the browser tab and the sign-in screens, exactly as you type it (nothing is added to it). Leave blank to use the company name.</p>
               </div>
               <div className="field">
                 <label>Registered/legal entity name</label>

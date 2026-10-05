@@ -77,14 +77,19 @@ export default function MasterData() {
 
   const roleNames = ['Admin', ...roles.map((r) => r.name)];
 
-  const [newStaffName, setNewStaffName] = useState('');
+  // A name is captured in three parts: first name and surname are compulsory, the middle name is optional.
+  const [newFirst, setNewFirst] = useState('');
+  const [newMiddle, setNewMiddle] = useState('');
+  const [newLast, setNewLast] = useState('');
   const [newStaffRole, setNewStaffRole] = useState('Staff');
   const [newStaffPin, setNewStaffPin] = useState('');
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [newStaffEmailPin, setNewStaffEmailPin] = useState(false);
   // Staff with their email, for emailing login PINs (Admin only).
-  const [staffDetails, setStaffDetails] = useState<{ id: number; name: string; role: string; email: string | null; mustChangePin: boolean }[]>([]);
+  const [staffDetails, setStaffDetails] = useState<{ id: number; name: string; firstName: string; middleName: string; lastName: string; role: string; email: string | null; mustChangePin: boolean }[]>([]);
   const [emailDrafts, setEmailDrafts] = useState<Record<number, string>>({});
+  // Someone's name being corrected: the three parts as typed so far.
+  const [nameDrafts, setNameDrafts] = useState<Record<number, { first: string; middle: string; last: string }>>({});
   const [staffNotice, setStaffNotice] = useState<string | null>(null);
   const [staffBusy, setStaffBusy] = useState(false);
 
@@ -131,6 +136,26 @@ export default function MasterData() {
   }
   useEffect(loadStaffDetails, []);
 
+  async function saveStaffName(id: number) {
+    const d = nameDrafts[id];
+    if (!d) return;
+    if (!d.first.trim()) return setError('First name is required');
+    if (!d.last.trim()) return setError('Surname is required');
+    setError(null);
+    setStaffNotice(null);
+    try {
+      await api.put(`/master-data/staff/${id}/name`, { firstName: d.first, middleName: d.middle, lastName: d.last });
+      setNameDrafts((x) => {
+        const { [id]: _drop, ...rest } = x;
+        return rest;
+      });
+      catalog.reload();
+      loadStaffDetails();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save the name');
+    }
+  }
+
   async function saveStaffEmail(id: number) {
     setError(null);
     setStaffNotice(null);
@@ -174,12 +199,16 @@ export default function MasterData() {
   }
 
   async function addStaff() {
-    if (!newStaffName.trim() || !/^\d{4}$/.test(newStaffPin)) return setError('Name and a 4-digit PIN are required');
+    if (!newFirst.trim()) return setError('First name is required');
+    if (!newLast.trim()) return setError('Surname is required');
+    if (!/^\d{4}$/.test(newStaffPin)) return setError('A 4-digit PIN is required');
     setError(null);
     try {
-      const r = await api.post<{ emailed?: { ok: boolean; error?: string } }>('/master-data/staff', { name: newStaffName, role: newStaffRole, pin: newStaffPin, email: newStaffEmail.trim(), emailPin: newStaffEmailPin && !!newStaffEmail.trim() });
+      const r = await api.post<{ emailed?: { ok: boolean; error?: string } }>('/master-data/staff', { firstName: newFirst, middleName: newMiddle, lastName: newLast, role: newStaffRole, pin: newStaffPin, email: newStaffEmail.trim(), emailPin: newStaffEmailPin && !!newStaffEmail.trim() });
       setStaffNotice(r.emailed ? (r.emailed.ok ? `Added — their PIN was emailed to ${newStaffEmail.trim()}` : `Added, but the PIN email failed: ${r.emailed.error}`) : null);
-      setNewStaffName('');
+      setNewFirst('');
+      setNewMiddle('');
+      setNewLast('');
       setNewStaffPin('');
       setNewStaffEmail('');
       setNewStaffEmailPin(false);
@@ -468,7 +497,29 @@ export default function MasterData() {
                 return (
                   <tr key={s.id}>
                     <td>
-                      {s.name} {d?.mustChangePin && <span className="tag tag-outline" title="They were emailed a PIN and have not chosen their own yet">PIN not changed yet</span>}
+                      {nameDrafts[s.id] ? (
+                        <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <input className="input" style={{ width: 130 }} value={nameDrafts[s.id]!.first} onChange={(e) => setNameDrafts((x) => ({ ...x, [s.id]: { ...x[s.id]!, first: e.target.value } }))} placeholder="First name *" autoFocus />
+                          <input className="input" style={{ width: 130 }} value={nameDrafts[s.id]!.middle} onChange={(e) => setNameDrafts((x) => ({ ...x, [s.id]: { ...x[s.id]!, middle: e.target.value } }))} placeholder="Middle name" />
+                          <input className="input" style={{ width: 130 }} value={nameDrafts[s.id]!.last} onChange={(e) => setNameDrafts((x) => ({ ...x, [s.id]: { ...x[s.id]!, last: e.target.value } }))} placeholder="Surname *" />
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => saveStaffName(s.id)}>
+                            Save
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNameDrafts((x) => { const { [s.id]: _d, ...rest } = x; return rest; })}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          {s.name} {d && !d.lastName && <span className="tag tag-accent" title="Staff need a first name and a surname — add the surname">Surname needed</span>}{' '}
+                          {d?.mustChangePin && <span className="tag tag-outline" title="They were emailed a PIN and have not chosen their own yet">PIN not changed yet</span>}{' '}
+                          {d && (
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNameDrafts((x) => ({ ...x, [s.id]: { first: d.firstName, middle: d.middleName, last: d.lastName } }))}>
+                              Edit name
+                            </button>
+                          )}
+                        </>
+                      )}
                     </td>
                     <td>
                       <span className="tag tag-neutral">{s.role}</span>
@@ -503,11 +554,21 @@ export default function MasterData() {
               })}
             </tbody>
           </table>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr 1.4fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
             <div className="field">
-              <label>New staff name</label>
-              <input className="input" value={newStaffName} onChange={(e) => setNewStaffName(e.target.value)} />
+              <label>First name *</label>
+              <input className="input" value={newFirst} onChange={(e) => setNewFirst(e.target.value)} />
             </div>
+            <div className="field">
+              <label>Middle name (optional)</label>
+              <input className="input" value={newMiddle} onChange={(e) => setNewMiddle(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Surname *</label>
+              <input className="input" value={newLast} onChange={(e) => setNewLast(e.target.value)} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr 1.4fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-3)', alignItems: 'end' }}>
             <div className="field">
               <label>Role</label>
               <select className="input" value={newStaffRole} onChange={(e) => setNewStaffRole(e.target.value)}>

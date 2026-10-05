@@ -15,7 +15,13 @@ generator client {
 
 model User {
   id               Int       @id @default(autoincrement())
+  // The full name used everywhere (login screen, orders, reports) — always first + middle + surname joined.
   name             String
+  // The name as captured: first name and surname are compulsory, the middle name is optional. Empty only for staff added before names were
+  // captured in parts, until they are filled in from `name` at start-up (see staffNames.ts).
+  firstName        String    @default("")
+  middleName       String    @default("")
+  lastName         String    @default("")
   role             String // free-text role name — must match a Role.name row (validated at write time, not a DB-level FK so existing rows survive a role rename's own migration)
   pinHash          String
   failedLoginCount Int       @default(0)

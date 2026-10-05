@@ -44463,6 +44463,18 @@ function defaultBusinessHeadName(serviceName) {
   return GENERAL_ORDER_HEAD;
 }
 
+// packages/shared/src/staff.ts
+var tidy = (s) => (s ?? "").trim().replace(/\s+/g, " ");
+function composeName(p) {
+  return [tidy(p.firstName), tidy(p.middleName), tidy(p.lastName)].filter(Boolean).join(" ");
+}
+function splitName(full) {
+  const words = tidy(full).split(" ").filter(Boolean);
+  if (words.length === 0) return { firstName: "", middleName: "", lastName: "" };
+  if (words.length === 1) return { firstName: words[0], middleName: "", lastName: "" };
+  return { firstName: words[0], middleName: words.slice(1, -1).join(" "), lastName: words[words.length - 1] };
+}
+
 // apps/api/src/permissions.ts
 var ALL_TRUE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
 var ALL_FALSE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
@@ -48846,6 +48858,21 @@ var NEVER = INVALID;
 // apps/api/src/routes/masterdata.ts
 var import_crypto2 = __toESM(require("crypto"));
 
+// apps/api/src/staffNames.ts
+async function ensureStaffNames() {
+  const users = await prisma.user.findMany({ where: { firstName: "" }, select: { id: true, name: true } });
+  for (const u of users) {
+    const p = splitName(u.name);
+    if (!p.firstName) continue;
+    await prisma.user.update({ where: { id: u.id }, data: p });
+  }
+}
+var ensuring2 = null;
+function ensureStaffNamesOnce() {
+  if (!ensuring2) ensuring2 = ensureStaffNames().finally(() => ensuring2 = null);
+  return ensuring2;
+}
+
 // apps/api/src/costs.ts
 async function canSeeCosts(role) {
   return role === "Admin" || (await permissionsForRole(role)).canSeeCosts;
@@ -48856,10 +48883,10 @@ async function ensureCostAccess() {
     if (DEFAULT_ROLE_PERMISSIONS[name2]?.canSeeCosts) await prisma.role.updateMany({ where: { name: name2 }, data: { canSeeCosts: true } });
   }
 }
-var ensuring2 = null;
+var ensuring3 = null;
 function ensureCostAccessOnce() {
-  if (!ensuring2) ensuring2 = ensureCostAccess().finally(() => ensuring2 = null);
-  return ensuring2;
+  if (!ensuring3) ensuring3 = ensureCostAccess().finally(() => ensuring3 = null);
+  return ensuring3;
 }
 function costFieldsFor(li, allowed) {
   if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
@@ -48926,8 +48953,17 @@ masterDataRouter.get("/staff", async (_req, res) => {
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
   res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role })));
 });
+var nameParts = {
+  firstName: external_exports.string({ required_error: "First name is required" }).trim().min(1, "First name is required"),
+  middleName: external_exports.string().trim().optional().default(""),
+  lastName: external_exports.string({ required_error: "Surname is required" }).trim().min(1, "Surname is required")
+};
+async function nameTaken(full, exceptId) {
+  const key2 = full.toLowerCase();
+  return (await prisma.user.findMany({ select: { id: true, name: true } })).some((u) => u.id !== exceptId && u.name.trim().replace(/\s+/g, " ").toLowerCase() === key2);
+}
 var staffSchema = external_exports.object({
-  name: external_exports.string().min(1),
+  ...nameParts,
   role: external_exports.string().min(1),
   pin: external_exports.string().regex(/^\d{4}$/),
   email: external_exports.string().trim().toLowerCase().email().optional().or(external_exports.literal("")),
@@ -48937,7 +48973,9 @@ var staffSchema = external_exports.object({
 masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const { name: name2, role, pin } = parsed.data;
+  const { role, pin } = parsed.data;
+  const name2 = composeName(parsed.data);
+  if (await nameTaken(name2)) return res.status(400).json({ error: `There is already a staff member called ${name2}` });
   const email = parsed.data.email || null;
   if (parsed.data.emailPin && !email) return res.status(400).json({ error: "Enter their email address to email them the PIN" });
   if (email && await prisma.user.findUnique({ where: { email } })) return res.status(400).json({ error: "That email address is already used by someone else" });
@@ -48946,7 +48984,7 @@ masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
     if (!roleExists) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
   }
   const pinHash = await import_bcryptjs2.default.hash(pin, 10);
-  const user = await prisma.user.create({ data: { name: name2, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  const user = await prisma.user.create({ data: { name: name2, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
   let emailed;
   if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
   res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
@@ -48979,8 +49017,20 @@ If you were not expecting this message, tell your manager.`
   }
 }
 masterDataRouter.get("/staff-details", requireRole("Admin"), async (_req, res) => {
+  await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role, email: u.email, mustChangePin: u.mustChangePin })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin })));
+});
+masterDataRouter.put("/staff/:id/name", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object(nameParts).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const id = Number(req.params.id);
+  const existing = await prisma.user.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: "Staff member not found" });
+  const name2 = composeName(parsed.data);
+  if (await nameTaken(name2, id)) return res.status(400).json({ error: `There is already a staff member called ${name2}` });
+  const user = await prisma.user.update({ where: { id }, data: { name: name2, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName } });
+  res.json({ id: user.id, name: user.name, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName });
 });
 masterDataRouter.put("/staff/:id/email", requireRole("Admin"), async (req, res) => {
   const parsed = external_exports.object({ email: external_exports.string().trim().toLowerCase().email().or(external_exports.literal("")) }).safeParse(req.body);
@@ -50746,10 +50796,10 @@ async function ensureRequisitions() {
     }
   }
 }
-var ensuring3 = null;
+var ensuring4 = null;
 function ensureRequisitionsOnce() {
-  if (!ensuring3) ensuring3 = ensureRequisitions().finally(() => ensuring3 = null);
-  return ensuring3;
+  if (!ensuring4) ensuring4 = ensureRequisitions().finally(() => ensuring4 = null);
+  return ensuring4;
 }
 
 // apps/api/src/routes/stock.ts
@@ -53687,10 +53737,10 @@ async function ensureProduction() {
     await prisma.role.updateMany({ where: { name: name2 }, data: { canAccessProduction: d.canAccessProduction, canManageProduction: d.canManageProduction, canAccessQuality: d.canAccessQuality } });
   }
 }
-var ensuring4 = null;
+var ensuring5 = null;
 function ensureProductionOnce() {
-  if (!ensuring4) ensuring4 = ensureProduction().finally(() => ensuring4 = null);
-  return ensuring4;
+  if (!ensuring5) ensuring5 = ensureProduction().finally(() => ensuring5 = null);
+  return ensuring5;
 }
 async function isProductionManager(user) {
   return user.role === "Admin" || (await permissionsForRole(user.role)).canManageProduction;
@@ -54300,5 +54350,5 @@ var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
   console.log(`GLM Branding POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

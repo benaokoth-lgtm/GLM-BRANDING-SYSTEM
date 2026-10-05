@@ -189,7 +189,7 @@ describe('email settings and emailing login PINs', () => {
   it('a new staff member can be created and emailed their PIN in one step', async () => {
     await call(admin, 'PUT', '/master-data/mail', { smtpPort });
     const before = inbox.length;
-    const r = await call(admin, 'POST', '/master-data/staff', { name: 'Otieno (mail test)', role: 'Staff', pin: '4455', email: 'otieno@test.local', emailPin: true });
+    const r = await call(admin, 'POST', '/master-data/staff', { firstName: 'Otieno', lastName: '(mail test)', role: 'Staff', pin: '4455', email: 'otieno@test.local', emailPin: true });
     assert.equal(r.status, 201);
     assert.equal(r.body.emailed.ok, true);
     assert.ok(inbox.slice(before).some((m) => m.to.includes('otieno@test.local') && m.data.includes('4455')));

@@ -9,3 +9,4 @@ export * from './outsourced';
 export * from './commission';
 export * from './purchasing';
 export * from './businessHeads';
+export * from './staff';

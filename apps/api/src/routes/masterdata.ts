@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import crypto from 'crypto';
-import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS } from '@glm/shared';
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, composeName } from '@glm/shared';
+import { ensureStaffNamesOnce } from '../staffNames';
 import { canSeeCosts } from '../costs';
 import { defaultBusinessHeadName } from '@glm/shared';
 import { ensureBusinessHeadsOnce } from '../purchases';
@@ -21,8 +22,21 @@ masterDataRouter.get('/staff', async (_req, res) => {
   res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role })));
 });
 
+// A name is captured as first name, optional middle name and surname — first name and surname are compulsory.
+const nameParts = {
+  firstName: z.string({ required_error: 'First name is required' }).trim().min(1, 'First name is required'),
+  middleName: z.string().trim().optional().default(''),
+  lastName: z.string({ required_error: 'Surname is required' }).trim().min(1, 'Surname is required'),
+};
+
+/** Is another staff member already called this (ignoring capitals and extra spaces)? */
+async function nameTaken(full: string, exceptId?: number): Promise<boolean> {
+  const key = full.toLowerCase();
+  return (await prisma.user.findMany({ select: { id: true, name: true } })).some((u) => u.id !== exceptId && u.name.trim().replace(/\s+/g, ' ').toLowerCase() === key);
+}
+
 const staffSchema = z.object({
-  name: z.string().min(1),
+  ...nameParts,
   role: z.string().min(1),
   pin: z.string().regex(/^\d{4}$/),
   email: z.string().trim().toLowerCase().email().optional().or(z.literal('')),
@@ -33,7 +47,9 @@ const staffSchema = z.object({
 masterDataRouter.post('/staff', requireRole('Admin'), async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const { name, role, pin } = parsed.data;
+  const { role, pin } = parsed.data;
+  const name = composeName(parsed.data);
+  if (await nameTaken(name)) return res.status(400).json({ error: `There is already a staff member called ${name}` });
   const email = parsed.data.email || null;
   if (parsed.data.emailPin && !email) return res.status(400).json({ error: 'Enter their email address to email them the PIN' });
   if (email && (await prisma.user.findUnique({ where: { email } }))) return res.status(400).json({ error: 'That email address is already used by someone else' });
@@ -42,7 +58,7 @@ masterDataRouter.post('/staff', requireRole('Admin'), async (req, res) => {
     if (!roleExists) return res.status(400).json({ error: 'Unknown role — add it under Roles & Access first' });
   }
   const pinHash = await bcrypt.hash(pin, 10);
-  const user = await prisma.user.create({ data: { name, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  const user = await prisma.user.create({ data: { name, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
   let emailed: { ok: boolean; error?: string } | undefined;
   if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
   res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
@@ -69,8 +85,23 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
 
 // Staff with their email and whether they must still choose their own PIN. Admin-only (the plain /staff list is open to everyone).
 masterDataRouter.get('/staff-details', requireRole('Admin'), async (_req, res) => {
+  await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role, email: u.email, mustChangePin: u.mustChangePin })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin })));
+});
+
+// Change how someone's name is recorded (first name and surname compulsory, middle name optional). The full name follows everywhere it is shown;
+// documents already issued keep the name they were issued with.
+masterDataRouter.put('/staff/:id/name', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object(nameParts).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const id = Number(req.params.id);
+  const existing = await prisma.user.findUnique({ where: { id } });
+  if (!existing) return res.status(404).json({ error: 'Staff member not found' });
+  const name = composeName(parsed.data);
+  if (await nameTaken(name, id)) return res.status(400).json({ error: `There is already a staff member called ${name}` });
+  const user = await prisma.user.update({ where: { id }, data: { name, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName } });
+  res.json({ id: user.id, name: user.name, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName });
 });
 
 masterDataRouter.put('/staff/:id/email', requireRole('Admin'), async (req, res) => {

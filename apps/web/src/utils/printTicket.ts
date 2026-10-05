@@ -5,7 +5,7 @@ const THERMAL_WIDTH_MM = 80;
 
 /** The two receipts every order prints: one for the customer and one that stays with production. */
 export const CUSTOMER_COPY_LABEL = "CUSTOMER'S COPY";
-export const PRODUCTION_COPY_LABEL = 'Production copy';
+export const PRODUCTION_COPY_LABEL = 'PRODUCTION COPY';
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

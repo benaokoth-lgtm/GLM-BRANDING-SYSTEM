@@ -136,7 +136,7 @@ async function expensePostings(book: Book, ctx: Ctx) {
 // held as liabilities until remitted. Rows recorded before that rule keep whatever source they were paid from.
 async function payrollPostings(book: Book) {
   for (const p of await prisma.payrollEntry.findMany({ include: { staff: true } })) {
-    const pay = computePay(p.grossPay, p.employeeType as 'Employee' | 'Casual');
+    const pay = computePay(p.grossPay, p.employeeType as 'Employee' | 'Casual', p.date);
     const ref = `WAGE-${p.id}`;
     const memo = `${p.staff.name} (${p.employeeType}${p.department ? `, ${p.department}` : ''})`;
     // Every component is rounded to the cent first and net pay is what is left, so the entry balances exactly.
@@ -146,12 +146,17 @@ async function payrollPostings(book: Book) {
     const shif = round2(pay.shif);
     const housing = round2(pay.housingLevy);
     const net = round2(gross - paye - nssf - shif - housing);
-    book.dr(p.date, p.employeeType === 'Casual' ? '5110' : ACCT.salaries, gross, 'Wages', ref, memo);
+    // The employer matches NSSF and the housing levy on top of the pay: an extra cost, owed to NSSF and the levy fund along with the employee's share.
+    const nssfEr = round2(pay.nssfEmployer);
+    const housingEr = round2(pay.housingLevyEmployer);
+    const salaryAcct = p.employeeType === 'Casual' ? '5110' : ACCT.salaries;
+    book.dr(p.date, salaryAcct, gross, 'Wages', ref, memo);
+    book.dr(p.date, salaryAcct, round2(nssfEr + housingEr), 'Wages', ref, `Employer NSSF & housing levy — ${memo}`);
     book.cr(p.date, methodAccountCode(p.paymentSource), net, 'Wages', ref, memo);
     book.cr(p.date, ACCT.payePayable, paye, 'Wages', ref, memo);
-    book.cr(p.date, ACCT.nssfPayable, nssf, 'Wages', ref, memo);
+    book.cr(p.date, ACCT.nssfPayable, round2(nssf + nssfEr), 'Wages', ref, memo);
     book.cr(p.date, ACCT.shifPayable, shif, 'Wages', ref, memo);
-    book.cr(p.date, ACCT.housingLevyPayable, housing, 'Wages', ref, memo);
+    book.cr(p.date, ACCT.housingLevyPayable, round2(housing + housingEr), 'Wages', ref, memo);
   }
 }
 

@@ -133,9 +133,23 @@ function defaultExpenseVatApplicable(head) {
   if (/labou?r|wage|salar|payroll|commission|bank|refreshment|entertain|tea\b|lunch|miscellaneous|tax|licen[cs]e|insurance|interest|depreciation/.test(h)) return false;
   return /material|consumable|stock|transport|fuel|utilit|electric|maintenance|repair|office|stationer|courier|delivery|airtime|data|internet|cleaning|outsourc|rent|advert|marketing|professional|software|equipment|packag/.test(h);
 }
-var NSSF_RATE = 0.12;
+var NSSF_RATE = 0.06;
+var NSSF_EMPLOYER_RATE = 0.06;
 var SHIF_RATE = 0.0275;
-var HOUSING_LEVY_RATE = 0.03;
+var SHIF_MIN = 300;
+var HOUSING_LEVY_RATE = 0.015;
+var HOUSING_LEVY_EMPLOYER_RATE = 0.015;
+var NSSF_UPPER_LIMITS = [
+  ["2026-02-01", 108e3],
+  ["2025-02-01", 72e3],
+  ["2024-02-01", 36e3],
+  ["2023-02-01", 18e3]
+];
+function nssfUpperLimit(date) {
+  if (!date) return NSSF_UPPER_LIMITS[0][1];
+  for (const [from, limit] of NSSF_UPPER_LIMITS) if (date >= from) return limit;
+  return NSSF_UPPER_LIMITS[NSSF_UPPER_LIMITS.length - 1][1];
+}
 var PAYE_MONTHLY_RELIEF = 2400;
 var PAYE_BANDS = [
   [24e3, 0.1],
@@ -155,28 +169,47 @@ function payeBand(monthlyPay) {
   }
   return tax;
 }
-function payeNet(monthlyPay) {
-  return Math.max(0, payeBand(monthlyPay) - PAYE_MONTHLY_RELIEF);
+function nssfContribution(grossPay, date) {
+  return Math.min(Math.max(grossPay, 0), nssfUpperLimit(date)) * NSSF_RATE;
 }
-function nssfContribution(grossPay) {
-  return grossPay * NSSF_RATE;
+function nssfEmployerContribution(grossPay, date) {
+  return Math.min(Math.max(grossPay, 0), nssfUpperLimit(date)) * NSSF_EMPLOYER_RATE;
 }
 function shifContribution(grossPay) {
-  return Math.max(grossPay * SHIF_RATE, 300);
+  return Math.max(grossPay * SHIF_RATE, SHIF_MIN);
 }
 function housingLevy(grossPay) {
   return grossPay * HOUSING_LEVY_RATE;
 }
-function computePay(grossPay, employeeType) {
+function housingLevyEmployer(grossPay) {
+  return grossPay * HOUSING_LEVY_EMPLOYER_RATE;
+}
+function computePay(grossPay, employeeType, date) {
   if (employeeType === "Casual") {
-    return { grossPay, paye: 0, nssf: 0, shif: 0, housingLevy: 0, totalDeductions: 0, netPay: grossPay };
+    return { grossPay, paye: 0, nssf: 0, shif: 0, housingLevy: 0, totalDeductions: 0, netPay: grossPay, taxablePay: grossPay, taxCharged: 0, personalRelief: 0, nssfEmployer: 0, housingLevyEmployer: 0 };
   }
-  const paye = payeNet(grossPay);
-  const nssf = nssfContribution(grossPay);
+  const nssf = nssfContribution(grossPay, date);
   const shif = shifContribution(grossPay);
   const housing = housingLevy(grossPay);
+  const taxablePay = Math.max(0, grossPay - nssf - shif - housing);
+  const taxCharged = payeBand(taxablePay);
+  const personalRelief = Math.min(PAYE_MONTHLY_RELIEF, taxCharged);
+  const paye = taxCharged - personalRelief;
   const totalDeductions = paye + nssf + shif + housing;
-  return { grossPay, paye, nssf, shif, housingLevy: housing, totalDeductions, netPay: grossPay - totalDeductions };
+  return {
+    grossPay,
+    paye,
+    nssf,
+    shif,
+    housingLevy: housing,
+    totalDeductions,
+    netPay: grossPay - totalDeductions,
+    taxablePay,
+    taxCharged,
+    personalRelief,
+    nssfEmployer: nssfEmployerContribution(grossPay, date),
+    housingLevyEmployer: housingLevyEmployer(grossPay)
+  };
 }
 
 // packages/shared/src/accounting.ts
@@ -529,7 +562,7 @@ async function expensePostings(book, ctx) {
 }
 async function payrollPostings(book) {
   for (const p of await prisma.payrollEntry.findMany({ include: { staff: true } })) {
-    const pay = computePay(p.grossPay, p.employeeType);
+    const pay = computePay(p.grossPay, p.employeeType, p.date);
     const ref = `WAGE-${p.id}`;
     const memo = `${p.staff.name} (${p.employeeType}${p.department ? `, ${p.department}` : ""})`;
     const gross = round2(pay.grossPay);
@@ -538,12 +571,16 @@ async function payrollPostings(book) {
     const shif = round2(pay.shif);
     const housing = round2(pay.housingLevy);
     const net = round2(gross - paye - nssf - shif - housing);
-    book.dr(p.date, p.employeeType === "Casual" ? "5110" : ACCT.salaries, gross, "Wages", ref, memo);
+    const nssfEr = round2(pay.nssfEmployer);
+    const housingEr = round2(pay.housingLevyEmployer);
+    const salaryAcct = p.employeeType === "Casual" ? "5110" : ACCT.salaries;
+    book.dr(p.date, salaryAcct, gross, "Wages", ref, memo);
+    book.dr(p.date, salaryAcct, round2(nssfEr + housingEr), "Wages", ref, `Employer NSSF & housing levy \u2014 ${memo}`);
     book.cr(p.date, methodAccountCode(p.paymentSource), net, "Wages", ref, memo);
     book.cr(p.date, ACCT.payePayable, paye, "Wages", ref, memo);
-    book.cr(p.date, ACCT.nssfPayable, nssf, "Wages", ref, memo);
+    book.cr(p.date, ACCT.nssfPayable, round2(nssf + nssfEr), "Wages", ref, memo);
     book.cr(p.date, ACCT.shifPayable, shif, "Wages", ref, memo);
-    book.cr(p.date, ACCT.housingLevyPayable, housing, "Wages", ref, memo);
+    book.cr(p.date, ACCT.housingLevyPayable, round2(housing + housingEr), "Wages", ref, memo);
   }
 }
 async function unlinkedPurchasePostings(book) {
@@ -919,8 +956,11 @@ async function reconcile(from, to, asOf) {
   for (const e of await prisma.expense.findMany()) put(expenses, e.invoiceNumber || `EXP-${e.id}`, e.amount);
   const purchases = bucket("Purchase", "Stock purchases with no expense (cost of sales)", "expenses");
   for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } } })) put(purchases, `PUR-${p.id}`, p.totalCost);
-  const wages = bucket("Wages", "Wages & salaries (gross)", "expenses");
-  for (const p of await prisma.payrollEntry.findMany()) put(wages, `WAGE-${p.id}`, p.grossPay);
+  const wages = bucket("Wages", "Wages & salaries (gross pay + employer's NSSF and housing levy)", "expenses");
+  for (const p of await prisma.payrollEntry.findMany()) {
+    const pay = computePay(p.grossPay, p.employeeType, p.date);
+    put(wages, `WAGE-${p.id}`, round2(p.grossPay) + round2(pay.nssfEmployer) + round2(pay.housingLevyEmployer));
+  }
   const dep = bucket("Depreciation", "Asset depreciation", "expenses");
   for (const d of await prisma.assetDepreciation.findMany({ include: { asset: true } })) put(dep, `${d.asset.tag}@${d.period}`, d.amount);
   const sources = [];

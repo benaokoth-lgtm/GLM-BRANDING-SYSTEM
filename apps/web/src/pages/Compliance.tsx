@@ -667,7 +667,7 @@ export default function Compliance() {
             NSSF contributions
           </div>
           <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
-            6% employee + 6% employer of gross pay. Casual staff are excluded — not subject to statutory deductions.
+            6% of pay from the employee and the same again from the employer, on pay up to NSSF's Upper Earnings Limit (KES 108,000 from February 2026; 72,000 from February 2025). The employee's share is taken from their pay before PAYE is worked out; the employer's share is a cost to the business. Casual staff are excluded — not subject to statutory deductions.
           </p>
           <table className="table">
             <thead>
@@ -686,9 +686,9 @@ export default function Compliance() {
                   <td>{r.name}</td>
                   <td className="text-muted">{r.department || '—'}</td>
                   <td style={{ textAlign: 'right' }}>{fmtKsh(r.grossPay)}</td>
-                  <td style={{ textAlign: 'right' }}>{fmtKsh(r.nssf / 2)}</td>
-                  <td style={{ textAlign: 'right' }}>{fmtKsh(r.nssf / 2)}</td>
                   <td style={{ textAlign: 'right' }}>{fmtKsh(r.nssf)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(r.nssfEmployer)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(r.nssf + r.nssfEmployer)}</td>
                 </tr>
               ))}
             </tbody>
@@ -697,7 +697,7 @@ export default function Compliance() {
                 <td colSpan={5} style={{ textAlign: 'right', paddingRight: 12 }}>
                   Total NSSF
                 </td>
-                <td style={{ textAlign: 'right' }}>{fmtKsh(payroll.totalNssf)}</td>
+                <td style={{ textAlign: 'right' }}>{fmtKsh(payroll.totalNssf + payroll.totalNssfEmployer)}</td>
               </tr>
             </tfoot>
           </table>
@@ -715,7 +715,7 @@ export default function Compliance() {
             SHIF contributions
           </div>
           <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
-            2.75% of gross pay (minimum Ksh 300). Casual staff are excluded — not subject to statutory deductions.
+            2.75% of gross pay (minimum Ksh 300), paid by the employee and taken from their pay before PAYE is worked out. Casual staff are excluded — not subject to statutory deductions.
           </p>
           <table className="table">
             <thead>

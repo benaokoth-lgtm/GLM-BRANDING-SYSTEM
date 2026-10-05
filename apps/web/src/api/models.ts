@@ -188,6 +188,11 @@ export interface PayrollRow {
   housingLevy: number;
   totalDeductions: number;
   netPay: number;
+  /** What PAYE was worked out on (gross less NSSF, SHIF and the housing levy). */
+  taxablePay: number;
+  /** The employer's matching shares — a business cost, not taken from the employee. */
+  nssfEmployer: number;
+  housingLevyEmployer: number;
   capturedByName: string;
 }
 
@@ -230,9 +235,13 @@ export interface PayrollData {
   totalStatutory: number;
   netPayroll: number;
   totalPaye: number;
+  /** The employees' NSSF; the employer matches it (`totalNssfEmployer`). */
   totalNssf: number;
+  totalNssfEmployer: number;
   totalShif: number;
+  /** The employees' housing levy; the employer matches it (`totalHousingLevyEmployer`). */
   totalHousingLevy: number;
+  totalHousingLevyEmployer: number;
 }
 
 export interface VatData {

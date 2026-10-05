@@ -86,7 +86,7 @@ export function buildPayrollRegisterHtml(data: PayrollData, company: CompanySett
     <tfoot><tr><td colspan="5">Totals (${rows.length} entr${rows.length === 1 ? 'y' : 'ies'})</td>
       <td class="r">${money(data.grossPayroll)}</td><td class="r">${money(data.totalPaye)}</td><td class="r">${money(data.totalNssf)}</td><td class="r">${money(data.totalShif)}</td><td class="r">${money(data.totalHousingLevy)}</td><td class="r">${money(data.netPayroll)}</td></tr></tfoot>
   </table>
-  <p class="muted" style="margin-top:8px">Casual staff carry no statutory deductions. Printed ${fmtDate(new Date().toISOString().slice(0, 10))}.</p>
+  <p class="muted" style="margin-top:8px">NSSF, SHIF and the housing levy are taken from the employee's pay before PAYE is worked out; PAYE is charged on what is left, less the KES 2,400 personal relief. The employer also pays ${money(data.totalNssfEmployer)} NSSF and ${money(data.totalHousingLevyEmployer)} housing levy on top of these figures. Casual staff carry no statutory deductions. Printed ${fmtDate(new Date().toISOString().slice(0, 10))}.</p>
   <div class="sign"><div>Prepared by</div><div>Approved by</div><div>Date</div></div>`;
   return shell('Payroll', 'landscape', '10mm', body);
 }
@@ -108,9 +108,10 @@ function payslipPage(r: PayrollRow, company: CompanySettings): string {
       <tr><td>${esc(earnings)}</td><td class="r">${money(r.grossPay)}</td></tr>
     </tbody><tfoot><tr><td>Gross pay</td><td class="r">${money(r.grossPay)}</td></tr></tfoot></table></div>
     <div style="flex:1"><table><thead><tr><th>Deductions</th><th class="r">KES</th></tr></thead><tbody>
-      ${line('PAYE (after personal relief)', r.paye)}${line('NSSF', r.nssf)}${line('SHIF', r.shif)}${line('Affordable housing levy', r.housingLevy)}
+      ${line('NSSF', r.nssf)}${line('SHIF', r.shif)}${line('Affordable housing levy', r.housingLevy)}${line('PAYE (after personal relief)', r.paye)}
     </tbody><tfoot><tr><td>Total deductions</td><td class="r">${money(r.totalDeductions)}</td></tr></tfoot></table></div>
   </div>
+  ${casual ? '' : `<p class="muted" style="margin:8px 0 0">PAYE is charged on taxable pay of KES ${money(r.taxablePay)} (gross pay less NSSF, SHIF and the housing levy), less the personal relief. The employer also pays NSSF of KES ${money(r.nssfEmployer)} and housing levy of KES ${money(r.housingLevyEmployer)} on top of your pay.</p>`}
   <table style="margin-top:12px"><tbody><tr><td style="font-size:15px;font-weight:700">NET PAY</td><td class="r" style="font-size:15px;font-weight:700">KES ${money(r.netPay)}</td></tr></tbody></table>
   ${casual ? '<p class="muted">Casual staff carry no statutory deductions.</p>' : ''}
   <div class="sign"><div>Employer</div><div>Employee's signature</div></div>
@@ -146,7 +147,7 @@ function p9Page(e: P9Data['employees'][number], data: P9Data): string {
     <tfoot><tr><td>TOTAL</td><td class="r">${money(t.gross)}</td><td class="r">${money(t.nssf)}</td><td class="r">${money(t.shif)}</td><td class="r">${money(t.housingLevy)}</td><td class="r">${money(t.taxable)}</td><td class="r">${money(t.taxCharged)}</td><td class="r">${money(t.relief)}</td><td class="r">${money(t.paye)}</td></tr></tfoot>
   </table>
   <p style="margin:8px 0 0"><b>Total PAYE tax for the year: KES ${money(t.paye)}</b></p>
-  <p class="muted" style="margin:4px 0 0">All amounts in Kenya shillings. PAYE is charged on gross pay by the monthly bands and reduced by the personal relief, exactly as it was deducted in the payroll; NSSF, SHIF and the housing levy are shown for information.</p>
+  <p class="muted" style="margin:4px 0 0">All amounts in Kenya shillings. NSSF, SHIF and the housing levy are deducted from gross pay to give the taxable pay; PAYE is charged on that by the monthly bands and reduced by the personal relief, exactly as it was deducted in the payroll.</p>
   <div class="sign"><div>Employer's signature and stamp</div><div>Date</div></div>
 </div>`;
 }

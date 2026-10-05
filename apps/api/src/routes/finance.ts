@@ -14,7 +14,6 @@ import {
   cleanNationalId,
   cleanShifNumber,
   defaultExpenseVatApplicable,
-  payeBand,
   round2,
   splitGross,
 } from '@glm/shared';
@@ -60,7 +59,7 @@ financeRouter.get('/payroll', async (req, res) => {
   });
 
   const rows = entries.map((e) => {
-    const pay = computePay(e.grossPay, e.employeeType as 'Employee' | 'Casual');
+    const pay = computePay(e.grossPay, e.employeeType as 'Employee' | 'Casual', e.date);
     return {
       id: e.id,
       date: e.date,
@@ -86,10 +85,12 @@ financeRouter.get('/payroll', async (req, res) => {
       netPayroll: a.netPayroll + r.netPay,
       totalPaye: a.totalPaye + r.paye,
       totalNssf: a.totalNssf + r.nssf,
+      totalNssfEmployer: a.totalNssfEmployer + r.nssfEmployer,
       totalShif: a.totalShif + r.shif,
       totalHousingLevy: a.totalHousingLevy + r.housingLevy,
+      totalHousingLevyEmployer: a.totalHousingLevyEmployer + r.housingLevyEmployer,
     }),
-    { grossPayroll: 0, totalStatutory: 0, netPayroll: 0, totalPaye: 0, totalNssf: 0, totalShif: 0, totalHousingLevy: 0 },
+    { grossPayroll: 0, totalStatutory: 0, netPayroll: 0, totalPaye: 0, totalNssf: 0, totalNssfEmployer: 0, totalShif: 0, totalHousingLevy: 0, totalHousingLevyEmployer: 0 },
   );
 
   res.json({ fromDate: range.from, toDate: range.to, rows, ...totals });
@@ -133,8 +134,8 @@ financeRouter.put('/employees/:id', async (req, res) => {
 });
 
 // ── P9 (tax deduction card) ───────────────────────────────────────────────
-// A year's pay and tax for each employee, month by month, worked out exactly as the payroll worked it out when the pay was logged: PAYE on the
-// gross pay by the monthly bands, less the personal relief. Casuals carry no PAYE, so they have no P9.
+// A year's pay and tax for each employee, month by month, worked out exactly as the payroll works it out: NSSF, SHIF and the housing levy come off
+// the gross pay first, PAYE is charged on the taxable pay that is left by the monthly bands, less the personal relief. Casuals carry no PAYE, so they have no P9.
 financeRouter.get('/p9', async (req, res) => {
   const year = String(req.query.year || '');
   if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: 'year (YYYY) is required' });
@@ -153,15 +154,14 @@ financeRouter.get('/p9', async (req, res) => {
     let p = people.get(e.staffId);
     if (!p) people.set(e.staffId, (p = { staff: e.staff, months: Array.from({ length: 12 }, (_, i) => blank(i + 1)) }));
     const m = p.months[Number(e.date.slice(5, 7)) - 1]!;
-    const pay = computePay(e.grossPay, 'Employee');
-    const taxCharged = payeBand(e.grossPay);
+    const pay = computePay(e.grossPay, 'Employee', e.date);
     m.gross += pay.grossPay;
     m.nssf += pay.nssf;
     m.shif += pay.shif;
     m.housingLevy += pay.housingLevy;
-    m.taxable += e.grossPay;
-    m.taxCharged += taxCharged;
-    m.relief += taxCharged - pay.paye;
+    m.taxable += pay.taxablePay;
+    m.taxCharged += pay.taxCharged;
+    m.relief += pay.personalRelief;
     m.paye += pay.paye;
   }
   const rounded = (m: Month): Month => ({ month: m.month, gross: round2(m.gross), nssf: round2(m.nssf), shif: round2(m.shif), housingLevy: round2(m.housingLevy), taxable: round2(m.taxable), taxCharged: round2(m.taxCharged), relief: round2(m.relief), paye: round2(m.paye) });
@@ -215,7 +215,7 @@ financeRouter.post('/payroll', async (req, res) => {
 
   // Wages are always paid out of petty cash — net pay leaves the float, so the float must cover it (on the pay date and
   // on every later day). The statutory deductions are held as liabilities until remitted.
-  const netPay = computePay(grossPay, data.employeeType).netPay;
+  const netPay = computePay(grossPay, data.employeeType, data.date).netPay;
   const check = await pettyCashShortfall(netPay, data.date);
   if (check.short) return res.status(400).json({ error: shortMessage(check.available, netPay) });
 

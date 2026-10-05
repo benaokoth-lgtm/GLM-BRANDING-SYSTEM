@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { ACCT, computeOrderTotals, round2 } from '@glm/shared';
+import { ACCT, computeOrderTotals, computePay, round2 } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 import { loadLedger, sumByAccount, naturalBalance } from './ledger';
 import type { Posting } from './ledger';
@@ -111,8 +111,12 @@ export async function reconcile(from: string, to: string, asOf: string): Promise
   const purchases = bucket('Purchase', 'Stock purchases with no expense (cost of sales)', 'expenses');
   for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: 'Rejected' } } })) put(purchases, `PUR-${p.id}`, p.totalCost);
 
-  const wages = bucket('Wages', 'Wages & salaries (gross)', 'expenses');
-  for (const p of await prisma.payrollEntry.findMany()) put(wages, `WAGE-${p.id}`, p.grossPay);
+  // Wages cost the gross pay plus, for an employee, the employer's matching NSSF and housing levy.
+  const wages = bucket('Wages', "Wages & salaries (gross pay + employer's NSSF and housing levy)", 'expenses');
+  for (const p of await prisma.payrollEntry.findMany()) {
+    const pay = computePay(p.grossPay, p.employeeType as 'Employee' | 'Casual', p.date);
+    put(wages, `WAGE-${p.id}`, round2(p.grossPay) + round2(pay.nssfEmployer) + round2(pay.housingLevyEmployer));
+  }
 
   const dep = bucket('Depreciation', 'Asset depreciation', 'expenses');
   for (const d of await prisma.assetDepreciation.findMany({ include: { asset: true } })) put(dep, `${d.asset.tag}@${d.period}`, d.amount);

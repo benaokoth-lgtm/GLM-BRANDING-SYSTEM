@@ -95,13 +95,14 @@ describe('employee details, payroll identifiers and the P9', () => {
     assert.ok(me, 'Amos has a card');
     assert.ok(!p9.employees.some((e: any) => e.staff.id === ids.bella), 'a casual has no P9');
     const may = me.months[4];
-    // 100,000: tax by the bands = 2,400 + 2,083.25 + 20,300.10 = 24,783.35; personal relief 2,400; PAYE 22,383.35
-    assert.deepEqual([may.gross, may.taxable, may.taxCharged, may.relief, may.paye], [100000, 100000, 24783.35, 2400, 22383.35]);
-    assert.deepEqual([may.nssf, may.shif, may.housingLevy], [12000, 2750, 3000]);
-    assert.equal(me.months[5].paye, 22383.35);
+    // 100,000: NSSF 6,000 + SHIF 2,750 + housing levy 1,500 come off first → taxable 89,750; tax by the bands = 2,400 + 2,083.25 + 17,225.10 = 21,708.35;
+    // personal relief 2,400; PAYE 19,308.35
+    assert.deepEqual([may.gross, may.taxable, may.taxCharged, may.relief, may.paye], [100000, 89750, 21708.35, 2400, 19308.35]);
+    assert.deepEqual([may.nssf, may.shif, may.housingLevy], [6000, 2750, 1500]);
+    assert.equal(me.months[5].paye, 19308.35);
     assert.equal(me.months[0].gross, 0); // January has nothing
     assert.equal(me.totals.gross, 200000);
-    assert.equal(me.totals.paye, 44766.7);
+    assert.equal(me.totals.paye, 38616.7);
     // only his own year, and one person on request
     assert.equal((await call('fin', 'GET', `/finance/p9?year=2032&staffId=${ids.amos}`)).body.employees[0].totals.gross, 100000);
     assert.equal((await call('fin', 'GET', `/finance/p9?year=2031&staffId=${ids.bella}`)).body.employees.length, 0);

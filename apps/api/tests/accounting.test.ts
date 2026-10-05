@@ -135,7 +135,8 @@ describe('accounting module', () => {
     const pettyBal = naturalBalance('Asset', sumByAccount(l.postings).get(petty.id));
     assert.ok(pettyBal < 100000 && pettyBal > 40000, `net pay should leave the float, left ${pettyBal}`);
     assert.ok((await bal('2200')) > 0, 'PAYE payable');
-    assert.equal(await bal('5010'), 60000);
+    // the salaries account carries the gross pay plus the employer's matching NSSF (6% of 60,000) and housing levy (1.5%)
+    assert.equal(Math.round((await bal('5010')) * 100) / 100, 60000 + 3600 + 900);
     assert.equal((await pettyCashShortfall(1e9, '2031-03-10')).short, true);
   });
 

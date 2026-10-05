@@ -502,8 +502,11 @@ async function expensePostings(book, ctx) {
   for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
     const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
     const ref = e.invoiceNumber || `EXP-${e.id}`;
-    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, e.amount, "Expense", ref, memo);
-    else book.drId(e.date, expenseAcctId(ctx, e.category), e.amount, "Expense", ref, memo);
+    const vat = Math.min(e.vatAmount ?? 0, e.amount);
+    const cost = e.amount - vat;
+    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, cost, "Expense", ref, memo);
+    else book.drId(e.date, expenseAcctId(ctx, e.category), cost, "Expense", ref, memo);
+    book.dr(e.date, ACCT.vatPayable, vat, "Expense", ref, `Input VAT \u2014 ${memo}`);
     if (e.paid) {
       book.cr(e.date, methodAccountCode(e.method), e.amount, "Expense", ref, memo);
       continue;
@@ -632,7 +635,9 @@ async function notePostings(book, ctx) {
       book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
     } else {
       book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
-      book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), n.total, "Supplier debit note", n.number, memo);
+      const vatShare = n.expense && n.expense.amount > 0 ? round2((n.expense.vatAmount ?? 0) / n.expense.amount * n.total) : 0;
+      book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), round2(n.total - vatShare), "Supplier debit note", n.number, memo);
+      book.cr(n.date, ACCT.vatPayable, vatShare, "Supplier debit note", n.number, `Input VAT \u2014 ${memo}`);
     }
   }
 }

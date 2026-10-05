@@ -213,6 +213,9 @@ model Expense {
   category        String
   note            String   @default("")
   amount          Float
+  // The input VAT claimed on this expense: the part of `amount` that is VAT on a supplier's tax invoice (16/116 of it), which comes off what
+  // is owed to KRA. The books carry it in the VAT account instead of the cost. 0 = no VAT claimed (the default).
+  vatAmount       Float    @default(0)
   // Invoice/receipt number — optional for expenses generally, but required
   // for a "Printing Materials & Consumables" expense to be linkable to a
   // stock Purchase (see Purchase.expenseId): only an expense with an

@@ -43906,10 +43906,6 @@ function shifContribution(grossPay) {
 function housingLevy(grossPay) {
   return grossPay * HOUSING_LEVY_RATE;
 }
-function splitVatInclusive(inclusiveAmount) {
-  const net8 = inclusiveAmount / (1 + VAT_RATE);
-  return { net: net8, vat: inclusiveAmount - net8 };
-}
 function computePay(grossPay, employeeType) {
   if (employeeType === "Casual") {
     return { grossPay, paye: 0, nssf: 0, shif: 0, housingLevy: 0, totalDeductions: 0, netPay: grossPay };
@@ -49465,8 +49461,11 @@ async function expensePostings(book, ctx) {
   for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
     const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
     const ref = e.invoiceNumber || `EXP-${e.id}`;
-    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, e.amount, "Expense", ref, memo);
-    else book.drId(e.date, expenseAcctId(ctx, e.category), e.amount, "Expense", ref, memo);
+    const vat = Math.min(e.vatAmount ?? 0, e.amount);
+    const cost = e.amount - vat;
+    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, cost, "Expense", ref, memo);
+    else book.drId(e.date, expenseAcctId(ctx, e.category), cost, "Expense", ref, memo);
+    book.dr(e.date, ACCT.vatPayable, vat, "Expense", ref, `Input VAT \u2014 ${memo}`);
     if (e.paid) {
       book.cr(e.date, methodAccountCode(e.method), e.amount, "Expense", ref, memo);
       continue;
@@ -49595,7 +49594,9 @@ async function notePostings(book, ctx) {
       book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
     } else {
       book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
-      book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), n.total, "Supplier debit note", n.number, memo);
+      const vatShare = n.expense && n.expense.amount > 0 ? round2((n.expense.vatAmount ?? 0) / n.expense.amount * n.total) : 0;
+      book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), round2(n.total - vatShare), "Supplier debit note", n.number, memo);
+      book.cr(n.date, ACCT.vatPayable, vatShare, "Supplier debit note", n.number, `Input VAT \u2014 ${memo}`);
     }
   }
 }
@@ -50336,17 +50337,29 @@ financeRouter.post("/payroll", async (req, res) => {
   });
   res.status(201).json({ ...entry, name: staff.name });
 });
+var VAT_SALE_SOURCES = /* @__PURE__ */ new Set(["Order", "Debit note", "Credit note"]);
+var VAT_PURCHASE_SOURCES = /* @__PURE__ */ new Set(["Expense", "Supplier debit note"]);
 financeRouter.get("/vat", async (req, res) => {
   const range2 = parseRange(req);
   if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  const ledger = await loadLedger();
+  const vatAcct = ledger.byCode.get(ACCT.vatPayable);
+  let outputVat = 0;
+  let inputVat = 0;
+  let otherVat = 0;
+  for (const p of ledger.postings) {
+    if (p.accountId !== vatAcct?.id || !inRange(p.date, range2.from, range2.to)) continue;
+    if (VAT_SALE_SOURCES.has(p.source)) outputVat += p.credit - p.debit;
+    else if (VAT_PURCHASE_SOURCES.has(p.source)) inputVat += p.debit - p.credit;
+    else otherVat += p.credit - p.debit;
+  }
   const orders = await prisma.order.findMany({ include: { lineItems: true } });
-  const forVat = orders.map((o) => ({
-    kind: o.kind,
-    status: o.status,
-    createdDate: o.createdDate,
-    orderDiscountPct: o.orderDiscountPct,
-    orderDiscountAmt: o.orderDiscountAmt,
-    lineItems: o.lineItems.map((li) => ({
+  let walkinSales = 0;
+  let corporateSales = 0;
+  for (const o of orders) {
+    const recognised = o.kind === "walkin" || o.status !== "Quote";
+    if (!recognised || !inRange(o.createdDate, range2.from, range2.to)) continue;
+    const lines = o.lineItems.map((li) => ({
       itemType: li.itemType,
       serviceId: li.serviceId,
       materialId: li.materialId,
@@ -50355,21 +50368,68 @@ financeRouter.get("/vat", async (req, res) => {
       discountPct: li.discountPct,
       discountAmt: li.discountAmt,
       heatPressFee: li.heatPressFee
-    }))
-  }));
-  let walkinSales = 0;
-  let corporateSales = 0;
-  for (const o of forVat) {
-    const isRevenueOrder = o.kind === "walkin" || o.status === "Invoice";
-    if (isRevenueOrder && inRange(o.createdDate, range2.from, range2.to)) {
-      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      if (o.kind === "walkin") walkinSales += totals.grandTotal;
-      else corporateSales += totals.grandTotal;
-    }
+    }));
+    const total = computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
+    if (o.kind === "walkin") walkinSales += total;
+    else corporateSales += total;
   }
-  const totalSales = walkinSales + corporateSales;
-  const { net: netSales, vat: outputVat } = splitVatInclusive(totalSales);
-  res.json({ fromDate: range2.from, toDate: range2.to, walkinSales, corporateSales, totalSales, netSales, outputVat });
+  const notes = await prisma.adjustmentNote.findMany({ where: { type: { in: ["Credit", "Debit"] }, date: { gte: range2.from, lte: range2.to } }, select: { type: true, total: true } });
+  const creditNotes = notes.filter((n) => n.type === "Credit").reduce((a2, n) => a2 + n.total, 0);
+  const debitNotes = notes.filter((n) => n.type === "Debit").reduce((a2, n) => a2 + n.total, 0);
+  const totalSales = walkinSales + corporateSales + debitNotes - creditNotes;
+  const netSales = totalSales - outputVat;
+  const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
+  const expenses = await prisma.expense.findMany({ where: { date: { gte: range2.from, lte: range2.to } }, orderBy: [{ date: "desc" }, { id: "desc" }] });
+  const purchases = expenses.map((e) => ({
+    id: e.id,
+    date: e.date,
+    category: e.category,
+    supplier: e.supplier,
+    invoiceNumber: e.invoiceNumber,
+    note: e.note,
+    amount: round2(e.amount),
+    vatAmount: round2(e.vatAmount),
+    isStockPurchase: purchaseExpenseIds.has(e.id),
+    // what claiming would be worth, for a row not yet claimed
+    claimableVat: splitGross(e.amount, VAT_RATE).vat
+  }));
+  const unclaimedWithInvoice = purchases.filter((p) => p.vatAmount === 0 && !!p.invoiceNumber?.trim());
+  res.json({
+    fromDate: range2.from,
+    toDate: range2.to,
+    walkinSales: round2(walkinSales),
+    corporateSales: round2(corporateSales),
+    creditNotes: round2(creditNotes),
+    debitNotes: round2(debitNotes),
+    totalSales: round2(totalSales),
+    netSales: round2(netSales),
+    outputVat: round2(outputVat),
+    inputVat: round2(inputVat),
+    otherVat: round2(otherVat),
+    netVatPayable: round2(outputVat - inputVat + otherVat),
+    purchases,
+    unclaimedWithInvoice: { count: unclaimedWithInvoice.length, vat: round2(unclaimedWithInvoice.reduce((a2, p) => a2 + p.claimableVat, 0)) }
+  });
+});
+financeRouter.patch("/expenses/:id/vat", async (req, res) => {
+  const parsed = external_exports.object({ claim: external_exports.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "claim (true or false) is required" });
+  const e = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
+  if (!e) return res.status(404).json({ error: "Expense not found" });
+  const updated = await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: parsed.data.claim ? splitGross(e.amount, VAT_RATE).vat : 0 } });
+  res.json(updated);
+});
+financeRouter.post("/expenses/claim-vat", async (req, res) => {
+  const range2 = parseRange({ query: req.body });
+  if (!range2) return res.status(400).json({ error: "from and to (YYYY-MM-DD) are required" });
+  const rows = await prisma.expense.findMany({ where: { date: { gte: range2.from, lte: range2.to }, vatAmount: 0, invoiceNumber: { not: null } } });
+  let claimed = 0;
+  for (const e of rows) {
+    if (!e.invoiceNumber?.trim()) continue;
+    await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: splitGross(e.amount, VAT_RATE).vat } });
+    claimed++;
+  }
+  res.json({ claimed });
 });
 async function expenseHeadNames() {
   await ensureChartOnce();
@@ -50408,7 +50468,9 @@ var expenseSchema = external_exports.object({
   supplier: external_exports.string().max(120).optional(),
   dueDate: dateStr.optional().nullable(),
   // The line of business this cost belongs to (see Master Data → Business Heads); blank = shared, not tagged to one.
-  businessHeadId: external_exports.number().int().nullable().optional()
+  businessHeadId: external_exports.number().int().nullable().optional(),
+  // The supplier's invoice includes 16% VAT that is being claimed back (input VAT).
+  includesVat: external_exports.boolean().optional()
 });
 financeRouter.post("/expenses", async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
@@ -50427,6 +50489,7 @@ financeRouter.post("/expenses", async (req, res) => {
       category: d.category,
       note: d.note ?? "",
       amount: d.amount,
+      vatAmount: d.includesVat ? splitGross(d.amount, VAT_RATE).vat : 0,
       invoiceNumber: d.invoiceNumber,
       method: d.paid ? d.method : PETTY_CASH_METHOD,
       paid: d.paid,
@@ -50921,7 +50984,8 @@ var purchaseBase = {
   lines: external_exports.array(purchaseLineSchema).min(1, "Add at least one item").max(40)
 };
 var purchaseSchema = external_exports.discriminatedUnion("mode", [
-  external_exports.object({ mode: external_exports.literal("new"), invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"), ...purchaseBase }),
+  // includesVat: the supplier's invoice includes 16% VAT, claimed back as input VAT (it comes off the cost and goes to the VAT account).
+  external_exports.object({ mode: external_exports.literal("new"), invoiceNumber: external_exports.string().min(1, "Invoice/receipt number is required"), includesVat: external_exports.boolean().optional(), ...purchaseBase }),
   external_exports.object({ mode: external_exports.literal("existing"), expenseId: external_exports.number().int(), ...purchaseBase })
 ]);
 stockRouter.post("/purchases", async (req, res) => {
@@ -50997,6 +51061,7 @@ stockRouter.post("/purchases", async (req, res) => {
               category: PURCHASE_EXPENSE_CATEGORY,
               note: `Stock purchase ${poRef} \u2014 ${lines.length} item${lines.length === 1 ? "" : "s"} \u2014 invoice/receipt ${invoiceNumber}`,
               amount: total,
+              vatAmount: data.mode === "new" && data.includesVat ? splitGross(total, VAT_RATE).vat : 0,
               invoiceNumber,
               supplier: data.supplier ?? "",
               businessHeadId: expenseHead,

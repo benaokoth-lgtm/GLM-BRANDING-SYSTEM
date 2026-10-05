@@ -8,7 +8,10 @@ import {
   EXPENSE_METHODS,
   PETTY_CASH_SOURCES,
   PETTY_CASH_METHOD,
-  splitVatInclusive,
+  ACCT,
+  VAT_RATE,
+  round2,
+  splitGross,
 } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 import { ensureChartOnce, accountIdForNewExpenseHead } from '../accounting/chart';
@@ -149,18 +152,36 @@ interface OrderForVat {
   lineItems: LineItemInput[];
 }
 
+// The VAT return, worked out from the books so it always agrees with them: Output VAT is the VAT on sales (every order that is a sale — a
+// walk-in or anything past Quote — less credit notes, plus debit notes); Input VAT is what was claimed on purchases and expenses (supplier
+// tax invoices); Net VAT payable is the difference. (Prices are VAT-inclusive at 16%.)
+const VAT_SALE_SOURCES = new Set(['Order', 'Debit note', 'Credit note']);
+const VAT_PURCHASE_SOURCES = new Set(['Expense', 'Supplier debit note']);
+
 financeRouter.get('/vat', async (req, res) => {
   const range = parseRange(req);
   if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
 
+  const ledger = await loadLedger();
+  const vatAcct = ledger.byCode.get(ACCT.vatPayable);
+  let outputVat = 0;
+  let inputVat = 0;
+  let otherVat = 0; // anything else posted to the VAT account (a manual journal)
+  for (const p of ledger.postings) {
+    if (p.accountId !== vatAcct?.id || !inRange(p.date, range.from, range.to)) continue;
+    if (VAT_SALE_SOURCES.has(p.source)) outputVat += p.credit - p.debit;
+    else if (VAT_PURCHASE_SOURCES.has(p.source)) inputVat += p.debit - p.credit;
+    else otherVat += p.credit - p.debit;
+  }
+
+  // Sales (VAT-inclusive), split walk-in / corporate, with the notes that adjust them.
   const orders = await prisma.order.findMany({ include: { lineItems: true } });
-  const forVat: OrderForVat[] = orders.map((o) => ({
-    kind: o.kind,
-    status: o.status,
-    createdDate: o.createdDate,
-    orderDiscountPct: o.orderDiscountPct,
-    orderDiscountAmt: o.orderDiscountAmt,
-    lineItems: o.lineItems.map((li) => ({
+  let walkinSales = 0;
+  let corporateSales = 0;
+  for (const o of orders) {
+    const recognised = o.kind === 'walkin' || o.status !== 'Quote'; // the same rule the books use
+    if (!recognised || !inRange(o.createdDate, range.from, range.to)) continue;
+    const lines: LineItemInput[] = o.lineItems.map((li) => ({
       itemType: li.itemType as LineItemInput['itemType'],
       serviceId: li.serviceId,
       materialId: li.materialId,
@@ -169,24 +190,77 @@ financeRouter.get('/vat', async (req, res) => {
       discountPct: li.discountPct,
       discountAmt: li.discountAmt,
       heatPressFee: li.heatPressFee,
-    })),
-  }));
-
-  let walkinSales = 0;
-  let corporateSales = 0;
-  for (const o of forVat) {
-    const isRevenueOrder = o.kind === 'walkin' || o.status === 'Invoice';
-    if (isRevenueOrder && inRange(o.createdDate, range.from, range.to)) {
-      const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      if (o.kind === 'walkin') walkinSales += totals.grandTotal;
-      else corporateSales += totals.grandTotal;
-    }
+    }));
+    const total = computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
+    if (o.kind === 'walkin') walkinSales += total;
+    else corporateSales += total;
   }
+  const notes = await prisma.adjustmentNote.findMany({ where: { type: { in: ['Credit', 'Debit'] }, date: { gte: range.from, lte: range.to } }, select: { type: true, total: true } });
+  const creditNotes = notes.filter((n) => n.type === 'Credit').reduce((a, n) => a + n.total, 0);
+  const debitNotes = notes.filter((n) => n.type === 'Debit').reduce((a, n) => a + n.total, 0);
+  const totalSales = walkinSales + corporateSales + debitNotes - creditNotes;
+  const netSales = totalSales - outputVat;
 
-  const totalSales = walkinSales + corporateSales;
-  const { net: netSales, vat: outputVat } = splitVatInclusive(totalSales);
+  // Purchases and expenses in the period, with the VAT claimed on each. A claim needs a supplier invoice, so an expense with an invoice
+  // number can be claimed in one go; anything else is ticked by hand.
+  const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId as number));
+  const expenses = await prisma.expense.findMany({ where: { date: { gte: range.from, lte: range.to } }, orderBy: [{ date: 'desc' }, { id: 'desc' }] });
+  const purchases = expenses.map((e) => ({
+    id: e.id,
+    date: e.date,
+    category: e.category,
+    supplier: e.supplier,
+    invoiceNumber: e.invoiceNumber,
+    note: e.note,
+    amount: round2(e.amount),
+    vatAmount: round2(e.vatAmount),
+    isStockPurchase: purchaseExpenseIds.has(e.id),
+    // what claiming would be worth, for a row not yet claimed
+    claimableVat: splitGross(e.amount, VAT_RATE).vat,
+  }));
+  const unclaimedWithInvoice = purchases.filter((p) => p.vatAmount === 0 && !!p.invoiceNumber?.trim());
 
-  res.json({ fromDate: range.from, toDate: range.to, walkinSales, corporateSales, totalSales, netSales, outputVat });
+  res.json({
+    fromDate: range.from,
+    toDate: range.to,
+    walkinSales: round2(walkinSales),
+    corporateSales: round2(corporateSales),
+    creditNotes: round2(creditNotes),
+    debitNotes: round2(debitNotes),
+    totalSales: round2(totalSales),
+    netSales: round2(netSales),
+    outputVat: round2(outputVat),
+    inputVat: round2(inputVat),
+    otherVat: round2(otherVat),
+    netVatPayable: round2(outputVat - inputVat + otherVat),
+    purchases,
+    unclaimedWithInvoice: { count: unclaimedWithInvoice.length, vat: round2(unclaimedWithInvoice.reduce((a, p) => a + p.claimableVat, 0)) },
+  });
+});
+
+// Claim (or stop claiming) the input VAT on one expense: 16/116 of what was paid, or none. Like tagging a business head this moves no cash, so
+// it needs no amendment request.
+financeRouter.patch('/expenses/:id/vat', async (req, res) => {
+  const parsed = z.object({ claim: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'claim (true or false) is required' });
+  const e = await prisma.expense.findUnique({ where: { id: Number(req.params.id) } });
+  if (!e) return res.status(404).json({ error: 'Expense not found' });
+  const updated = await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: parsed.data.claim ? splitGross(e.amount, VAT_RATE).vat : 0 } });
+  res.json(updated);
+});
+
+// Claim the input VAT on every expense in the period that has a supplier invoice number and has not been claimed yet.
+financeRouter.post('/expenses/claim-vat', async (req, res) => {
+  const range = parseRange({ query: req.body as Record<string, unknown> });
+  if (!range) return res.status(400).json({ error: 'from and to (YYYY-MM-DD) are required' });
+  const rows = await prisma.expense.findMany({ where: { date: { gte: range.from, lte: range.to }, vatAmount: 0, invoiceNumber: { not: null } } });
+  let claimed = 0;
+  for (const e of rows) {
+    if (!e.invoiceNumber?.trim()) continue;
+    await prisma.expense.update({ where: { id: e.id }, data: { vatAmount: splitGross(e.amount, VAT_RATE).vat } });
+    claimed++;
+  }
+  res.json({ claimed });
 });
 
 // ── Operating expenses (capture) — P&L reads/aggregates the same table ──────
@@ -232,6 +306,8 @@ const expenseSchema = z.object({
   dueDate: dateStr.optional().nullable(),
   // The line of business this cost belongs to (see Master Data → Business Heads); blank = shared, not tagged to one.
   businessHeadId: z.number().int().nullable().optional(),
+  // The supplier's invoice includes 16% VAT that is being claimed back (input VAT).
+  includesVat: z.boolean().optional(),
 });
 
 financeRouter.post('/expenses', async (req, res) => {
@@ -254,6 +330,7 @@ financeRouter.post('/expenses', async (req, res) => {
       category: d.category,
       note: d.note ?? '',
       amount: d.amount,
+      vatAmount: d.includesVat ? splitGross(d.amount, VAT_RATE).vat : 0,
       invoiceNumber: d.invoiceNumber,
       method: d.paid ? d.method : PETTY_CASH_METHOD,
       paid: d.paid,

@@ -46,6 +46,7 @@ export default function Compliance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [vatMsg, setVatMsg] = useState<string | null>(null);
 
   const staffOnly = staff.filter((s) => s.role === 'Staff');
 
@@ -86,6 +87,35 @@ export default function Compliance() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [staffOnly.length]);
+
+  // Claim (or stop claiming) the input VAT on one purchase/expense, or on every one in the period that has a supplier invoice number.
+  async function claimVat(id: number, claim: boolean) {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.patch(`/finance/expenses/${id}/vat`, { claim });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change the VAT claim');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function claimAllVat() {
+    setError(null);
+    setVatMsg(null);
+    setBusy(true);
+    try {
+      const r = await api.post<{ claimed: number }>('/finance/expenses/claim-vat', { from: fromDate, to: toDate });
+      setVatMsg(`Input VAT claimed on ${r.claimed} purchase${r.claimed === 1 ? '' : 's'}/expense${r.claimed === 1 ? '' : 's'}.`);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not claim the VAT');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function applyPreset(preset: Preset) {
     const r = presetRange(preset, today);
@@ -235,24 +265,24 @@ export default function Compliance() {
               <i className="corner tr"></i>
               <i className="corner bl"></i>
               <i className="corner br"></i>
-              <div className="card-kicker">Total sales (incl. VAT)</div>
-              <div className="card-title">{fmtKsh(vat.totalSales)}</div>
-            </div>
-            <div className="card blueprint elev-sm">
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              <div className="card-kicker">Net sales (excl. VAT)</div>
-              <div className="card-title">{fmtKsh(vat.netSales)}</div>
-            </div>
-            <div className="card blueprint elev-sm">
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              <div className="card-kicker">Output VAT (16%)</div>
+              <div className="card-kicker">Output VAT — on sales</div>
               <div className="card-title">{fmtKsh(vat.outputVat)}</div>
+            </div>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">Input VAT — on purchases &amp; expenses</div>
+              <div className="card-title">{fmtKsh(vat.inputVat)}</div>
+            </div>
+            <div className="card blueprint elev-sm">
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <div className="card-kicker">{vat.netVatPayable < 0 ? 'VAT refundable / carried forward' : 'Net VAT payable to KRA'}</div>
+              <div className="card-title">{fmtKsh(Math.abs(vat.netVatPayable))}</div>
             </div>
           </div>
 
@@ -265,15 +295,20 @@ export default function Compliance() {
               VAT statement
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0' }}>
-                <span>Walk-in sales</span>
-                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.walkinSales)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0', borderBottom: '1px solid var(--color-divider)' }}>
-                <span>Corporate sales (invoiced)</span>
-                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.corporateSales)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '8px 0', fontFamily: 'var(--font-heading)' }}>
+              {(
+                [
+                  ['Walk-in sales', vat.walkinSales],
+                  ['Corporate sales (invoiced)', vat.corporateSales],
+                  ...(vat.debitNotes ? [['Debit notes (extra charged)', vat.debitNotes]] : []),
+                  ...(vat.creditNotes ? [['Credit notes (sales taken back)', -vat.creditNotes]] : []),
+                ] as [string, number][]
+              ).map(([label, v]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0' }}>
+                  <span>{label}</span>
+                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(v)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '8px 0', borderTop: '1px solid var(--color-divider)', fontFamily: 'var(--font-heading)' }}>
                 <span>Total sales (VAT-inclusive)</span>
                 <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.totalSales)}</span>
               </div>
@@ -281,6 +316,20 @@ export default function Compliance() {
                 <span>Net sales (excl. VAT)</span>
                 <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.netSales)}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '8px 0', borderTop: '1px solid var(--color-divider)', fontFamily: 'var(--font-heading)' }}>
+                <span>Output VAT (16%) — on sales</span>
+                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.outputVat)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0' }}>
+                <span>Less: Input VAT — on purchases &amp; expenses</span>
+                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>− {fmtKsh(vat.inputVat)}</span>
+              </div>
+              {vat.otherVat !== 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', padding: '6px 0' }}>
+                  <span>Other adjustments (manual journals)</span>
+                  <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.otherVat)}</span>
+                </div>
+              )}
               <div
                 style={{
                   display: 'flex',
@@ -292,14 +341,73 @@ export default function Compliance() {
                   fontSize: 20,
                 }}
               >
-                <span>Output VAT (16%)</span>
-                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(vat.outputVat)}</span>
+                <span>{vat.netVatPayable < 0 ? 'VAT refundable / carried forward' : 'Net VAT payable to KRA'}</span>
+                <span style={{ whiteSpace: 'nowrap', flexShrink: 0 }}>{fmtKsh(Math.abs(vat.netVatPayable))}</span>
               </div>
             </div>
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-              Assumes all sale prices already include the standard 16% VAT. Input VAT on purchases isn't tracked in this
-              system yet, so this is Output VAT on sales only — not the net amount payable to KRA after input credits.
+              Worked out from the books, so it agrees with them. Output VAT is the 16% inside every sale price (walk-in orders and every corporate order past
+              Quotation, less credit notes). Input VAT is what you claim on purchases and expenses below — only claim it where you hold the supplier's tax invoice.
             </p>
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+              <div className="card-title">Purchases &amp; expenses — input VAT</div>
+              {vat.unclaimedWithInvoice.count > 0 && (
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={claimAllVat}>
+                  Claim VAT on all with a supplier invoice ({vat.unclaimedWithInvoice.count} · {fmtKsh(vat.unclaimedWithInvoice.vat)})
+                </button>
+              )}
+            </div>
+            {vatMsg && <p className="note">{vatMsg}</p>}
+            <p className="note" style={{ marginTop: 0 }}>
+              Tick a row to claim the VAT in it (16/116 of what was paid, taken out of the cost and shown here). Stock purchases are ticked when they are captured.
+              Wages, rent and anything without a VAT invoice should stay unticked.
+            </p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>What</th>
+                  <th>Invoice #</th>
+                  <th style={{ textAlign: 'right' }}>Paid (incl. VAT)</th>
+                  <th style={{ textAlign: 'right' }}>Input VAT</th>
+                  <th style={{ width: 90 }}>Claim</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vat.purchases.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-muted">
+                      No purchases or expenses in this period.
+                    </td>
+                  </tr>
+                )}
+                {vat.purchases.map((p) => (
+                  <tr key={p.id}>
+                    <td className="text-muted">{fmtDate(p.date)}</td>
+                    <td>
+                      {p.category}
+                      {p.isStockPurchase && <span className="tag tag-outline" style={{ marginLeft: 6 }}>Stock</span>}
+                      <div className="note" style={{ margin: 0 }}>
+                        {[p.supplier, p.note].filter(Boolean).join(' · ')}
+                      </div>
+                    </td>
+                    <td className="text-muted">{p.invoiceNumber || '—'}</td>
+                    <td style={{ textAlign: 'right' }}>{fmtKsh(p.amount)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: p.vatAmount ? 700 : undefined }}>{p.vatAmount ? fmtKsh(p.vatAmount) : <span className="text-muted">{fmtKsh(p.claimableVat)} if claimed</span>}</td>
+                    <td>
+                      <input type="checkbox" aria-label={`Claim VAT on ${p.category} ${p.invoiceNumber ?? ''}`} checked={p.vatAmount > 0} disabled={busy} onChange={(e) => claimVat(p.id, e.target.checked)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}

@@ -70,7 +70,7 @@ export default function Login() {
 
         <div className="login-users">
           {branding?.logoDataUrl && <img src={branding.logoDataUrl} alt={branding.companyName} style={{ maxHeight: 72, maxWidth: 220, objectFit: 'contain', alignSelf: 'flex-start', marginBottom: 'var(--space-2)' }} />}
-          <div className="card-kicker">{branding?.companyName || 'GLM Branding'}</div>
+          <div className="card-kicker">{branding?.companyName ?? ''}</div>
           <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
             Who's working?
           </div>
@@ -124,6 +124,7 @@ export default function Login() {
 // enter it with a new 4-digit PIN. The server replies identically whether or
 // not the email matches an Admin, so this can't be used to probe accounts.
 function ForgotPin({ onDone }: { onDone: () => void }) {
+  const branding = useBranding();
   const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
@@ -162,7 +163,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
         <i className="corner tr"></i>
         <i className="corner bl"></i>
         <i className="corner br"></i>
-        <div className="card-kicker">GLM Branding</div>
+        <div className="card-kicker">{branding?.companyName ?? ''}</div>
         <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
           Reset Admin PIN
         </div>

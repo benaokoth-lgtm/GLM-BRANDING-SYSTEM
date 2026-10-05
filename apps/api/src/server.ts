@@ -11,7 +11,7 @@ import { ensureStaffNamesOnce } from './staffNames';
 
 const port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
-  console.log(`GLM Branding POS API listening on :${port}`);
+  console.log(`POS API listening on :${port}`);
   // Make sure the chart of accounts exists, then catch asset depreciation up and keep it current.
   ensureChartOnce()
     .then(() => startDepreciationSchedule())

@@ -11,6 +11,7 @@ import { defaultBusinessHeadName } from '@glm/shared';
 import { ensureBusinessHeadsOnce } from '../purchases';
 import { MARKUP_TYPES } from '@glm/shared';
 import { commissionEnabled } from '../commission';
+import { companyName } from '../company';
 import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig } from '../mailer';
 
 export const masterDataRouter = Router();
@@ -71,11 +72,12 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
   const mailer = await getMailer();
   if (!mailer) return { ok: false, error: "Email isn't set up yet — set it up under Master Data → Email first" };
   const url = mailer.config.loginUrl ? `\nSign in at: ${mailer.config.loginUrl}\n` : '';
+  const company = await companyName();
   try {
     await mailer.sendMail({
       to,
-      subject: 'Your GLM Branding POS login',
-      text: `Hello ${name},\n\nYou can now sign in to the GLM Branding POS system.\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nYou will be asked to choose your own 4-digit PIN the first time you sign in. Please do that straight away, and delete this email afterwards.\n\nIf you were not expecting this message, tell your manager.`,
+      subject: `Your ${company} login`,
+      text: `Hello ${name},\n\nYou can now sign in to the ${company} system.\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nYou will be asked to choose your own 4-digit PIN the first time you sign in. Please do that straight away, and delete this email afterwards.\n\nIf you were not expecting this message, tell your manager.`,
     });
     return { ok: true };
   } catch (e) {
@@ -219,8 +221,8 @@ masterDataRouter.post('/mail/test', requireRole('Admin'), async (req, res) => {
     await transport.sendMail({
       from: cfg.fromName ? { name: cfg.fromName, address: cfg.username } : cfg.username,
       to: parsed.data.to,
-      subject: 'GLM Branding POS — test email',
-      text: 'This is a test message from the GLM Branding POS system. If you can read it, your mail settings work.',
+      subject: `${await companyName()} — test email`,
+      text: `This is a test message from the ${await companyName()} system. If you can read it, your mail settings work.`,
     });
   } catch (e) {
     return res.status(400).json({ error: explainMailError(e, cfg) });

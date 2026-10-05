@@ -48,7 +48,7 @@ function ticketItemsHtml(order: OrderDetail): string {
 export function printWalkinReceipt(w: Window | null, order: OrderDetail, company: CompanySettings, copyLabel?: string) {
   if (!w) return;
 
-  const companyName = esc((company.companyName || 'GLM Branding').toUpperCase());
+  const companyName = esc((company.companyName || '').toUpperCase());
   // Same "trading name of ..." disclosure as the A4 invoice/quotation
   // header (see printInvoice.ts) — real legal-name fine print, not a
   // fabricated marketing tagline, in the slot a reference receipt would

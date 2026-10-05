@@ -40,7 +40,7 @@ function shell(title: string, orientation: 'portrait' | 'landscape', margin: str
 }
 
 function header(company: CompanySettings, title: string, sub: string): string {
-  const name = esc(company.legalName?.trim() || company.companyName || 'GLM Branding');
+  const name = esc(company.legalName?.trim() || company.companyName || '');
   const trading = company.legalName?.trim() && company.legalName.trim() !== (company.companyName || '').trim() ? `<div class="muted">Trading as ${esc(company.companyName)}</div>` : '';
   return `<div class="head">
     <div class="co"><b>${name}</b>${trading}

@@ -44737,6 +44737,12 @@ async function buildStatements(period, only) {
   return { config, statements };
 }
 
+// apps/api/src/company.ts
+async function companyName() {
+  const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  return s.companyName.trim() || "the company";
+}
+
 // apps/api/src/routes/auth.ts
 var authRouter = (0, import_express.Router)();
 var loginLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 30, standardHeaders: true, legacyHeaders: false });
@@ -44808,7 +44814,7 @@ authRouter.post("/forgot-pin", resetLimiter, async (req, res) => {
   try {
     await mailer.sendMail({
       to: email,
-      subject: "GLM Branding POS \u2014 PIN reset code",
+      subject: `${await companyName()} \u2014 PIN reset code`,
       text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.
 
 If you didn't ask for this, ignore this email \u2014 your PIN has not changed.`
@@ -49048,13 +49054,14 @@ async function emailPin(name2, to, pin) {
   const url = mailer.config.loginUrl ? `
 Sign in at: ${mailer.config.loginUrl}
 ` : "";
+  const company = await companyName();
   try {
     await mailer.sendMail({
       to,
-      subject: "Your GLM Branding POS login",
+      subject: `Your ${company} login`,
       text: `Hello ${name2},
 
-You can now sign in to the GLM Branding POS system.
+You can now sign in to the ${company} system.
 ${url}
 Choose your name on the sign-in screen and enter this PIN:
 
@@ -49187,8 +49194,8 @@ masterDataRouter.post("/mail/test", requireRole("Admin"), async (req, res) => {
     await transport.sendMail({
       from: cfg.fromName ? { name: cfg.fromName, address: cfg.username } : cfg.username,
       to: parsed.data.to,
-      subject: "GLM Branding POS \u2014 test email",
-      text: "This is a test message from the GLM Branding POS system. If you can read it, your mail settings work."
+      subject: `${await companyName()} \u2014 test email`,
+      text: `This is a test message from the ${await companyName()} system. If you can read it, your mail settings work.`
     });
   } catch (e) {
     return res.status(400).json({ error: explainMailError(e, cfg) });
@@ -54570,7 +54577,7 @@ app.use((err, _req, res, _next) => {
 // apps/api/src/server.ts
 var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
-  console.log(`GLM Branding POS API listening on :${port}`);
+  console.log(`POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
   Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

@@ -47,7 +47,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
   const isInvoice = order.status !== 'Quote';
   const docTitle = isInvoice ? 'INVOICE' : 'QUOTATION';
   const isPaid = isInvoice && order.totals.balanceDue <= 0;
-  const companyName = esc(company.companyName || 'GLM Branding');
+  const companyName = esc(company.companyName || '');
   const logo = company.logoDataUrl ? `<img class="logo" src="${company.logoDataUrl}" alt="${companyName}" />` : '';
   // The uploaded logo is the registered company's (e.g. "GLM Group Limited"), while companyName is the trading name customers know
   // the business as — this line states the relationship plainly instead of leaving two names side by side.

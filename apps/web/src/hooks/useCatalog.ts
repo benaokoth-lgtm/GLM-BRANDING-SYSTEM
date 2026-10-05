@@ -4,8 +4,9 @@ import type { CatalogMaterial, CatalogService, CompanySettings, CorporateClient,
 
 const DEFAULT_SETTINGS: CompanySettings = {
   maxDiscountPct: 15,
-  companyName: 'GLM Branding',
-  legalName: 'GLM Group Limited',
+  // (empty until the company details load from Master Data — nothing is assumed)
+  companyName: '',
+  legalName: '',
   companyAddress: '',
   companyPhone: '',
   companyPhone2: '',

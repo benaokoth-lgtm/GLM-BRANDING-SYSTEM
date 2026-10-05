@@ -7,6 +7,7 @@ import { explainMailError, getMailer } from '../mailer';
 import { requireAuth, signToken } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
 import { commissionEnabled } from '../commission';
+import { companyName } from '../company';
 
 export const authRouter = Router();
 
@@ -108,7 +109,7 @@ authRouter.post('/forgot-pin', resetLimiter, async (req, res) => {
   try {
     await mailer.sendMail({
       to: email,
-      subject: 'GLM Branding POS — PIN reset code',
+      subject: `${await companyName()} — PIN reset code`,
       text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.\n\nIf you didn't ask for this, ignore this email — your PIN has not changed.`,
     });
   } catch (e) {

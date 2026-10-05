@@ -15,6 +15,8 @@ let inflight: Promise<Branding | null> | null = null;
 
 function applyFavicon(b: Branding | null) {
   if (typeof document === 'undefined') return;
+  // the browser tab's title follows the company name set in Master Data
+  if (b?.companyName) document.title = `${b.companyName} — Order & POS`;
   let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
   if (!b?.logoDataUrl) {
     link?.remove();
@@ -32,7 +34,7 @@ function load(force = false): Promise<Branding | null> {
   if (cache && !force) return Promise.resolve(cache);
   if (!inflight || force) {
     inflight = api
-      .get<Branding>('/auth/branding')
+      .get<Branding>(force ? `/auth/branding?v=${Date.now()}` : '/auth/branding') // (a saved change must not come back from the browser's 5-minute cache)
       .then((b) => {
         cache = b;
         applyFavicon(b);

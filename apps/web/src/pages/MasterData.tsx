@@ -442,12 +442,13 @@ export default function MasterData() {
   }
 
   async function saveCompanyInfo() {
+    if (!companyNameValue.trim()) return setError('The company name is required');
     setError(null);
     setSavingCompany(true);
     setCompanySaved(false);
     try {
       await api.put('/master-data/settings', {
-        companyName: companyNameValue.trim() || 'GLM Branding',
+        companyName: companyNameValue.trim(),
         legalName: legalNameValue.trim(),
         companyAddress: companyAddressValue,
         companyPhone: companyPhoneValue,
@@ -826,7 +827,7 @@ export default function MasterData() {
             Unit and price are editable in place — a service flagged "Artwork pricing" with unit "sqm" (e.g. DTF
             Printing, Embroidery) shows an "Artwork size (sqm)" field on order line items instead of a flat
             per-piece price: price is computed from one artwork's area, at the Ksh/sqm rate set here. Services flagged "Charges pressing fee" show a staff-picked heat
-            press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where GLM prints and presses.
+            press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where we print and press ourselves.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
             <div className="field">

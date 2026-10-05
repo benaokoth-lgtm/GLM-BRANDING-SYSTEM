@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useBranding } from '../hooks/useBranding';
 import { Card, Loading, Notice, Tag, useLoad } from '../pages/accounting/shared';
 
 // Master Data → Email: the mail account the system sends from — login PINs to staff, the Admin's PIN-reset code, invoices.
@@ -104,6 +105,7 @@ export default function MailSettingsPanel() {
 }
 
 function MailDialog({ current, onClose, onSaved }: { current: Mail; onClose: () => void; onSaved: () => void }) {
+  const branding = useBranding();
   const [f, setF] = useState(blank);
   const [testTo, setTestTo] = useState('');
   const [busy, setBusy] = useState(false);
@@ -228,7 +230,7 @@ function MailDialog({ current, onClose, onSaved }: { current: Mail; onClose: () 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
             <div className="field">
               <label>Send as (display name)</label>
-              <input className="input" value={f.fromName} onChange={(e) => set('fromName', e.target.value)} placeholder="GLM Branding POS" />
+              <input className="input" value={f.fromName} onChange={(e) => set('fromName', e.target.value)} placeholder={`${branding?.companyName ?? 'Your company'} POS`} />
             </div>
             <div className="field">
               <label>Sign-in address quoted in PIN emails</label>

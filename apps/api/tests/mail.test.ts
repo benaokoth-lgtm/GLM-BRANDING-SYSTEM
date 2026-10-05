@@ -196,4 +196,16 @@ describe('email settings and emailing login PINs', () => {
     const created = await prisma.user.findFirstOrThrow({ where: { name: 'Otieno (mail test)' } });
     assert.equal(created.mustChangePin, true);
   });
+
+  it('emails speak for the company named in Master Data, not a fixed name', async () => {
+    await call(admin, 'PUT', '/master-data/settings', { companyName: 'Acme Prints Ltd' });
+    const before = inbox.length;
+    const r = await call(admin, 'POST', '/master-data/staff', { firstName: 'Brand', lastName: '(mail test)', role: 'Staff', pin: '5566', email: 'brand@test.local', emailPin: true });
+    assert.equal(r.status, 201);
+    const mail = inbox.slice(before).find((m) => m.to.includes('brand@test.local'))!;
+    assert.ok(mail, 'the email arrived');
+    assert.match(mail.data, /Acme Prints Ltd/);
+    assert.doesNotMatch(mail.data, /GLM Branding/);
+    await call(admin, 'PUT', '/master-data/settings', { companyName: 'GLM Branding' });
+  });
 });

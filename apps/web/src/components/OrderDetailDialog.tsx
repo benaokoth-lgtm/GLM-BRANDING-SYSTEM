@@ -110,7 +110,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     try {
       const html = buildCorporateDocumentHtml(detail, company);
       const docLabel = detail.status === 'Quote' ? 'Quotation' : 'Invoice';
-      await api.post('/email/send', { to: emailTo.trim(), subject: `${docLabel} ${detail.orderNo} — ${company.companyName || 'GLM Branding'}`, html });
+      await api.post('/email/send', { to: emailTo.trim(), subject: `${docLabel} ${detail.orderNo} — ${company.companyName}`, html });
       setEmailSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send email');
@@ -123,7 +123,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     if (!detail) return;
     const phone = (detail.corporateClient?.phone || '').replace(/[^\d]/g, '');
     const docLabel = detail.status === 'Quote' ? 'quotation' : 'invoice';
-    const message = `Hi, here is your ${docLabel} ${detail.orderNo} from ${company?.companyName || 'GLM Branding'} — total ${fmtKsh(detail.totals.grandTotal)}${detail.status === 'Invoice' ? `, balance due ${fmtKsh(detail.totals.balanceDue)}` : ''}. We'll send the document itself separately.`;
+    const message = `Hi, here is your ${docLabel} ${detail.orderNo} from ${company?.companyName ?? ''} — total ${fmtKsh(detail.totals.grandTotal)}${detail.status === 'Invoice' ? `, balance due ${fmtKsh(detail.totals.balanceDue)}` : ''}. We'll send the document itself separately.`;
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(url, '_blank');
   }

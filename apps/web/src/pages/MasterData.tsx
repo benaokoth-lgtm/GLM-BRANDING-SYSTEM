@@ -118,6 +118,10 @@ export default function MasterData() {
   const [legalName, setLegalName] = useState<string | null>(null);
   const [companyAddress, setCompanyAddress] = useState<string | null>(null);
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
+  const [companyPhone2, setCompanyPhone2] = useState<string | null>(null);
+  const [companyWebsite, setCompanyWebsite] = useState<string | null>(null);
+  const [companyFacebook, setCompanyFacebook] = useState<string | null>(null);
+  const [companyTiktok, setCompanyTiktok] = useState<string | null>(null);
   const [companyKraPin, setCompanyKraPin] = useState<string | null>(null);
   const [companyEmail, setCompanyEmail] = useState<string | null>(null);
   const [logoDataUrl, setLogoDataUrl] = useState<string | null | undefined>(undefined);
@@ -129,6 +133,10 @@ export default function MasterData() {
   const legalNameValue = legalName ?? catalog.settings.legalName;
   const companyAddressValue = companyAddress ?? catalog.settings.companyAddress;
   const companyPhoneValue = companyPhone ?? catalog.settings.companyPhone;
+  const companyPhone2Value = companyPhone2 ?? catalog.settings.companyPhone2 ?? '';
+  const companyWebsiteValue = companyWebsite ?? catalog.settings.website ?? '';
+  const companyFacebookValue = companyFacebook ?? catalog.settings.facebook ?? '';
+  const companyTiktokValue = companyTiktok ?? catalog.settings.tiktok ?? '';
   const companyKraPinValue = companyKraPin ?? catalog.settings.kraPin ?? '';
   const companyEmailValue = companyEmail ?? catalog.settings.companyEmail;
   const logoValue = logoDataUrl !== undefined ? logoDataUrl : catalog.settings.logoDataUrl;
@@ -443,6 +451,10 @@ export default function MasterData() {
         legalName: legalNameValue.trim(),
         companyAddress: companyAddressValue,
         companyPhone: companyPhoneValue,
+        companyPhone2: companyPhone2Value,
+        website: companyWebsiteValue,
+        facebook: companyFacebookValue,
+        tiktok: companyTiktokValue,
         kraPin: companyKraPinValue.trim(),
         companyEmail: companyEmailValue,
         logoDataUrl: logoValue,
@@ -1028,8 +1040,27 @@ export default function MasterData() {
                 <textarea className="input" rows={3} value={companyAddressValue} onChange={(e) => setCompanyAddress(e.target.value)} />
               </div>
               <div className="field">
-                <label>Phone</label>
+                <label>Phone (first number)</label>
                 <input className="input" value={companyPhoneValue} onChange={(e) => setCompanyPhone(e.target.value)} placeholder="07xx xxx xxx" />
+              </div>
+              <div className="field">
+                <label>Phone (second number)</label>
+                <input className="input" value={companyPhone2Value} onChange={(e) => setCompanyPhone2(e.target.value)} placeholder="07xx xxx xxx" />
+                <p className="note" style={{ marginTop: 'var(--space-1)' }}>Both numbers print on invoices, quotations and receipts.</p>
+              </div>
+              <div className="field">
+                <label>Website</label>
+                <input className="input" value={companyWebsiteValue} onChange={(e) => setCompanyWebsite(e.target.value)} placeholder="www.glmgroup.co.ke" />
+                <p className="note" style={{ marginTop: 'var(--space-1)' }}>Prints on invoices, quotations and receipts.</p>
+              </div>
+              <div className="field">
+                <label>Facebook page</label>
+                <input className="input" value={companyFacebookValue} onChange={(e) => setCompanyFacebook(e.target.value)} placeholder="facebook.com/yourpage or the page name" />
+              </div>
+              <div className="field">
+                <label>TikTok</label>
+                <input className="input" value={companyTiktokValue} onChange={(e) => setCompanyTiktok(e.target.value)} placeholder="@yourhandle" />
+                <p className="note" style={{ marginTop: 'var(--space-1)' }}>Facebook and TikTok print on invoices and quotations. Shown exactly as you type them; leave blank to hide.</p>
               </div>
               <div className="field">
                 <label>KRA PIN</label>

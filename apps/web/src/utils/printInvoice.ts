@@ -68,7 +68,12 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
         'All prices include VAT at 16%.',
       ]
     : ['All prices include VAT at 16%.', 'Production begins once this quotation is accepted — a deposit payment turns it into an invoice.', 'We accept Cash, M-Pesa, Bank Transfer and Card.'];
-  const contactLine = [company.companyPhone, company.companyEmail].filter(Boolean).map(esc).join(' &middot; ');
+  // Both phone numbers, then the email; and the website and social pages, each only if it has been entered (Master Data → Company Info).
+  const phones = [company.companyPhone, company.companyPhone2].filter((p): p is string => !!p && !!p.trim());
+  const contactLine = [...phones, company.companyEmail].filter(Boolean).map((v) => esc(v as string)).join(' &middot; ');
+  const phoneLine = phones.length ? `<div class="line">Tel: ${phones.map(esc).join(' &middot; ')}</div>` : '';
+  const onlineParts = [company.website?.trim() ? `Web: ${esc(company.website.trim())}` : '', company.facebook?.trim() ? `Facebook: ${esc(company.facebook.trim())}` : '', company.tiktok?.trim() ? `TikTok: ${esc(company.tiktok.trim())}` : ''].filter(Boolean);
+  const onlineLine = onlineParts.length ? `<div class="line">${onlineParts.join(' &middot; ')}</div>` : '';
 
   const html = `<!doctype html>
 <html>
@@ -148,6 +153,8 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
       <div class="name">${companyName}</div>
       ${legalNameLine}
       ${company.companyAddress ? `<div class="line">${esc(company.companyAddress)}</div>` : ''}
+      ${phoneLine}
+      ${onlineLine}
     </div>
 
     <div class="info">
@@ -205,7 +212,8 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
       <div class="terms">
         <h2>TERMS &amp; CONDITIONS</h2>
         ${terms.map((t) => `<p>${esc(t)}</p>`).join('')}
-        ${company.companyEmail || company.companyPhone ? `<p class="contact">${contactLine}</p>` : ''}
+        ${contactLine ? `<p class="contact">${contactLine}</p>` : ''}
+        ${onlineParts.length ? `<p class="contact">${onlineParts.join('<br/>')}</p>` : ''}
       </div>
     </div>
   </div>

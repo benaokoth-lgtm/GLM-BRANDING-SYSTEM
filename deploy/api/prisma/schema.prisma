@@ -215,6 +215,11 @@ model Setting {
   legalName      String  @default("GLM Group Limited")
   companyAddress String  @default("")
   companyPhone   String  @default("")
+  // A second phone number, the website and the social pages — printed on invoices, quotations and receipts (website and phones also on receipts).
+  companyPhone2  String  @default("")
+  website        String  @default("")
+  facebook       String  @default("")
+  tiktok         String  @default("")
   companyEmail   String  @default("")
   logoDataUrl    String? // base64 data: URL, stored inline (small file, no object storage in this app)
 

@@ -53,7 +53,9 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
     company.legalName && company.legalName.trim() && company.legalName.trim() !== (company.companyName || '').trim()
       ? `<div class="tagline">Trading name of ${esc(company.legalName.trim())}</div>`
       : '';
-  const contactLine = [company.companyAddress, company.companyPhone].filter(Boolean).map(esc).join(' &middot; ');
+  // Both phone numbers and the website print on the receipt (Master Data → Company Info).
+  const contactLine = [company.companyAddress, company.companyPhone, company.companyPhone2].filter((v): v is string => !!v && !!v.trim()).map(esc).join(' &middot; ');
+  const websiteLine = company.website?.trim() ? esc(company.website.trim()) : '';
   const itemCount = order.lineItems.reduce((a, li) => a + li.qty, 0);
   // Prices are VAT-inclusive throughout this system (see Compliance → VAT) —
   // split the final payable amount back out so the receipt states that
@@ -99,6 +101,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
     ${legalNameLine}
   </div>
   ${contactLine ? `<div class="center meta">${contactLine}</div>` : ''}
+  ${websiteLine ? `<div class="center meta">${websiteLine}</div>` : ''}
   <div class="center meta">${order.totals.balanceDue <= 0 ? 'RECEIPT — PAID IN FULL' : 'RECEIPT — BALANCE DUE'}</div>
   ${copyLabel ? `<div class="center meta">${esc(copyLabel.toUpperCase())}</div>` : ''}
   <hr />
@@ -127,6 +130,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   <div class="keep-note">ITEMS: ${itemCount}</div>
   <div class="barcode-wrap"><svg id="barcode"></svg></div>
   <div class="footer">Thank you for choosing ${companyName}!</div>
+  ${websiteLine ? `<div class="footer">${websiteLine}</div>` : ''}
   <div class="footer">${fmtDate(order.createdDate)}</div>
   <script>
     try {

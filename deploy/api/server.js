@@ -49391,6 +49391,10 @@ function serializeSettings(settings) {
     legalName: settings.legalName,
     companyAddress: settings.companyAddress,
     companyPhone: settings.companyPhone,
+    companyPhone2: settings.companyPhone2,
+    website: settings.website,
+    facebook: settings.facebook,
+    tiktok: settings.tiktok,
     companyEmail: settings.companyEmail,
     logoDataUrl: settings.logoDataUrl
   };
@@ -49407,7 +49411,12 @@ var settingsSchema = external_exports.object({
   // printed invoices/quotations (see printInvoice.ts). Blank hides it.
   legalName: external_exports.string().max(200).optional(),
   companyAddress: external_exports.string().max(500).optional(),
-  companyPhone: external_exports.string().max(50).optional(),
+  companyPhone: external_exports.string().trim().max(50).optional(),
+  companyPhone2: external_exports.string().trim().max(50).optional(),
+  // Shown as typed on printed documents (a web address, a page name or a handle). Blank hides the line.
+  website: external_exports.string().trim().max(200).optional(),
+  facebook: external_exports.string().trim().max(200).optional(),
+  tiktok: external_exports.string().trim().max(200).optional(),
   companyEmail: external_exports.string().max(200).optional(),
   // The company's KRA PIN (employer's PIN on the payroll and P9). Blank clears it.
   kraPin: external_exports.string().max(40).optional(),

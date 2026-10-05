@@ -487,6 +487,10 @@ function serializeSettings(settings: {
   legalName: string;
   companyAddress: string;
   companyPhone: string;
+  companyPhone2: string;
+  website: string;
+  facebook: string;
+  tiktok: string;
   companyEmail: string;
   logoDataUrl: string | null;
 }) {
@@ -497,6 +501,10 @@ function serializeSettings(settings: {
     legalName: settings.legalName,
     companyAddress: settings.companyAddress,
     companyPhone: settings.companyPhone,
+    companyPhone2: settings.companyPhone2,
+    website: settings.website,
+    facebook: settings.facebook,
+    tiktok: settings.tiktok,
     companyEmail: settings.companyEmail,
     logoDataUrl: settings.logoDataUrl,
   };
@@ -518,7 +526,12 @@ const settingsSchema = z
     // printed invoices/quotations (see printInvoice.ts). Blank hides it.
     legalName: z.string().max(200).optional(),
     companyAddress: z.string().max(500).optional(),
-    companyPhone: z.string().max(50).optional(),
+    companyPhone: z.string().trim().max(50).optional(),
+    companyPhone2: z.string().trim().max(50).optional(),
+    // Shown as typed on printed documents (a web address, a page name or a handle). Blank hides the line.
+    website: z.string().trim().max(200).optional(),
+    facebook: z.string().trim().max(200).optional(),
+    tiktok: z.string().trim().max(200).optional(),
     companyEmail: z.string().max(200).optional(),
     // The company's KRA PIN (employer's PIN on the payroll and P9). Blank clears it.
     kraPin: z.string().max(40).optional(),

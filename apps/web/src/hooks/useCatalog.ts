@@ -8,6 +8,10 @@ const DEFAULT_SETTINGS: CompanySettings = {
   legalName: 'GLM Group Limited',
   companyAddress: '',
   companyPhone: '',
+  companyPhone2: '',
+  website: '',
+  facebook: '',
+  tiktok: '',
   companyEmail: '',
   logoDataUrl: null,
 };

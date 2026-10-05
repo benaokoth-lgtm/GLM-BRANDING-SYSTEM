@@ -46,6 +46,11 @@ export interface CompanySettings {
   legalName: string;
   companyAddress: string;
   companyPhone: string;
+  /** A second phone number. */
+  companyPhone2?: string;
+  website?: string;
+  facebook?: string;
+  tiktok?: string;
   companyEmail: string;
   /** The company's KRA PIN — the employer's PIN on the payroll and P9. */
   kraPin?: string;

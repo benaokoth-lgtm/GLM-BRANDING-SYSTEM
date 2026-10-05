@@ -1,4 +1,4 @@
-import { fmtDate, fmtKsh, splitVatInclusive } from '@glm/shared';
+import { WALK_IN_CLIENT, fmtDate, fmtKsh, splitVatInclusive } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printWalkinReceipt } from './printTicket';
 
@@ -154,7 +154,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
       <div>
         <h2>BILL TO</h2>
         <div class="who">
-          ${esc(client?.name || order.customerName || '—')}
+          ${esc(client?.name || order.customerName || (order.kind === 'walkin' ? WALK_IN_CLIENT : '—'))}
           ${client?.phone || order.phone ? `<br/>${esc(client?.phone || order.phone || '')}` : ''}
           ${client?.email ? `<br/>${esc(client.email)}` : ''}
         </div>
@@ -236,10 +236,11 @@ export function printCorporateDocument(w: Window | null, order: OrderDetail, com
 }
 
 /**
- * Prints an order the way it should look on paper: a walk-in order (a sale at the counter, paid or not yet) goes to the thermal receipt printer; a
- * corporate invoice or quotation is a full A4 document.
+ * Prints an order the way it should look on paper: an invoice or a quotation — whoever it is for, walk-in or corporate — is the A4 document in the
+ * house layout (navy title, logo, ruled table, TOTAL, Thank you and terms); only a walk-in order that is paid in full is a till receipt, printed on the
+ * 80 mm thermal printer.
  */
 export function printOrderDocument(w: Window | null, order: OrderDetail, company: CompanySettings, copyLabel?: string) {
-  if (order.kind === 'walkin') printWalkinReceipt(w, order, company, copyLabel);
+  if (order.kind === 'walkin' && order.status === 'Order') printWalkinReceipt(w, order, company, copyLabel);
   else printCorporateDocument(w, order, company, copyLabel);
 }

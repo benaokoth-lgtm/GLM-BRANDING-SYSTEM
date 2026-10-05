@@ -84,7 +84,7 @@ export default function NewWalkinOrder() {
         }),
         api.get<CompanySettings>('/master-data/settings'),
       ]);
-      printOrderDocument(printWindow, order, company); // walk-in orders print on the thermal receipt printer
+      printOrderDocument(printWindow, order, company); // paid in full → thermal receipt; with a balance it is an invoice → A4
       navigate('/orders/all');
     } catch (err) {
       printWindow?.close();

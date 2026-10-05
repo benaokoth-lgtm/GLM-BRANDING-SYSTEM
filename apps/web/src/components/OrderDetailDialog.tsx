@@ -97,7 +97,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     // company profile (name/address/logo) has loaded.
     const w = window.open('', '_blank');
     const co = company ?? (await api.get<CompanySettings>('/master-data/settings'));
-    // Walk-in orders go to the thermal receipt printer; corporate invoices and quotations print on A4.
+    // Invoices and quotations print on A4; a walk-in order paid in full prints on the thermal receipt printer.
     printOrderDocument(w, detail, co);
   }
 

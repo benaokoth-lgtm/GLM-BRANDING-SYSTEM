@@ -1,4 +1,4 @@
-> **Moving to your own server (Contabo VPS)?** See [DEPLOYMENT-VPS.md](DEPLOYMENT-VPS.md) — a kit in `deploy-vps/` sets up Nginx, Node, PostgreSQL, HTTPS, backups and a one-command update. It also sets `TRUST_PROXY=1` (new, optional) so the login rate limit sees each visitor's real address behind Nginx.
+> **Moving to your own server (Contabo VPS)?** See [DEPLOYMENT-VPS.md](DEPLOYMENT-VPS.md) — a kit in `deploy-vps/` adds GLM *next to the applications already on that server*, using its existing Caddy (HTTPS), PostgreSQL and Node, with its own database, service user, systemd service and nightly backup, and a one-command update. It also sets `TRUST_PROXY=1` (new, optional) so the login rate limit sees each visitor's real address behind a proxy.
 
 # Deploying to cPanel — api.glmgroup.co.ke + pos.glmgroup.co.ke
 

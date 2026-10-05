@@ -30,6 +30,7 @@ sudo -u glm env DATABASE_URL="$DATABASE_URL" bash -c "cd '$APP_DIR/deploy/api' &
 
 say "Web files"
 rsync -a --delete "$APP_DIR/deploy/web/" /var/www/pos/
+chmod -R a+rX /var/www/pos
 
 say "Restarting the API"
 systemctl restart glm-pos-api

@@ -1,47 +1,48 @@
 #!/usr/bin/env bash
-# One-time setup of a fresh Ubuntu 22.04 / 24.04 VPS for the GLM Branding POS (API + web).
+# Set up the GLM Branding POS on a server that ALREADY runs other applications (Caddy on ports 80/443, PostgreSQL, Node, pm2 apps …).
 #
 #   sudo bash /opt/glm-pos/deploy-vps/setup-server.sh
 #
-# What it does: installs Nginx, PostgreSQL, Node 20, Certbot, a firewall (only SSH, HTTP, HTTPS are open), fail2ban and automatic security
-# updates; creates the database and a locked-down service user; writes the settings file (with freshly generated secrets); installs the
-# Nginx site, the systemd service and the nightly backup. It does NOT start the app — the database is filled first (restore a backup, or
-# `update.sh` creates the empty tables), and then update.sh starts it. Safe to run again: it never overwrites existing secrets.
+# It adds this system next to what is already there and changes nothing of the others: no package upgrades, no firewall changes, no
+# time-zone change, no second web server. It creates a separate database and a locked-down service user, writes the settings file (with
+# freshly generated secrets), installs the systemd service (not started yet), the nightly backup, and a Caddy snippet that is NOT switched on
+# until cutover day (enable-site.sh). Safe to run again: it never overwrites existing secrets.
 set -euo pipefail
 
 WEB_HOST="${WEB_HOST:-pos.glmgroup.co.ke}"
 API_HOST="${API_HOST:-api.glmgroup.co.ke}"
+API_PORT="${API_PORT:-4100}"
 # The repository is private, so it is reached over SSH with a read-only deploy key kept at /etc/glm-pos/deploy_key (see DEPLOYMENT-VPS.md, A3).
 REPO_URL="${REPO_URL:-git@github.com:benaokoth-lgtm/GLM-BRANDING-SYSTEM.git}"
-DEPLOY_KEY=/etc/glm-pos/deploy_key
-GIT_SSH="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 APP_DIR=/opt/glm-pos
 ENV_DIR=/etc/glm-pos
 ENV_FILE="$ENV_DIR/api.env"
+DEPLOY_KEY="$ENV_DIR/deploy_key"
+GIT_SSH="ssh -i $DEPLOY_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 DB_NAME=glm_pos
 DB_USER=glm_pos
 
 say() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
+fail() { printf '\n\033[1;31mSTOP: %s\033[0m\n' "$*"; exit 1; }
 
-[ "$(id -u)" = 0 ] || { echo "Run this as root: sudo bash $0"; exit 1; }
-. /etc/os-release
-case "${VERSION_ID:-}" in 22.04|24.04) ;; *) echo "This kit is written for Ubuntu 22.04 or 24.04 (found ${PRETTY_NAME:-unknown}). Stop here and tell me." ; exit 1 ;; esac
+[ "$(id -u)" = 0 ] || fail "Run this as root: sudo bash $0"
 
-say "Time zone: Africa/Nairobi (so \"today\" in the books is the Kenyan day)"
-timedatectl set-timezone Africa/Nairobi
-
-say "Packages"
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -y
-apt-get upgrade -y
-apt-get install -y nginx postgresql postgresql-contrib certbot python3-certbot-nginx ufw fail2ban unattended-upgrades git curl rsync ca-certificates openssl
-
-say "Node.js 20"
-if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
+say "Checking what is already on this server (nothing is changed yet)"
+if ss -tln | awk '{print $4}' | grep -qE "[:.]${API_PORT}\$"; then
+  if [ ! -f "$ENV_FILE" ]; then fail "Port $API_PORT is already in use by something else. Re-run with another port:  API_PORT=4200 sudo -E bash $0"; fi
 fi
-node --version
+command -v node >/dev/null || fail "Node.js is not installed."
+[ "$(node -p 'process.versions.node.split(".")[0]')" -ge 20 ] || fail "Node.js 20 or newer is needed (found $(node --version))."
+echo "Node $(node --version) at $(command -v node)"
+sudo -u postgres psql -tAc 'SELECT version();' >/dev/null || fail "PostgreSQL does not answer for the postgres user."
+echo "PostgreSQL: $(sudo -u postgres psql -tAc 'SHOW server_version;')"
+command -v caddy >/dev/null && echo "Caddy: $(caddy version | head -1)" || echo "Caddy was not found — the web/HTTPS step (enable-site.sh) needs it; tell me before cutover."
+
+say "Small tools (only if missing — no upgrades)"
+export DEBIAN_FRONTEND=noninteractive
+MISSING=""
+for t in git rsync curl openssl; do command -v "$t" >/dev/null || MISSING="$MISSING $t"; done
+if [ -n "$MISSING" ]; then apt-get update -y && apt-get install -y $MISSING; fi
 
 say "Service user"
 id glm >/dev/null 2>&1 || adduser --system --group --home "$APP_DIR" --shell /usr/sbin/nologin glm
@@ -60,7 +61,7 @@ fi
 chown -R glm:glm "$APP_DIR"
 chmod +x "$APP_DIR"/deploy-vps/*.sh
 # git refuses to work in a folder owned by another user unless told it is fine
-git config --system --add safe.directory "$APP_DIR" || true
+git config --system --get-all safe.directory | grep -qxF "$APP_DIR" || git config --system --add safe.directory "$APP_DIR"
 
 say "Database and settings (new secrets are made only the first time)"
 mkdir -p "$ENV_DIR"
@@ -79,7 +80,7 @@ SQL
   ( umask 077
     cat > "$ENV_FILE" <<ENV
 NODE_ENV=production
-PORT=4100
+PORT=$API_PORT
 DATABASE_URL=postgresql://$DB_USER:$DB_PASS@127.0.0.1:5432/$DB_NAME
 JWT_SECRET=$(openssl rand -hex 32)
 CORS_ORIGINS=https://$WEB_HOST
@@ -96,14 +97,14 @@ fi
 say "Installing the app's runtime packages (Prisma)"
 sudo -u glm bash -c "cd '$APP_DIR/deploy/api' && npm install --omit=dev"
 
-say "Nginx"
-sed -e "s/__WEB_HOST__/$WEB_HOST/g" -e "s/__API_HOST__/$API_HOST/g" "$APP_DIR/deploy-vps/nginx-glm-pos.conf" > /etc/nginx/sites-available/glm-pos
-ln -sf /etc/nginx/sites-available/glm-pos /etc/nginx/sites-enabled/glm-pos
-rm -f /etc/nginx/sites-enabled/default
+say "Web files"
 mkdir -p /var/www/pos
 rsync -a --delete "$APP_DIR/deploy/web/" /var/www/pos/
-nginx -t
-systemctl reload nginx
+chmod -R a+rX /var/www/pos
+
+say "Caddy snippet (installed but NOT switched on — that happens at cutover with enable-site.sh)"
+sed -e "s/__WEB_HOST__/$WEB_HOST/g" -e "s/__API_HOST__/$API_HOST/g" -e "s/__API_PORT__/$API_PORT/g" "$APP_DIR/deploy-vps/caddy-glm-pos.caddy" > /etc/caddy/glm-pos.caddy 2>/dev/null \
+  || echo "(could not write /etc/caddy/glm-pos.caddy — is Caddy installed? enable-site.sh will tell you)"
 
 say "systemd service (enabled, not started yet)"
 cp "$APP_DIR/deploy-vps/glm-pos-api.service" /etc/systemd/system/glm-pos-api.service
@@ -114,30 +115,17 @@ say "Nightly backup"
 mkdir -p /var/backups/glm-pos
 chmod 700 /var/backups/glm-pos
 cat > /etc/cron.d/glm-pos-backup <<CRON
-# Every night at 02:15 (Nairobi time): dump the database, keep 30 days
+# Every night at 02:15 (server time): dump the GLM POS database, keep 30 days
 15 2 * * * root $APP_DIR/deploy-vps/backup.sh >> /var/log/glm-pos-backup.log 2>&1
 CRON
 chmod 644 /etc/cron.d/glm-pos-backup
 
-say "Firewall, brute-force protection, automatic security updates"
-ufw default deny incoming
-ufw default allow outgoing
-ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw --force enable
-systemctl enable --now fail2ban
-cat > /etc/apt/apt.conf.d/20auto-upgrades <<APT
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Unattended-Upgrade "1";
-APT
-
 say "Done"
 cat <<NEXT
 
-The server is ready but the app is not started yet. Next:
-  1. Fill the database:  restore a backup   (sudo $APP_DIR/deploy-vps/restore.sh /root/glm_pos.dump)
-                         or start empty and create the first Admin (see DEPLOYMENT-VPS.md).
+Ready, and nothing belonging to the other applications was touched. The app is not started yet. Next:
+  1. Fill the database:  restore a backup   (sudo $APP_DIR/deploy-vps/restore.sh /path/to/glm_pos.dump)
   2. Start the app:      sudo $APP_DIR/deploy-vps/update.sh
-  3. Check it:           curl -H 'Host: $API_HOST' http://127.0.0.1/api/health
+  3. Check it:           curl http://127.0.0.1:$API_PORT/api/health
+  4. On cutover day, after DNS points here:   sudo $APP_DIR/deploy-vps/enable-site.sh
 NEXT

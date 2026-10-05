@@ -10,6 +10,8 @@ Group=glm
 WorkingDirectory=/opt/glm-pos/deploy/api
 # DATABASE_URL, JWT_SECRET, CORS_ORIGINS, PORT, TRUST_PROXY … (root-owned, readable by the glm group only)
 EnvironmentFile=/etc/glm-pos/api.env
+# This server runs on another time zone for its other applications; the books follow the Kenyan day.
+Environment=TZ=Africa/Nairobi
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=3

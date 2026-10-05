@@ -204,7 +204,7 @@ export default function NewArtworkOrder() {
           unitPrice={chosen}
           client={f.client}
           onClose={() => setShowOrderDialog(false)}
-          onDone={() => navigate('/orders/mine')}
+          onDone={() => navigate('/orders/all')}
         />
       )}
     </div>

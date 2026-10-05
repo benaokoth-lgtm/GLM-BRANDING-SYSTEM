@@ -128,7 +128,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
                 <span className="tag tag-accent">Sent for approval</span> <b>{sentFor}</b>
               </p>
               <p className="note">
-                The price is below the recommended price, so a manager has to approve it first. Payment is taken and production starts once it is approved — it shows in My Orders as “awaiting price
+                The price is below the recommended price, so a manager has to approve it first. Payment is taken and production starts once it is approved — it shows in All Orders as “awaiting price
                 approval”. If it is rejected the order is removed.
               </p>
             </div>

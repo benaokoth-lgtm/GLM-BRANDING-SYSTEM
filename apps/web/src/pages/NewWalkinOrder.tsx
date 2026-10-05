@@ -85,7 +85,7 @@ export default function NewWalkinOrder() {
         api.get<CompanySettings>('/master-data/settings'),
       ]);
       printWalkinReceipt(printWindow, order, company);
-      navigate('/orders/mine');
+      navigate('/orders/all');
     } catch (err) {
       printWindow?.close();
       setError(err instanceof Error ? err.message : 'Failed to capture order');

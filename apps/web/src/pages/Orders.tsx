@@ -3,26 +3,26 @@ import { DEFAULT_BUSINESS_HEADS, fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
 import type { OrderSummary, StaffUser } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
+import { useAuth } from '../state/AuthContext';
 import OrderDetailDialog from '../components/OrderDetailDialog';
 import { useSubTab } from '../state/SubNavContext';
 
-interface Props {
-  scope: 'mine' | 'all';
-}
-
-export default function Orders({ scope }: Props) {
+// One Orders screen for everybody. Someone who may see every order (Admin, managers) gets the whole list with the summary figures and a staff
+// filter; a member of staff gets the same screen with their own orders only (the server limits the list).
+export default function Orders() {
   const { staff } = useCatalog();
+  const { user } = useAuth();
+  const viewAll = user?.role === 'Admin' || !!user?.permissions.canViewAllOrders;
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [staffFilter, setStaffFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
   // One category row: All orders, then each line of business (DTF Printing, UV Printing, Embroidery, Large Format Printing, General Order). Every
   // order is counted once, under the head that carries most of its value, so the heads add up to All orders. DTF Printing opens into its film
   // sales and artwork sales. (Choosing one dims the module row, like any other sub-item.)
   const [category, setCategory] = useSubTab<string>('all');
   const [dtfPart, setDtfPart] = useSubTab<'all' | 'film' | 'artwork' | 'other'>('all');
   const [detailId, setDetailId] = useState<number | null>(null);
-  // My Orders shows everything together (the Status column tells an order, an invoice and a quotation apart); Invoices and Quotations narrow it.
+  // Everything together by default (the Status column tells an order, an invoice and a quotation apart); Invoices and Quotations narrow it.
   const [kind, setKind] = useSubTab<'all' | 'Invoice' | 'Quote'>('all');
   // An invoice stays an invoice once it is paid in full: it is tracked through production to completion.
   const [invoiceView, setInvoiceView] = useSubTab<'all' | 'open' | 'done'>('all');
@@ -30,17 +30,14 @@ export default function Orders({ scope }: Props) {
   function load() {
     setLoading(true);
     const params = new URLSearchParams();
-    if (scope === 'all') {
-      if (staffFilter !== 'all') params.set('staffId', staffFilter);
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-    }
+    if (viewAll && staffFilter !== 'all') params.set('staffId', staffFilter);
     api
       .get<OrderSummary[]>(`/orders?${params.toString()}`)
       .then(setOrders)
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [scope, staffFilter, statusFilter]);
+  useEffect(load, [viewAll, staffFilter]);
 
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
 
@@ -61,21 +58,17 @@ export default function Orders({ scope }: Props) {
   const count = (s: string) => (s === 'all' ? ofHead.length : ofHead.filter((o) => o.status === s).length);
   const invoices = ofHead.filter((o) => o.status === 'Invoice');
   const invoiceOpen = invoices.filter((o) => o.stage !== 'Completed').length;
-  const shown =
-    scope === 'mine'
-      ? ofHead.filter((o) => (kind === 'all' || o.status === kind) && (kind !== 'Invoice' || invoiceView === 'all' || (invoiceView === 'open' ? o.stage !== 'Completed' : o.stage === 'Completed')))
-      : ofHead;
-  const showDue = scope === 'mine' && kind === 'Invoice';
+  const shown = ofHead.filter((o) => (kind === 'all' || o.status === kind) && (kind !== 'Invoice' || invoiceView === 'all' || (invoiceView === 'open' ? o.stage !== 'Completed' : o.stage === 'Completed')));
+  const showDue = kind === 'Invoice';
 
-  const kpis =
-    scope === 'all'
-      ? [
-          { label: 'Total orders', value: String(ofHead.length) },
-          { label: 'In production', value: String(ofHead.filter((o) => o.stage === 'In Production').length) },
-          { label: 'Pending balance', value: fmtKsh(ofHead.reduce((a, o) => a + o.totals.balanceDue, 0)) },
-          { label: 'Overdue invoices', value: String(ofHead.filter((o) => o.overdue).length) },
-        ]
-      : [];
+  const kpis = viewAll
+    ? [
+        { label: 'Total orders', value: String(ofHead.length) },
+        { label: 'In production', value: String(ofHead.filter((o) => o.stage === 'In Production').length) },
+        { label: 'Pending balance', value: fmtKsh(ofHead.reduce((a, o) => a + o.totals.balanceDue, 0)) },
+        { label: 'Overdue invoices', value: String(ofHead.filter((o) => o.overdue).length) },
+      ]
+    : [];
 
   return (
     <div>
@@ -106,8 +99,7 @@ export default function Orders({ scope }: Props) {
         </div>
       )}
 
-      {scope === 'mine' && (
-        <>
+      <>
           <div className="seg" role="radiogroup" style={{ marginBottom: 'var(--space-2)', maxWidth: 480 }}>
             {(
               [
@@ -143,10 +135,9 @@ export default function Orders({ scope }: Props) {
             {kind === 'Invoice' && 'An invoice stays an invoice once it is paid — it is tracked through production to completion, with its payment status shown beside it.'}
             {kind === 'Quote' && 'Quotations are offers not yet accepted — a deposit payment turns one into an invoice.'}
           </p>
-        </>
-      )}
+      </>
 
-      {scope === 'all' && (
+      {viewAll && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
             {kpis.map((k) => (
@@ -168,12 +159,6 @@ export default function Orders({ scope }: Props) {
                   {s.name}
                 </option>
               ))}
-            </select>
-            <select className="input" style={{ width: 'auto' }} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="all">All statuses</option>
-              <option value="Quote">Quote</option>
-              <option value="Invoice">Invoice</option>
-              <option value="Order">Order</option>
             </select>
           </div>
         </>
@@ -225,7 +210,7 @@ export default function Orders({ scope }: Props) {
         </tbody>
       </table>
       {!loading && shown.length === 0 && (
-        <p className="note">{scope === 'mine' ? `No ${kind === 'all' ? 'orders' : kind === 'Invoice' ? 'invoices' : 'quotations'} here yet.` : 'No orders here yet.'}</p>
+        <p className="note">No {kind === 'all' ? 'orders' : kind === 'Invoice' ? 'invoices' : 'quotations'} here yet.</p>
       )}
 
       {detailId && (

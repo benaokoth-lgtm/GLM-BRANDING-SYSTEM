@@ -58,22 +58,16 @@ export default function App() {
             </RequirePermission>
           }
         />
-        <Route
-          path="/orders/mine"
-          element={
-            <RequirePermission keys={['canCaptureOrders']}>
-              <Orders scope="mine" />
-            </RequirePermission>
-          }
-        />
+        {/* One Orders screen: the whole list for people who may see every order, a member of staff's own orders otherwise. */}
         <Route
           path="/orders/all"
           element={
-            <RequirePermission keys={['canViewAllOrders']}>
-              <Orders scope="all" />
+            <RequirePermission keys={['canViewAllOrders', 'canCaptureOrders']}>
+              <Orders />
             </RequirePermission>
           }
         />
+        <Route path="/orders/mine" element={<Navigate to="/orders/all" replace />} />
         <Route
           path="/payments"
           element={

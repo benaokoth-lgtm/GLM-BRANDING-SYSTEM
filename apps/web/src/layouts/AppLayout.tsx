@@ -26,15 +26,13 @@ function buildTabs(user: CurrentUser): [string, string][] {
   if (isAdmin || p.canAccessDtf || p.canManageDtf) {
     tabs.push(['/orders/new/film', 'Film Order'], ['/orders/new/artwork', 'Artwork Order']);
   }
-  if (isAdmin || p.canCaptureOrders) {
-    tabs.push(['/orders/mine', 'My Orders']);
-  }
+  if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
+  else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team.
   if (isAdmin || p.canCaptureOrders || p.canManageCommission) tabs.push(['/commission', 'Commission']);
   // Once captured, orders are managed in Production and then inspected in Quality Control.
   if (isAdmin || p.canAccessProduction || p.canManageProduction) tabs.push(['/production', 'Production']);
   if (isAdmin || p.canAccessQuality) tabs.push(['/quality', 'Quality Control']);
-  if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   if (!hasFinance && (isAdmin || p.canManagePayments)) tabs.push(['/payments', 'Payments']);
   if (isAdmin) tabs.push(['/master-data', 'Master Data']);
   if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);

@@ -137,7 +137,7 @@ export default function NewFilmOrder() {
           unitPrice={c.price}
           client={f.client}
           onClose={() => setShowOrderDialog(false)}
-          onDone={() => navigate('/orders/mine')}
+          onDone={() => navigate('/orders/all')}
         />
       )}
     </div>

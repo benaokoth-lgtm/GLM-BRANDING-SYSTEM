@@ -10,10 +10,15 @@ import {
   PETTY_CASH_METHOD,
   ACCT,
   VAT_RATE,
+  cleanKraPin,
+  cleanNationalId,
+  cleanShifNumber,
   defaultExpenseVatApplicable,
+  payeBand,
   round2,
   splitGross,
 } from '@glm/shared';
+import { ensureStaffNamesOnce } from '../staffNames';
 import type { LineItemInput } from '@glm/shared';
 import { ensureChartOnce, accountIdForNewExpenseHead } from '../accounting/chart';
 import { loadLedger, pettyCashBalance, pettyCashShortfall } from '../accounting/ledger';
@@ -61,6 +66,9 @@ financeRouter.get('/payroll', async (req, res) => {
       date: e.date,
       staffId: e.staffId,
       name: e.staff.name,
+      nationalId: e.staff.nationalId,
+      kraPin: e.staff.kraPin,
+      shifNumber: e.staff.shifNumber,
       employeeType: e.employeeType,
       department: e.department,
       daysWorked: e.daysWorked,
@@ -86,6 +94,92 @@ financeRouter.get('/payroll', async (req, res) => {
 
   res.json({ fromDate: range.from, toDate: range.to, rows, ...totals });
 });
+
+// ── Employee details (Compliance → Employees) ─────────────────────────────
+// The identifiers payroll and the P9 need for each person: National ID, KRA PIN and SHIF registration number. Optional, tidied on the way in
+// (KRA PIN in capitals, spaces removed), and National ID / KRA PIN cannot belong to two people.
+financeRouter.get('/employees', async (_req, res) => {
+  await ensureStaffNamesOnce();
+  const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber })));
+});
+
+const employeeSchema = z.object({
+  nationalId: z.string().max(40).optional().default(''),
+  kraPin: z.string().max(40).optional().default(''),
+  shifNumber: z.string().max(60).optional().default(''),
+});
+
+financeRouter.put('/employees/:id', async (req, res) => {
+  const parsed = employeeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const id = Number(req.params.id);
+  if (!(await prisma.user.findUnique({ where: { id } }))) return res.status(404).json({ error: 'Staff member not found' });
+  const nationalId = cleanNationalId(parsed.data.nationalId);
+  const kraPin = cleanKraPin(parsed.data.kraPin);
+  const shif = cleanShifNumber(parsed.data.shifNumber);
+  const problem = nationalId.error ?? kraPin.error ?? shif.error;
+  if (problem) return res.status(400).json({ error: problem });
+  if (nationalId.value) {
+    const other = await prisma.user.findFirst({ where: { nationalId: nationalId.value, id: { not: id } } });
+    if (other) return res.status(400).json({ error: `That National ID number is already recorded for ${other.name}` });
+  }
+  if (kraPin.value) {
+    const other = await prisma.user.findFirst({ where: { kraPin: kraPin.value, id: { not: id } } });
+    if (other) return res.status(400).json({ error: `That KRA PIN is already recorded for ${other.name}` });
+  }
+  const u = await prisma.user.update({ where: { id }, data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value } });
+  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber });
+});
+
+// ── P9 (tax deduction card) ───────────────────────────────────────────────
+// A year's pay and tax for each employee, month by month, worked out exactly as the payroll worked it out when the pay was logged: PAYE on the
+// gross pay by the monthly bands, less the personal relief. Casuals carry no PAYE, so they have no P9.
+financeRouter.get('/p9', async (req, res) => {
+  const year = String(req.query.year || '');
+  if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: 'year (YYYY) is required' });
+  const staffId = req.query.staffId ? Number(req.query.staffId) : null;
+  const entries = await prisma.payrollEntry.findMany({
+    where: { employeeType: 'Employee', date: { gte: `${year}-01-01`, lte: `${year}-12-31` }, ...(staffId ? { staffId } : {}) },
+    include: { staff: true },
+    orderBy: { date: 'asc' },
+  });
+  const setting = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+
+  type Month = { month: number; gross: number; nssf: number; shif: number; housingLevy: number; taxable: number; taxCharged: number; relief: number; paye: number };
+  const blank = (m: number): Month => ({ month: m, gross: 0, nssf: 0, shif: 0, housingLevy: 0, taxable: 0, taxCharged: 0, relief: 0, paye: 0 });
+  const people = new Map<number, { staff: (typeof entries)[number]['staff']; months: Month[] }>();
+  for (const e of entries) {
+    let p = people.get(e.staffId);
+    if (!p) people.set(e.staffId, (p = { staff: e.staff, months: Array.from({ length: 12 }, (_, i) => blank(i + 1)) }));
+    const m = p.months[Number(e.date.slice(5, 7)) - 1]!;
+    const pay = computePay(e.grossPay, 'Employee');
+    const taxCharged = payeBand(e.grossPay);
+    m.gross += pay.grossPay;
+    m.nssf += pay.nssf;
+    m.shif += pay.shif;
+    m.housingLevy += pay.housingLevy;
+    m.taxable += e.grossPay;
+    m.taxCharged += taxCharged;
+    m.relief += taxCharged - pay.paye;
+    m.paye += pay.paye;
+  }
+  const rounded = (m: Month): Month => ({ month: m.month, gross: round2(m.gross), nssf: round2(m.nssf), shif: round2(m.shif), housingLevy: round2(m.housingLevy), taxable: round2(m.taxable), taxCharged: round2(m.taxCharged), relief: round2(m.relief), paye: round2(m.paye) });
+  const employees = [...people.values()]
+    .map((p) => {
+      const months = p.months.map(rounded);
+      const totals = months.reduce((a, m) => ({ gross: a.gross + m.gross, nssf: a.nssf + m.nssf, shif: a.shif + m.shif, housingLevy: a.housingLevy + m.housingLevy, taxable: a.taxable + m.taxable, taxCharged: a.taxCharged + m.taxCharged, relief: a.relief + m.relief, paye: a.paye + m.paye }), { gross: 0, nssf: 0, shif: 0, housingLevy: 0, taxable: 0, taxCharged: 0, relief: 0, paye: 0 });
+      return {
+        staff: { id: p.staff.id, name: p.staff.name, firstName: p.staff.firstName, middleName: p.staff.middleName, lastName: p.staff.lastName, nationalId: p.staff.nationalId, kraPin: p.staff.kraPin, shifNumber: p.staff.shifNumber },
+        months,
+        totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round2(v)])),
+      };
+    })
+    .sort((a, b) => a.staff.name.localeCompare(b.staff.name));
+
+  res.json({ year, employer: { name: setting.legalName?.trim() || setting.companyName, tradingName: setting.companyName, kraPin: setting.kraPin || null, address: setting.companyAddress }, employees });
+});
+
 
 // Employees are paid a fixed monthly salary (grossPay entered directly) —
 // no daysWorked/rate. Casuals stay day-rate (grossPay = daysWorked * rate).

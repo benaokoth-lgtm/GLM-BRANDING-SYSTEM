@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import crypto from 'crypto';
-import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, composeName } from '@glm/shared';
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, cleanKraPin, composeName } from '@glm/shared';
 import { ensureStaffNamesOnce } from '../staffNames';
 import { canSeeCosts } from '../costs';
 import { defaultBusinessHeadName } from '@glm/shared';
@@ -481,6 +481,7 @@ masterDataRouter.put('/commission-switch', requireRole('Admin'), async (req, res
 
 // ── Discount Rules ───────────────────────────────────────────────────────
 function serializeSettings(settings: {
+  kraPin: string;
   maxDiscountPct: number;
   companyName: string;
   legalName: string;
@@ -490,6 +491,7 @@ function serializeSettings(settings: {
   logoDataUrl: string | null;
 }) {
   return {
+    kraPin: settings.kraPin,
     maxDiscountPct: settings.maxDiscountPct,
     companyName: settings.companyName,
     legalName: settings.legalName,
@@ -518,6 +520,8 @@ const settingsSchema = z
     companyAddress: z.string().max(500).optional(),
     companyPhone: z.string().max(50).optional(),
     companyEmail: z.string().max(200).optional(),
+    // The company's KRA PIN (employer's PIN on the payroll and P9). Blank clears it.
+    kraPin: z.string().max(40).optional(),
     // A data: URL logo image, capped well under the 5mb JSON body limit; null clears it.
     logoDataUrl: z.string().max(2_000_000).nullable().optional(),
   })
@@ -526,6 +530,12 @@ const settingsSchema = z
 masterDataRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1, ...parsed.data }, update: parsed.data });
+  const data = { ...parsed.data };
+  if (data.kraPin !== undefined) {
+    const pin = cleanKraPin(data.kraPin);
+    if (pin.error) return res.status(400).json({ error: pin.error });
+    data.kraPin = pin.value ?? '';
+  }
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
   res.json(serializeSettings(settings));
 });

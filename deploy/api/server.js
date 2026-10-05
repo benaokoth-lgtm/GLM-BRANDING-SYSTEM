@@ -44475,6 +44475,26 @@ function splitName(full) {
   return { firstName: words[0], middleName: words.slice(1, -1).join(" "), lastName: words[words.length - 1] };
 }
 
+// packages/shared/src/employee.ts
+function cleanKraPin(input) {
+  const v = (input ?? "").replace(/\s+/g, "").toUpperCase();
+  if (!v) return { value: null };
+  if (!/^[A-Z]\d{9}[A-Z]$/.test(v)) return { value: null, error: "A KRA PIN is a letter, nine digits and a letter, like A123456789B" };
+  return { value: v };
+}
+function cleanNationalId(input) {
+  const v = (input ?? "").replace(/[\s.-]+/g, "");
+  if (!v) return { value: null };
+  if (!/^\d{7,8}$/.test(v)) return { value: null, error: "A National ID number is 7 or 8 digits" };
+  return { value: v };
+}
+function cleanShifNumber(input) {
+  const v = (input ?? "").trim().replace(/\s+/g, "").toUpperCase();
+  if (!v) return { value: null };
+  if (!/^[A-Z0-9][A-Z0-9/-]{3,24}$/.test(v)) return { value: null, error: "A SHIF number has 4 to 25 letters, digits, dashes or slashes" };
+  return { value: v };
+}
+
 // apps/api/src/permissions.ts
 var ALL_TRUE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
 var ALL_FALSE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
@@ -49332,6 +49352,7 @@ masterDataRouter.put("/commission-switch", requireRole("Admin"), async (req, res
 });
 function serializeSettings(settings) {
   return {
+    kraPin: settings.kraPin,
     maxDiscountPct: settings.maxDiscountPct,
     companyName: settings.companyName,
     legalName: settings.legalName,
@@ -49355,13 +49376,21 @@ var settingsSchema = external_exports.object({
   companyAddress: external_exports.string().max(500).optional(),
   companyPhone: external_exports.string().max(50).optional(),
   companyEmail: external_exports.string().max(200).optional(),
+  // The company's KRA PIN (employer's PIN on the payroll and P9). Blank clears it.
+  kraPin: external_exports.string().max(40).optional(),
   // A data: URL logo image, capped well under the 5mb JSON body limit; null clears it.
   logoDataUrl: external_exports.string().max(2e6).nullable().optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1, ...parsed.data }, update: parsed.data });
+  const data = { ...parsed.data };
+  if (data.kraPin !== void 0) {
+    const pin = cleanKraPin(data.kraPin);
+    if (pin.error) return res.status(400).json({ error: pin.error });
+    data.kraPin = pin.value ?? "";
+  }
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
   res.json(serializeSettings(settings));
 });
 
@@ -50331,6 +50360,9 @@ financeRouter.get("/payroll", async (req, res) => {
       date: e.date,
       staffId: e.staffId,
       name: e.staff.name,
+      nationalId: e.staff.nationalId,
+      kraPin: e.staff.kraPin,
+      shifNumber: e.staff.shifNumber,
       employeeType: e.employeeType,
       department: e.department,
       daysWorked: e.daysWorked,
@@ -50353,6 +50385,76 @@ financeRouter.get("/payroll", async (req, res) => {
     { grossPayroll: 0, totalStatutory: 0, netPayroll: 0, totalPaye: 0, totalNssf: 0, totalShif: 0, totalHousingLevy: 0 }
   );
   res.json({ fromDate: range2.from, toDate: range2.to, rows, ...totals });
+});
+financeRouter.get("/employees", async (_req, res) => {
+  await ensureStaffNamesOnce();
+  const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber })));
+});
+var employeeSchema = external_exports.object({
+  nationalId: external_exports.string().max(40).optional().default(""),
+  kraPin: external_exports.string().max(40).optional().default(""),
+  shifNumber: external_exports.string().max(60).optional().default("")
+});
+financeRouter.put("/employees/:id", async (req, res) => {
+  const parsed = employeeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const id = Number(req.params.id);
+  if (!await prisma.user.findUnique({ where: { id } })) return res.status(404).json({ error: "Staff member not found" });
+  const nationalId = cleanNationalId(parsed.data.nationalId);
+  const kraPin = cleanKraPin(parsed.data.kraPin);
+  const shif = cleanShifNumber(parsed.data.shifNumber);
+  const problem = nationalId.error ?? kraPin.error ?? shif.error;
+  if (problem) return res.status(400).json({ error: problem });
+  if (nationalId.value) {
+    const other = await prisma.user.findFirst({ where: { nationalId: nationalId.value, id: { not: id } } });
+    if (other) return res.status(400).json({ error: `That National ID number is already recorded for ${other.name}` });
+  }
+  if (kraPin.value) {
+    const other = await prisma.user.findFirst({ where: { kraPin: kraPin.value, id: { not: id } } });
+    if (other) return res.status(400).json({ error: `That KRA PIN is already recorded for ${other.name}` });
+  }
+  const u = await prisma.user.update({ where: { id }, data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value } });
+  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber });
+});
+financeRouter.get("/p9", async (req, res) => {
+  const year = String(req.query.year || "");
+  if (!/^\d{4}$/.test(year)) return res.status(400).json({ error: "year (YYYY) is required" });
+  const staffId = req.query.staffId ? Number(req.query.staffId) : null;
+  const entries = await prisma.payrollEntry.findMany({
+    where: { employeeType: "Employee", date: { gte: `${year}-01-01`, lte: `${year}-12-31` }, ...staffId ? { staffId } : {} },
+    include: { staff: true },
+    orderBy: { date: "asc" }
+  });
+  const setting = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  const blank = (m) => ({ month: m, gross: 0, nssf: 0, shif: 0, housingLevy: 0, taxable: 0, taxCharged: 0, relief: 0, paye: 0 });
+  const people = /* @__PURE__ */ new Map();
+  for (const e of entries) {
+    let p = people.get(e.staffId);
+    if (!p) people.set(e.staffId, p = { staff: e.staff, months: Array.from({ length: 12 }, (_, i) => blank(i + 1)) });
+    const m = p.months[Number(e.date.slice(5, 7)) - 1];
+    const pay = computePay(e.grossPay, "Employee");
+    const taxCharged = payeBand(e.grossPay);
+    m.gross += pay.grossPay;
+    m.nssf += pay.nssf;
+    m.shif += pay.shif;
+    m.housingLevy += pay.housingLevy;
+    m.taxable += e.grossPay;
+    m.taxCharged += taxCharged;
+    m.relief += taxCharged - pay.paye;
+    m.paye += pay.paye;
+  }
+  const rounded = (m) => ({ month: m.month, gross: round2(m.gross), nssf: round2(m.nssf), shif: round2(m.shif), housingLevy: round2(m.housingLevy), taxable: round2(m.taxable), taxCharged: round2(m.taxCharged), relief: round2(m.relief), paye: round2(m.paye) });
+  const employees = [...people.values()].map((p) => {
+    const months = p.months.map(rounded);
+    const totals = months.reduce((a2, m) => ({ gross: a2.gross + m.gross, nssf: a2.nssf + m.nssf, shif: a2.shif + m.shif, housingLevy: a2.housingLevy + m.housingLevy, taxable: a2.taxable + m.taxable, taxCharged: a2.taxCharged + m.taxCharged, relief: a2.relief + m.relief, paye: a2.paye + m.paye }), { gross: 0, nssf: 0, shif: 0, housingLevy: 0, taxable: 0, taxCharged: 0, relief: 0, paye: 0 });
+    return {
+      staff: { id: p.staff.id, name: p.staff.name, firstName: p.staff.firstName, middleName: p.staff.middleName, lastName: p.staff.lastName, nationalId: p.staff.nationalId, kraPin: p.staff.kraPin, shifNumber: p.staff.shifNumber },
+      months,
+      totals: Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round2(v)]))
+    };
+  }).sort((a2, b) => a2.staff.name.localeCompare(b.staff.name));
+  res.json({ year, employer: { name: setting.legalName?.trim() || setting.companyName, tradingName: setting.companyName, kraPin: setting.kraPin || null, address: setting.companyAddress }, employees });
 });
 var payrollSchema = external_exports.discriminatedUnion("employeeType", [
   external_exports.object({

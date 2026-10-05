@@ -1,5 +1,6 @@
 import { fmtDate, fmtKsh, splitVatInclusive } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
+import { printWalkinReceipt } from './printTicket';
 
 // Invoice / quotation layout: a big navy title with the logo opposite, the company under it, bill-to and document details in
 // columns, a table ruled in orange-red, a large TOTAL, and a script "Thank you" beside the terms at the foot of the page.
@@ -41,8 +42,9 @@ function lineItemsRows(order: OrderDetail): string {
 // Pure HTML string builder — no `window`/DOM dependency — so the exact same
 // markup used for the print popup can also be sent as an email body (see
 // "Send email" in OrderDetailDialog.tsx) without duplicating the template.
-export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanySettings): string {
-  const isInvoice = order.status === 'Invoice';
+export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanySettings, copyLabel?: string): string {
+  // Anything that is not a quotation is an invoice (an older corporate invoice that was paid in full has the status "Order").
+  const isInvoice = order.status !== 'Quote';
   const docTitle = isInvoice ? 'INVOICE' : 'QUOTATION';
   const isPaid = isInvoice && order.totals.balanceDue <= 0;
   const companyName = esc(company.companyName || 'GLM Branding');
@@ -138,7 +140,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
   ${isPaid ? '<div class="watermark">PAID</div>' : ''}
   <div class="sheet">
     <div class="top">
-      <h1>${docTitle}</h1>
+      <div><h1>${docTitle}</h1>${copyLabel ? `<div class="muted" style="margin-top:4px">${esc(copyLabel)}</div>` : ''}</div>
       ${logo}
     </div>
 
@@ -153,7 +155,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
         <h2>BILL TO</h2>
         <div class="who">
           ${esc(client?.name || order.customerName || '—')}
-          ${client?.phone ? `<br/>${esc(client.phone)}` : ''}
+          ${client?.phone || order.phone ? `<br/>${esc(client?.phone || order.phone || '')}` : ''}
           ${client?.email ? `<br/>${esc(client.email)}` : ''}
         </div>
       </div>
@@ -218,9 +220,9 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
  * window.open in the click handler) so browser popup blockers don't kill it
  * once we're past an await elsewhere in the caller.
  */
-export function printCorporateDocument(w: Window | null, order: OrderDetail, company: CompanySettings) {
+export function printCorporateDocument(w: Window | null, order: OrderDetail, company: CompanySettings, copyLabel?: string) {
   if (!w) return;
-  const html = buildCorporateDocumentHtml(order, company);
+  const html = buildCorporateDocumentHtml(order, company, copyLabel);
   w.document.open();
   w.document.write(html);
   w.document.close();
@@ -231,4 +233,13 @@ export function printCorporateDocument(w: Window | null, order: OrderDetail, com
       w.close();
     });
   };
+}
+
+/**
+ * Prints an order the way it should look on paper: a walk-in order (a sale at the counter, paid or not yet) goes to the thermal receipt printer; a
+ * corporate invoice or quotation is a full A4 document.
+ */
+export function printOrderDocument(w: Window | null, order: OrderDetail, company: CompanySettings, copyLabel?: string) {
+  if (order.kind === 'walkin') printWalkinReceipt(w, order, company, copyLabel);
+  else printCorporateDocument(w, order, company, copyLabel);
 }

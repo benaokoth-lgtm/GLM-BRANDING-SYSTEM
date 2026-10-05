@@ -3,8 +3,7 @@ import { STAGES, fmtDate, fmtKsh } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
 import { api } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
-import { printWalkinReceipt } from '../utils/printTicket';
-import { buildCorporateDocumentHtml, printCorporateDocument } from '../utils/printInvoice';
+import { buildCorporateDocumentHtml, printOrderDocument } from '../utils/printInvoice';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
 import { useAuth } from '../state/AuthContext';
@@ -98,11 +97,8 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     // company profile (name/address/logo) has loaded.
     const w = window.open('', '_blank');
     const co = company ?? (await api.get<CompanySettings>('/master-data/settings'));
-    if (detail.kind === 'walkin') {
-      printWalkinReceipt(w, detail, co);
-    } else {
-      printCorporateDocument(w, detail, co);
-    }
+    // Walk-in orders go to the thermal receipt printer; corporate invoices and quotations print on A4.
+    printOrderDocument(w, detail, co);
   }
 
   async function sendEmail() {

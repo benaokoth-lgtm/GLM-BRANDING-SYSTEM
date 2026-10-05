@@ -3,12 +3,13 @@ import { EMPLOYEE_TYPES, PAYROLL_PAYMENT_SOURCES, fmtDate, fmtKsh, todayStr } fr
 import type { EmployeeType, PayrollPaymentSource } from '@glm/shared';
 import { useSubTab } from '../state/SubNavContext';
 import { api } from '../api/client';
-import type { DeletableRecordType, DeletionRequest, PayrollData, VatData } from '../api/models';
+import type { CompanySettings, DeletableRecordType, DeletionRequest, EmployeeRow, P9Data, PayrollData, PayrollRow, VatData } from '../api/models';
+import { buildP9Html, buildPayrollRegisterHtml, buildPayslipsHtml, printHtml } from '../utils/printPayroll';
 import { useCatalog } from '../hooks/useCatalog';
 import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
 
-type ComplianceTab = 'vat' | 'nssf' | 'shif' | 'payroll';
+type ComplianceTab = 'vat' | 'nssf' | 'shif' | 'payroll' | 'employees' | 'p9';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [ComplianceTab, string][] = [
@@ -16,6 +17,8 @@ const TABS: [ComplianceTab, string][] = [
   ['nssf', 'NSSF'],
   ['shif', 'SHIF'],
   ['payroll', 'Payroll'],
+  ['employees', 'Employees'],
+  ['p9', 'P9'],
 ];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
@@ -48,6 +51,65 @@ export default function Compliance() {
   const [busy, setBusy] = useState(false);
 
   const staffOnly = staff.filter((s) => s.role === 'Staff');
+
+  // Employee details (National ID, KRA PIN, SHIF number) and the P9 for a year.
+  const [employees, setEmployees] = useState<EmployeeRow[]>([]);
+  const [empDrafts, setEmpDrafts] = useState<Record<number, { nationalId: string; kraPin: string; shifNumber: string }>>({});
+  const [p9Year, setP9Year] = useState(todayStr().slice(0, 4));
+  const [p9, setP9] = useState<P9Data | null>(null);
+
+  function loadEmployees() {
+    api.get<EmployeeRow[]>('/finance/employees').then(setEmployees).catch((e) => setError(e instanceof Error ? e.message : 'Could not load the employees'));
+  }
+  function loadP9() {
+    if (!/^\d{4}$/.test(p9Year)) return;
+    api.get<P9Data>(`/finance/p9?year=${p9Year}`).then(setP9).catch((e) => setError(e instanceof Error ? e.message : 'Could not load the P9 figures'));
+  }
+  useEffect(() => {
+    if (tab === 'employees') loadEmployees();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+  useEffect(() => {
+    if (tab === 'p9') loadP9();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, p9Year]);
+
+  async function saveEmployee(id: number) {
+    const d = empDrafts[id];
+    if (!d) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await api.put(`/finance/employees/${id}`, d);
+      setEmpDrafts((x) => {
+        const { [id]: _drop, ...rest } = x;
+        return rest;
+      });
+      loadEmployees();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save the details');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Printing: the popup is opened first (synchronously, so it is not blocked), then filled once the company details have loaded.
+  async function printWith(build: (company: CompanySettings) => string) {
+    const w = window.open('', '_blank');
+    if (!w) return setError('Allow pop-ups for this site to print');
+    setError(null);
+    try {
+      const company = await api.get<CompanySettings>('/master-data/settings');
+      printHtml(w, build(company));
+    } catch (err) {
+      w.close();
+      setError(err instanceof Error ? err.message : 'Could not print');
+    }
+  }
+  const printRegister = () => payroll && printWith((c) => buildPayrollRegisterHtml(payroll, c));
+  const printPayslips = (rows: PayrollRow[]) => printWith((c) => buildPayslipsHtml(rows, c));
+  const printP9 = (staffId?: number) => p9 && printWith(() => buildP9Html(p9, staffId));
+
 
   const [newEntry, setNewEntry] = useState({
     date: today,
@@ -438,6 +500,163 @@ export default function Compliance() {
         </>
       )}
 
+      {tab === 'employees' && (
+        <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+            Employee details
+          </div>
+          <p className="note" style={{ marginTop: 0 }}>
+            The identifiers payroll and the P9 need for each person: National ID (7 or 8 digits), KRA PIN (a letter, nine digits and a letter, like A123456789B) and SHIF registration
+            number. They print on the payroll, payslips and P9. Names are kept under Master Data → Staff &amp; Users.
+          </p>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Role</th>
+                <th>National ID</th>
+                <th>KRA PIN</th>
+                <th>SHIF No.</th>
+                <th style={{ width: 150 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {employees.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-muted">
+                    No staff yet.
+                  </td>
+                </tr>
+              )}
+              {employees.map((u) => {
+                const draft = empDrafts[u.id];
+                const incomplete = !u.nationalId || !u.kraPin || !u.shifNumber;
+                return (
+                  <tr key={u.id}>
+                    <td>
+                      {u.name} {incomplete && !draft && <span className="tag tag-outline">incomplete</span>}
+                    </td>
+                    <td>
+                      <span className="tag tag-neutral">{u.role}</span>
+                    </td>
+                    {draft ? (
+                      <>
+                        <td>
+                          <input className="input" style={{ width: 130 }} inputMode="numeric" value={draft.nationalId} onChange={(e) => setEmpDrafts((x) => ({ ...x, [u.id]: { ...x[u.id]!, nationalId: e.target.value } }))} placeholder="12345678" autoFocus />
+                        </td>
+                        <td>
+                          <input className="input" style={{ width: 130 }} value={draft.kraPin} maxLength={11} onChange={(e) => setEmpDrafts((x) => ({ ...x, [u.id]: { ...x[u.id]!, kraPin: e.target.value.toUpperCase() } }))} placeholder="A123456789B" />
+                        </td>
+                        <td>
+                          <input className="input" style={{ width: 150 }} value={draft.shifNumber} onChange={(e) => setEmpDrafts((x) => ({ ...x, [u.id]: { ...x[u.id]!, shifNumber: e.target.value } }))} placeholder="SHIF number" />
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => saveEmployee(u.id)}>
+                              Save
+                            </button>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEmpDrafts((x) => { const { [u.id]: _d, ...rest } = x; return rest; })}>
+                              Cancel
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{u.nationalId ?? <span className="text-muted">—</span>}</td>
+                        <td>{u.kraPin ?? <span className="text-muted">—</span>}</td>
+                        <td>{u.shifNumber ?? <span className="text-muted">—</span>}</td>
+                        <td>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmpDrafts((x) => ({ ...x, [u.id]: { nationalId: u.nationalId ?? '', kraPin: u.kraPin ?? '', shifNumber: u.shifNumber ?? '' } }))}>
+                            {incomplete ? 'Add details' : 'Edit'}
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'p9' && (
+        <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'end', marginBottom: 'var(--space-2)' }}>
+            <div className="card-title">P9 — tax deduction card</div>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'end' }}>
+              <div className="field" style={{ margin: 0 }}>
+                <label>Year</label>
+                <input className="input" style={{ width: 100 }} inputMode="numeric" maxLength={4} value={p9Year} onChange={(e) => setP9Year(e.target.value.replace(/\D/g, ''))} />
+              </div>
+              <button type="button" className="btn btn-primary" disabled={!p9 || p9.employees.length === 0} onClick={() => printP9()}>
+                Print all P9s (A4)
+              </button>
+            </div>
+          </div>
+          <p className="note" style={{ marginTop: 0 }}>
+            One A4 card per employee for the year: gross pay, statutory deductions, tax charged, personal relief and PAYE, month by month — worked out exactly as the payroll did when the pay was
+            logged. Casual staff carry no PAYE, so they have no P9.
+          </p>
+          {p9 && !p9.employer.kraPin && (
+            <p className="note" style={{ color: '#a33' }}>
+              The company's KRA PIN is not recorded — add it under Master Data → Company Info; it prints as the employer's PIN.
+            </p>
+          )}
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>KRA PIN</th>
+                <th>National ID</th>
+                <th style={{ textAlign: 'right' }}>Gross pay for {p9Year}</th>
+                <th style={{ textAlign: 'right' }}>PAYE for {p9Year}</th>
+                <th style={{ width: 130 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {!p9 && (
+                <tr>
+                  <td colSpan={6} className="text-muted">
+                    Loading…
+                  </td>
+                </tr>
+              )}
+              {p9 && p9.employees.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-muted">
+                    No pay was logged for employees in {p9.year}.
+                  </td>
+                </tr>
+              )}
+              {p9?.employees.map((e) => (
+                <tr key={e.staff.id}>
+                  <td>{e.staff.name}</td>
+                  <td>{e.staff.kraPin ?? <span className="tag tag-accent">not recorded</span>}</td>
+                  <td>{e.staff.nationalId ?? <span className="tag tag-accent">not recorded</span>}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(e.totals.gross)}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(e.totals.paye)}</td>
+                  <td>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => printP9(e.staff.id)}>
+                      Print P9
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {tab === 'nssf' && (
         <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
           <i className="corner tl"></i>
@@ -532,6 +751,15 @@ export default function Compliance() {
 
       {tab === 'payroll' && (
         <>
+          <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-primary" disabled={busy} onClick={printRegister}>
+              Print payroll (A4)
+            </button>
+            <button type="button" className="btn btn-secondary" disabled={busy || payroll.rows.length === 0} onClick={() => printPayslips(payroll.rows)}>
+              Print all payslips ({payroll.rows.length})
+            </button>
+            <span className="note" style={{ alignSelf: 'center' }}>For the dates chosen above. Each pay entry also has its own Payslip button.</span>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-3)' }}>
             <div className="card blueprint elev-sm">
               <i className="corner tl"></i>
@@ -681,6 +909,9 @@ export default function Compliance() {
                         <td className="text-muted">{r.paymentSource}</td>
                         <td className="text-muted">{r.capturedByName || '—'}</td>
                         <td className="no-print">
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => printPayslips([r])}>
+                            Payslip
+                          </button>
                           {pendingDeletionFor('PayrollEntry', r.id) ? (
                             <span className="tag tag-outline" style={{ fontSize: 10 }}>
                               Deletion pending

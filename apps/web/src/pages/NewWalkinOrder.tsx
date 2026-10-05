@@ -6,7 +6,7 @@ import { useCatalog } from '../hooks/useCatalog';
 import LineItemsEditor, { isBlankLine, makeDefaultLine } from '../components/LineItemsEditor';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
-import { printWalkinReceipt } from '../utils/printTicket';
+import { printOrderDocument } from '../utils/printInvoice';
 import { costPayload } from '../utils/lineCosts';
 import SourcingField from '../components/SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../components/SplitPayments';
@@ -84,7 +84,7 @@ export default function NewWalkinOrder() {
         }),
         api.get<CompanySettings>('/master-data/settings'),
       ]);
-      printWalkinReceipt(printWindow, order, company);
+      printOrderDocument(printWindow, order, company); // walk-in orders print on the thermal receipt printer
       navigate('/orders/all');
     } catch (err) {
       printWindow?.close();

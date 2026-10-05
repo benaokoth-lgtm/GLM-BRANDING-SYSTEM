@@ -29,6 +29,11 @@ model User {
   firstName        String    @default("")
   middleName       String    @default("")
   lastName         String    @default("")
+  // Statutory identifiers for payroll and the P9 (Compliance → Employees). All optional; National ID and KRA PIN are unique among staff when given
+  // (checked by the API, not the database, so nothing about existing rows can block a deploy).
+  nationalId       String?
+  kraPin           String?
+  shifNumber       String?
   role             String // free-text role name — must match a Role.name row (validated at write time, not a DB-level FK so existing rows survive a role rename's own migration)
   pinHash          String
   failedLoginCount Int       @default(0)
@@ -196,6 +201,8 @@ model CorporateClient {
 
 model Setting {
   id             Int     @id @default(1)
+  // The company's KRA PIN — printed as the employer's PIN on the payroll and the P9.
+  kraPin         String  @default("")
   maxDiscountPct Float   @default(15)
   nextWalkinNo   Int     @default(1001)
   nextCorpNo     Int     @default(2001)

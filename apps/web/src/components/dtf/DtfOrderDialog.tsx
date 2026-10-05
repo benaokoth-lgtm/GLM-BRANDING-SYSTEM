@@ -3,7 +3,7 @@ import { HEAT_PRESS_FEE_OPTIONS, PAYMENT_METHODS, fmtKsh, isNamedClient } from '
 import type { PaymentMethod } from '@glm/shared';
 import { api } from '../../api/client';
 import { useCatalog } from '../../hooks/useCatalog';
-import { printWalkinReceipt } from '../../utils/printTicket';
+import { printOrderDocument } from '../../utils/printInvoice';
 import type { CompanySettings, OrderDetail } from '../../api/models';
 import { Corners, Field } from './shared';
 import SourcingField from '../SourcingField';
@@ -104,8 +104,8 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
         setSentFor(order.orderNo);
         return;
       }
-      printWalkinReceipt(customerWin, order, company);
-      printWalkinReceipt(shopWin, order, company, 'Duplicate copy');
+      printOrderDocument(customerWin, order, company);
+      printOrderDocument(shopWin, order, company, 'Duplicate copy');
       onDone();
     } catch (err) {
       customerWin?.close();

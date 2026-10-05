@@ -47,6 +47,8 @@ export interface CompanySettings {
   companyAddress: string;
   companyPhone: string;
   companyEmail: string;
+  /** The company's KRA PIN — the employer's PIN on the payroll and P9. */
+  kraPin?: string;
   logoDataUrl: string | null;
 }
 
@@ -172,6 +174,9 @@ export interface PayrollRow {
   staffId: number;
   name: string;
   employeeType: 'Employee' | 'Casual';
+  nationalId?: string | null;
+  kraPin?: string | null;
+  shifNumber?: string | null;
   department: string;
   daysWorked: number | null;
   rate: number | null;
@@ -184,6 +189,37 @@ export interface PayrollRow {
   totalDeductions: number;
   netPay: number;
   capturedByName: string;
+}
+
+/** An employee's statutory identifiers (Compliance → Employees). */
+export interface EmployeeRow {
+  id: number;
+  name: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  role: string;
+  nationalId: string | null;
+  kraPin: string | null;
+  shifNumber: string | null;
+}
+
+export interface P9Month {
+  month: number;
+  gross: number;
+  nssf: number;
+  shif: number;
+  housingLevy: number;
+  taxable: number;
+  taxCharged: number;
+  relief: number;
+  paye: number;
+}
+
+export interface P9Data {
+  year: string;
+  employer: { name: string; tradingName: string; kraPin: string | null; address: string };
+  employees: { staff: { id: number; name: string; firstName: string; middleName: string; lastName: string; nationalId: string | null; kraPin: string | null; shifNumber: string | null }; months: P9Month[]; totals: Omit<P9Month, 'month'> }[];
 }
 
 export interface PayrollData {

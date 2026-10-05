@@ -118,6 +118,7 @@ export default function MasterData() {
   const [legalName, setLegalName] = useState<string | null>(null);
   const [companyAddress, setCompanyAddress] = useState<string | null>(null);
   const [companyPhone, setCompanyPhone] = useState<string | null>(null);
+  const [companyKraPin, setCompanyKraPin] = useState<string | null>(null);
   const [companyEmail, setCompanyEmail] = useState<string | null>(null);
   const [logoDataUrl, setLogoDataUrl] = useState<string | null | undefined>(undefined);
   const [savingCompany, setSavingCompany] = useState(false);
@@ -128,6 +129,7 @@ export default function MasterData() {
   const legalNameValue = legalName ?? catalog.settings.legalName;
   const companyAddressValue = companyAddress ?? catalog.settings.companyAddress;
   const companyPhoneValue = companyPhone ?? catalog.settings.companyPhone;
+  const companyKraPinValue = companyKraPin ?? catalog.settings.kraPin ?? '';
   const companyEmailValue = companyEmail ?? catalog.settings.companyEmail;
   const logoValue = logoDataUrl !== undefined ? logoDataUrl : catalog.settings.logoDataUrl;
 
@@ -441,6 +443,7 @@ export default function MasterData() {
         legalName: legalNameValue.trim(),
         companyAddress: companyAddressValue,
         companyPhone: companyPhoneValue,
+        kraPin: companyKraPinValue.trim(),
         companyEmail: companyEmailValue,
         logoDataUrl: logoValue,
       });
@@ -1027,6 +1030,11 @@ export default function MasterData() {
               <div className="field">
                 <label>Phone</label>
                 <input className="input" value={companyPhoneValue} onChange={(e) => setCompanyPhone(e.target.value)} placeholder="07xx xxx xxx" />
+              </div>
+              <div className="field">
+                <label>KRA PIN</label>
+                <input className="input" value={companyKraPinValue} onChange={(e) => setCompanyKraPin(e.target.value.toUpperCase())} placeholder="P051234567Z" maxLength={11} />
+                <p className="note" style={{ marginTop: 'var(--space-1)' }}>The company's PIN — printed as the employer's PIN on the payroll and the P9.</p>
               </div>
               <div className="field">
                 <label>Email</label>

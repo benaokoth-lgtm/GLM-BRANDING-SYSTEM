@@ -45,7 +45,10 @@ function lineItemsRows(order: OrderDetail): string {
 export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanySettings, copyLabel?: string): string {
   // Anything that is not a quotation is an invoice (an older corporate invoice that was paid in full has the status "Order").
   const isInvoice = order.status !== 'Quote';
-  const docTitle = isInvoice ? 'INVOICE' : 'QUOTATION';
+  // A walk-in order paid in full, sent by email, is a receipt; everything else that is not a quotation is an invoice.
+  const isReceipt = order.kind === 'walkin' && order.status === 'Order';
+  const docTitle = isReceipt ? 'RECEIPT' : isInvoice ? 'INVOICE' : 'QUOTATION';
+  const docWord = isReceipt ? 'RECEIPT' : isInvoice ? 'INVOICE' : 'QUOTE';
   const isPaid = isInvoice && order.totals.balanceDue <= 0;
   const companyName = esc(company.companyName || '');
   const logo = company.logoDataUrl ? `<img class="logo" src="${company.logoDataUrl}" alt="${companyName}" />` : '';
@@ -174,8 +177,8 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
         </div>
       </div>
       <div class="meta">
-        <span class="k">${isInvoice ? 'INVOICE #' : 'QUOTE #'}</span><span class="v">${esc(order.orderNo)}</span>
-        <span class="k">${isInvoice ? 'INVOICE DATE' : 'QUOTE DATE'}</span><span class="v">${fmtDate(order.createdDate)}</span>
+        <span class="k">${docWord} #</span><span class="v">${esc(order.orderNo)}</span>
+        <span class="k">${docWord} DATE</span><span class="v">${fmtDate(order.createdDate)}</span>
         ${isInvoice && order.dueDate ? `<span class="k">DUE DATE</span><span class="v">${fmtDate(order.dueDate)}</span>` : ''}
       </div>
     </div>

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { STAGES, fmtDate, fmtKsh } from '@glm/shared';
+import { STAGES, fmtDate, fmtKsh, whatsappNumber } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
 import { api } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { buildCorporateDocumentHtml, printOrderDocument } from '../utils/printInvoice';
+import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
 import { useAuth } from '../state/AuthContext';
@@ -27,10 +28,13 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
   const [error, setError] = useState<string | null>(null);
   const [confirmCredit, setConfirmCredit] = useState(false);
 
+  // Sending the document to the customer: by email (the A4 document) or WhatsApp (a message to their number). One panel, opened from the buttons
+  // beside Print; the recipient is filled in from the order when we have it and can always be typed.
+  const [sharePanel, setSharePanel] = useState<'email' | 'whatsapp' | null>(null);
   const [emailTo, setEmailTo] = useState('');
+  const [waTo, setWaTo] = useState('');
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
-  const [showEmailField, setShowEmailField] = useState(false);
 
   function load() {
     api.get<OrderDetail>(`/orders/${orderId}`).then(setDetail).catch((err) => setError(err.message));
@@ -42,7 +46,10 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
   }, []);
 
   useEffect(() => {
-    if (detail?.kind === 'corporate' && detail.corporateClient?.email) setEmailTo(detail.corporateClient.email);
+    if (!detail) return;
+    const c = orderContact(detail);
+    setEmailTo(c.email);
+    setWaTo(c.phone);
   }, [detail]);
 
   async function recordPayment() {
@@ -109,8 +116,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     setEmailSent(false);
     try {
       const html = buildCorporateDocumentHtml(detail, company);
-      const docLabel = detail.status === 'Quote' ? 'Quotation' : 'Invoice';
-      await api.post('/email/send', { to: emailTo.trim(), subject: `${docLabel} ${detail.orderNo} — ${company.companyName}`, html });
+      await api.post('/email/send', { to: emailTo.trim(), subject: `${documentTitleCase(detail)} ${detail.orderNo} — ${company.companyName}`, html });
       setEmailSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send email');
@@ -121,11 +127,10 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
 
   function sendWhatsapp() {
     if (!detail) return;
-    const phone = (detail.corporateClient?.phone || '').replace(/[^\d]/g, '');
-    const docLabel = detail.status === 'Quote' ? 'quotation' : 'invoice';
-    const message = `Hi, here is your ${docLabel} ${detail.orderNo} from ${company?.companyName ?? ''} — total ${fmtKsh(detail.totals.grandTotal)}${detail.status === 'Invoice' ? `, balance due ${fmtKsh(detail.totals.balanceDue)}` : ''}. We'll send the document itself separately.`;
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+    const number = whatsappNumber(waTo);
+    if (!number) return setError('Enter the customer\'s WhatsApp number, like 0797 785 033');
+    setError(null);
+    window.open(`https://wa.me/${number}?text=${encodeURIComponent(whatsappMessage(detail, company))}`, '_blank');
   }
 
   if (!detail) {
@@ -398,55 +403,49 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             </div>
           )}
 
-          {detail.kind === 'corporate' && (
-            <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)' }}>
-              <div
-                style={{
-                  fontFamily: 'var(--font-body)',
-                  fontSize: 11,
-                  letterSpacing: '0.1em',
-                  textTransform: 'uppercase',
-                  opacity: 0.65,
-                  marginBottom: 'var(--space-2)',
-                }}
-              >
-                Send this {detail.status === 'Quote' ? 'quotation' : 'invoice'}
-              </div>
-              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-                {showEmailField ? (
-                  <>
-                    <input className="input" style={{ maxWidth: 240 }} value={emailTo} onChange={(e) => setEmailTo(e.target.value)} placeholder="client@example.com" />
-                    <button type="button" className="btn btn-secondary" onClick={sendEmail} disabled={emailBusy}>
-                      Send
-                    </button>
-                    {emailSent && <span className="tag tag-accent">Sent</span>}
-                  </>
-                ) : (
-                  <button type="button" className="btn btn-secondary blueprint" onClick={() => setShowEmailField(true)}>
-                    <i className="corner tl"></i>
-                    <i className="corner tr"></i>
-                    <i className="corner bl"></i>
-                    <i className="corner br"></i>
-                    ✉️ Send email
-                  </button>
-                )}
-                <button type="button" className="btn btn-secondary blueprint" onClick={sendWhatsapp}>
-                  <i className="corner tl"></i>
-                  <i className="corner tr"></i>
-                  <i className="corner bl"></i>
-                  <i className="corner br"></i>
-                  💬 Send WhatsApp
-                </button>
-              </div>
-              <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-                WhatsApp opens a pre-filled message to the client's phone on file — WhatsApp's click-to-chat links
-                can't attach the document itself, so share it (printed or emailed) separately.
-              </p>
-            </div>
-          )}
         </div>
+        {sharePanel && (
+          <div className="no-print" style={{ borderTop: '1px solid var(--color-divider)', padding: 'var(--space-3) var(--space-4)' }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', opacity: 0.65, marginBottom: 'var(--space-2)' }}>
+              {sharePanel === 'email' ? `Email this ${documentLabel(detail)}` : `Send this ${documentLabel(detail)} on WhatsApp`}
+            </div>
+            {sharePanel === 'email' ? (
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input className="input" type="email" style={{ flex: '1 1 240px', maxWidth: 320 }} value={emailTo} onChange={(e) => { setEmailTo(e.target.value); setEmailSent(false); }} placeholder="customer@example.com" autoFocus />
+                <button type="button" className="btn btn-primary" onClick={sendEmail} disabled={emailBusy || !emailTo.trim()}>
+                  {emailBusy ? 'Sending…' : 'Send email'}
+                </button>
+                {emailSent && <span className="tag tag-accent">Sent</span>}
+                <span className="note" style={{ margin: 0 }}>Sends the A4 {documentLabel(detail)} itself.</span>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input className="input" type="tel" style={{ flex: '1 1 200px', maxWidth: 240 }} value={waTo} onChange={(e) => setWaTo(e.target.value)} placeholder="0797 785 033" autoFocus />
+                <button type="button" className="btn btn-primary" onClick={sendWhatsapp} disabled={!waTo.trim()}>
+                  Open WhatsApp
+                </button>
+                <span className="note" style={{ margin: 0 }}>Opens WhatsApp with the message ready to send — the figures, the balance and how to reach us. WhatsApp cannot attach the document; email or print it for that.</span>
+              </div>
+            )}
+          </div>
+        )}
         <div className="dialog-actions">
+          <button type="button" className={'btn blueprint ' + (sharePanel === 'email' ? 'btn-primary' : 'btn-secondary')} onClick={() => { setSharePanel(sharePanel === 'email' ? null : 'email'); setEmailSent(false); }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            ✉️ Email {documentLabel(detail)}
+          </button>
+          <button type="button" className={'btn blueprint ' + (sharePanel === 'whatsapp' ? 'btn-primary' : 'btn-secondary')} onClick={() => setSharePanel(sharePanel === 'whatsapp' ? null : 'whatsapp')}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            💬 WhatsApp {documentLabel(detail)}
+          </button>
           <button type="button" className="btn btn-secondary blueprint" onClick={print}>
+
             <i className="corner tl"></i>
             <i className="corner tr"></i>
             <i className="corner bl"></i>

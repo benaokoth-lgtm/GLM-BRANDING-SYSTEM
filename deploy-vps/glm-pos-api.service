@@ -1,0 +1,24 @@
+[Unit]
+Description=GLM Branding POS API
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=glm
+Group=glm
+WorkingDirectory=/opt/glm-pos/deploy/api
+# DATABASE_URL, JWT_SECRET, CORS_ORIGINS, PORT, TRUST_PROXY … (root-owned, readable by the glm group only)
+EnvironmentFile=/etc/glm-pos/api.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+
+# Keep the app inside its own corner of the system.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

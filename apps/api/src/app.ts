@@ -23,6 +23,9 @@ import { commissionRouter } from './routes/commission';
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5174').split(',').map((o) => o.trim());
 
 export const app = express();
+// Behind a reverse proxy (Nginx on a VPS) every request would otherwise appear to come from the proxy itself, so the login rate limit would be
+// shared by everybody. Set TRUST_PROXY=1 (the number of proxies in front) there; unset on hosts that already hand the real address through.
+if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use(cors({ origin: allowedOrigins }));
 // Raised from Express's 100kb default so a small company logo (sent as a base64
 // data URL from Master Data) fits in the request body.

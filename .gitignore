@@ -19,3 +19,6 @@ deploy/api/*.log
 deploy/api/.htaccess
 /stderr.log
 /tmp/
+
+# npm cache of the VPS service user (its home is the app folder)
+.npm/

@@ -54272,6 +54272,7 @@ commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
 var app = (0, import_express15.default)();
+if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
 app.use(import_express15.default.json({ limit: "5mb" }));
 app.get("/api/health", (_req, res) => res.json({ ok: true }));

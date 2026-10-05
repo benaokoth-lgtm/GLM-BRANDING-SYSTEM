@@ -1,3 +1,5 @@
+> **Moving to your own server (Contabo VPS)?** See [DEPLOYMENT-VPS.md](DEPLOYMENT-VPS.md) — a kit in `deploy-vps/` sets up Nginx, Node, PostgreSQL, HTTPS, backups and a one-command update. It also sets `TRUST_PROXY=1` (new, optional) so the login rate limit sees each visitor's real address behind Nginx.
+
 # Deploying to cPanel — api.glmgroup.co.ke + pos.glmgroup.co.ke
 
 Two pieces are hosted, both **prebuilt and committed under `deploy/`** — nothing is built on the server:

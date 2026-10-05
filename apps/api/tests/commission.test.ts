@@ -42,6 +42,10 @@ describe('staff sales commission', () => {
       ids[key] = u.id;
       tokens[key] = signToken({ id: u.id, name: u.name, role });
     }
+    const admin = await prisma.user.create({ data: { name: 'admin (commission test)', role: 'Admin', pinHash: 'x' } });
+    tokens.admin = signToken({ id: admin.id, name: admin.name, role: 'Admin' });
+    // The scheme is switched off until an Admin starts it; these tests are about the scheme itself, so it is on.
+    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true }, create: { id: 1, enabled: true } });
     banner = (await prisma.service.create({ data: { name: 'Banner (commission test)', unit: 'piece', price: 1000 } })).id;
     await prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 500 } });
     await prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 70 } });
@@ -269,6 +273,36 @@ describe('staff sales commission', () => {
     // claiming on a film order without the details is refused too
     const filmClaim = await call('brian', 'POST', '/dtf/sales', { rollId: 'ROLL-001', metres: 1, pricePerM: 400, amountPaid: 400, sourcedBy: ids.brian });
     assert.equal(filmClaim.status, 400);
+  });
+
+  it('an Admin can switch the scheme off and on; while it is off nothing is credited and the module is closed', async () => {
+    assert.equal((await call('amina', 'GET', '/auth/features')).body.commission, true);
+    // only an Admin decides
+    assert.equal((await call('boss', 'PUT', '/master-data/commission-switch', { enabled: false })).status, 403);
+    assert.equal((await call('admin', 'PUT', '/master-data/commission-switch', { enabled: false })).body.enabled, false);
+
+    assert.equal((await call('amina', 'GET', '/auth/features')).body.commission, false);
+    for (const who of ['amina', 'boss']) {
+      const r = await call(who, 'GET', '/commission/settings');
+      assert.equal(r.status, 403);
+      assert.equal(r.body.commissionOff, true);
+    }
+    assert.equal((await call('boss', 'GET', `/commission/statement?period=${period}`)).status, 403);
+
+    // A claim is ignored, not an error — even one that would normally be refused (no phone) — and nobody is credited or made an owner.
+    const before = await prisma.clientOwner.count();
+    const o = await walkin('amina', 'Off Switch Client', '', 1000, { sourcedBy: ids.amina });
+    assert.equal(o.status, 201);
+    assert.equal(o.body.salesSource, 'house');
+    assert.equal(o.body.sourcedByStaffId, null);
+    assert.equal(await prisma.clientOwner.count(), before);
+
+    // Switched back on, everything is there again (nothing was deleted).
+    assert.equal((await call('admin', 'PUT', '/master-data/commission-switch', { enabled: true })).body.enabled, true);
+    assert.equal((await call('amina', 'GET', '/auth/features')).body.commission, true);
+    assert.equal((await call('boss', 'GET', '/commission/settings')).status, 200);
+    const on = await walkin('amina', 'Switched On Client', '0733 444 555', 1000, { sourcedBy: ids.amina });
+    assert.equal(on.body.salesSource, 'sourced');
   });
 });
 

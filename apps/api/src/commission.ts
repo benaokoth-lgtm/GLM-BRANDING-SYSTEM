@@ -49,6 +49,13 @@ export function ensureCommissionAccessOnce(): Promise<void> {
   return ensuring;
 }
 
+// ── The switch ──────────────────────────────────────────────────────────────
+
+/** Is the commission scheme switched on? Off until an Admin switches it on (Master Data → Company Info). */
+export async function commissionEnabled(db: Db = prisma): Promise<boolean> {
+  return (await db.commissionSettings.findUnique({ where: { id: 1 }, select: { enabled: true } }))?.enabled ?? false;
+}
+
 // ── Settings ────────────────────────────────────────────────────────────────
 
 export interface CommissionConfig {
@@ -116,6 +123,8 @@ export async function resolveSourcing(
   db: Db,
   o: { corporateClientId?: number | null; phone?: string | null; name?: string | null; sourcedBy?: number | null },
 ): Promise<Sourcing> {
+  // Switched off: nobody is credited and no client is taken on.
+  if (!(await commissionEnabled(db))) return { salesSource: 'house', sourcedByStaffId: null, clientKey: null };
   const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
   if (!clientKey) return { salesSource: 'house', sourcedByStaffId: null, clientKey: null };
   const today = todayStr();
@@ -148,6 +157,7 @@ export async function claimProblem(
   o: { corporateClientId?: number | null; phone?: string | null; name?: string | null; sourcedBy?: number | null },
 ): Promise<string | null> {
   if (!o.sourcedBy) return null;
+  if (!(await commissionEnabled())) return null; // switched off: a claim is simply ignored
   if (o.sourcedBy !== user.id && !(await canManageCommission(user.role))) return 'You can only claim a client for yourself';
   // Name and phone are optional on a walk-in sale — they become mandatory only here, when a client is being credited to someone.
   if (o.corporateClientId) return null;

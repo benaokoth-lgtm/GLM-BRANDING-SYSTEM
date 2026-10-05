@@ -906,6 +906,9 @@ model ClientOwner {
 // One row (id 1): the rates. Commission is on money RECEIVED; every figure is editable because there is no sales history to calibrate to yet.
 model CommissionSettings {
   id               Int      @id @default(1)
+  // The on/off switch (Master Data → Company Info, Admin only). Off until someone decides to start paying commission: while it is off the
+  // Commission module is hidden, nobody can claim a client, and orders are not credited to anyone.
+  enabled          Boolean  @default(false)
   // General sales — marginal bands on a staff member's monthly NET sales received: [{from, rate}] (see Band in shared/commission.ts)
   generalBandsJson String   @default("[{\"from\":0,\"rate\":0},{\"from\":150000,\"rate\":2},{\"from\":300000,\"rate\":3.5},{\"from\":500000,\"rate\":5}]")
   // Film — KES per metre charged ABOVE the base (the DTF minimum price) → % of that slice. No ceiling.

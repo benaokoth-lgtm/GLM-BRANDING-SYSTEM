@@ -19,6 +19,15 @@ import Commission from './pages/Commission';
 import Reports from './pages/Reports';
 import Stock from './pages/Stock';
 import Dtf from './pages/Dtf';
+import { useFeatures } from './hooks/useFeatures';
+
+// The Commission module exists only while an Admin has switched the scheme on (Master Data → Company Info).
+function CommissionGate() {
+  const features = useFeatures();
+  if (!features) return <p className="note">Loading…</p>;
+  if (!features.commission) return <p className="note">Commission is switched off. An Admin can switch it on in Master Data → Company Info.</p>;
+  return <Commission />;
+}
 
 function DefaultRedirect() {
   const { user } = useAuth();
@@ -106,7 +115,7 @@ export default function App() {
           path="/commission"
           element={
             <RequirePermission keys={['canCaptureOrders', 'canManageCommission']}>
-              <Commission />
+              <CommissionGate />
             </RequirePermission>
           }
         />

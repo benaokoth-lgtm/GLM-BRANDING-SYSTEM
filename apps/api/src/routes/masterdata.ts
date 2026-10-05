@@ -9,6 +9,7 @@ import { canSeeCosts } from '../costs';
 import { defaultBusinessHeadName } from '@glm/shared';
 import { ensureBusinessHeadsOnce } from '../purchases';
 import { MARKUP_TYPES } from '@glm/shared';
+import { commissionEnabled } from '../commission';
 import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig } from '../mailer';
 
 export const masterDataRouter = Router();
@@ -431,6 +432,20 @@ masterDataRouter.put('/corporate-clients/:id', requireRole('Admin'), async (req,
   const client = await prisma.corporateClient.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
   if (!client) return res.status(404).json({ error: 'Corporate client not found' });
   res.json(client);
+});
+
+// ── Commission on/off ────────────────────────────────────────────────────
+// Admin decides when the sales-commission scheme starts and stops. Nothing is deleted when it is switched off: rates, client ownership and
+// past statements are kept, and come back when it is switched on again.
+masterDataRouter.get('/commission-switch', requireRole('Admin'), async (_req, res) => {
+  res.json({ enabled: await commissionEnabled() });
+});
+
+masterDataRouter.put('/commission-switch', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ enabled: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'enabled (true or false) is required' });
+  await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: parsed.data.enabled, updatedByName: req.user!.name }, create: { id: 1, enabled: parsed.data.enabled, updatedByName: req.user!.name } });
+  res.json({ enabled: parsed.data.enabled });
 });
 
 // ── Discount Rules ───────────────────────────────────────────────────────

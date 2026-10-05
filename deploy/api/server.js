@@ -44470,6 +44470,205 @@ async function permissionsForRole(roleName) {
   return Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]]));
 }
 
+// apps/api/src/commission.ts
+async function canManageCommission(role) {
+  return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
+}
+async function ensureCommissionAccess() {
+  if (await prisma.role.count({ where: { canManageCommission: true } }) > 0) return;
+  for (const name2 of ["Finance Manager", "General Manager"]) {
+    if (DEFAULT_ROLE_PERMISSIONS[name2]?.canManageCommission) await prisma.role.updateMany({ where: { name: name2 }, data: { canManageCommission: true } });
+  }
+}
+var ensuring = null;
+function ensureCommissionAccessOnce() {
+  if (!ensuring) ensuring = ensureCommissionAccess().finally(() => ensuring = null);
+  return ensuring;
+}
+async function commissionEnabled(db = prisma) {
+  return (await db.commissionSettings.findUnique({ where: { id: 1 }, select: { enabled: true } }))?.enabled ?? false;
+}
+function readBands(json, fallback) {
+  try {
+    const v = JSON.parse(json ?? "");
+    if (Array.isArray(v) && !bandsProblem(v, "bands")) return v.map((b) => ({ from: Number(b.from), rate: Number(b.rate) })).sort((a2, b) => a2.from - b.from);
+  } catch {
+  }
+  return fallback;
+}
+async function getCommissionConfig(db = prisma) {
+  const row = await db.commissionSettings.findUnique({ where: { id: 1 } });
+  return {
+    generalBands: readBands(row?.generalBandsJson, DEFAULT_GENERAL_BANDS),
+    filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
+    artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
+    ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS
+  };
+}
+async function activeOwner(db, clientKey, today = todayStr()) {
+  const row = await db.clientOwner.findFirst({
+    where: { clientKey, status: "Active", endDate: { gte: today } },
+    include: { staff: { select: { name: true } } },
+    orderBy: { id: "desc" }
+  });
+  return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
+}
+async function resolveSourcing(db, o) {
+  if (!await commissionEnabled(db)) return { salesSource: "house", sourcedByStaffId: null, clientKey: null };
+  const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
+  if (!clientKey) return { salesSource: "house", sourcedByStaffId: null, clientKey: null };
+  const today = todayStr();
+  const owner = await activeOwner(db, clientKey, today);
+  if (owner) return { salesSource: "sourced", sourcedByStaffId: owner.staffId, clientKey };
+  if (o.sourcedBy) {
+    const cfg = await getCommissionConfig(db);
+    await db.clientOwner.create({
+      data: {
+        clientKey,
+        clientName: (o.name ?? "").trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey),
+        staffId: o.sourcedBy,
+        startDate: today,
+        endDate: ownershipEnd(today, cfg.ownershipMonths),
+        createdByName: "Sourced at order capture"
+      }
+    });
+    return { salesSource: "sourced", sourcedByStaffId: o.sourcedBy, clientKey };
+  }
+  return { salesSource: "house", sourcedByStaffId: null, clientKey };
+}
+async function claimProblem(user, o) {
+  if (!o.sourcedBy) return null;
+  if (!await commissionEnabled()) return null;
+  if (o.sourcedBy !== user.id && !await canManageCommission(user.role)) return "You can only claim a client for yourself";
+  if (o.corporateClientId) return null;
+  const key2 = clientKeyFor({ phone: o.phone, name: o.name });
+  if (!key2 || !key2.startsWith("p:") || !isNamedClient(o.name)) return "Enter the client's name and phone number so they can be credited to you and recognised on their next order";
+  return null;
+}
+var orderInc = { lineItems: true, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true };
+var toInput = (li) => ({
+  itemType: li.itemType,
+  serviceId: li.serviceId,
+  materialId: li.materialId,
+  qty: li.qty,
+  unitPrice: li.unitPrice,
+  discountPct: li.discountPct,
+  discountAmt: li.discountAmt,
+  heatPressFee: li.heatPressFee ?? null
+});
+var orderTotal = (o) => computeOrderTotals({ lineItems: o.lineItems.map(toInput), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
+var customerOf = (o) => o.corporateClient?.name || o.customerName || "Walk-in customer";
+function blankStatement(staffId, staffName = "") {
+  return {
+    staffId,
+    staffName,
+    total: 0,
+    general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
+    film: { commission: 0, sales: [] },
+    artwork: { commission: 0, jobs: [] },
+    productivity: { ordersCaptured: 0, ordersSourced: 0, sourcedValue: 0, filmSales: 0, filmMetres: 0, filmAvgPricePerM: null, filmAvgPremiumPerM: null, artworkJobs: 0, artworkPieces: 0, artworkExtraCharged: 0 }
+  };
+}
+function periodRange(period) {
+  return { start: `${period}-01`, end: `${period}-31` };
+}
+async function buildStatements(period, only) {
+  const { start, end } = periodRange(period);
+  const config = await getCommissionConfig();
+  const [payments, notes, raised] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: start, lte: end } }, select: { orderId: true, amount: true } }),
+    prisma.adjustmentNote.findMany({ where: { type: "Credit", date: { gte: start, lte: end }, orderId: { not: null } }, select: { orderId: true, creditAmt: true } }),
+    prisma.order.findMany({ where: { createdDate: { gte: start, lte: end }, status: { not: "Quote" } }, include: orderInc })
+  ]);
+  const flows = /* @__PURE__ */ new Map();
+  const flow = (id) => {
+    let f = flows.get(id);
+    if (!f) flows.set(id, f = { received: 0, refunded: 0 });
+    return f;
+  };
+  for (const p of payments) flow(p.orderId).received += p.amount;
+  for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
+  const orderIds = [...flows.keys()];
+  const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
+  const people = /* @__PURE__ */ new Map();
+  const who = (id) => {
+    let s = people.get(id);
+    if (!s) people.set(id, s = blankStatement(id));
+    return s;
+  };
+  for (const o of flowOrders) {
+    const f = flows.get(o.id);
+    const net8 = f.received - f.refunded;
+    const total = orderTotal(o);
+    const share = total > 0 ? net8 / total : 0;
+    if (o.dtfFilmSale) {
+      const s = o.dtfFilmSale;
+      const full = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
+      if (full > 0) {
+        const c = round2(full * share);
+        const st = who(o.staffId);
+        st.film.commission = round2(st.film.commission + c);
+        st.film.sales.push({ orderNo: o.orderNo, customer: customerOf(o), metres: s.metres, pricePerM: s.pricePerM, premiumPerM: filmPremiumPerM(s.pricePerM, s.minPriceAtSale), orderTotal: round2(total), moneyIn: round2(net8), commission: c });
+      }
+    } else if (o.dtfArtworkJob) {
+      const j = o.dtfArtworkJob;
+      const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
+      const charged = Math.max(sys, j.chargedPerPiece ?? sys);
+      const full = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
+      if (full > 0) {
+        const c = round2(full * share);
+        const st = who(o.staffId);
+        st.artwork.commission = round2(st.artwork.commission + c);
+        st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net8), commission: c });
+      }
+    } else if (o.channel !== "dtf" && o.sourcedByStaffId && o.status !== "Quote") {
+      const st = who(o.sourcedByStaffId);
+      st.general.received = round2(st.general.received + net8);
+      st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
+    }
+  }
+  const base2 = /* @__PURE__ */ new Map();
+  for (const o of raised) {
+    const cap = who(o.staffId).productivity;
+    cap.ordersCaptured++;
+    if (o.dtfFilmSale) {
+      const s = o.dtfFilmSale;
+      cap.filmSales++;
+      cap.filmMetres = round2(cap.filmMetres + s.metres);
+      const b = base2.get(o.staffId) ?? { filmRevenue: 0, filmPremium: 0 };
+      b.filmRevenue += s.metres * s.pricePerM;
+      b.filmPremium += s.metres * filmPremiumPerM(s.pricePerM, s.minPriceAtSale);
+      base2.set(o.staffId, b);
+    } else if (o.dtfArtworkJob) {
+      const j = o.dtfArtworkJob;
+      const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
+      cap.artworkJobs++;
+      cap.artworkPieces += j.pieces;
+      cap.artworkExtraCharged = round2(cap.artworkExtraCharged + j.pieces * Math.max(0, (j.chargedPerPiece ?? sys) - sys));
+    }
+    if (o.sourcedByStaffId) {
+      const src = who(o.sourcedByStaffId).productivity;
+      src.ordersSourced++;
+      src.sourcedValue = round2(src.sourcedValue + orderTotal(o));
+    }
+  }
+  for (const [id, b] of base2) {
+    const p = people.get(id).productivity;
+    p.filmAvgPricePerM = p.filmMetres > 0 ? round2(b.filmRevenue / p.filmMetres) : null;
+    p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
+  }
+  for (const st of people.values()) {
+    st.general.netSales = round2(Math.max(0, st.general.received) / (1 + VAT_RATE));
+    st.general.commission = bandedAmount(config.generalBands, st.general.netSales);
+    st.general.band = bandPosition(config.generalBands, st.general.netSales);
+    st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+  }
+  const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
+  const names = new Map(users.map((u) => [u.id, u.name]));
+  const statements = [...people.values()].map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` })).filter((s) => only === void 0 || s.staffId === only).sort((a2, b) => b.total - a2.total || a2.staffName.localeCompare(b.staffName));
+  return { config, statements };
+}
+
 // apps/api/src/routes/auth.ts
 var authRouter = (0, import_express.Router)();
 var loginLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 30, standardHeaders: true, legacyHeaders: false });
@@ -44482,6 +44681,9 @@ authRouter.get("/branding", async (_req, res) => {
   const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   res.set("Cache-Control", "public, max-age=300");
   res.json({ companyName: s.companyName, logoDataUrl: s.logoDataUrl });
+});
+authRouter.get("/features", requireAuth, async (_req, res) => {
+  res.json({ commission: await commissionEnabled() });
 });
 authRouter.get("/users", async (_req, res) => {
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
@@ -48651,10 +48853,10 @@ async function ensureCostAccess() {
     if (DEFAULT_ROLE_PERMISSIONS[name2]?.canSeeCosts) await prisma.role.updateMany({ where: { name: name2 }, data: { canSeeCosts: true } });
   }
 }
-var ensuring = null;
+var ensuring2 = null;
 function ensureCostAccessOnce() {
-  if (!ensuring) ensuring = ensureCostAccess().finally(() => ensuring = null);
-  return ensuring;
+  if (!ensuring2) ensuring2 = ensureCostAccess().finally(() => ensuring2 = null);
+  return ensuring2;
 }
 function costFieldsFor(li, allowed) {
   if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
@@ -49066,6 +49268,15 @@ masterDataRouter.put("/corporate-clients/:id", requireRole("Admin"), async (req,
   if (!client) return res.status(404).json({ error: "Corporate client not found" });
   res.json(client);
 });
+masterDataRouter.get("/commission-switch", requireRole("Admin"), async (_req, res) => {
+  res.json({ enabled: await commissionEnabled() });
+});
+masterDataRouter.put("/commission-switch", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ enabled: external_exports.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "enabled (true or false) is required" });
+  await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: parsed.data.enabled, updatedByName: req.user.name }, create: { id: 1, enabled: parsed.data.enabled, updatedByName: req.user.name } });
+  res.json({ enabled: parsed.data.enabled });
+});
 function serializeSettings(settings) {
   return {
     maxDiscountPct: settings.maxDiscountPct,
@@ -49179,200 +49390,6 @@ async function validateAccountChoice(requested, type) {
   if (!acc || !acc.active) throw new Error("Choose an existing, active account");
   if (acc.type !== type) throw new Error(`That head must be linked to an ${type} account`);
   return acc.id;
-}
-
-// apps/api/src/commission.ts
-async function canManageCommission(role) {
-  return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
-}
-async function ensureCommissionAccess() {
-  if (await prisma.role.count({ where: { canManageCommission: true } }) > 0) return;
-  for (const name2 of ["Finance Manager", "General Manager"]) {
-    if (DEFAULT_ROLE_PERMISSIONS[name2]?.canManageCommission) await prisma.role.updateMany({ where: { name: name2 }, data: { canManageCommission: true } });
-  }
-}
-var ensuring2 = null;
-function ensureCommissionAccessOnce() {
-  if (!ensuring2) ensuring2 = ensureCommissionAccess().finally(() => ensuring2 = null);
-  return ensuring2;
-}
-function readBands(json, fallback) {
-  try {
-    const v = JSON.parse(json ?? "");
-    if (Array.isArray(v) && !bandsProblem(v, "bands")) return v.map((b) => ({ from: Number(b.from), rate: Number(b.rate) })).sort((a2, b) => a2.from - b.from);
-  } catch {
-  }
-  return fallback;
-}
-async function getCommissionConfig(db = prisma) {
-  const row = await db.commissionSettings.findUnique({ where: { id: 1 } });
-  return {
-    generalBands: readBands(row?.generalBandsJson, DEFAULT_GENERAL_BANDS),
-    filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
-    artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
-    ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS
-  };
-}
-async function activeOwner(db, clientKey, today = todayStr()) {
-  const row = await db.clientOwner.findFirst({
-    where: { clientKey, status: "Active", endDate: { gte: today } },
-    include: { staff: { select: { name: true } } },
-    orderBy: { id: "desc" }
-  });
-  return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
-}
-async function resolveSourcing(db, o) {
-  const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-  if (!clientKey) return { salesSource: "house", sourcedByStaffId: null, clientKey: null };
-  const today = todayStr();
-  const owner = await activeOwner(db, clientKey, today);
-  if (owner) return { salesSource: "sourced", sourcedByStaffId: owner.staffId, clientKey };
-  if (o.sourcedBy) {
-    const cfg = await getCommissionConfig(db);
-    await db.clientOwner.create({
-      data: {
-        clientKey,
-        clientName: (o.name ?? "").trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey),
-        staffId: o.sourcedBy,
-        startDate: today,
-        endDate: ownershipEnd(today, cfg.ownershipMonths),
-        createdByName: "Sourced at order capture"
-      }
-    });
-    return { salesSource: "sourced", sourcedByStaffId: o.sourcedBy, clientKey };
-  }
-  return { salesSource: "house", sourcedByStaffId: null, clientKey };
-}
-async function claimProblem(user, o) {
-  if (!o.sourcedBy) return null;
-  if (o.sourcedBy !== user.id && !await canManageCommission(user.role)) return "You can only claim a client for yourself";
-  if (o.corporateClientId) return null;
-  const key2 = clientKeyFor({ phone: o.phone, name: o.name });
-  if (!key2 || !key2.startsWith("p:") || !isNamedClient(o.name)) return "Enter the client's name and phone number so they can be credited to you and recognised on their next order";
-  return null;
-}
-var orderInc = { lineItems: true, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true };
-var toInput = (li) => ({
-  itemType: li.itemType,
-  serviceId: li.serviceId,
-  materialId: li.materialId,
-  qty: li.qty,
-  unitPrice: li.unitPrice,
-  discountPct: li.discountPct,
-  discountAmt: li.discountAmt,
-  heatPressFee: li.heatPressFee ?? null
-});
-var orderTotal = (o) => computeOrderTotals({ lineItems: o.lineItems.map(toInput), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
-var customerOf = (o) => o.corporateClient?.name || o.customerName || "Walk-in customer";
-function blankStatement(staffId, staffName = "") {
-  return {
-    staffId,
-    staffName,
-    total: 0,
-    general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
-    film: { commission: 0, sales: [] },
-    artwork: { commission: 0, jobs: [] },
-    productivity: { ordersCaptured: 0, ordersSourced: 0, sourcedValue: 0, filmSales: 0, filmMetres: 0, filmAvgPricePerM: null, filmAvgPremiumPerM: null, artworkJobs: 0, artworkPieces: 0, artworkExtraCharged: 0 }
-  };
-}
-function periodRange(period) {
-  return { start: `${period}-01`, end: `${period}-31` };
-}
-async function buildStatements(period, only) {
-  const { start, end } = periodRange(period);
-  const config = await getCommissionConfig();
-  const [payments, notes, raised] = await Promise.all([
-    prisma.payment.findMany({ where: { date: { gte: start, lte: end } }, select: { orderId: true, amount: true } }),
-    prisma.adjustmentNote.findMany({ where: { type: "Credit", date: { gte: start, lte: end }, orderId: { not: null } }, select: { orderId: true, creditAmt: true } }),
-    prisma.order.findMany({ where: { createdDate: { gte: start, lte: end }, status: { not: "Quote" } }, include: orderInc })
-  ]);
-  const flows = /* @__PURE__ */ new Map();
-  const flow = (id) => {
-    let f = flows.get(id);
-    if (!f) flows.set(id, f = { received: 0, refunded: 0 });
-    return f;
-  };
-  for (const p of payments) flow(p.orderId).received += p.amount;
-  for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
-  const orderIds = [...flows.keys()];
-  const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
-  const people = /* @__PURE__ */ new Map();
-  const who = (id) => {
-    let s = people.get(id);
-    if (!s) people.set(id, s = blankStatement(id));
-    return s;
-  };
-  for (const o of flowOrders) {
-    const f = flows.get(o.id);
-    const net8 = f.received - f.refunded;
-    const total = orderTotal(o);
-    const share = total > 0 ? net8 / total : 0;
-    if (o.dtfFilmSale) {
-      const s = o.dtfFilmSale;
-      const full = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
-      if (full > 0) {
-        const c = round2(full * share);
-        const st = who(o.staffId);
-        st.film.commission = round2(st.film.commission + c);
-        st.film.sales.push({ orderNo: o.orderNo, customer: customerOf(o), metres: s.metres, pricePerM: s.pricePerM, premiumPerM: filmPremiumPerM(s.pricePerM, s.minPriceAtSale), orderTotal: round2(total), moneyIn: round2(net8), commission: c });
-      }
-    } else if (o.dtfArtworkJob) {
-      const j = o.dtfArtworkJob;
-      const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
-      const charged = Math.max(sys, j.chargedPerPiece ?? sys);
-      const full = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
-      if (full > 0) {
-        const c = round2(full * share);
-        const st = who(o.staffId);
-        st.artwork.commission = round2(st.artwork.commission + c);
-        st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net8), commission: c });
-      }
-    } else if (o.channel !== "dtf" && o.sourcedByStaffId && o.status !== "Quote") {
-      const st = who(o.sourcedByStaffId);
-      st.general.received = round2(st.general.received + net8);
-      st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
-    }
-  }
-  const base2 = /* @__PURE__ */ new Map();
-  for (const o of raised) {
-    const cap = who(o.staffId).productivity;
-    cap.ordersCaptured++;
-    if (o.dtfFilmSale) {
-      const s = o.dtfFilmSale;
-      cap.filmSales++;
-      cap.filmMetres = round2(cap.filmMetres + s.metres);
-      const b = base2.get(o.staffId) ?? { filmRevenue: 0, filmPremium: 0 };
-      b.filmRevenue += s.metres * s.pricePerM;
-      b.filmPremium += s.metres * filmPremiumPerM(s.pricePerM, s.minPriceAtSale);
-      base2.set(o.staffId, b);
-    } else if (o.dtfArtworkJob) {
-      const j = o.dtfArtworkJob;
-      const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
-      cap.artworkJobs++;
-      cap.artworkPieces += j.pieces;
-      cap.artworkExtraCharged = round2(cap.artworkExtraCharged + j.pieces * Math.max(0, (j.chargedPerPiece ?? sys) - sys));
-    }
-    if (o.sourcedByStaffId) {
-      const src = who(o.sourcedByStaffId).productivity;
-      src.ordersSourced++;
-      src.sourcedValue = round2(src.sourcedValue + orderTotal(o));
-    }
-  }
-  for (const [id, b] of base2) {
-    const p = people.get(id).productivity;
-    p.filmAvgPricePerM = p.filmMetres > 0 ? round2(b.filmRevenue / p.filmMetres) : null;
-    p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
-  }
-  for (const st of people.values()) {
-    st.general.netSales = round2(Math.max(0, st.general.received) / (1 + VAT_RATE));
-    st.general.commission = bandedAmount(config.generalBands, st.general.netSales);
-    st.general.band = bandPosition(config.generalBands, st.general.netSales);
-    st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
-  }
-  const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
-  const names = new Map(users.map((u) => [u.id, u.name]));
-  const statements = [...people.values()].map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` })).filter((s) => only === void 0 || s.staffId === only).sort((a2, b) => b.total - a2.total || a2.staffName.localeCompare(b.staffName));
-  return { config, statements };
 }
 
 // apps/api/src/orderHeads.ts
@@ -53984,6 +54001,10 @@ var import_express14 = __toESM(require_express2());
 var commissionRouter = (0, import_express14.Router)();
 commissionRouter.use(requireAuth, async (_req, _res, next) => {
   await ensureCommissionAccessOnce();
+  next();
+});
+commissionRouter.use(async (_req, res, next) => {
+  if (!await commissionEnabled()) return res.status(403).json({ error: "Commission is switched off. An Admin can switch it on in Master Data \u2192 Company Info.", commissionOff: true });
   next();
 });
 var manage = requirePermission("canManageCommission");

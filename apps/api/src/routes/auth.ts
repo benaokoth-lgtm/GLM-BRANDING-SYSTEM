@@ -6,6 +6,7 @@ import { prisma } from '../db';
 import { explainMailError, getMailer } from '../mailer';
 import { requireAuth, signToken } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
+import { commissionEnabled } from '../commission';
 
 export const authRouter = Router();
 
@@ -28,6 +29,11 @@ authRouter.get('/branding', async (_req, res) => {
   const s = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   res.set('Cache-Control', 'public, max-age=300'); // the logo can be large; it rarely changes
   res.json({ companyName: s.companyName, logoDataUrl: s.logoDataUrl });
+});
+
+// Which optional parts of the system are switched on (read fresh each time: an Admin can change them at any moment).
+authRouter.get('/features', requireAuth, async (_req, res) => {
+  res.json({ commission: await commissionEnabled() });
 });
 
 authRouter.get('/users', async (_req, res) => {

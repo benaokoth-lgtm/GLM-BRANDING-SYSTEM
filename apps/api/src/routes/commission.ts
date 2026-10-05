@@ -5,13 +5,19 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
 import { pettyCashShortfall } from '../accounting/ledger';
-import { activeOwner, blankStatement, buildStatements, canManageCommission, ensureCommissionAccessOnce, getCommissionConfig } from '../commission';
+import { activeOwner, blankStatement, buildStatements, canManageCommission, commissionEnabled, ensureCommissionAccessOnce, getCommissionConfig } from '../commission';
 
 // Staff sales commission. Everyone who captures orders can see their own statement and the scheme they are paid under;
 // managers (canManageCommission) see everyone's, set the rates, manage who owns which client, and approve and pay.
 export const commissionRouter = Router();
 commissionRouter.use(requireAuth, async (_req, _res, next) => {
   await ensureCommissionAccessOnce();
+  next();
+});
+
+// While the scheme is switched off nothing here is available (an Admin switches it on in Master Data → Company Info).
+commissionRouter.use(async (_req, res, next) => {
+  if (!(await commissionEnabled())) return res.status(403).json({ error: 'Commission is switched off. An Admin can switch it on in Master Data → Company Info.', commissionOff: true });
   next();
 });
 

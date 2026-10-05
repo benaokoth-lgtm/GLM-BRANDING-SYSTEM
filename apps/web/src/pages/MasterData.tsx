@@ -45,6 +45,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
 
 import { useSubTab } from '../state/SubNavContext';
 import { notifyBrandingChanged } from '../hooks/useBranding';
+import CommissionSwitch from '../components/CommissionSwitch';
 import BusinessHeadsPanel from '../components/BusinessHeadsPanel';
 import type { BusinessHeadRow } from '../api/models';
 
@@ -939,6 +940,7 @@ export default function MasterData() {
 
       {tab === 'company' && (
         <>
+          <CommissionSwitch />
           <p className="note" style={{ marginBottom: 'var(--space-4)' }}>
             Shown on printed invoices, quotations, and walk-in receipts.
           </p>

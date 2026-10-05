@@ -10,7 +10,7 @@ import type { CurrentUser } from '../state/AuthContext';
 // change needed. 'Admin' always sees everything (including Master Data,
 // which stays a fixed role check, not a configurable permission — see
 // RequireRole on that route in App.tsx).
-function buildTabs(user: CurrentUser): [string, string][] {
+function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][] {
   const isAdmin = user.role === 'Admin';
   const p = user.permissions;
   const tabs: [string, string][] = [];
@@ -28,8 +28,9 @@ function buildTabs(user: CurrentUser): [string, string][] {
   }
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
-  // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team.
-  if (isAdmin || p.canCaptureOrders || p.canManageCommission) tabs.push(['/commission', 'Commission']);
+  // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
+  // switched the scheme on (Master Data → Company Info).
+  if (commissionOn && (isAdmin || p.canCaptureOrders || p.canManageCommission)) tabs.push(['/commission', 'Commission']);
   // Once captured, orders are managed in Production and then inspected in Quality Control.
   if (isAdmin || p.canAccessProduction || p.canManageProduction) tabs.push(['/production', 'Production']);
   if (isAdmin || p.canAccessQuality) tabs.push(['/quality', 'Quality Control']);
@@ -49,6 +50,7 @@ function buildTabs(user: CurrentUser): [string, string][] {
 
 import { useBranding } from '../hooks/useBranding';
 import { SubNavProvider, useSubNav } from '../state/SubNavContext';
+import { useFeatures } from '../hooks/useFeatures';
 
 function AppLayoutInner() {
   const branding = useBranding();
@@ -56,7 +58,8 @@ function AppLayoutInner() {
   const [overModules, setOverModules] = useState(false);
   const { user, logout, clearMustChangePin } = useAuth();
   const [changingPin, setChangingPin] = useState(false);
-  const tabs = user ? buildTabs(user) : [];
+  const features = useFeatures();
+  const tabs = user ? buildTabs(user, !!features?.commission) : [];
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>

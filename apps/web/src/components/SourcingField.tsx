@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fmtDate, isNamedClient } from '@glm/shared';
 import { api } from '../api/client';
+import { useFeatures } from '../hooks/useFeatures';
 
 interface Lookup {
   clientKey: string | null;
@@ -12,7 +13,24 @@ interface Lookup {
 // a fixed period (12 months by default); while that runs, every order from the client counts towards that person's commission,
 // whoever captures it. Nobody shares a client, so when the client is already credited to someone the box is replaced by a note
 // saying who. Everyone else's orders are "house" orders and earn no sourcing commission.
-export default function SourcingField({
+export default function SourcingField(props: SourcingFieldProps) {
+  const features = useFeatures();
+  // Nothing to claim while the commission scheme is switched off.
+  if (!features?.commission) return null;
+  return <SourcingFieldInner {...props} />;
+}
+
+interface SourcingFieldProps {
+  corporateClientId?: number | null;
+  phone?: string;
+  name?: string;
+  /** Who would be credited if the box is ticked. */
+  staffName: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}
+
+function SourcingFieldInner({
   corporateClientId,
   phone,
   name,

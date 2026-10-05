@@ -14,11 +14,10 @@ function buildTabs(user: CurrentUser): [string, string][] {
   const isAdmin = user.role === 'Admin';
   const p = user.permissions;
   const tabs: [string, string][] = [];
-  // Finance now hosts Quotation, Invoice, All Orders, Payments and P&L as
-  // its own tabs — anyone who can reach Finance sees those there instead of
-  // as separate top-level nav entries. A role like Supervisor, which has
-  // order/payment oversight but not Finance access, still gets All
-  // Orders/Payments as their own entries so that access isn't lost.
+  // Finance hosts Quotation, Invoice, Payments, Expenses, Petty Cash and the Asset Register as its own
+  // tabs — anyone who can reach Finance sees those there instead of as separate top-level nav entries. A role like
+  // Supervisor, which has payment oversight but not Finance access, still gets Payments as its own entry so that
+  // access isn't lost. All Orders is its own module for anyone who may see every order.
   const hasFinance = isAdmin || p.canAccessFinance;
 
   if (isAdmin || p.canCaptureOrders) {
@@ -35,7 +34,7 @@ function buildTabs(user: CurrentUser): [string, string][] {
   // Once captured, orders are managed in Production and then inspected in Quality Control.
   if (isAdmin || p.canAccessProduction || p.canManageProduction) tabs.push(['/production', 'Production']);
   if (isAdmin || p.canAccessQuality) tabs.push(['/quality', 'Quality Control']);
-  if (!hasFinance && (isAdmin || p.canViewAllOrders)) tabs.push(['/orders/all', 'All Orders']);
+  if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   if (!hasFinance && (isAdmin || p.canManagePayments)) tabs.push(['/payments', 'Payments']);
   if (isAdmin) tabs.push(['/master-data', 'Master Data']);
   if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);

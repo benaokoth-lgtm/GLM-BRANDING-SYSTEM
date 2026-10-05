@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { EXPENSE_CATEGORIES, EXPENSE_METHODS, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import type { ExpenseCategory, PettyCashSource } from '@glm/shared';
 import { useSubTab } from '../state/SubNavContext';
@@ -8,23 +9,20 @@ import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
 import CorporateOrderForm from '../components/CorporateOrderForm';
 import AssetRegister from '../components/AssetRegister';
-import Orders from './Orders';
 import Payments from './Payments';
 
-// Quotation, Invoice, All Orders and Payments all moved in here from
-// their own top-level nav entries — one "Finance" tab for everything a
-// Finance Manager/General Manager/Admin does, instead of six scattered
-// links (see AppLayout.tsx's buildTabs). Supervisor, who has order/payment
-// oversight but not Finance access, still reaches All Orders/Payments as
-// their own top-level entries — this consolidation only applies once
-// canAccessFinance is already true.
-type FinanceTab = 'quotation' | 'invoice' | 'allOrders' | 'payments' | 'expenses' | 'pettycash' | 'assets';
+// Quotation, Invoice and Payments moved in here from their own top-level
+// nav entries — one "Finance" tab for everything a Finance Manager/General
+// Manager/Admin does (see AppLayout.tsx's buildTabs). Supervisor, who has
+// payment oversight but not Finance access, still reaches Payments as its
+// own top-level entry. All Orders is not part of Finance: it is its own
+// module, for anyone allowed to see every order.
+type FinanceTab = 'quotation' | 'invoice' | 'payments' | 'expenses' | 'pettycash' | 'assets';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [FinanceTab, string][] = [
   ['quotation', 'Quotation'],
   ['invoice', 'Invoice'],
-  ['allOrders', 'All Orders'],
   ['payments', 'Payments'],
   ['expenses', 'Expenses'],
   ['pettycash', 'Petty Cash'],
@@ -34,7 +32,7 @@ const TABS: [FinanceTab, string][] = [
 // Tabs that manage their own data/date-range internally — the shared
 // preset/from-to filter bar below (and the Expenses/Petty Cash data load)
 // isn't relevant to them.
-const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'allOrders', 'payments', 'assets'];
+const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'payments', 'assets'];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
   const y = today.slice(0, 4);
@@ -174,6 +172,7 @@ function ExpenseCaptureForm({
 }
 
 export default function Finance() {
+  const navigate = useNavigate();
   const today = todayStr();
   const initial = presetRange('month', today);
   const [tab, setTab] = useSubTab<FinanceTab>('expenses');
@@ -444,10 +443,7 @@ export default function Finance() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => {
-                setTab('allOrders');
-                setJustCreated(null);
-              }}
+              onClick={() => navigate('/orders/all')}
             >
               View in All Orders
             </button>
@@ -502,7 +498,6 @@ export default function Finance() {
 
       {tab === 'quotation' && <CorporateOrderForm kind="quote" onCreated={(orderNo) => handleOrderCreated('quote', orderNo)} />}
       {tab === 'invoice' && <CorporateOrderForm kind="invoice" onCreated={(orderNo) => handleOrderCreated('invoice', orderNo)} />}
-      {tab === 'allOrders' && <Orders scope="all" />}
       {tab === 'payments' && <Payments />}
       {tab === 'assets' && <AssetRegister />}
 

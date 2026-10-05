@@ -3,6 +3,10 @@ import type { CompanySettings, OrderDetail } from '../api/models';
 
 const THERMAL_WIDTH_MM = 80;
 
+/** The two receipts every order prints: one for the customer and one that stays with production. */
+export const CUSTOMER_COPY_LABEL = "CUSTOMER'S COPY";
+export const PRODUCTION_COPY_LABEL = 'Production copy';
+
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -63,6 +67,49 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   // document.
   const { net, vat } = splitVatInclusive(order.totals.grandTotal);
 
+  // Every order prints as two receipts in one job — the customer's copy, then a copy for production — each its own page, so the thermal
+  // printer cuts between them. (A single copy can still be asked for with `copyLabel`.)
+  const labels = copyLabel ? [copyLabel] : [CUSTOMER_COPY_LABEL, PRODUCTION_COPY_LABEL];
+  const copyHtml = (label: string, i: number) => `<div class="${i > 0 ? 'cut' : ''}">
+  <div class="center">
+    ${company.logoDataUrl ? `<img class="logo" src="${company.logoDataUrl}" alt="" />` : ''}
+    <div class="brand">${companyName}</div>
+    ${legalNameLine}
+  </div>
+  ${contactLine ? `<div class="center meta">${contactLine}</div>` : ''}
+  ${websiteLine ? `<div class="center meta">${websiteLine}</div>` : ''}
+  <div class="center meta">${order.totals.balanceDue <= 0 ? 'RECEIPT — PAID IN FULL' : 'RECEIPT — BALANCE DUE'}</div>
+  <div class="center copy-label">${esc(label)}</div>
+  <hr />
+  <div class="row"><span>ORDER NO.</span><span>${esc(order.orderNo)}</span></div>
+  <div class="row"><span>DATE</span><span>${fmtDate(order.createdDate)}</span></div>
+  <div class="row"><span>CUSTOMER</span><span>${esc(order.customerName || '—')}</span></div>
+  ${order.phone ? `<div class="row"><span>PHONE</span><span>${esc(order.phone)}</span></div>` : ''}
+  <div class="row"><span>SERVED BY</span><span>${esc(order.staff.name)}</span></div>
+  <hr />
+  ${ticketItemsHtml(order)}
+  <hr />
+  <div class="totals">
+    <div class="row"><span>SUBTOTAL</span><span>${fmtKsh(order.totals.subtotal)}</span></div>
+    ${order.totals.orderDiscount > 0 ? `<div class="row"><span>DISCOUNT</span><span>-${fmtKsh(order.totals.orderDiscount)}</span></div>` : ''}
+    <div class="row grand"><span>TOTAL</span><span>${fmtKsh(order.totals.grandTotal)}</span></div>
+    <div class="row vat-note"><span>Incl. VAT (16%)</span><span>${fmtKsh(vat)}</span></div>
+    <div class="row vat-note"><span>Net amount</span><span>${fmtKsh(net)}</span></div>
+  </div>
+  <hr />
+  ${order.payments
+    .map((p) => `<div class="row"><span>${fmtDate(p.date)} ${esc(p.method).toUpperCase()}</span><span>${fmtKsh(p.amount)}</span></div>`)
+    .join('')}
+  ${order.totals.balanceDue > 0 ? `<div class="row balance"><span>BALANCE DUE</span><span>${fmtKsh(order.totals.balanceDue)}</span></div>` : ''}
+  <hr />
+  <div class="keep-note">PLEASE KEEP THIS RECEIPT FOR YOUR RECORDS</div>
+  <div class="keep-note">ITEMS: ${itemCount}</div>
+  <div class="barcode-wrap"><svg id="barcode${i}"></svg></div>
+  <div class="footer">Thank you for choosing ${companyName}!</div>
+  ${websiteLine ? `<div class="footer">${websiteLine}</div>` : ''}
+  <div class="footer">${fmtDate(order.createdDate)}</div>
+</div>`;
+
   const html = `<!doctype html>
 <html>
 <head>
@@ -92,50 +139,14 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   .keep-note { font-size: 10px; text-align: center; margin-top: 2px; }
   .barcode-wrap { text-align: center; margin: 6px 0; }
   .footer { text-align: center; margin-top: 6px; font-size: 10px; }
+  .copy-label { font-weight: 700; font-size: 13px; letter-spacing: 0.05em; border: 1px solid #111; padding: 2px 4px; margin: 3px 0; }
+  .cut { page-break-before: always; }
 </style>
 </head>
 <body>
-  <div class="center">
-    ${company.logoDataUrl ? `<img class="logo" src="${company.logoDataUrl}" alt="" />` : ''}
-    <div class="brand">${companyName}</div>
-    ${legalNameLine}
-  </div>
-  ${contactLine ? `<div class="center meta">${contactLine}</div>` : ''}
-  ${websiteLine ? `<div class="center meta">${websiteLine}</div>` : ''}
-  <div class="center meta">${order.totals.balanceDue <= 0 ? 'RECEIPT — PAID IN FULL' : 'RECEIPT — BALANCE DUE'}</div>
-  ${copyLabel ? `<div class="center meta">${esc(copyLabel.toUpperCase())}</div>` : ''}
-  <hr />
-  <div class="row"><span>ORDER NO.</span><span>${esc(order.orderNo)}</span></div>
-  <div class="row"><span>DATE</span><span>${fmtDate(order.createdDate)}</span></div>
-  <div class="row"><span>CUSTOMER</span><span>${esc(order.customerName || '—')}</span></div>
-  ${order.phone ? `<div class="row"><span>PHONE</span><span>${esc(order.phone)}</span></div>` : ''}
-  <div class="row"><span>SERVED BY</span><span>${esc(order.staff.name)}</span></div>
-  <hr />
-  ${ticketItemsHtml(order)}
-  <hr />
-  <div class="totals">
-    <div class="row"><span>SUBTOTAL</span><span>${fmtKsh(order.totals.subtotal)}</span></div>
-    ${order.totals.orderDiscount > 0 ? `<div class="row"><span>DISCOUNT</span><span>-${fmtKsh(order.totals.orderDiscount)}</span></div>` : ''}
-    <div class="row grand"><span>TOTAL</span><span>${fmtKsh(order.totals.grandTotal)}</span></div>
-    <div class="row vat-note"><span>Incl. VAT (16%)</span><span>${fmtKsh(vat)}</span></div>
-    <div class="row vat-note"><span>Net amount</span><span>${fmtKsh(net)}</span></div>
-  </div>
-  <hr />
-  ${order.payments
-    .map((p) => `<div class="row"><span>${fmtDate(p.date)} ${esc(p.method).toUpperCase()}</span><span>${fmtKsh(p.amount)}</span></div>`)
-    .join('')}
-  ${order.totals.balanceDue > 0 ? `<div class="row balance"><span>BALANCE DUE</span><span>${fmtKsh(order.totals.balanceDue)}</span></div>` : ''}
-  <hr />
-  <div class="keep-note">PLEASE KEEP THIS RECEIPT FOR YOUR RECORDS</div>
-  <div class="keep-note">ITEMS: ${itemCount}</div>
-  <div class="barcode-wrap"><svg id="barcode"></svg></div>
-  <div class="footer">Thank you for choosing ${companyName}!</div>
-  ${websiteLine ? `<div class="footer">${websiteLine}</div>` : ''}
-  <div class="footer">${fmtDate(order.createdDate)}</div>
+${labels.map(copyHtml).join('')}
   <script>
-    try {
-      JsBarcode('#barcode', ${JSON.stringify(order.orderNo)}, { format: 'CODE128', width: 1.4, height: 34, displayValue: true, fontSize: 10, margin: 0 });
-    } catch (e) {}
+    ${labels.map((_, i) => `try { JsBarcode('#barcode${i}', ${JSON.stringify(order.orderNo)}, { format: 'CODE128', width: 1.4, height: 34, displayValue: true, fontSize: 10, margin: 0 }); } catch (e) {}`).join('\n    ')}
   </script>
 </body>
 </html>`;

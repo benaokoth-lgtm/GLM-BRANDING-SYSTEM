@@ -80,10 +80,9 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   async function print() {
     setBusy(true);
     setError(null);
-    // Both popups must open synchronously in this click handler, before any
-    // await, so popup blockers treat them as user-initiated.
+    // The popup must open synchronously in this click handler, before any await, so popup blockers treat it as user-initiated.
+    // (A walk-in receipt prints as two copies — the customer's and production's — in this one job.)
     const customerWin = needsApproval ? null : window.open('', '_blank');
-    const shopWin = needsApproval ? null : window.open('', '_blank');
     try {
       const payload = {
         ...basePayload,
@@ -105,11 +104,9 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
         return;
       }
       printOrderDocument(customerWin, order, company);
-      printOrderDocument(shopWin, order, company, 'Duplicate copy');
       onDone();
     } catch (err) {
       customerWin?.close();
-      shopWin?.close();
       setError(err instanceof Error ? err.message : `Failed to record ${mode === 'sale' ? 'sale' : 'job'}`);
     } finally {
       setBusy(false);

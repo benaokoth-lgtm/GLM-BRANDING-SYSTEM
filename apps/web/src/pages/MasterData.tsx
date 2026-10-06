@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { PERMISSION_KEYS, fmtKsh, priceFromCost } from '@glm/shared';
+import { MATERIAL_UNITS, PERMISSION_KEYS, compareSizes, fmtKsh, priceFromCost } from '@glm/shared';
 import { Fragment } from 'react';
 import type { PermissionKey, RoleRow } from '@glm/shared';
 import { api } from '../api/client';
@@ -76,6 +76,8 @@ export default function MasterData() {
   useEffect(loadRoles, []);
 
   const roleNames = ['Admin', ...roles.map((r) => r.name)];
+  // The price list, grouped by item with each item's sizes in order (S, M, L, XL …).
+  const materialRows = [...catalog.materials].sort((a, b) => (a.item || a.name).localeCompare(b.item || b.name) || compareSizes(a.size ?? '', b.size ?? ''));
 
   // A name is captured in three parts: first name and surname are compulsory, the middle name is optional.
   const [newFirst, setNewFirst] = useState('');
@@ -98,8 +100,10 @@ export default function MasterData() {
   const [newServicePrice, setNewServicePrice] = useState('');
   const [servicePriceDrafts, setServicePriceDrafts] = useState<Record<number, string>>({});
 
-  const [newMaterialName, setNewMaterialName] = useState('');
-  const [newMaterialPrice, setNewMaterialPrice] = useState('');
+  // The stock price list: a new item with its sizes (each size its own price), and a line being edited in place.
+  const [newMaterial, setNewMaterial] = useState({ item: '', description: '', unit: 'piece', businessHeadId: '' });
+  const [newVariants, setNewVariants] = useState<{ size: string; price: string }[]>([{ size: '', price: '' }]);
+  const [matEdit, setMatEdit] = useState<Record<number, { item: string; description: string; size: string; unit: string; price: string }>>({});
   const [reorderDrafts, setReorderDrafts] = useState<Record<number, string>>({});
 
 
@@ -351,16 +355,44 @@ export default function MasterData() {
   }
 
   async function addMaterial() {
-    const price = Number(newMaterialPrice);
-    if (!newMaterialName.trim() || !price) return setError('Item name and price are required');
+    if (!newMaterial.item.trim()) return setError('Item name is required');
+    const variants = newVariants.map((v) => ({ size: v.size.trim(), price: Number(v.price) }));
+    if (variants.some((v) => !(v.price > 0))) return setError('Every size needs a price greater than 0');
+    if (variants.length > 1 && variants.some((v) => !v.size)) return setError('Give every size a name (L, XL …), or keep a single row with no size');
     setError(null);
     try {
-      await api.post('/master-data/materials', { name: newMaterialName, price });
-      setNewMaterialName('');
-      setNewMaterialPrice('');
+      await api.post('/master-data/materials', { item: newMaterial.item, description: newMaterial.description, unit: newMaterial.unit || 'piece', businessHeadId: newMaterial.businessHeadId ? Number(newMaterial.businessHeadId) : null, variants });
+      setNewMaterial({ item: '', description: '', unit: 'piece', businessHeadId: '' });
+      setNewVariants([{ size: '', price: '' }]);
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add item');
+    }
+  }
+
+  // "+ size" beside an item: the add form, ready with that item's name, description and unit.
+  function startAddSize(mt: { item?: string; name: string; description?: string; unit?: string }) {
+    setNewMaterial({ item: mt.item || mt.name, description: mt.description ?? '', unit: mt.unit || 'piece', businessHeadId: '' });
+    setNewVariants([{ size: '', price: '' }]);
+    setTimeout(() => document.getElementById('material-add')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+  }
+
+  async function saveMaterialEdit(materialId: number) {
+    const d = matEdit[materialId];
+    if (!d) return;
+    const price = Number(d.price);
+    if (!d.item.trim()) return setError('Item name is required');
+    if (!(price > 0)) return setError('The price must be greater than 0');
+    setError(null);
+    try {
+      await api.put(`/master-data/materials/${materialId}`, { item: d.item, description: d.description, size: d.size, unit: d.unit || 'piece', price });
+      setMatEdit((x) => {
+        const { [materialId]: _drop, ...rest } = x;
+        return rest;
+      });
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save the line');
     }
   }
 
@@ -862,25 +894,54 @@ export default function MasterData() {
 
       {tab === 'materials' && (
         <>
+          <p className="note" style={{ marginTop: 0 }}>
+            The stock price list. An item that comes in sizes — a polo shirt in L and XL — has one line per size, each with its own price and its own stock; orders, purchases and stock show it as
+            “Polo Shirt — L”. Add an item with all its sizes below, or press <b>+ size</b> beside an item to add another size to it.
+          </p>
           <table className="table">
             <thead>
               <tr>
                 <th>Item</th>
+                <th>Description</th>
+                <th>Size</th>
+                <th>Unit</th>
+                <th style={{ textAlign: 'right' }}>Price</th>
                 <th>Business head</th>
-                <th>Price</th>
-                <th>Stock on hand</th>
+                <th style={{ textAlign: 'right' }}>Stock on hand</th>
                 <th>Reorder level</th>
-                <th></th>
+                <th style={{ width: 150 }}></th>
               </tr>
             </thead>
             <tbody>
-              {catalog.materials.map((mt) => {
+              {materialRows.map((mt, i) => {
                 const lowStock = mt.stockQty <= mt.reorderLevel;
+                const itemName = mt.item || mt.name;
+                const firstOfItem = i === 0 || (materialRows[i - 1]!.item || materialRows[i - 1]!.name) !== itemName;
+                const draft = matEdit[mt.id];
                 return (
-                  <tr key={mt.id}>
-                    <td>{mt.name}</td>
+                  <tr key={mt.id} style={firstOfItem && i > 0 ? { borderTop: '2px solid var(--color-divider)' } : undefined}>
                     <td>
-                      <select className="input" style={{ width: 170 }} value={mt.businessHeadId ?? ''} onChange={(e) => saveMaterialHead(mt.id, e.target.value)}>
+                      {draft ? (
+                        <input className="input" style={{ width: 150 }} value={draft.item} title="Renames every size of this item" onChange={(e) => setMatEdit((x) => ({ ...x, [mt.id]: { ...x[mt.id]!, item: e.target.value } }))} />
+                      ) : firstOfItem ? (
+                        <>
+                          <strong>{itemName}</strong>{' '}
+                          <button type="button" className="btn btn-ghost btn-sm" title="Add another size of this item" onClick={() => startAddSize(mt)}>
+                            + size
+                          </button>
+                        </>
+                      ) : (
+                        <span className="text-muted">″</span>
+                      )}
+                    </td>
+                    <td>
+                      {draft ? <input className="input" style={{ width: 170 }} value={draft.description} onChange={(e) => setMatEdit((x) => ({ ...x, [mt.id]: { ...x[mt.id]!, description: e.target.value } }))} /> : mt.description || <span className="text-muted">—</span>}
+                    </td>
+                    <td>{draft ? <input className="input" style={{ width: 80 }} value={draft.size} placeholder="L, XL …" onChange={(e) => setMatEdit((x) => ({ ...x, [mt.id]: { ...x[mt.id]!, size: e.target.value } }))} /> : mt.size || <span className="text-muted">—</span>}</td>
+                    <td>{draft ? <input className="input" style={{ width: 80 }} list="material-units" value={draft.unit} onChange={(e) => setMatEdit((x) => ({ ...x, [mt.id]: { ...x[mt.id]!, unit: e.target.value } }))} /> : mt.unit || 'piece'}</td>
+                    <td style={{ textAlign: 'right' }}>{draft ? <input className="input" style={{ width: 90, textAlign: 'right' }} inputMode="decimal" value={draft.price} onChange={(e) => setMatEdit((x) => ({ ...x, [mt.id]: { ...x[mt.id]!, price: e.target.value } }))} /> : fmtKsh(mt.price)}</td>
+                    <td>
+                      <select className="input" style={{ width: 150 }} value={mt.businessHeadId ?? ''} onChange={(e) => saveMaterialHead(mt.id, e.target.value)}>
                         <option value="">—</option>
                         {heads.filter((h) => h.active || h.id === mt.businessHeadId).map((h) => (
                           <option key={h.id} value={h.id}>
@@ -889,43 +950,113 @@ export default function MasterData() {
                         ))}
                       </select>
                     </td>
-                    <td>{fmtKsh(mt.price)}</td>
-                    <td>{mt.stockQty}</td>
+                    <td style={{ textAlign: 'right' }}>{mt.stockQty}</td>
                     <td>
                       <input
                         className="input"
-                        style={{ width: 90 }}
+                        style={{ width: 80 }}
                         value={reorderDrafts[mt.id] ?? String(mt.reorderLevel)}
                         onChange={(e) => setReorderDrafts((d) => ({ ...d, [mt.id]: e.target.value }))}
                         onBlur={(e) => saveReorderLevel(mt.id, e.target.value)}
                       />
                     </td>
-                    <td>{lowStock && <span className="tag tag-accent">Reorder</span>}</td>
+                    <td>
+                      {draft ? (
+                        <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => saveMaterialEdit(mt.id)}>
+                            Save
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setMatEdit((x) => { const { [mt.id]: _d, ...rest } = x; return rest; })}>
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setMatEdit((x) => ({ ...x, [mt.id]: { item: itemName, description: mt.description ?? '', size: mt.size ?? '', unit: mt.unit || 'piece', price: String(mt.price) } }))}>
+                            Edit
+                          </button>{' '}
+                          {lowStock && <span className="tag tag-accent">Reorder</span>}
+                        </>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          <datalist id="material-units">
+            {MATERIAL_UNITS.map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            The business head is the line of business a material is normally bought for — its purchases are tagged to it by default (you can change that on the purchase order). Stock on hand increases when the store manager receives a purchase order, or by a stock take under Stock. Reorder level is editable
-            here — items at or below it are flagged for reorder.
+            Edit changes a line's description, size, unit and price; changing the <i>item</i> name renames every size of it. The business head is the line of business a material is normally bought for — its
+            purchases are tagged to it by default (you can change that on the purchase order). Stock on hand increases when the store manager receives a purchase order, or by a stock take under Stock.
+            Items at or below their reorder level are flagged for reorder.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 640 }}>
-            <div className="field">
-              <label>New item</label>
-              <input className="input" value={newMaterialName} onChange={(e) => setNewMaterialName(e.target.value)} />
+
+          <div id="material-add" className="card blueprint" style={{ padding: 'var(--space-4)', marginTop: 'var(--space-4)', maxWidth: 820 }}>
+            <i className="corner tl"></i>
+            <i className="corner tr"></i>
+            <i className="corner bl"></i>
+            <i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+              Add an item with its sizes
             </div>
-            <div className="field">
-              <label>Price (Ksh)</label>
-              <input className="input" value={newMaterialPrice} onChange={(e) => setNewMaterialPrice(e.target.value)} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--space-3)', alignItems: 'end' }}>
+              <div className="field">
+                <label>Item</label>
+                <input className="input" value={newMaterial.item} onChange={(e) => setNewMaterial((m) => ({ ...m, item: e.target.value }))} placeholder="e.g. Polo Shirt" />
+              </div>
+              <div className="field">
+                <label>Description (optional)</label>
+                <input className="input" value={newMaterial.description} onChange={(e) => setNewMaterial((m) => ({ ...m, description: e.target.value }))} placeholder="e.g. Cotton, collared" />
+              </div>
+              <div className="field">
+                <label>Unit</label>
+                <input className="input" list="material-units" value={newMaterial.unit} onChange={(e) => setNewMaterial((m) => ({ ...m, unit: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label>Business head (optional)</label>
+                <select className="input" value={newMaterial.businessHeadId} onChange={(e) => setNewMaterial((m) => ({ ...m, businessHeadId: e.target.value }))}>
+                  <option value="">—</option>
+                  {heads.filter((h) => h.active).map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-            <button type="button" className="btn btn-primary blueprint" onClick={addMaterial}>
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              Add
-            </button>
+            <div style={{ marginTop: 'var(--space-3)' }}>
+              <label style={{ fontWeight: 700 }}>Sizes and prices</label>
+              <p className="note" style={{ marginTop: 0 }}>
+                One row per size, each with its own price (for example L → 1,200 and XL → 1,300). For an item with a single price and no sizes, leave Size blank on one row.
+              </p>
+              {newVariants.map((v, i) => (
+                <div key={i} style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginBottom: 'var(--space-2)' }}>
+                  <input className="input" style={{ width: 120 }} value={v.size} placeholder="Size (L, XL …)" onChange={(e) => setNewVariants((rows) => rows.map((r, j) => (j === i ? { ...r, size: e.target.value } : r)))} />
+                  <input className="input" style={{ width: 140 }} inputMode="decimal" value={v.price} placeholder="Price (Ksh)" onChange={(e) => setNewVariants((rows) => rows.map((r, j) => (j === i ? { ...r, price: e.target.value } : r)))} />
+                  {newVariants.length > 1 && (
+                    <button type="button" className="btn btn-ghost btn-icon" aria-label="Remove this size" onClick={() => setNewVariants((rows) => rows.filter((_, j) => j !== i))}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setNewVariants((rows) => [...rows, { size: '', price: rows[rows.length - 1]?.price ?? '' }])}>
+                  + Add a size
+                </button>
+                <button type="button" className="btn btn-primary blueprint" onClick={addMaterial}>
+                  <i className="corner tl"></i>
+                  <i className="corner tr"></i>
+                  <i className="corner bl"></i>
+                  <i className="corner br"></i>
+                  Add to price list
+                </button>
+              </div>
+            </div>
           </div>
         </>
       )}

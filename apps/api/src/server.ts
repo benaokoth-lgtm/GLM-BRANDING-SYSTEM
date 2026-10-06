@@ -8,6 +8,7 @@ import { ensureCostAccessOnce } from './costs';
 import { ensureCommissionAccessOnce } from './commission';
 import { ensureBusinessHeadsOnce, ensurePurchasesOnce, ensureStoresAccess } from './purchases';
 import { ensureStaffNamesOnce } from './staffNames';
+import { ensureMaterialItemsOnce } from './materials';
 
 const port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
@@ -17,5 +18,5 @@ app.listen(port, () => {
     .then(() => startDepreciationSchedule())
     .catch((e) => console.error('Accounting start-up failed', e));
   // Give older requisitions a reference and a line; grant the production/quality permissions on databases that pre-date them.
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce()]).catch((e) => console.error('Start-up checks failed', e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error('Start-up checks failed', e));
 });

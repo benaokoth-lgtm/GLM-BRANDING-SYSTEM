@@ -44528,6 +44528,13 @@ function cleanShifNumber(input) {
   return { value: v };
 }
 
+// packages/shared/src/materials.ts
+function materialName(item, size) {
+  const i = item.trim().replace(/\s+/g, " ");
+  const z = (size ?? "").trim().replace(/\s+/g, " ");
+  return z ? `${i} \u2014 ${z}` : i;
+}
+
 // apps/api/src/permissions.ts
 var ALL_TRUE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
 var ALL_FALSE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
@@ -48917,6 +48924,17 @@ var NEVER = INVALID;
 // apps/api/src/routes/masterdata.ts
 var import_crypto2 = __toESM(require("crypto"));
 
+// apps/api/src/materials.ts
+async function ensureMaterialItems() {
+  const rows = await prisma.material.findMany({ where: { item: "" }, select: { id: true, name: true } });
+  for (const m of rows) await prisma.material.update({ where: { id: m.id }, data: { item: m.name } });
+}
+var ensuring2 = null;
+function ensureMaterialItemsOnce() {
+  if (!ensuring2) ensuring2 = ensureMaterialItems().finally(() => ensuring2 = null);
+  return ensuring2;
+}
+
 // apps/api/src/staffNames.ts
 async function ensureStaffNames() {
   const users = await prisma.user.findMany({ where: { firstName: "" }, select: { id: true, name: true } });
@@ -48926,10 +48944,10 @@ async function ensureStaffNames() {
     await prisma.user.update({ where: { id: u.id }, data: p });
   }
 }
-var ensuring2 = null;
+var ensuring3 = null;
 function ensureStaffNamesOnce() {
-  if (!ensuring2) ensuring2 = ensureStaffNames().finally(() => ensuring2 = null);
-  return ensuring2;
+  if (!ensuring3) ensuring3 = ensureStaffNames().finally(() => ensuring3 = null);
+  return ensuring3;
 }
 
 // apps/api/src/costs.ts
@@ -48942,10 +48960,10 @@ async function ensureCostAccess() {
     if (DEFAULT_ROLE_PERMISSIONS[name2]?.canSeeCosts) await prisma.role.updateMany({ where: { name: name2 }, data: { canSeeCosts: true } });
   }
 }
-var ensuring3 = null;
+var ensuring4 = null;
 function ensureCostAccessOnce() {
-  if (!ensuring3) ensuring3 = ensureCostAccess().finally(() => ensuring3 = null);
-  return ensuring3;
+  if (!ensuring4) ensuring4 = ensureCostAccess().finally(() => ensuring4 = null);
+  return ensuring4;
 }
 function costFieldsFor(li, allowed) {
   if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
@@ -49334,26 +49352,91 @@ masterDataRouter.delete("/business-heads/:id", requireRole("Admin"), async (req,
   res.status(204).end();
 });
 masterDataRouter.get("/materials", async (_req, res) => {
+  await ensureMaterialItemsOnce();
   res.json(await prisma.material.findMany({ orderBy: { name: "asc" } }));
 });
-var materialSchema = external_exports.object({ name: external_exports.string().min(1), price: external_exports.number().positive(), businessHeadId: external_exports.number().int().nullable().optional() });
+var same = (a2, b) => a2.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase();
+var variantSchema = external_exports.object({ size: external_exports.string().trim().max(40).optional().default(""), price: external_exports.number().positive("Every size needs a price greater than 0") });
+var materialSchema = external_exports.object({
+  item: external_exports.string().trim().min(1).max(120).optional(),
+  name: external_exports.string().trim().min(1).max(120).optional(),
+  // older callers: the item's name
+  description: external_exports.string().trim().max(300).optional().default(""),
+  unit: external_exports.string().trim().min(1).max(30).optional().default("piece"),
+  businessHeadId: external_exports.number().int().nullable().optional(),
+  price: external_exports.number().positive().optional(),
+  // an item with one price and no sizes
+  variants: external_exports.array(variantSchema).min(1).max(40).optional()
+  // the sizes, each with its price
+}).refine((o) => !!(o.item || o.name), { message: "Item name is required" }).refine((o) => !!o.variants || o.price != null, { message: "A price is required" });
 masterDataRouter.post("/materials", requireRole("Admin"), async (req, res) => {
   const parsed = materialSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  res.status(201).json(await prisma.material.create({ data: parsed.data }));
+  await ensureMaterialItemsOnce();
+  const d = parsed.data;
+  const item = (d.item || d.name).replace(/\s+/g, " ");
+  const variants = d.variants ?? [{ size: "", price: d.price }];
+  if (variants.length > 1 && variants.some((v) => !v.size)) return res.status(400).json({ error: "Give every size a name (L, XL \u2026), or add a single line with no size" });
+  for (let i = 0; i < variants.length; i++) if (variants.findIndex((v) => same(v.size, variants[i].size)) !== i) return res.status(400).json({ error: `The size ${variants[i].size || "(none)"} is entered twice` });
+  const existing = (await prisma.material.findMany({ select: { item: true, size: true } })).filter((m) => same(m.item, item));
+  for (const v of variants) {
+    if (existing.some((m) => same(m.size, v.size))) return res.status(400).json({ error: `${materialName(item, v.size)} is already in the price list` });
+  }
+  if (existing.length > 0 && existing.some((m) => !m.size) && variants.some((v) => v.size)) {
+    return res.status(400).json({ error: `${item} already exists without a size \u2014 edit it to give it a size (say L), then add the other sizes` });
+  }
+  if (existing.length > 0 && existing.some((m) => m.size) && variants.some((v) => !v.size)) {
+    return res.status(400).json({ error: `${item} comes in sizes \u2014 give the new line a size` });
+  }
+  if (d.businessHeadId != null && !await prisma.businessHead.findUnique({ where: { id: d.businessHeadId } })) return res.status(400).json({ error: "That business head does not exist" });
+  const created = await prisma.$transaction(
+    variants.map(
+      (v) => prisma.material.create({
+        data: { name: materialName(item, v.size), item, description: d.description, size: v.size.replace(/\s+/g, " "), unit: d.unit, price: v.price, businessHeadId: d.businessHeadId ?? null }
+      })
+    )
+  );
+  res.status(201).json(created);
 });
 var materialUpdateSchema = external_exports.object({
   price: external_exports.number().positive().optional(),
   reorderLevel: external_exports.number().min(0).optional(),
   // The line of business this material is normally bought for (purchases of it are tagged to it by default).
-  businessHeadId: external_exports.number().int().nullable().optional()
+  businessHeadId: external_exports.number().int().nullable().optional(),
+  item: external_exports.string().trim().min(1).max(120).optional(),
+  description: external_exports.string().trim().max(300).optional(),
+  size: external_exports.string().trim().max(40).optional(),
+  unit: external_exports.string().trim().min(1).max(30).optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/materials/:id", requirePermission("canApproveStock"), async (req, res) => {
   const parsed = materialUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const material = await prisma.material.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
-  if (!material) return res.status(404).json({ error: "Material not found" });
-  res.json(material);
+  await ensureMaterialItemsOnce();
+  const id = Number(req.params.id);
+  const current = await prisma.material.findUnique({ where: { id } });
+  if (!current) return res.status(404).json({ error: "Material not found" });
+  const { item: newItemRaw, size: newSizeRaw, ...rest } = parsed.data;
+  const oldItem = current.item || current.name;
+  const newItem = (newItemRaw ?? oldItem).replace(/\s+/g, " ");
+  const newSize = (newSizeRaw ?? current.size).replace(/\s+/g, " ");
+  const group = (await prisma.material.findMany({ where: { item: oldItem } })).filter((m) => same(m.item, oldItem));
+  const renamed = newItem !== oldItem;
+  const sizeChanged = newSize !== current.size;
+  if (renamed || sizeChanged) {
+    const others = (await prisma.material.findMany({ select: { id: true, item: true, size: true } })).filter((m) => same(m.item, newItem) && !group.some((g) => g.id === m.id));
+    const after = group.map((g) => ({ id: g.id, size: g.id === id ? newSize : g.size }));
+    const lines = [...after, ...others];
+    for (let i = 0; i < lines.length; i++) {
+      if (lines.findIndex((l) => same(l.size, lines[i].size)) !== i) return res.status(400).json({ error: `${materialName(newItem, lines[i].size)} is already in the price list` });
+    }
+    if (lines.length > 1 && lines.some((l) => !l.size)) return res.status(400).json({ error: `${newItem} comes in sizes \u2014 every line needs a size` });
+  }
+  if (rest.businessHeadId != null && !await prisma.businessHead.findUnique({ where: { id: rest.businessHeadId } })) return res.status(400).json({ error: "That business head does not exist" });
+  await prisma.$transaction(async (tx) => {
+    if (renamed) for (const g of group) await tx.material.update({ where: { id: g.id }, data: { item: newItem, name: materialName(newItem, g.id === id ? newSize : g.size) } });
+    await tx.material.update({ where: { id }, data: { ...rest, size: newSize, item: newItem, name: materialName(newItem, newSize) } });
+  });
+  res.json(await prisma.material.findUnique({ where: { id } }));
 });
 masterDataRouter.get("/corporate-clients", async (_req, res) => {
   res.json(await prisma.corporateClient.findMany({ orderBy: { name: "asc" } }));
@@ -51025,10 +51108,10 @@ async function ensureRequisitions() {
     }
   }
 }
-var ensuring4 = null;
+var ensuring5 = null;
 function ensureRequisitionsOnce() {
-  if (!ensuring4) ensuring4 = ensureRequisitions().finally(() => ensuring4 = null);
-  return ensuring4;
+  if (!ensuring5) ensuring5 = ensureRequisitions().finally(() => ensuring5 = null);
+  return ensuring5;
 }
 
 // apps/api/src/routes/stock.ts
@@ -51511,7 +51594,7 @@ stockRouter.post("/imports", async (req, res) => {
       const name2 = line.description.trim();
       let material = byLowerName.get(name2.toLowerCase());
       if (!material) {
-        material = await tx.material.create({ data: { name: name2, price: Math.round(line.unitCost) } });
+        material = await tx.material.create({ data: { name: name2, item: name2, price: Math.round(line.unitCost) } });
         byLowerName.set(name2.toLowerCase(), material);
       }
       resolved.push({ materialId: material.id, materialName: material.name, qty: line.qty, unitCost: line.unitCost, totalCost: line.totalCost, businessHeadId: material.businessHeadId });
@@ -51637,7 +51720,7 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
     b.totalCost += p.totalCost;
     breakdownMap.set(p.material.name, b);
   }
-  const consumableBreakdown = Array.from(breakdownMap.entries()).map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: v.totalCost })).sort((a2, b) => b.totalCost - a2.totalCost);
+  const consumableBreakdown = Array.from(breakdownMap.entries()).map(([materialName2, v]) => ({ materialName: materialName2, qty: v.qty, totalCost: v.totalCost })).sort((a2, b) => b.totalCost - a2.totalCost);
   const grossProfit = revenue - consumablesCost;
   const marginPct = revenue > 0 ? grossProfit / revenue * 100 : null;
   const avgRevenuePerPiece = qtyPieces > 0 ? revenue / qtyPieces : null;
@@ -53969,10 +54052,10 @@ async function ensureProduction() {
     await prisma.role.updateMany({ where: { name: name2 }, data: { canAccessProduction: d.canAccessProduction, canManageProduction: d.canManageProduction, canAccessQuality: d.canAccessQuality } });
   }
 }
-var ensuring5 = null;
+var ensuring6 = null;
 function ensureProductionOnce() {
-  if (!ensuring5) ensuring5 = ensureProduction().finally(() => ensuring5 = null);
-  return ensuring5;
+  if (!ensuring6) ensuring6 = ensureProduction().finally(() => ensuring6 = null);
+  return ensuring6;
 }
 async function isProductionManager(user) {
   return user.role === "Admin" || (await permissionsForRole(user.role)).canManageProduction;
@@ -54582,5 +54665,5 @@ var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
   console.log(`POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

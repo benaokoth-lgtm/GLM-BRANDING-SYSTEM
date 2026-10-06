@@ -25,7 +25,13 @@ export interface CatalogService {
 
 export interface CatalogMaterial {
   id: number;
+  /** The full name orders and stock show: the item and its size ("Polo Shirt — L"). */
   name: string;
+  /** The item ("Polo Shirt"), its description, size and unit — the price-list columns. */
+  item?: string;
+  description?: string;
+  size?: string;
+  unit?: string;
   price: number;
   stockQty: number;
   reorderLevel: number;

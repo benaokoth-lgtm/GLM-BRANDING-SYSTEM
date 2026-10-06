@@ -593,7 +593,7 @@ stockRouter.post('/imports', async (req, res) => {
       const name = line.description.trim();
       let material = byLowerName.get(name.toLowerCase());
       if (!material) {
-        material = await tx.material.create({ data: { name, price: Math.round(line.unitCost) } });
+        material = await tx.material.create({ data: { name, item: name, price: Math.round(line.unitCost) } });
         byLowerName.set(name.toLowerCase(), material);
       }
       resolved.push({ materialId: material.id, materialName: material.name, qty: line.qty, unitCost: line.unitCost, totalCost: line.totalCost, businessHeadId: material.businessHeadId });

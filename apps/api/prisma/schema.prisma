@@ -151,7 +151,13 @@ model Service {
 
 model Material {
   id           Int    @id @default(autoincrement())
+  // The line's full name — what orders, purchases and stock show: the item and its size together ("Polo Shirt — L"; just "Cap" with no size).
   name         String
+  // The stock price list's columns: Item, Description, Size, Unit, Price. Each size of an item is its own line with its own price and stock.
+  item         String @default("")
+  description  String @default("")
+  size         String @default("")
+  unit         String @default("piece")
   price        Float
   stockQty     Float  @default(0)
   reorderLevel Float  @default(0)

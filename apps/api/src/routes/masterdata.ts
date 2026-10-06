@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import crypto from 'crypto';
-import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, cleanKraPin, composeName } from '@glm/shared';
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, cleanKraPin, composeName, materialName } from '@glm/shared';
+import { ensureMaterialItemsOnce } from '../materials';
 import { ensureStaffNamesOnce } from '../staffNames';
 import { canSeeCosts } from '../costs';
 import { defaultBusinessHeadName } from '@glm/shared';
@@ -401,36 +402,111 @@ masterDataRouter.delete('/business-heads/:id', requireRole('Admin'), async (req,
 });
 
 // ── Material Price List ─────────────────────────────────────────────────
+// Columns: Item, Description, Size, Unit, Price. An item that comes in sizes (a polo shirt in L and XL) is one line per size, each with its own
+// price and stock; the line's name — what orders, purchases and stock show — is the item and its size together ("Polo Shirt — L").
 masterDataRouter.get('/materials', async (_req, res) => {
+  await ensureMaterialItemsOnce();
   res.json(await prisma.material.findMany({ orderBy: { name: 'asc' } }));
 });
 
-const materialSchema = z.object({ name: z.string().min(1), price: z.number().positive(), businessHeadId: z.number().int().nullable().optional() });
+const same = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
+
+const variantSchema = z.object({ size: z.string().trim().max(40).optional().default(''), price: z.number().positive('Every size needs a price greater than 0') });
+const materialSchema = z
+  .object({
+    item: z.string().trim().min(1).max(120).optional(),
+    name: z.string().trim().min(1).max(120).optional(), // older callers: the item's name
+    description: z.string().trim().max(300).optional().default(''),
+    unit: z.string().trim().min(1).max(30).optional().default('piece'),
+    businessHeadId: z.number().int().nullable().optional(),
+    price: z.number().positive().optional(), // an item with one price and no sizes
+    variants: z.array(variantSchema).min(1).max(40).optional(), // the sizes, each with its price
+  })
+  .refine((o) => !!(o.item || o.name), { message: 'Item name is required' })
+  .refine((o) => !!o.variants || o.price != null, { message: 'A price is required' });
 
 masterDataRouter.post('/materials', requireRole('Admin'), async (req, res) => {
   const parsed = materialSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  res.status(201).json(await prisma.material.create({ data: parsed.data }));
+  await ensureMaterialItemsOnce();
+  const d = parsed.data;
+  const item = (d.item || d.name)!.replace(/\s+/g, ' ');
+  const variants = d.variants ?? [{ size: '', price: d.price! }];
+
+  // A size is named, or it is the item's only line.
+  if (variants.length > 1 && variants.some((v) => !v.size)) return res.status(400).json({ error: 'Give every size a name (L, XL …), or add a single line with no size' });
+  for (let i = 0; i < variants.length; i++) if (variants.findIndex((v) => same(v.size, variants[i]!.size)) !== i) return res.status(400).json({ error: `The size ${variants[i]!.size || '(none)'} is entered twice` });
+
+  const existing = (await prisma.material.findMany({ select: { item: true, size: true } })).filter((m) => same(m.item, item));
+  for (const v of variants) {
+    if (existing.some((m) => same(m.size, v.size))) return res.status(400).json({ error: `${materialName(item, v.size)} is already in the price list` });
+  }
+  if (existing.length > 0 && existing.some((m) => !m.size) && variants.some((v) => v.size)) {
+    return res.status(400).json({ error: `${item} already exists without a size — edit it to give it a size (say L), then add the other sizes` });
+  }
+  if (existing.length > 0 && existing.some((m) => m.size) && variants.some((v) => !v.size)) {
+    return res.status(400).json({ error: `${item} comes in sizes — give the new line a size` });
+  }
+  if (d.businessHeadId != null && !(await prisma.businessHead.findUnique({ where: { id: d.businessHeadId } }))) return res.status(400).json({ error: 'That business head does not exist' });
+
+  const created = await prisma.$transaction(
+    variants.map((v) =>
+      prisma.material.create({
+        data: { name: materialName(item, v.size), item, description: d.description, size: v.size.replace(/\s+/g, ' '), unit: d.unit, price: v.price, businessHeadId: d.businessHeadId ?? null },
+      }),
+    ),
+  );
+  res.status(201).json(created);
 });
 
-// Reorder level (and price) are editable in place by Admin or the Finance
-// roles that also manage Stock — unlike the roster/price-list "add" actions
-// above, which stay Admin-only.
+// Reorder level, price, and the line's details are editable in place by Admin or the Finance roles that also manage Stock — unlike the
+// roster/price-list "add" actions above, which stay Admin-only. Renaming the ITEM renames every size of it.
 const materialUpdateSchema = z
   .object({
     price: z.number().positive().optional(),
     reorderLevel: z.number().min(0).optional(),
     // The line of business this material is normally bought for (purchases of it are tagged to it by default).
     businessHeadId: z.number().int().nullable().optional(),
+    item: z.string().trim().min(1).max(120).optional(),
+    description: z.string().trim().max(300).optional(),
+    size: z.string().trim().max(40).optional(),
+    unit: z.string().trim().min(1).max(30).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
 masterDataRouter.put('/materials/:id', requirePermission('canApproveStock'), async (req, res) => {
   const parsed = materialUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const material = await prisma.material.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
-  if (!material) return res.status(404).json({ error: 'Material not found' });
-  res.json(material);
+  await ensureMaterialItemsOnce();
+  const id = Number(req.params.id);
+  const current = await prisma.material.findUnique({ where: { id } });
+  if (!current) return res.status(404).json({ error: 'Material not found' });
+  const { item: newItemRaw, size: newSizeRaw, ...rest } = parsed.data;
+
+  const oldItem = current.item || current.name;
+  const newItem = (newItemRaw ?? oldItem).replace(/\s+/g, ' ');
+  const newSize = (newSizeRaw ?? current.size).replace(/\s+/g, ' ');
+  const group = (await prisma.material.findMany({ where: { item: oldItem } })).filter((m) => same(m.item, oldItem));
+  const renamed = newItem !== oldItem;
+  const sizeChanged = newSize !== current.size;
+
+  if (renamed || sizeChanged) {
+    // The lines of the item it would end up with, other than the ones being renamed or changed here, must not clash with the new names.
+    const others = (await prisma.material.findMany({ select: { id: true, item: true, size: true } })).filter((m) => same(m.item, newItem) && !group.some((g) => g.id === m.id));
+    const after = group.map((g) => ({ id: g.id, size: g.id === id ? newSize : g.size }));
+    const lines = [...after, ...others];
+    for (let i = 0; i < lines.length; i++) {
+      if (lines.findIndex((l) => same(l.size, lines[i]!.size)) !== i) return res.status(400).json({ error: `${materialName(newItem, lines[i]!.size)} is already in the price list` });
+    }
+    if (lines.length > 1 && lines.some((l) => !l.size)) return res.status(400).json({ error: `${newItem} comes in sizes — every line needs a size` });
+  }
+  if (rest.businessHeadId != null && !(await prisma.businessHead.findUnique({ where: { id: rest.businessHeadId } }))) return res.status(400).json({ error: 'That business head does not exist' });
+
+  await prisma.$transaction(async (tx) => {
+    if (renamed) for (const g of group) await tx.material.update({ where: { id: g.id }, data: { item: newItem, name: materialName(newItem, g.id === id ? newSize : g.size) } });
+    await tx.material.update({ where: { id }, data: { ...rest, size: newSize, item: newItem, name: materialName(newItem, newSize) } });
+  });
+  res.json(await prisma.material.findUnique({ where: { id } }));
 });
 
 // ── Corporate Clients ───────────────────────────────────────────────────

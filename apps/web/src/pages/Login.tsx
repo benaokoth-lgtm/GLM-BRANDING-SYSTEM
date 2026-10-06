@@ -114,6 +114,9 @@ export default function Login() {
           >
             Admin: forgot PIN?
           </button>
+          <a href="/privacy" className="text-muted" style={{ display: "block", textAlign: "center", fontSize: 12, marginTop: "var(--space-2)" }}>
+            Privacy policy
+          </a>
         </div>
       </div>
     </div>

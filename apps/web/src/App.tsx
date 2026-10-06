@@ -4,6 +4,7 @@ import AppLayout from './layouts/AppLayout';
 import RequireRole from './components/RequireRole';
 import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
+import Privacy from './pages/Privacy';
 import NewWalkinOrder from './pages/NewWalkinOrder';
 import NewFilmOrder from './pages/NewFilmOrder';
 import NewArtworkOrder from './pages/NewArtworkOrder';
@@ -41,6 +42,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Public: what the system stores and why (Google asks for this address when Drive backups are connected). */}
+      <Route path="/privacy" element={<Privacy />} />
       <Route element={user ? <AppLayout /> : <Navigate to="/login" replace />}>
         <Route index element={<DefaultRedirect />} />
         <Route

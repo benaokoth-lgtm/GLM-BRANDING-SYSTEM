@@ -1,4 +1,4 @@
-import { WALK_IN_CLIENT, fmtDate, fmtKsh, splitVatInclusive } from '@glm/shared';
+import { VAT_RATE, WALK_IN_CLIENT, fmtDate, fmtKsh, splitGross } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printWalkinReceipt } from './printTicket';
 
@@ -60,7 +60,9 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
       : '';
   // Prices are VAT-inclusive throughout this system (see Compliance → VAT) — split the payable amount back out so the document
   // states VAT plainly rather than leaving it ambiguous.
-  const { vat } = splitVatInclusive(order.totals.grandTotal);
+  // The three figures every invoice and quotation states: the total without VAT, the VAT, and the total with VAT — to the cent, so they add up.
+  const { net, vat, total: grand } = splitGross(order.totals.grandTotal, VAT_RATE);
+  const ksh2 = (n: number) => 'Ksh ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const client = order.corporateClient;
   const paymentsReceived = order.totals.grandTotal - order.totals.balanceDue;
 
@@ -119,11 +121,12 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
   tbody tr:last-child td { border-bottom: 2px solid ${RED}; }
   .disc { font-size: 10px; color: ${MUTED}; margin-top: 2px; }
 
-  .totals { margin: 16px 0 0 auto; width: 300px; }
+  .totals { margin: 16px 0 0 auto; width: 340px; }
   .totals .row { display: flex; justify-content: space-between; padding: 4px 8px; font-size: 12px; }
   .totals .row.small { font-size: 10.5px; color: ${MUTED}; padding-top: 0; }
   .totals .total { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 8px 0; }
-  .totals .total span { font-family: ${HEADING_FONT}; color: ${NAVY}; font-size: 30px; letter-spacing: 0.02em; }
+  .totals .total span { font-family: ${HEADING_FONT}; color: ${NAVY}; font-size: 28px; letter-spacing: 0.02em; }
+  .totals .total em { font-family: ${BODY_FONT}; font-style: normal; font-size: 11px; color: ${MUTED}; letter-spacing: 0; }
   .totals .due span { color: ${RED}; }
   .status { margin: 8px 8px 0; text-align: right; font-family: ${HEADING_FONT}; font-size: 20px; color: ${NAVY}; letter-spacing: 0.04em; }
   .status.due { color: ${RED}; }
@@ -191,10 +194,10 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
     </table>
 
     <div class="totals">
-      <div class="row"><span>Subtotal</span><span>${fmtKsh(order.totals.subtotal)}</span></div>
-      ${order.totals.orderDiscount > 0 ? `<div class="row"><span>Discount</span><span>-${fmtKsh(order.totals.orderDiscount)}</span></div>` : ''}
-      <div class="row small"><span>Includes VAT (16%)</span><span>${fmtKsh(vat)}</span></div>
-      <div class="total"><span>TOTAL</span><span>${fmtKsh(order.totals.grandTotal)}</span></div>
+      ${order.totals.orderDiscount > 0 ? `<div class="row"><span>Subtotal</span><span>${fmtKsh(order.totals.subtotal)}</span></div><div class="row"><span>Discount</span><span>-${fmtKsh(order.totals.orderDiscount)}</span></div>` : ''}
+      <div class="row"><span>Total excluding VAT</span><span>${ksh2(net)}</span></div>
+      <div class="row"><span>VAT (${Math.round(VAT_RATE * 100)}%)</span><span>${ksh2(vat)}</span></div>
+      <div class="total"><span>TOTAL <em>including VAT</em></span><span>${ksh2(grand)}</span></div>
       ${
         isInvoice
           ? `${

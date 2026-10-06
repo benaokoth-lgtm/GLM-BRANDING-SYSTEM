@@ -65,4 +65,17 @@ describe('service price list: description and size', () => {
     assert.equal((await call('PUT', `/master-data/services/${dtf.id}`, { size: 'A4' })).status, 400);
     assert.equal((await call('PUT', `/master-data/services/${dtf.id}`, { description: 'Film' })).status, 200);
   });
+  it('renaming a service renames every size of it; edits to unit and price work; clashes and DTF services are refused', async () => {
+    const a = await call('POST', '/master-data/services', { name: 'Flag (svc test)', size: 'S', unit: 'piece', price: 100 });
+    const b = await call('POST', '/master-data/services', { name: 'Flag (svc test)', size: 'L', unit: 'piece', price: 200 });
+    const renamed = await call('PUT', `/master-data/services/${a.body.id}`, { item: 'Pennant (svc test)', description: 'Felt', unit: 'metre', price: 150 });
+    assert.equal(renamed.status, 200);
+    assert.deepEqual([renamed.body.name, renamed.body.item, renamed.body.unit, renamed.body.price, renamed.body.description], ['Pennant (svc test) — S', 'Pennant (svc test)', 'metre', 150, 'Felt']);
+    assert.equal((await prisma.service.findUnique({ where: { id: b.body.id } }))!.name, 'Pennant (svc test) — L', 'the other size followed');
+    await call('POST', '/master-data/services', { name: 'Streamer (svc test)', size: 'L', unit: 'piece', price: 5 });
+    assert.equal((await call('PUT', `/master-data/services/${a.body.id}`, { item: 'Streamer (svc test)', size: 'L' })).status, 400); // that name is taken
+    const dtf = await prisma.service.create({ data: { name: 'DTF Edit Test', item: 'DTF Edit Test', unit: 'sqm', price: 100, soldViaDtfModule: true } });
+    assert.equal((await call('PUT', `/master-data/services/${dtf.id}`, { item: 'Renamed DTF' })).status, 400);
+    assert.equal((await call('PUT', `/master-data/services/${dtf.id}`, { price: 120 })).status, 200);
+  });
 });

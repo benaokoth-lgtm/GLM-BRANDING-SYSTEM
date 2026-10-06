@@ -105,7 +105,7 @@ export default function MasterData() {
   const [newServiceSize, setNewServiceSize] = useState('');
   const [newServiceUnit, setNewServiceUnit] = useState<'piece' | 'metre' | 'sqm'>('piece');
   const [newServicePrice, setNewServicePrice] = useState('');
-  const [servicePriceDrafts, setServicePriceDrafts] = useState<Record<number, string>>({});
+  const [svcEdit, setSvcEdit] = useState<Record<number, { item: string; description: string; size: string; unit: 'piece' | 'metre' | 'sqm'; price: string }>>({});
 
   // The stock price list: a new item with its sizes (each size its own price), and a line being edited in place.
   const [newMaterial, setNewMaterial] = useState({ item: '', description: '', unit: 'piece', businessHeadId: '' });
@@ -336,30 +336,22 @@ export default function MasterData() {
     }
   }
 
-  async function saveServicePrice(serviceId: number, value: string) {
-    const price = Number(value);
-    if (!price || price <= 0) return;
+  async function saveServiceEdit(serviceId: number) {
+    const d = svcEdit[serviceId];
+    if (!d) return;
+    const price = Number(d.price);
+    if (!d.item.trim()) return setError('The service name is required');
+    if (!(price > 0)) return setError('The price must be greater than 0');
     setError(null);
     try {
-      await api.put(`/master-data/services/${serviceId}`, { price });
-      setServicePriceDrafts((d) => {
-        const next = { ...d };
-        delete next[serviceId];
-        return next;
+      await api.put(`/master-data/services/${serviceId}`, { item: d.item, description: d.description, size: d.size, unit: d.unit, price });
+      setSvcEdit((x) => {
+        const { [serviceId]: _drop, ...rest } = x;
+        return rest;
       });
       catalog.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update service price');
-    }
-  }
-
-  async function changeServiceUnit(serviceId: number, unit: 'piece' | 'metre' | 'sqm') {
-    setError(null);
-    try {
-      await api.put(`/master-data/services/${serviceId}`, { unit });
-      catalog.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update service unit');
+      setError(err instanceof Error ? err.message : 'Failed to save the service');
     }
   }
 
@@ -764,28 +756,51 @@ export default function MasterData() {
                 <Fragment key={sv.id}>
                 <tr>
                   <td>
-                    {sv.item || sv.name}{' '}
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      title="Add another size of this service"
-                      onClick={() => {
-                        setNewServiceName(sv.item || sv.name);
-                        setNewServiceDescription(sv.description ?? '');
-                        setNewServiceSize('');
-                        setNewServiceUnit(sv.unit);
-                        setNewServicePrice('');
-                        setTimeout(() => document.getElementById('service-add')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-                      }}
-                    >
-                      + size
-                    </button>
+                    {svcEdit[sv.id] ? (
+                      <>
+                        <input className="input" style={{ width: 160 }} value={svcEdit[sv.id]!.item} title="Renames every size of this service" onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, item: e.target.value } }))} />
+                        <div style={{ display: 'flex', gap: 'var(--space-1)', marginTop: 'var(--space-1)' }}>
+                          <button type="button" className="btn btn-primary btn-sm" onClick={() => saveServiceEdit(sv.id)}>
+                            Save
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSvcEdit((x) => { const { [sv.id]: _d, ...rest } = x; return rest; })}>
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        {sv.item || sv.name}{' '}
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSvcEdit((x) => ({ ...x, [sv.id]: { item: sv.item || sv.name, description: sv.description ?? '', size: sv.size ?? '', unit: sv.unit, price: String(sv.price) } }))}>
+                          Edit
+                        </button>{' '}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          title="Add another size of this service"
+                          onClick={() => {
+                            setNewServiceName(sv.item || sv.name);
+                            setNewServiceDescription(sv.description ?? '');
+                            setNewServiceSize('');
+                            setNewServiceUnit(sv.unit);
+                            setNewServicePrice('');
+                            setTimeout(() => document.getElementById('service-add')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+                          }}
+                        >
+                          + size
+                        </button>
+                      </>
+                    )}
                   </td>
                   <td>
-                    <input className="input" style={{ width: 170 }} key={`d${sv.id}-${sv.description ?? ''}`} defaultValue={sv.description ?? ''} placeholder="—" onBlur={(e) => e.target.value.trim() !== (sv.description ?? '') && saveServiceFields(sv.id, { description: e.target.value })} />
+                    {svcEdit[sv.id] ? <input className="input" style={{ width: 170 }} value={svcEdit[sv.id]!.description} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, description: e.target.value } }))} /> : sv.description || <span className="text-muted">—</span>}
                   </td>
                   <td>
-                    <input className="input" style={{ width: 90 }} key={`s${sv.id}-${sv.size ?? ''}`} defaultValue={sv.size ?? ''} placeholder="A3, L …" disabled={sv.soldViaDtfModule} title={sv.soldViaDtfModule ? 'Sold through the DTF module — it keeps its name' : undefined} onBlur={(e) => e.target.value.trim() !== (sv.size ?? '') && saveServiceFields(sv.id, { size: e.target.value })} />
+                    {svcEdit[sv.id] ? (
+                      <input className="input" style={{ width: 90 }} value={svcEdit[sv.id]!.size} placeholder="A3, L …" disabled={sv.soldViaDtfModule} title={sv.soldViaDtfModule ? 'Sold through the DTF module — it keeps its name' : undefined} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, size: e.target.value } }))} />
+                    ) : (
+                      sv.size || <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td>
                     <select className="input" style={{ width: 170 }} value={sv.businessHeadId ?? ''} onChange={(e) => saveServiceFields(sv.id, { businessHeadId: e.target.value ? Number(e.target.value) : null })}>
@@ -798,24 +813,28 @@ export default function MasterData() {
                     </select>
                   </td>
                   <td>
-                    <select className="input" style={{ width: 90 }} value={sv.unit} onChange={(e) => changeServiceUnit(sv.id, e.target.value as 'piece' | 'metre' | 'sqm')}>
-                      <option value="piece">piece</option>
-                      <option value="metre">metre</option>
-                      <option value="sqm">sqm</option>
-                    </select>
+                    {svcEdit[sv.id] ? (
+                      <select className="input" style={{ width: 90 }} value={svcEdit[sv.id]!.unit} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, unit: e.target.value as 'piece' | 'metre' | 'sqm' } }))}>
+                        <option value="piece">piece</option>
+                        <option value="metre">metre</option>
+                        <option value="sqm">sqm</option>
+                      </select>
+                    ) : (
+                      sv.unit
+                    )}
                   </td>
                   <td>
-                    <input
-                      className="input"
-                      style={{ width: 100 }}
-                      value={servicePriceDrafts[sv.id] ?? String(sv.price)}
-                      onChange={(e) => setServicePriceDrafts((d) => ({ ...d, [sv.id]: e.target.value }))}
-                      onBlur={(e) => saveServicePrice(sv.id, e.target.value)}
-                    />
-                    <span className="text-muted" style={{ fontSize: 11 }}>
-                      {' '}
-                      /{sv.unit}
-                    </span>
+                    {svcEdit[sv.id] ? (
+                      <input className="input" style={{ width: 100 }} inputMode="decimal" value={svcEdit[sv.id]!.price} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, price: e.target.value } }))} />
+                    ) : (
+                      <>
+                        {fmtKsh(sv.price)}
+                        <span className="text-muted" style={{ fontSize: 11 }}>
+                          {' '}
+                          /{sv.unit}
+                        </span>
+                      </>
+                    )}
                   </td>
                   <td>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
@@ -894,7 +913,7 @@ export default function MasterData() {
             </tbody>
           </table>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Unit and price are editable in place — a service flagged "Artwork pricing" with unit "sqm" (e.g. DTF
+            Press Edit on a line to change its name, description, size, unit and price (changing the name renames every size of that service). A service flagged "Artwork pricing" with unit "sqm" (e.g. DTF
             Printing, Embroidery) shows an "Artwork size (sqm)" field on order line items instead of a flat
             per-piece price: price is computed from one artwork's area, at the Ksh/sqm rate set here. Services flagged "Charges pressing fee" show a staff-picked heat
             press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where we print and press ourselves.

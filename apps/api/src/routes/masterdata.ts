@@ -349,6 +349,7 @@ masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
 // needing a new service.
 const serviceUpdateSchema = z
   .object({
+    item: z.string().trim().min(1).max(120).optional(),
     description: z.string().trim().max(300).optional(),
     size: z.string().trim().max(40).optional(),
     price: z.number().positive().optional(),
@@ -371,19 +372,30 @@ masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => 
   const id = Number(req.params.id);
   const current = await prisma.service.findUnique({ where: { id } });
   if (!current) return res.status(404).json({ error: 'Service not found' });
-  const { size: sizeRaw, ...rest } = parsed.data;
-  const data: Record<string, unknown> = { ...rest };
-  if (sizeRaw !== undefined && sizeRaw.replace(/\s+/g, ' ') !== current.size) {
-    // The DTF services are looked up by name by the DTF module, so their name stays as it is.
-    if (current.soldViaDtfModule) return res.status(400).json({ error: `${current.name} is sold through the DTF module and cannot be given a size` });
-    const size = sizeRaw.replace(/\s+/g, ' ');
-    const fullName = materialName(current.item || current.name, size);
-    if ((await prisma.service.findMany({ where: { id: { not: id } }, select: { name: true } })).some((s) => same(s.name, fullName))) return res.status(400).json({ error: `${fullName} is already in the service price list` });
-    data.size = size;
-    data.item = current.item || current.name;
-    data.name = fullName;
+  const { size: sizeRaw, item: itemRaw, ...rest } = parsed.data;
+  const oldItem = current.item || current.name;
+  const newItem = itemRaw !== undefined ? itemRaw.replace(/\s+/g, ' ') : oldItem;
+  const newSize = sizeRaw !== undefined ? sizeRaw.replace(/\s+/g, ' ') : current.size;
+  const renamed = newItem !== oldItem;
+  const sizeChanged = newSize !== current.size;
+  const all = await prisma.service.findMany();
+  // Renaming the service renames every size of it.
+  const group = all.filter((s) => s.id === id || same(s.item || s.name, oldItem));
+  if (renamed || sizeChanged) {
+    // The DTF services are looked up by name by the DTF module, so their names stay as they are.
+    const locked = (renamed ? group : [current]).find((g) => g.soldViaDtfModule);
+    if (locked) return res.status(400).json({ error: `${locked.name} is sold through the DTF module, so its name and size cannot be changed` });
+    const after = group.map((g) => ({ id: g.id, name: materialName(newItem, g.id === id ? newSize : g.size) }));
+    const others = all.filter((s) => !group.some((g) => g.id === s.id));
+    for (let i = 0; i < after.length; i++) {
+      if (others.some((o) => same(o.name, after[i]!.name)) || after.findIndex((x) => same(x.name, after[i]!.name)) !== i) return res.status(400).json({ error: `${after[i]!.name} is already in the service price list` });
+    }
   }
-  res.json(await prisma.service.update({ where: { id }, data }));
+  await prisma.$transaction(async (tx) => {
+    if (renamed) for (const g of group) if (g.id !== id) await tx.service.update({ where: { id: g.id }, data: { item: newItem, name: materialName(newItem, g.size) } });
+    await tx.service.update({ where: { id }, data: { ...rest, ...(renamed || sizeChanged ? { item: newItem, size: newSize, name: materialName(newItem, newSize) } : {}) } });
+  });
+  res.json(await prisma.service.findUnique({ where: { id } }));
 });
 
 // ── Business heads ──────────────────────────────────────────────────────

@@ -43,6 +43,10 @@ model User {
   resetAttempts    Int       @default(0)
   // Set when the Admin emails someone a PIN: they must choose their own at first login.
   mustChangePin    Boolean   @default(false)
+  // Switched off = cannot sign in and every open session ends at once, but their history (orders, payments, payroll) stays.
+  active           Boolean   @default(true)
+  // Raised to end every session already issued to this person (when they are switched off or their PIN is reset).
+  tokenVersion     Int       @default(0)
 
   orders        Order[]
   payments      Payment[]
@@ -609,6 +613,8 @@ model MpesaTransaction {
   orderId           Int?
   order             Order?   @relation(fields: [orderId], references: [id])
   confirmedManually Boolean  @default(false)
+  // Who confirmed it by hand (a manager, against the M-Pesa SMS) — the code they typed is kept as mpesaReceipt.
+  confirmedByName   String?
   createdByName     String
   createdAt         DateTime @default(now())
   // 'STK' = a push we sent; 'C2B' = a Paybill/Till payment Safaricom told us about; 'Import' = a line

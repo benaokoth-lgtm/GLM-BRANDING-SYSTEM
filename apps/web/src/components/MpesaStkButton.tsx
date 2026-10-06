@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { useAuth } from '../state/AuthContext';
 
 interface MpesaStatus {
   status: 'Pending' | 'Success' | 'Failed' | 'Cancelled';
@@ -38,6 +39,10 @@ export default function MpesaStkButton({ phone, amount, accountReference, descri
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [canConfirmManually, setCanConfirmManually] = useState(false);
+  // Confirming a payment by hand books it on someone's word, so only a manager who handles payments may — and they type the code from the SMS.
+  const { user } = useAuth();
+  const mayConfirm = user?.role === 'Admin' || !!user?.permissions.canManagePayments;
+  const [code, setCode] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const manualTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -100,10 +105,11 @@ export default function MpesaStkButton({ phone, amount, accountReference, descri
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/mpesa/${checkoutRequestId}/confirm-manually`, {});
+      const receipt = code.trim().toUpperCase();
+      await api.post(`/mpesa/${checkoutRequestId}/confirm-manually`, receipt ? { receipt } : {});
       stopPolling();
-      setStatus((s) => (s ? { ...s, status: 'Success' } : s));
-      onSuccess(null);
+      setStatus((s) => (s ? { ...s, status: 'Success', mpesaReceipt: receipt || null } : s));
+      onSuccess(receipt || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to confirm manually');
     } finally {
@@ -128,11 +134,15 @@ export default function MpesaStkButton({ phone, amount, accountReference, descri
       ) : (
         <>
           <span className="tag tag-outline">Waiting for customer to complete payment on their phone…</span>
-          {canConfirmManually && (
-            <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={confirmManually} disabled={busy}>
-              I've confirmed payment was received (e.g. via SMS) — mark as paid
-            </button>
+          {canConfirmManually && mayConfirm && (
+            <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input className="input" style={{ width: 150 }} value={code} maxLength={10} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code from the SMS" aria-label="M-Pesa confirmation code from the SMS" />
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={confirmManually} disabled={busy}>
+                Payment received — mark as paid
+              </button>
+            </div>
           )}
+          {canConfirmManually && !mayConfirm && <span className="note" style={{ margin: 0 }}>Still nothing? If the customer says they have paid, ask a manager to check the till SMS and confirm it.</span>}
         </>
       )}
       {status?.status === 'Failed' && <p className="note" style={{ color: '#a33', margin: 0 }}>{status.resultDesc || 'Payment failed or was declined.'}</p>}

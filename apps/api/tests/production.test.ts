@@ -44,7 +44,7 @@ describe('production → quality → handover', () => {
     // Three roles: a worker, a QC inspector, and a supervisor who manages production and also inspects.
     await prisma.role.create({ data: { name: 'Worker', canAccessProduction: true } });
     await prisma.role.create({ data: { name: 'Inspector', canAccessQuality: true } });
-    await prisma.role.create({ data: { name: 'Lead', canAccessProduction: true, canManageProduction: true, canAccessQuality: true, canViewAllOrders: true } });
+    await prisma.role.create({ data: { name: 'Lead', canAccessProduction: true, canManageProduction: true, canAccessQuality: true, canViewAllOrders: true, canManagePayments: true } });
     for (const [key, role] of [['worker', 'Worker'], ['worker2', 'Worker'], ['inspector', 'Inspector'], ['manager', 'Lead']] as const) {
       const u = await prisma.user.create({ data: { name: `${key} user`, role, pinHash: 'x' } });
       ids[key] = u.id;

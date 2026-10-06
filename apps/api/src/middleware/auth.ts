@@ -23,22 +23,40 @@ declare global {
   }
 }
 
-export function signToken(user: AuthedUser): string {
+// `tv` is the person's token version at sign-in: raising it on the user ends every session issued before (see requireAuth).
+export function signToken(user: AuthedUser & { tv?: number }): string {
   return jwt.sign(user, JWT_SECRET, { expiresIn: '12h' });
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction) {
+// A valid token is not enough: the person must still exist, still be switched on, and not have had their sessions ended. The name and role
+// used for the rest of the request come from the database, not the token, so a change of role or a switch-off applies straight away.
+export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Not authenticated' });
   }
+  let payload: AuthedUser & { tv?: number };
   try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as AuthedUser;
-    req.user = payload;
-    next();
+    payload = jwt.verify(header.slice(7), JWT_SECRET) as AuthedUser & { tv?: number };
   } catch {
     return res.status(401).json({ error: 'Invalid or expired session' });
   }
+  if (typeof payload.id !== 'number') return res.status(401).json({ error: 'Invalid or expired session' });
+  try {
+    const user = await prisma.user.findUnique({ where: { id: payload.id }, select: { id: true, name: true, role: true, active: true, tokenVersion: true } });
+    if (!user || !user.active || (payload.tv ?? 0) !== user.tokenVersion) return res.status(401).json({ error: 'Your session has ended — sign in again' });
+    req.user = { id: user.id, name: user.name, role: user.role };
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** Does this role hold the permission? (Admin always does.) */
+export async function userHasPermission(roleName: string, key: PermissionKey): Promise<boolean> {
+  if (roleName === 'Admin') return true;
+  const role = await prisma.role.findUnique({ where: { name: roleName } });
+  return !!role && !!role[key];
 }
 
 // Still used for the handful of truly fixed, Admin-only actions (Master Data

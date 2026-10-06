@@ -21,7 +21,7 @@ masterDataRouter.use(requireAuth);
 // ── Staff & Users ───────────────────────────────────────────────────────
 masterDataRouter.get('/staff', async (_req, res) => {
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, role: u.role, active: u.active })));
 });
 
 // A name is captured as first name, optional middle name and surname — first name and surname are compulsory.
@@ -90,7 +90,25 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
 masterDataRouter.get('/staff-details', requireRole('Admin'), async (_req, res) => {
   await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin, active: u.active })));
+});
+
+// Switch someone's sign-in off (they have left, or must no longer use the system) or back on. Everything they did stays on record. Switching off
+// ends their open sessions at once. You cannot switch off yourself, or the last active Admin.
+masterDataRouter.put('/staff/:id/active', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ active: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid request' });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  if (!parsed.data.active) {
+    if (id === req.user!.id) return res.status(400).json({ error: 'You cannot switch off your own sign-in' });
+    if (user.role === 'Admin' && (await prisma.user.count({ where: { role: 'Admin', active: true, id: { not: id } } })) === 0) {
+      return res.status(400).json({ error: 'There must always be at least one active Admin' });
+    }
+  }
+  await prisma.user.update({ where: { id }, data: { active: parsed.data.active, failedLoginCount: 0, lockedUntil: null, ...(parsed.data.active ? {} : { tokenVersion: { increment: 1 } }) } });
+  res.json({ id, active: parsed.data.active });
 });
 
 // Change how someone's name is recorded (first name and surname compulsory, middle name optional). The full name follows everywhere it is shown;
@@ -129,7 +147,7 @@ masterDataRouter.post('/staff/:id/send-pin', requireRole('Admin'), async (req, r
 
   const pin = String(crypto.randomInt(0, 10000)).padStart(4, '0');
   const previous = { pinHash: user.pinHash, mustChangePin: user.mustChangePin };
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await bcrypt.hash(pin, 10), mustChangePin: true, failedLoginCount: 0, lockedUntil: null } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await bcrypt.hash(pin, 10), mustChangePin: true, failedLoginCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   const sent = await emailPin(user.name, user.email, pin);
   if (!sent.ok) {
     // Don't leave them locked out of a PIN nobody received.

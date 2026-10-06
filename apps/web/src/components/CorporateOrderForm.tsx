@@ -113,7 +113,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
         <div className="field">
           <label>Prepared by</label>
           <select className="input" value={staffId ?? ''} onChange={(e) => setStaffId(Number(e.target.value))}>
-            {staff.map((s) => (
+            {staff.filter((s) => s.active !== false).map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
               </option>

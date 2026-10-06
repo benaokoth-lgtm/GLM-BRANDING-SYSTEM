@@ -2,10 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { timingSafeEqual } from 'crypto';
 import { prisma } from '../db';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requireRole, userHasPermission } from '../middleware/auth';
 import { autoMatch, normaliseDate, storeReceipt } from '../accounting/mpesaMatching';
 import { todayStr } from '@glm/shared';
-import { recordOrderPayments } from './orders';
+import { canAccessOrder, canTakePayment, recordOrderPayments } from './orders';
 import { DarajaError, callbackUrls, darajaBaseUrl, darajaTimestamp, getAccessToken, getSettingsRow, isReady, loadMpesaConfig, newCallbackSecret } from '../mpesaConfig';
 import type { MpesaConfig } from '../mpesaConfig';
 
@@ -148,6 +148,13 @@ mpesaRouter.post('/stkpush', requireAuth, async (req, res) => {
   const parsed = stkPushSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
 
+  // A push raised against an existing order is money for that order: only someone allowed to see it and take payments on it may raise one.
+  if (parsed.data.orderId) {
+    const target = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, select: { staffId: true } });
+    if (!target) return res.status(404).json({ error: 'Order not found' });
+    if (!(await canAccessOrder(req.user!, target)) || !(await canTakePayment(req.user!, target))) return res.status(403).json({ error: 'Not permitted' });
+  }
+
   const phone = normalizePhone(parsed.data.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid Kenyan phone number (e.g. 07xx xxx xxx)' });
 
@@ -269,12 +276,28 @@ mpesaRouter.get('/status/:checkoutRequestId', requireAuth, async (req, res) => {
 
 // Fallback when no public callback can reach this server (e.g. local development): staff confirms payment really arrived through
 // other means (the till's own SMS). Only usable while still Pending, so it can't override a callback that already resolved the push.
+// This books a payment on the word of whoever presses it, so it is limited to a manager who handles payments, and (outside the sandbox) it needs
+// the M-Pesa confirmation code from the SMS — a code that must not already be on record.
+const confirmSchema = z.object({ receipt: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, 'Enter the M-Pesa confirmation code from the SMS (10 letters and numbers)').optional() });
+
 mpesaRouter.post('/:checkoutRequestId/confirm-manually', requireAuth, async (req, res) => {
+  if (!(await userHasPermission(req.user!.role, 'canManagePayments'))) {
+    return res.status(403).json({ error: 'Only a manager who handles payments can confirm an M-Pesa payment by hand. Ask one to check the till SMS.' });
+  }
+  const parsed = confirmSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const receipt = parsed.data.receipt ?? null;
+  const cfg = await loadMpesaConfig();
+  if (!receipt && cfg.environment === 'production') return res.status(400).json({ error: 'Enter the M-Pesa confirmation code from the SMS (10 letters and numbers)' });
+
   const tx = await prisma.mpesaTransaction.findUnique({ where: { checkoutRequestId: req.params.checkoutRequestId } });
   if (!tx) return res.status(404).json({ error: 'STK push not found' });
   if (tx.status !== 'Pending') return res.status(400).json({ error: 'This push has already been resolved' });
-  await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { confirmedManually: true } });
-  await markSuccess(tx, null);
+  if (receipt && ((await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: receipt } })) || (await prisma.payment.findFirst({ where: { reference: receipt } })))) {
+    return res.status(400).json({ error: `${receipt} is already on record. If it arrived as a Paybill/Till payment, apply it from Accounting → M-Pesa instead.` });
+  }
+  await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { confirmedManually: true, confirmedByName: req.user!.name } });
+  await markSuccess(tx, receipt);
   res.json({ ok: true });
 });
 

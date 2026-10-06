@@ -4,6 +4,8 @@ export interface StaffUser {
   id: number;
   name: string;
   role: Role;
+  /** False once the Admin has switched their sign-in off (they stay on record for history). */
+  active?: boolean;
 }
 
 export interface CatalogService {
@@ -123,6 +125,8 @@ export interface PaymentView {
 }
 
 export interface OrderDetail extends OrderSummary {
+  /** Whether this person may record a payment on the order (its capturer, or someone who handles payments). */
+  canTakePayment?: boolean;
   paymentTiming: PaymentTiming | null;
   // Sales commission: who the order is credited to (a staff member's own client), or the house
   salesSource?: 'sourced' | 'house';

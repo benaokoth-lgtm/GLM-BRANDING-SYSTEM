@@ -41,8 +41,10 @@ describe('profit & loss dashboard', () => {
     await prisma.role.create({ data: { name: 'PnL only (dash test)', canAccessPnl: true } });
     await prisma.role.create({ data: { name: 'Nobody (dash test)' } });
     staffId = (await prisma.user.create({ data: { name: 'dash tester', role: 'Admin', pinHash: 'x' } })).id;
+    // Each token belongs to a real user holding that role (a token's role is read from the database, not trusted from the token).
     for (const [key, role] of [['pnl', 'PnL only (dash test)'], ['nobody', 'Nobody (dash test)'], ['admin', 'Admin']] as const) {
-      tokens[key] = signToken({ id: staffId, name: key, role });
+      const u = key === 'admin' ? { id: staffId } : await prisma.user.create({ data: { name: key + ' (dash test)', role, pinHash: 'x' } });
+      tokens[key] = signToken({ id: u.id, name: key, role });
     }
     service = (await prisma.service.create({ data: { name: 'Banner (dash test)', unit: 'piece', price: 100 } })).id;
     await ensureChartOfAccounts();

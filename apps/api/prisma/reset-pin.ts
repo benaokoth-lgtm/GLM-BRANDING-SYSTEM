@@ -33,7 +33,7 @@ async function main() {
     const users = await prisma.user.findMany({ orderBy: { id: 'asc' } });
     for (const u of users) {
       const locked = u.lockedUntil && u.lockedUntil > new Date() ? ` — LOCKED until ${u.lockedUntil.toISOString()}` : '';
-      console.log(`${u.id}\t${u.name}\t${u.role}\t${u.email ?? '(no email)'}\tfailed attempts: ${u.failedLoginCount}${locked}`);
+      console.log(`${u.id}\t${u.name}\t${u.role}\t${u.email ?? '(no email)'}\tfailed attempts: ${u.failedLoginCount}${locked}${u.active ? '' : ' — SWITCHED OFF'}`);
     }
     if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [4-digit PIN]   |   node reset-pin.js "Name" --email you@example.com');
     return;
@@ -74,7 +74,7 @@ async function main() {
 
   const pin = pinArg ?? String(crypto.randomInt(0, 10000)).padStart(4, '0');
   const pinHash = await bcrypt.hash(pin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash, failedLoginCount: 0, lockedUntil: null } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash, failedLoginCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   console.log(`PIN for "${user.name}" (${user.role}) is now: ${pin}  (any lockout was cleared)`);
 }
 

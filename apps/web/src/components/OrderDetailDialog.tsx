@@ -354,7 +354,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             </p>
           )}
 
-          {detail.totals.balanceDue > 0 && (
+          {detail.totals.balanceDue > 0 && detail.canTakePayment !== false && (
             <div style={{ marginTop: 'var(--space-3)' }}>
               <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
                 Record payment — split across methods if needed

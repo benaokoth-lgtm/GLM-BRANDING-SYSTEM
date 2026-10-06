@@ -39,7 +39,7 @@ authRouter.get('/features', requireAuth, async (_req, res) => {
 });
 
 authRouter.get('/users', async (_req, res) => {
-  const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
+  const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
   res.json(
     users.map((u) => ({ id: u.id, name: u.name, role: u.role, initials: initials(u.name) })),
   );
@@ -51,6 +51,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
 
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user) return res.status(401).json({ error: 'Invalid PIN' });
+  if (!user.active) return res.status(401).json({ error: 'This sign-in has been switched off. Ask the Admin if you think this is a mistake.' });
 
   if (user.lockedUntil && user.lockedUntil > new Date()) {
     return res.status(423).json({ error: 'Account locked, try again shortly' });
@@ -67,7 +68,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
 
   const authedUser = { id: user.id, name: user.name, role: user.role };
-  const token = signToken(authedUser);
+  const token = signToken({ ...authedUser, tv: user.tokenVersion });
   const permissions = await permissionsForRole(user.role);
   res.json({ token, user: { ...authedUser, permissions, mustChangePin: user.mustChangePin } });
 });
@@ -95,7 +96,7 @@ authRouter.post('/forgot-pin', resetLimiter, async (req, res) => {
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || user.role !== 'Admin') return res.json(GENERIC_FORGOT_REPLY);
+  if (!user || !user.active || user.role !== 'Admin') return res.json(GENERIC_FORGOT_REPLY);
 
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   await prisma.user.update({
@@ -127,7 +128,7 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
 
   const invalid = { error: 'That code is invalid or has expired. Request a new one.' };
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || user.role !== 'Admin' || !user.resetCodeHash || !user.resetCodeExpires || user.resetCodeExpires < new Date()) {
+  if (!user || !user.active || user.role !== 'Admin' || !user.resetCodeHash || !user.resetCodeExpires || user.resetCodeExpires < new Date()) {
     return res.status(400).json(invalid);
   }
   if (user.resetAttempts >= RESET_MAX_ATTEMPTS) {
@@ -145,6 +146,7 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
     where: { id: user.id },
     data: {
       pinHash: await bcrypt.hash(newPin, 10),
+      tokenVersion: { increment: 1 }, // any session opened with the old PIN ends
       failedLoginCount: 0,
       lockedUntil: null,
       resetCodeHash: null,

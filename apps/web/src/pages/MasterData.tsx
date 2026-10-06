@@ -93,7 +93,7 @@ export default function MasterData() {
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [newStaffEmailPin, setNewStaffEmailPin] = useState(false);
   // Staff with their email, for emailing login PINs (Admin only).
-  const [staffDetails, setStaffDetails] = useState<{ id: number; name: string; firstName: string; middleName: string; lastName: string; role: string; email: string | null; mustChangePin: boolean }[]>([]);
+  const [staffDetails, setStaffDetails] = useState<{ id: number; name: string; firstName: string; middleName: string; lastName: string; role: string; email: string | null; mustChangePin: boolean; active: boolean }[]>([]);
   const [emailDrafts, setEmailDrafts] = useState<Record<number, string>>({});
   // Someone's name being corrected: the three parts as typed so far.
   const [nameDrafts, setNameDrafts] = useState<Record<number, { first: string; middle: string; last: string }>>({});
@@ -191,6 +191,21 @@ export default function MasterData() {
       loadStaffDetails();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save the email address');
+    }
+  }
+
+  async function setStaffActive(id: number, name: string, active: boolean) {
+    const question = active ? `Let ${name} sign in again?` : `Switch off ${name}'s sign-in? They are signed out straight away and cannot sign in again. Their orders, payments and pay records stay on record.`;
+    if (!window.confirm(question)) return;
+    setError(null);
+    setStaffNotice(null);
+    try {
+      await api.put(`/master-data/staff/${id}/active`, { active });
+      setStaffNotice(active ? `${name} can sign in again.` : `${name}'s sign-in is switched off.`);
+      catalog.reload();
+      loadStaffDetails();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change the sign-in');
     }
   }
 
@@ -565,6 +580,7 @@ export default function MasterData() {
                         <>
                           {s.name} {d && !d.lastName && <span className="tag tag-accent" title="Staff need a first name and a surname — add the surname">Surname needed</span>}{' '}
                           {d?.mustChangePin && <span className="tag tag-outline" title="They were emailed a PIN and have not chosen their own yet">PIN not changed yet</span>}{' '}
+                          {d && !d.active && <span className="tag tag-outline" style={{ borderColor: '#a33', color: '#a33' }} title="Cannot sign in; their history stays on record">Switched off</span>}{' '}
                           {d && (
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNameDrafts((x) => ({ ...x, [s.id]: { first: d.firstName, middle: d.middleName, last: d.lastName } }))}>
                               Edit name
@@ -599,7 +615,12 @@ export default function MasterData() {
                     <td>
                       <button type="button" className="btn btn-secondary btn-sm" disabled={staffBusy || !d?.email} title={d?.email ? 'Give them a new random PIN and email it' : 'Add an email address first'} onClick={() => sendPin(s.id, s.name)}>
                         Email login PIN
-                      </button>
+                      </button>{' '}
+                      {d && (
+                        <button type="button" className="btn btn-ghost btn-sm" disabled={staffBusy} onClick={() => setStaffActive(s.id, s.name, !d.active)}>
+                          {d.active ? 'Switch off' : 'Switch on'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

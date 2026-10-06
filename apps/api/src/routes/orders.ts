@@ -11,7 +11,7 @@ import { orderHeads, primaryHead } from '../orderHeads';
 import { defaultExpenseVatApplicable } from '@glm/shared';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
-import type { LineItemInput, PaymentRecord } from '@glm/shared';
+import type { LineItemInput, PaymentRecord, PermissionKey } from '@glm/shared';
 
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth, async (_req, _res, next) => {
@@ -118,9 +118,27 @@ export function serializeDetail(order: FullOrder, opts: { costs?: boolean } = {}
   };
 }
 
-function canAccessOrder(userRole: string, userId: number, order: { staffId: number }): boolean {
-  if (userRole === 'Staff') return order.staffId === userId;
-  return true;
+// Everyone sees the orders they captured themselves. Seeing everybody's orders takes the permission to (the Admin always may), or a job that
+// works across orders: taking payments, running production, DTF management, quality control, finance and accounting. This follows the person's ROLE
+// PERMISSIONS, not the role's name, so a custom role (Sales, Cashier …) is limited the same way the default Staff role is.
+const SEES_ALL_ORDERS: PermissionKey[] = ['canViewAllOrders', 'canManagePayments', 'canManageProduction', 'canManageDtf', 'canAccessQuality', 'canAccessFinance', 'canAccessAccounting'];
+
+async function seesAllOrders(user: { role: string }): Promise<boolean> {
+  if (user.role === 'Admin') return true;
+  const role = await prisma.role.findUnique({ where: { name: user.role } });
+  return !!role && SEES_ALL_ORDERS.some((k) => role[k]);
+}
+
+export async function canAccessOrder(user: { id: number; role: string }, order: { staffId: number }): Promise<boolean> {
+  return order.staffId === user.id || (await seesAllOrders(user));
+}
+
+// Money against an order is taken by someone whose job is payments, or by the person who captured the order (the cashier at the till).
+export async function canTakePayment(user: { id: number; role: string }, order: { staffId: number }): Promise<boolean> {
+  if (user.role === 'Admin') return true;
+  const role = await prisma.role.findUnique({ where: { name: user.role } });
+  if (!role) return false;
+  return role.canManagePayments || (role.canCaptureOrders && order.staffId === user.id);
 }
 
 // A walk-in/DTF-channel order settles into one of two documents at capture,
@@ -223,7 +241,7 @@ ordersRouter.get('/', async (req, res) => {
   const { staffId, status, channel } = req.query as { staffId?: string; status?: string; channel?: string };
   const where: Record<string, unknown> = {};
 
-  if (req.user!.role === 'Staff') {
+  if (!(await seesAllOrders(req.user!))) {
     where.staffId = req.user!.id;
   } else if (staffId && staffId !== 'all') {
     where.staffId = Number(staffId);
@@ -246,9 +264,9 @@ ordersRouter.get('/', async (req, res) => {
 ordersRouter.get('/:id', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
+  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
-  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user!.role) }), sourcedByName: sourcer?.name ?? null });
+  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user!.role) }), sourcedByName: sourcer?.name ?? null, canTakePayment: await canTakePayment(req.user!, order) });
 });
 
 // A line is either a material sale ('material': materialId set, no service)
@@ -462,7 +480,9 @@ const paymentSchema = z
 ordersRouter.post('/:id/payments', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
+  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
+
+  if (!(await canTakePayment(req.user!, order))) return res.status(403).json({ error: 'Payments on this order are taken by the person who captured it or by someone who handles payments' });
 
   const parsed = paymentSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
@@ -698,7 +718,7 @@ ordersRouter.post('/:id/handover', async (req, res) => {
 
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
+  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   if (order.stage === 'Completed') return res.status(400).json({ error: 'This order has already been handed over' });
   if (order.stage !== 'Ready for Pickup/Delivery') {
     return res.status(400).json({ error: `This order is at “${order.stage}”. It can only be handed over once it has been produced and has passed quality control.` });
@@ -732,7 +752,7 @@ ordersRouter.post('/:id/handover', async (req, res) => {
 ordersRouter.post('/:id/convert', requirePermission('canCaptureOrders', 'canViewAllOrders'), async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (!canAccessOrder(req.user!.role, req.user!.id, order)) return res.status(403).json({ error: 'Not permitted' });
+  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   if (order.status !== 'Quote') return res.status(400).json({ error: 'Only quotes can be converted' });
 
   await prisma.$transaction((tx) => convertQuoteToInvoice(tx, order));

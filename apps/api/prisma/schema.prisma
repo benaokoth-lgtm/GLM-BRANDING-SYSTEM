@@ -1010,3 +1010,29 @@ model PriceApproval {
   decidedAt        DateTime?
   reason           String?
 }
+
+// Master Data → Backup & Restore. One row: the schedule, where backups go (a folder on this server, and optionally the Admin's Google Drive),
+// and how the last one went. This table is left out of backups and restores on purpose, so restoring never disconnects Drive or changes the schedule.
+model BackupSettings {
+  id                Int       @id @default(1)
+  enabled           Boolean   @default(false)
+  intervalHours     Int       @default(24)
+  keepCount         Int       @default(14)
+  // Google Drive: the Admin's own OAuth client (created in Google Cloud Console), the refresh token it was granted, and the folder backups go in.
+  driveClientId     String    @default("")
+  driveClientSecret String    @default("")
+  driveRefreshToken String    @default("")
+  driveFolderId     String    @default("")
+  driveConnectedAt  DateTime?
+  // The sign-in handshake in progress (so only the person who started it can finish it).
+  oauthState        String    @default("")
+  oauthRedirectUri  String    @default("")
+  oauthReturnUrl    String    @default("")
+  oauthExpires      DateTime?
+  lastRunAt         DateTime?
+  lastAttemptAt     DateTime?
+  lastStatus        String    @default("")
+  lastError         String    @default("")
+  lastDriveFile     String    @default("")
+  updatedAt         DateTime  @updatedAt
+}

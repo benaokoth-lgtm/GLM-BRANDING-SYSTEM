@@ -7,8 +7,10 @@ import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
 import MpesaSettingsPanel from '../components/MpesaSettingsPanel';
 import MailSettingsPanel from '../components/MailSettingsPanel';
+import BackupPanel from '../components/BackupPanel';
+import PriceListExcel from '../components/PriceListExcel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email' | 'backup';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -21,6 +23,7 @@ const TABS: [MasterTab, string][] = [
   ['company', 'Company Info'],
   ['mpesa', 'M-Pesa'],
   ['email', 'Email'],
+  ['backup', 'Backup & Restore'],
 ];
 
 const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -741,6 +744,7 @@ export default function MasterData() {
 
       {tab === 'services' && (
         <>
+          <PriceListExcel kind="services" onApplied={catalog.reload} />
           <table className="table">
             <thead>
               <tr>
@@ -940,6 +944,7 @@ export default function MasterData() {
             The stock price list. An item that comes in sizes — a polo shirt in L and XL — has one line per size, each with its own price and its own stock; orders, purchases and stock show it as
             “Polo Shirt — L”. Add an item with all its sizes below, or press <b>+ size</b> beside an item to add another size to it.
           </p>
+          <PriceListExcel kind="materials" onApplied={catalog.reload} />
           <table className="table">
             <thead>
               <tr>
@@ -1190,6 +1195,8 @@ export default function MasterData() {
       {tab === 'mpesa' && <MpesaSettingsPanel />}
 
       {tab === 'email' && <MailSettingsPanel />}
+
+      {tab === 'backup' && <BackupPanel />}
 
       {tab === 'company' && (
         <>

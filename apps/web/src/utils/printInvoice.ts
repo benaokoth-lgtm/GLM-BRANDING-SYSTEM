@@ -194,10 +194,11 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
     </table>
 
     <div class="totals">
-      ${order.totals.orderDiscount > 0 ? `<div class="row"><span>Subtotal</span><span>${fmtKsh(order.totals.subtotal)}</span></div><div class="row"><span>Discount</span><span>-${fmtKsh(order.totals.orderDiscount)}</span></div>` : ''}
-      <div class="row"><span>Total excluding VAT</span><span>${ksh2(net)}</span></div>
-      <div class="row"><span>VAT (${Math.round(VAT_RATE * 100)}%)</span><span>${ksh2(vat)}</span></div>
-      <div class="total"><span>TOTAL <em>including VAT</em></span><span>${ksh2(grand)}</span></div>
+      <div class="row"><span>Subtotal (Incl. VAT)</span><span>${ksh2(order.totals.subtotal)}</span></div>
+      ${order.totals.orderDiscount > 0 ? `<div class="row"><span>Discount</span><span>-${ksh2(order.totals.orderDiscount)}</span></div>` : ''}
+      <div class="row small"><span>Total excluding VAT</span><span>${ksh2(net)}</span></div>
+      <div class="row"><span>VAT @${Math.round(VAT_RATE * 100)}%</span><span>${ksh2(vat)}</span></div>
+      <div class="total"><span>${isInvoice ? 'TOTAL DUE' : 'TOTAL'}</span><span>${ksh2(grand)}</span></div>
       ${
         isInvoice
           ? `${
@@ -207,7 +208,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
                     .join('')}</div>`
                 : ''
             }
-            ${paymentsReceived > 0.009 && order.totals.balanceDue > 0.009 ? `<div class="total due"><span>BALANCE DUE</span><span>${fmtKsh(order.totals.balanceDue)}</span></div>` : ''}
+            ${order.totals.balanceDue > 0.009 ? `<div class="total due"><span>BALANCE DUE</span><span>${ksh2(order.totals.balanceDue)}</span></div>` : ''}
             <div class="status ${isPaid ? '' : 'due'}">${isPaid ? 'PAID IN FULL' : order.totals.balanceDue > 0.009 && paymentsReceived <= 0.009 ? 'PAYMENT DUE' : ''}</div>`
           : ''
       }

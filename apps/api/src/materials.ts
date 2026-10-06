@@ -6,6 +6,8 @@ import { prisma } from './db';
 export async function ensureMaterialItems(): Promise<void> {
   const rows = await prisma.material.findMany({ where: { item: '' }, select: { id: true, name: true } });
   for (const m of rows) await prisma.material.update({ where: { id: m.id }, data: { item: m.name } });
+  const services = await prisma.service.findMany({ where: { item: '' }, select: { id: true, name: true } });
+  for (const s of services) await prisma.service.update({ where: { id: s.id }, data: { item: s.name } });
 }
 
 let ensuring: Promise<void> | null = null;

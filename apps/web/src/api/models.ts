@@ -8,7 +8,12 @@ export interface StaffUser {
 
 export interface CatalogService {
   id: number;
+  /** The full name orders and invoices show: the service and its size ("Banner — A3"). */
   name: string;
+  /** The service itself, its description and size — the price-list columns. */
+  item?: string;
+  description?: string;
+  size?: string;
   unit: ServiceUnit;
   price: number;
   businessHeadId?: number | null;

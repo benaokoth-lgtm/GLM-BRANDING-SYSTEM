@@ -77,6 +77,8 @@ export default function MasterData() {
 
   const roleNames = ['Admin', ...roles.map((r) => r.name)];
   // The price list, grouped by item with each item's sizes in order (S, M, L, XL …).
+  // The service price list, a service's sizes together and in order.
+  const serviceRows = [...catalog.services].sort((a, b) => (a.item || a.name).localeCompare(b.item || b.name) || compareSizes(a.size ?? '', b.size ?? ''));
   const materialRows = [...catalog.materials].sort((a, b) => (a.item || a.name).localeCompare(b.item || b.name) || compareSizes(a.size ?? '', b.size ?? ''));
 
   // A name is captured in three parts: first name and surname are compulsory, the middle name is optional.
@@ -96,6 +98,8 @@ export default function MasterData() {
   const [staffBusy, setStaffBusy] = useState(false);
 
   const [newServiceName, setNewServiceName] = useState('');
+  const [newServiceDescription, setNewServiceDescription] = useState('');
+  const [newServiceSize, setNewServiceSize] = useState('');
   const [newServiceUnit, setNewServiceUnit] = useState<'piece' | 'metre' | 'sqm'>('piece');
   const [newServicePrice, setNewServicePrice] = useState('');
   const [servicePriceDrafts, setServicePriceDrafts] = useState<Record<number, string>>({});
@@ -297,8 +301,10 @@ export default function MasterData() {
     if (!newServiceName.trim() || !price) return setError('Service name and price are required');
     setError(null);
     try {
-      await api.post('/master-data/services', { name: newServiceName, unit: newServiceUnit, price });
+      await api.post('/master-data/services', { name: newServiceName, description: newServiceDescription, size: newServiceSize, unit: newServiceUnit, price });
       setNewServiceName('');
+      setNewServiceDescription('');
+      setNewServiceSize('');
       setNewServicePrice('');
       setNewServiceUnit('piece');
       catalog.reload();
@@ -739,6 +745,8 @@ export default function MasterData() {
             <thead>
               <tr>
                 <th>Service</th>
+                <th>Description</th>
+                <th>Size</th>
                 <th>Business head</th>
                 <th>Unit</th>
                 <th>Price</th>
@@ -748,10 +756,33 @@ export default function MasterData() {
               </tr>
             </thead>
             <tbody>
-              {catalog.services.map((sv) => (
+              {serviceRows.map((sv) => (
                 <Fragment key={sv.id}>
                 <tr>
-                  <td>{sv.name}</td>
+                  <td>
+                    {sv.item || sv.name}{' '}
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      title="Add another size of this service"
+                      onClick={() => {
+                        setNewServiceName(sv.item || sv.name);
+                        setNewServiceDescription(sv.description ?? '');
+                        setNewServiceSize('');
+                        setNewServiceUnit(sv.unit);
+                        setNewServicePrice('');
+                        setTimeout(() => document.getElementById('service-add')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+                      }}
+                    >
+                      + size
+                    </button>
+                  </td>
+                  <td>
+                    <input className="input" style={{ width: 170 }} key={`d${sv.id}-${sv.description ?? ''}`} defaultValue={sv.description ?? ''} placeholder="—" onBlur={(e) => e.target.value.trim() !== (sv.description ?? '') && saveServiceFields(sv.id, { description: e.target.value })} />
+                  </td>
+                  <td>
+                    <input className="input" style={{ width: 90 }} key={`s${sv.id}-${sv.size ?? ''}`} defaultValue={sv.size ?? ''} placeholder="A3, L …" disabled={sv.soldViaDtfModule} title={sv.soldViaDtfModule ? 'Sold through the DTF module — it keeps its name' : undefined} onBlur={(e) => e.target.value.trim() !== (sv.size ?? '') && saveServiceFields(sv.id, { size: e.target.value })} />
+                  </td>
                   <td>
                     <select className="input" style={{ width: 170 }} value={sv.businessHeadId ?? ''} onChange={(e) => saveServiceFields(sv.id, { businessHeadId: e.target.value ? Number(e.target.value) : null })}>
                       <option value="">—</option>
@@ -803,7 +834,7 @@ export default function MasterData() {
                 </tr>
                 {sv.outsourced && (
                   <tr>
-                    <td colSpan={7} style={{ background: 'var(--color-surface)' }}>
+                    <td colSpan={9} style={{ background: 'var(--color-surface)' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr auto', gap: 'var(--space-3)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                         <div className="field" style={{ margin: 0 }}>
                           <label>Supplier</label>
@@ -864,10 +895,21 @@ export default function MasterData() {
             per-piece price: price is computed from one artwork's area, at the Ksh/sqm rate set here. Services flagged "Charges pressing fee" show a staff-picked heat
             press fee (Ksh 20–50 per piece) added on top of the price — only for jobs where we print and press ourselves.
           </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 760 }}>
+          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+            A service that comes in sizes (a banner in A3 and A2) has one line per size, each with its own price; orders and invoices show it as “Banner — A3”. Type a size on a line, or press <b>+ size</b> beside a service to add another size of it.
+          </p>
+          <div id="service-add" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 900 }}>
             <div className="field">
               <label>New service</label>
               <input className="input" value={newServiceName} onChange={(e) => setNewServiceName(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Description (optional)</label>
+              <input className="input" value={newServiceDescription} onChange={(e) => setNewServiceDescription(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Size (optional)</label>
+              <input className="input" value={newServiceSize} onChange={(e) => setNewServiceSize(e.target.value)} placeholder="A3, L …" />
             </div>
             <div className="field">
               <label>Unit</label>

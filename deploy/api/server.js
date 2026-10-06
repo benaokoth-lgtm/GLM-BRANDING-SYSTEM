@@ -48928,6 +48928,8 @@ var import_crypto2 = __toESM(require("crypto"));
 async function ensureMaterialItems() {
   const rows = await prisma.material.findMany({ where: { item: "" }, select: { id: true, name: true } });
   for (const m of rows) await prisma.material.update({ where: { id: m.id }, data: { item: m.name } });
+  const services2 = await prisma.service.findMany({ where: { item: "" }, select: { id: true, name: true } });
+  for (const s of services2) await prisma.service.update({ where: { id: s.id }, data: { item: s.name } });
 }
 var ensuring2 = null;
 function ensureMaterialItemsOnce() {
@@ -49273,12 +49275,16 @@ masterDataRouter.delete("/roles/:id", requireRole("Admin"), async (req, res) => 
   res.status(204).end();
 });
 masterDataRouter.get("/services", async (req, res) => {
+  await ensureMaterialItemsOnce();
   const costs = await canSeeCosts(req.user.role);
   const services2 = await prisma.service.findMany({ orderBy: { name: "asc" } });
   res.json(services2.map(({ markupType, markupValue, defaultSupplierCost, ...s }) => costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s));
 });
 var serviceSchema = external_exports.object({
-  name: external_exports.string().min(1),
+  name: external_exports.string().trim().min(1).max(120),
+  // the service (item) — the size, if any, is added to it
+  description: external_exports.string().trim().max(300).optional().default(""),
+  size: external_exports.string().trim().max(40).optional().default(""),
   businessHeadId: external_exports.number().int().nullable().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]),
   price: external_exports.number().positive(),
@@ -49293,14 +49299,21 @@ var serviceSchema = external_exports.object({
 masterDataRouter.post("/services", requireRole("Admin"), async (req, res) => {
   const parsed = serviceSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  await ensureMaterialItemsOnce();
+  const item = parsed.data.name.replace(/\s+/g, " ");
+  const size = parsed.data.size.replace(/\s+/g, " ");
+  const fullName = materialName(item, size);
+  if ((await prisma.service.findMany({ select: { name: true } })).some((s) => same(s.name, fullName))) return res.status(400).json({ error: `${fullName} is already in the service price list` });
   let { businessHeadId } = parsed.data;
   if (businessHeadId == null) {
     await ensureBusinessHeadsOnce();
     businessHeadId = (await prisma.businessHead.findUnique({ where: { name: defaultBusinessHeadName(parsed.data.name) } }))?.id ?? null;
   }
-  res.status(201).json(await prisma.service.create({ data: { ...parsed.data, businessHeadId } }));
+  res.status(201).json(await prisma.service.create({ data: { ...parsed.data, name: fullName, item, size, businessHeadId } }));
 });
 var serviceUpdateSchema = external_exports.object({
+  description: external_exports.string().trim().max(300).optional(),
+  size: external_exports.string().trim().max(40).optional(),
   price: external_exports.number().positive().optional(),
   businessHeadId: external_exports.number().int().nullable().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]).optional(),
@@ -49315,9 +49328,22 @@ var serviceUpdateSchema = external_exports.object({
 masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => {
   const parsed = serviceUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const service = await prisma.service.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
-  if (!service) return res.status(404).json({ error: "Service not found" });
-  res.json(service);
+  await ensureMaterialItemsOnce();
+  const id = Number(req.params.id);
+  const current = await prisma.service.findUnique({ where: { id } });
+  if (!current) return res.status(404).json({ error: "Service not found" });
+  const { size: sizeRaw, ...rest } = parsed.data;
+  const data = { ...rest };
+  if (sizeRaw !== void 0 && sizeRaw.replace(/\s+/g, " ") !== current.size) {
+    if (current.soldViaDtfModule) return res.status(400).json({ error: `${current.name} is sold through the DTF module and cannot be given a size` });
+    const size = sizeRaw.replace(/\s+/g, " ");
+    const fullName = materialName(current.item || current.name, size);
+    if ((await prisma.service.findMany({ where: { id: { not: id } }, select: { name: true } })).some((s) => same(s.name, fullName))) return res.status(400).json({ error: `${fullName} is already in the service price list` });
+    data.size = size;
+    data.item = current.item || current.name;
+    data.name = fullName;
+  }
+  res.json(await prisma.service.update({ where: { id }, data }));
 });
 masterDataRouter.get("/business-heads", async (_req, res) => {
   await ensureBusinessHeadsOnce();

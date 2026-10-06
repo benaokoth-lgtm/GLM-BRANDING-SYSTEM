@@ -111,7 +111,12 @@ model Service {
   id                  Int     @id @default(autoincrement())
   businessHeadId      Int?
   businessHead        BusinessHead? @relation(fields: [businessHeadId], references: [id])
+  // The line's full name — what orders and invoices show: the service and its size together ("Banner — A3"; just "Banner" with no size).
   name                String
+  // The price list's columns: Service (item), Description, Size. Each size of a service is its own line with its own price.
+  item                String  @default("")
+  description         String  @default("")
+  size                String  @default("")
   unit                String // 'piece' | 'metre' | 'sqm'
   price               Float
   // An sqm-priced service billed off one artwork's area (length x width) —

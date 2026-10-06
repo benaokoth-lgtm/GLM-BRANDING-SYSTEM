@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { PIN_LONG, isWeakPin } from '@glm/shared';
 import crypto from 'crypto';
 
 const prisma = new PrismaClient();
@@ -21,9 +22,11 @@ async function main() {
   }
 
   const name = process.argv[2] || 'Admin';
-  const pin = String(crypto.randomInt(0, 10000)).padStart(4, '0');
+  let pin = '';
+  do pin = String(crypto.randomInt(0, 10 ** PIN_LONG)).padStart(PIN_LONG, '0');
+  while (isWeakPin(pin));
   const pinHash = await bcrypt.hash(pin, 10);
-  const admin = await prisma.user.create({ data: { name, role: 'Admin', pinHash } });
+  const admin = await prisma.user.create({ data: { name, role: 'Admin', pinHash, pinLength: PIN_LONG } });
 
   console.log(`Created Admin user "${admin.name}" (id ${admin.id}) — PIN: ${pin}`);
   console.log(

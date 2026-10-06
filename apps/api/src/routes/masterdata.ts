@@ -6,6 +6,8 @@ import { requireAuth, requirePermission, requireRole } from '../middleware/auth'
 import crypto from 'crypto';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, cleanKraPin, composeName, materialName } from '@glm/shared';
 import { ensureMaterialItemsOnce } from '../materials';
+import { seal } from '../crypto';
+import { PIN_ROUNDS, pinProblemFor, randomPin, requiredLengthFor } from '../pins';
 import { ensureStaffNamesOnce } from '../staffNames';
 import { canSeeCosts } from '../costs';
 import { defaultBusinessHeadName } from '@glm/shared';
@@ -40,7 +42,7 @@ async function nameTaken(full: string, exceptId?: number): Promise<boolean> {
 const staffSchema = z.object({
   ...nameParts,
   role: z.string().min(1),
-  pin: z.string().regex(/^\d{4}$/),
+  pin: z.string().regex(/^\d{4,6}$/, 'A PIN is 4 to 6 digits'),
   email: z.string().trim().toLowerCase().email().optional().or(z.literal('')),
   // Email them their login details now (needs an email and a mail account set up under Master Data → Email).
   emailPin: z.boolean().optional(),
@@ -59,8 +61,10 @@ masterDataRouter.post('/staff', requireRole('Admin'), async (req, res) => {
     const roleExists = await prisma.role.findUnique({ where: { name: role } });
     if (!roleExists) return res.status(400).json({ error: 'Unknown role — add it under Roles & Access first' });
   }
-  const pinHash = await bcrypt.hash(pin, 10);
-  const user = await prisma.user.create({ data: { name, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  const weak = await pinProblemFor(pin, role);
+  if (weak) return res.status(400).json({ error: weak });
+  const pinHash = await bcrypt.hash(pin, PIN_ROUNDS);
+  const user = await prisma.user.create({ data: { pinLength: pin.length, name, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
   let emailed: { ok: boolean; error?: string } | undefined;
   if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
   res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
@@ -78,7 +82,7 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
     await mailer.sendMail({
       to,
       subject: `Your ${company} login`,
-      text: `Hello ${name},\n\nYou can now sign in to the ${company} system.\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nYou will be asked to choose your own 4-digit PIN the first time you sign in. Please do that straight away, and delete this email afterwards.\n\nIf you were not expecting this message, tell your manager.`,
+      text: `Hello ${name},\n\nYou can now sign in to the ${company} system.\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nYou will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.\n\nIf you were not expecting this message, tell your manager.`,
     });
     return { ok: true };
   } catch (e) {
@@ -145,9 +149,9 @@ masterDataRouter.post('/staff/:id/send-pin', requireRole('Admin'), async (req, r
   if (!user.email) return res.status(400).json({ error: `${user.name} has no email address yet — add one first` });
   if (!(await loadMailConfig())) return res.status(400).json({ error: "Email isn't set up yet — set it up under Master Data → Email first" });
 
-  const pin = String(crypto.randomInt(0, 10000)).padStart(4, '0');
+  const pin = randomPin(await requiredLengthFor(user.role));
   const previous = { pinHash: user.pinHash, mustChangePin: user.mustChangePin };
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await bcrypt.hash(pin, 10), mustChangePin: true, failedLoginCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await bcrypt.hash(pin, PIN_ROUNDS), pinLength: pin.length, mustChangePin: true, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   const sent = await emailPin(user.name, user.email, pin);
   if (!sent.ok) {
     // Don't leave them locked out of a PIN nobody received.
@@ -210,7 +214,7 @@ masterDataRouter.put('/mail', requireRole('Admin'), async (req, res) => {
   if (b.loginUrl && !/^https?:\/\//.test(b.loginUrl)) return res.status(400).json({ error: 'The sign-in address must start with https://' });
   const data = {
     username,
-    password: b.password ? b.password : row?.password ?? carried?.password ?? '',
+    password: seal(b.password ? b.password : row?.password ?? carried?.password ?? ''),
     outgoingHost: b.outgoingHost ?? row?.outgoingHost ?? carried?.outgoingHost ?? '',
     smtpPort: b.smtpPort ?? row?.smtpPort ?? carried?.smtpPort ?? 465,
     incomingHost: b.incomingHost ?? row?.incomingHost ?? '',

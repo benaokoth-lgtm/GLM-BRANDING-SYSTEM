@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import { prisma } from './db';
+import { open } from './crypto';
 
 // Where M-Pesa's settings come from. The Admin sets them under Master Data → M-Pesa (stored in MpesaSettings). An install that
 // pre-dates that screen keeps working from the MPESA_* environment variables until the first save there.
@@ -35,11 +36,11 @@ export async function loadMpesaConfig(): Promise<MpesaConfig> {
       environment: row.environment === 'production' ? 'production' : 'sandbox',
       shortCode: row.shortCode,
       isTill: row.isTill,
-      consumerKey: row.consumerKey,
-      consumerSecret: row.consumerSecret,
-      passkey: row.passkey,
+      consumerKey: open(row.consumerKey),
+      consumerSecret: open(row.consumerSecret),
+      passkey: open(row.passkey),
       publicBaseUrl: row.publicBaseUrl.replace(/\/+$/, ''),
-      callbackSecret: row.callbackSecret,
+      callbackSecret: open(row.callbackSecret),
       c2bRegisteredAt: row.c2bRegisteredAt,
     };
   }

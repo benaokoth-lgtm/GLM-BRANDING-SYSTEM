@@ -54,6 +54,15 @@ model User {
   active           Boolean   @default(true)
   // Raised to end every session already issued to this person (when they are switched off or their PIN is reset).
   tokenVersion     Int       @default(0)
+  // How many digits their PIN has (4–6). The sign-in screen shows that many dots; a role that needs a longer PIN must change a shorter one at next sign-in.
+  pinLength        Int       @default(4)
+  // Escalating lock-outs: every lock doubles the wait (15 min, 30, 60 … up to a day) until a quiet day or a correct PIN resets it.
+  lockCount        Int       @default(0)
+  lastFailedAt     DateTime?
+  // The emailed sign-in code (when the Admin has switched on "Admin sign-in code"): a bcrypt hash, 10 minutes, 5 tries, single use.
+  loginCodeHash    String?
+  loginCodeExpires DateTime?
+  loginCodeAttempts Int      @default(0)
 
   orders        Order[]
   payments      Payment[]
@@ -216,6 +225,8 @@ model CorporateClient {
 
 model Setting {
   id             Int     @id @default(1)
+  // When on, an Admin who has an email address is also asked for a 6-digit code emailed to them after their PIN. Off by default.
+  requireAdminCode Boolean @default(false)
   // The company's KRA PIN — printed as the employer's PIN on the payroll and the P9.
   kraPin         String  @default("")
   maxDiscountPct Float   @default(15)
@@ -1041,4 +1052,22 @@ model BackupSettings {
   lastError         String    @default("")
   lastDriveFile     String    @default("")
   updatedAt         DateTime  @updatedAt
+}
+
+// Who did what, when, from where: every change made through the system (and a few sensitive reads) is written here by the audit
+// middleware (src/audit.ts). Read in Master Data → Security. Rows are kept for two years.
+model AuditLog {
+  id       Int      @id @default(autoincrement())
+  at       DateTime @default(now())
+  userId   Int?
+  userName String   @default("")
+  role     String   @default("")
+  method   String   @default("")
+  action   String   @default("") // e.g. POST /api/orders/:id/payments, or LOGIN FAILED
+  path     String   @default("")
+  status   Int      @default(0)
+  detail   String   @default("")
+  ip       String   @default("")
+
+  @@index([at])
 }

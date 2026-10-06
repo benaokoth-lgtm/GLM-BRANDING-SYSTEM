@@ -4,7 +4,10 @@ import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { prisma } from '../db';
 import { explainMailError, getMailer } from '../mailer';
-import { requireAuth, signToken } from '../middleware/auth';
+import { requireAuth, signChallenge, signToken, verifyChallenge } from '../middleware/auth';
+import { ipOf, writeAudit } from '../audit';
+import { PIN_ROUNDS, clearPinFailures, minutesLeft, pinProblemFor, registerFailedPin, requiredLengthFor } from '../pins';
+import type { User } from '@prisma/client';
 import { permissionsForRole } from '../permissions';
 import { commissionEnabled } from '../commission';
 import { systemName } from '../company';
@@ -13,8 +16,9 @@ export const authRouter = Router();
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 
-const LOCK_MINUTES = 15;
-const MAX_ATTEMPTS = 5;
+const changePinLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `pin-${(req as { user?: { id: number } }).user?.id ?? 'anon'}`, validate: false });
+const CODE_MINUTES = 10;
+const CODE_MAX_ATTEMPTS = 5;
 
 function initials(name: string): string {
   return name
@@ -41,36 +45,95 @@ authRouter.get('/features', requireAuth, async (_req, res) => {
 authRouter.get('/users', async (_req, res) => {
   const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: 'asc' } });
   res.json(
-    users.map((u) => ({ id: u.id, name: u.name, role: u.role, initials: initials(u.name) })),
+    users.map((u) => ({ id: u.id, name: u.name, role: u.role, initials: initials(u.name), pinLength: u.pinLength })),
   );
 });
 
+const maskEmail = (e: string) => e.replace(/^(.).*(@.*)$/, '$1•••$2');
+
+// Finishes a sign-in: the session token and what the screen needs. Someone whose role needs a longer PIN than they have is made to change it.
+async function completeLogin(req: import('express').Request, res: import('express').Response, user: User) {
+  const need = await requiredLengthFor(user.role);
+  let mustChangePin = user.mustChangePin;
+  if (user.pinLength < need && !mustChangePin) {
+    await prisma.user.update({ where: { id: user.id }, data: { mustChangePin: true } });
+    mustChangePin = true;
+  }
+  const authedUser = { id: user.id, name: user.name, role: user.role };
+  const token = signToken({ ...authedUser, tv: user.tokenVersion });
+  const permissions = await permissionsForRole(user.role);
+  await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: 'AUTH', action: 'LOGIN OK', ip: ipOf(req) });
+  res.json({ token, user: { ...authedUser, permissions, mustChangePin, pinLength: user.pinLength, pinNeeds: need } });
+}
+
 authRouter.post('/login', loginLimiter, async (req, res) => {
   const { userId, pin } = req.body as { userId?: number; pin?: string };
-  if (!userId || !pin) return res.status(400).json({ error: 'userId and pin are required' });
+  if (!userId || !pin || typeof pin !== 'string') return res.status(400).json({ error: 'userId and pin are required' });
 
   const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
   if (!user) return res.status(401).json({ error: 'Invalid PIN' });
-  if (!user.active) return res.status(401).json({ error: 'This sign-in has been switched off. Ask the Admin if you think this is a mistake.' });
+  const who = { userId: user.id, userName: user.name, role: user.role, method: 'AUTH', ip: ipOf(req) };
+  if (!user.active) {
+    await writeAudit({ ...who, action: 'LOGIN REFUSED — sign-in is switched off' });
+    return res.status(401).json({ error: 'This sign-in has been switched off. Ask the Admin if you think this is a mistake.' });
+  }
 
   if (user.lockedUntil && user.lockedUntil > new Date()) {
-    return res.status(423).json({ error: 'Account locked, try again shortly' });
+    const minutes = minutesLeft(user.lockedUntil);
+    await writeAudit({ ...who, action: 'LOGIN REFUSED — account is locked' });
+    return res.status(423).json({ error: `This account is locked after too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`, retryAfterMinutes: minutes });
   }
 
   const ok = await bcrypt.compare(pin, user.pinHash);
   if (!ok) {
-    const failedLoginCount = user.failedLoginCount + 1;
-    const lockedUntil = failedLoginCount >= MAX_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60 * 1000) : null;
-    await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount, lockedUntil } });
-    return res.status(401).json({ error: 'Invalid PIN' });
+    const r = await registerFailedPin(user, ipOf(req));
+    await writeAudit({ ...who, action: 'LOGIN FAILED — wrong PIN' });
+    return res.status(401).json({ error: 'Invalid PIN', ...(r.lockedMinutes ? { lockedMinutes: r.lockedMinutes } : {}) });
   }
+  await clearPinFailures(user.id);
 
-  await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
+  // The Admin can ask for an emailed code after the PIN. If the code cannot be sent (no email address, mail down) the Admin is not locked out:
+  // sign-in goes ahead on the PIN alone, and that is recorded.
+  const setting = await prisma.setting.findUnique({ where: { id: 1 } });
+  if (setting?.requireAdminCode && user.role === 'Admin' && user.email) {
+    const mailer = await getMailer();
+    if (mailer) {
+      const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+      await prisma.user.update({ where: { id: user.id }, data: { loginCodeHash: await bcrypt.hash(code, PIN_ROUNDS), loginCodeExpires: new Date(Date.now() + CODE_MINUTES * 60_000), loginCodeAttempts: 0 } });
+      try {
+        await mailer.sendMail({
+          to: user.email,
+          subject: `${await systemName()} — sign-in code`,
+          text: `Your sign-in code is ${code}. It expires in ${CODE_MINUTES} minutes.\n\nIf you did not just enter your PIN, someone else knows it — change it and tell your manager.`,
+        });
+        await writeAudit({ ...who, action: 'LOGIN CODE SENT' });
+        return res.json({ codeRequired: true, challenge: signChallenge(user.id), sentTo: maskEmail(user.email) });
+      } catch (e) {
+        await prisma.user.update({ where: { id: user.id }, data: { loginCodeHash: null, loginCodeExpires: null } });
+        await writeAudit({ ...who, action: 'LOGIN CODE NOT SENT — the email failed, signed in on the PIN alone', detail: explainMailError(e, mailer.config) });
+      }
+    }
+  }
+  return completeLogin(req, res, user);
+});
 
-  const authedUser = { id: user.id, name: user.name, role: user.role };
-  const token = signToken({ ...authedUser, tv: user.tokenVersion });
-  const permissions = await permissionsForRole(user.role);
-  res.json({ token, user: { ...authedUser, permissions, mustChangePin: user.mustChangePin } });
+// The second step: the code emailed to the Admin, with the proof from the first step that the PIN was right.
+authRouter.post('/login-code', loginLimiter, async (req, res) => {
+  const { challenge, code } = req.body as { challenge?: string; code?: string };
+  const expired = { error: 'This sign-in has expired. Start again.' };
+  const id = verifyChallenge(challenge);
+  if (id === null || typeof code !== 'string') return res.status(401).json(expired);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user || !user.active || !user.loginCodeHash || !user.loginCodeExpires || user.loginCodeExpires < new Date()) return res.status(401).json(expired);
+  const who = { userId: user.id, userName: user.name, role: user.role, method: 'AUTH', ip: ipOf(req) };
+  if (!(await bcrypt.compare(code.trim(), user.loginCodeHash))) {
+    const attempts = user.loginCodeAttempts + 1;
+    await prisma.user.update({ where: { id: user.id }, data: attempts >= CODE_MAX_ATTEMPTS ? { loginCodeHash: null, loginCodeExpires: null, loginCodeAttempts: 0 } : { loginCodeAttempts: attempts } });
+    await writeAudit({ ...who, action: 'LOGIN CODE WRONG' });
+    return res.status(401).json({ error: attempts >= CODE_MAX_ATTEMPTS ? 'Too many wrong codes. Start again.' : 'That code is not right' });
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { loginCodeHash: null, loginCodeExpires: null, loginCodeAttempts: 0 } });
+  return completeLogin(req, res, user);
 });
 
 // ── Emailed PIN reset (Admin only) ──────────────────────────────────────────
@@ -124,7 +187,9 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
   const { code, newPin } = req.body as { code?: string; newPin?: string };
   const email = normalizeEmail((req.body as { email?: string }).email);
   if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
-  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ error: 'New PIN must be 4 digits' });
+  if (!newPin || typeof newPin !== 'string') return res.status(400).json({ error: 'A new PIN is required' });
+  const weak = await pinProblemFor(newPin, 'Admin'); // this reset is for the Admin only
+  if (weak) return res.status(400).json({ error: weak });
 
   const invalid = { error: 'That code is invalid or has expired. Request a new one.' };
   const user = await prisma.user.findUnique({ where: { email } });
@@ -145,9 +210,11 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      pinHash: await bcrypt.hash(newPin, 10),
+      pinHash: await bcrypt.hash(newPin, PIN_ROUNDS),
+      pinLength: newPin.length,
       tokenVersion: { increment: 1 }, // any session opened with the old PIN ends
       failedLoginCount: 0,
+      lockCount: 0,
       lockedUntil: null,
       resetCodeHash: null,
       resetCodeExpires: null,
@@ -158,18 +225,32 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
   res.json({ ok: true });
 });
 
-authRouter.post('/change-pin', requireAuth, async (req, res) => {
+authRouter.post('/change-pin', requireAuth, changePinLimiter, async (req, res) => {
   const { currentPin, newPin } = req.body as { currentPin?: string; newPin?: string };
-  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ error: 'New PIN must be 4 digits' });
+  if (typeof newPin !== 'string') return res.status(400).json({ error: 'A new PIN is required' });
 
   const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
   if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    const minutes = minutesLeft(user.lockedUntil);
+    return res.status(423).json({ error: `This account is locked after too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.` });
+  }
 
-  const ok = await bcrypt.compare(currentPin || '', user.pinHash);
-  // 400, not 401: the web client treats any 401 as an expired session and logs out.
-  if (!ok) return res.status(400).json({ error: 'Current PIN is incorrect' });
+  const problem = await pinProblemFor(newPin, user.role);
+  if (problem) return res.status(400).json({ error: problem });
 
-  const pinHash = await bcrypt.hash(newPin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash, mustChangePin: false } });
-  res.json({ ok: true });
+  // Guessing the current PIN here counts like a wrong PIN at sign-in. 400, not 401: the web client treats any 401 as an expired session and logs out.
+  if (!(await bcrypt.compare(typeof currentPin === 'string' ? currentPin : '', user.pinHash))) {
+    await registerFailedPin(user, ipOf(req));
+    return res.status(400).json({ error: 'Current PIN is incorrect' });
+  }
+  if (newPin === currentPin) return res.status(400).json({ error: 'The new PIN must differ from the current one' });
+
+  // Every other session this person has open ends; this one carries on with a fresh token.
+  const saved = await prisma.user.update({
+    where: { id: user.id },
+    data: { pinHash: await bcrypt.hash(newPin, PIN_ROUNDS), pinLength: newPin.length, mustChangePin: false, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } },
+  });
+  await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: 'AUTH', action: 'PIN CHANGED', ip: ipOf(req) });
+  res.json({ ok: true, token: signToken({ id: saved.id, name: saved.name, role: saved.role, tv: saved.tokenVersion }) });
 });

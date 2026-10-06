@@ -9,12 +9,15 @@ interface SelectableUser {
   name: string;
   role: string;
   initials: string;
+  /** How many digits their PIN has (the dots shown). */
+  pinLength?: number;
 }
 
 const PAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '<'];
 
 export default function Login() {
-  const { login, loginError, user } = useAuth();
+  const { login, loginError, user, codeStep, submitCode, cancelCode } = useAuth();
+  const [codeText, setCodeText] = useState('');
   const branding = useBranding();
   const navigate = useNavigate();
   const [users, setUsers] = useState<SelectableUser[]>([]);
@@ -23,6 +26,7 @@ export default function Login() {
   const [shake, setShake] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [forgot, setForgot] = useState(false);
+  const pinLength = users.find((u) => u.id === selectedId)?.pinLength ?? 4;
 
   useEffect(() => {
     if (user) navigate('/', { replace: true });
@@ -33,7 +37,7 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    if (pin.length === 4 && selectedId && !submitting) {
+    if (pin.length === pinLength && selectedId && !submitting) {
       setSubmitting(true);
       login(selectedId, pin).then((ok) => {
         setSubmitting(false);
@@ -44,13 +48,13 @@ export default function Login() {
         }
       });
     }
-  }, [pin, selectedId, login, submitting]);
+  }, [pin, selectedId, login, submitting, pinLength]);
 
   function pressKey(key: string) {
     if (submitting) return;
     if (key === 'C') return setPin('');
     if (key === '<') return setPin((p) => p.slice(0, -1));
-    setPin((p) => (p.length < 4 ? p + key : p));
+    setPin((p) => (p.length < pinLength ? p + key : p));
   }
 
   function selectUser(id: number) {
@@ -59,6 +63,45 @@ export default function Login() {
   }
 
   if (forgot) return <ForgotPin onDone={() => setForgot(false)} />;
+
+  // The second step for an Admin: the code that was emailed.
+  if (codeStep) {
+    return (
+      <div className="login-shell">
+        <div className="login-card card blueprint elev-md" style={{ display: 'block', maxWidth: 420 }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div className="card-kicker">{branding?.systemName ?? ''}</div>
+          <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
+            Enter your sign-in code
+          </div>
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setSubmitting(true);
+              const ok = await submitCode(codeText);
+              setSubmitting(false);
+              if (!ok) setCodeText('');
+            }}
+          >
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              A 6-digit code was emailed to {codeStep.sentTo}. It is valid for 10 minutes.
+            </p>
+            <input className="input" inputMode="numeric" autoFocus maxLength={6} placeholder="6-digit code" value={codeText} onChange={(e) => setCodeText(e.target.value.replace(/\D/g, ''))} style={{ width: '100%' }} />
+            <div className="login-error">{loginError ?? ' '}</div>
+            <button type="submit" className="btn btn-primary" disabled={submitting || codeText.length !== 6} style={{ width: '100%' }}>
+              {submitting ? 'Checking…' : 'Sign in'}
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={() => { setCodeText(''); cancelCode(); }} style={{ width: '100%', marginTop: 'var(--space-2)' }}>
+              Back
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="login-shell">
@@ -94,7 +137,7 @@ export default function Login() {
 
         <div>
           <div className={'login-pin-dots' + (shake ? ' shake' : '')}>
-            {[0, 1, 2, 3].map((i) => (
+            {Array.from({ length: pinLength }, (_, i) => i).map((i) => (
               <span key={i} className={'login-pin-dot' + (i < pin.length ? ' filled' : '')} />
             ))}
           </div>
@@ -124,7 +167,7 @@ export default function Login() {
 }
 
 // Admin-only emailed reset: enter the recovery email → get a 6-digit code →
-// enter it with a new 4-digit PIN. The server replies identically whether or
+// enter it with a new 6-digit PIN. The server replies identically whether or
 // not the email matches an Admin, so this can't be used to probe accounts.
 function ForgotPin({ onDone }: { onDone: () => void }) {
   const branding = useBranding();
@@ -205,7 +248,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
             }}
           >
             <p className="text-muted" style={{ fontSize: 13 }}>
-              If that email belongs to an Admin, a code is on its way (valid 15 minutes). Enter it with a new 4-digit PIN.
+              If that email belongs to an Admin, a code is on its way (valid 15 minutes). Enter it with a new 6-digit PIN (not an obvious one like 123456).
             </p>
             <input
               className="input"
@@ -221,8 +264,8 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
               className="input"
               type="password"
               inputMode="numeric"
-              maxLength={4}
-              placeholder="New 4-digit PIN"
+              maxLength={6}
+              placeholder="New 6-digit PIN"
               value={newPin}
               onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
               style={{ width: '100%' }}
@@ -231,7 +274,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={busy || code.length !== 6 || newPin.length !== 4}
+              disabled={busy || code.length !== 6 || newPin.length !== 6}
               style={{ width: '100%' }}
             >
               {busy ? 'Saving…' : 'Set new PIN'}

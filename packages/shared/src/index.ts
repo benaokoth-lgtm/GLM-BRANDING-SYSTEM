@@ -13,3 +13,4 @@ export * from './staff';
 export * from './employee';
 export * from './phone';
 export * from './materials';
+export * from './pin';

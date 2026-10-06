@@ -3,13 +3,16 @@ import { z } from 'zod';
 import { timingSafeEqual } from 'crypto';
 import { prisma } from '../db';
 import { requireAuth, requireRole, userHasPermission } from '../middleware/auth';
+import { seal } from '../crypto';
 import { autoMatch, normaliseDate, storeReceipt } from '../accounting/mpesaMatching';
 import { todayStr } from '@glm/shared';
-import { canAccessOrder, canTakePayment, recordOrderPayments } from './orders';
+import { canAccessOrder, canTakePayment, orderInclude, recordOrderPayments, serializeSummary } from './orders';
 import { DarajaError, callbackUrls, darajaBaseUrl, darajaTimestamp, getAccessToken, getSettingsRow, isReady, loadMpesaConfig, newCallbackSecret } from '../mpesaConfig';
 import type { MpesaConfig } from '../mpesaConfig';
 
 export const mpesaRouter = Router();
+
+const MAX_STK_AMOUNT = 250_000; // M-Pesa's own limit for one payment
 
 const NOT_SET_UP = "M-Pesa isn't set up (or is switched off) — an Admin can set it up under Master Data → M-Pesa";
 
@@ -72,11 +75,11 @@ mpesaRouter.put('/settings', requireAuth, requireRole('Admin'), async (req, res)
     environment: b.environment ?? base.environment,
     shortCode: b.shortCode ?? base.shortCode,
     isTill: b.isTill ?? base.isTill,
-    consumerKey: b.consumerKey ? b.consumerKey : base.consumerKey,
-    consumerSecret: b.consumerSecret ? b.consumerSecret : base.consumerSecret,
-    passkey: b.passkey ? b.passkey : base.passkey,
+    consumerKey: seal(b.consumerKey ? b.consumerKey : base.consumerKey),
+    consumerSecret: seal(b.consumerSecret ? b.consumerSecret : base.consumerSecret),
+    passkey: seal(b.passkey ? b.passkey : base.passkey),
     publicBaseUrl: base.publicBaseUrl,
-    callbackSecret: base.callbackSecret || newCallbackSecret(),
+    callbackSecret: seal(base.callbackSecret || newCallbackSecret()),
     enabled: b.enabled ?? base.enabled,
   };
   if (b.publicBaseUrl !== undefined) {
@@ -150,13 +153,21 @@ mpesaRouter.post('/stkpush', requireAuth, async (req, res) => {
 
   // A push raised against an existing order is money for that order: only someone allowed to see it and take payments on it may raise one.
   if (parsed.data.orderId) {
-    const target = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, select: { staffId: true } });
+    const target = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, include: orderInclude });
     if (!target) return res.status(404).json({ error: 'Order not found' });
     if (!(await canAccessOrder(req.user!, target)) || !(await canTakePayment(req.user!, target))) return res.status(403).json({ error: 'Not permitted' });
+    // never ask a customer for more than the order still owes
+    const owed = serializeSummary(target).totals.balanceDue;
+    if (Math.round(parsed.data.amount) > Math.ceil(owed)) return res.status(400).json({ error: `This order only has Ksh ${Math.round(owed).toLocaleString('en-KE')} still to pay` });
   }
+  if (parsed.data.amount > MAX_STK_AMOUNT) return res.status(400).json({ error: `M-Pesa takes at most Ksh ${MAX_STK_AMOUNT.toLocaleString('en-KE')} in one payment` });
+  // Prompts pop up on a real person's phone: no more than 10 from one user, or 3 to one number, in ten minutes.
+  const recent = new Date(Date.now() - 10 * 60_000);
+  if ((await prisma.mpesaTransaction.count({ where: { createdByName: req.user!.name, kind: 'STK', createdAt: { gt: recent } } })) >= 10) return res.status(429).json({ error: 'You have sent a lot of M-Pesa prompts in the last few minutes. Wait a little before sending another.' });
 
   const phone = normalizePhone(parsed.data.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid Kenyan phone number (e.g. 07xx xxx xxx)' });
+  if ((await prisma.mpesaTransaction.count({ where: { phone, kind: 'STK', createdAt: { gt: new Date(Date.now() - 10 * 60_000) } } })) >= 3) return res.status(429).json({ error: 'That number has already been sent several prompts in the last few minutes. Ask the customer to check their phone, or wait a little.' });
 
   try {
     const token = await getAccessToken(cfg);

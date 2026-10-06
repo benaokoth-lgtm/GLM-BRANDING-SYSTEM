@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { MATERIAL_UNITS, PERMISSION_KEYS, compareSizes, fmtKsh, priceFromCost } from '@glm/shared';
+import { MATERIAL_UNITS, PERMISSION_KEYS, compareSizes, fmtKsh, isWeakPin, priceFromCost, requiredPinLength } from '@glm/shared';
 import { Fragment } from 'react';
 import type { PermissionKey, RoleRow } from '@glm/shared';
 import { api } from '../api/client';
@@ -8,9 +8,10 @@ import { useCatalog } from '../hooks/useCatalog';
 import MpesaSettingsPanel from '../components/MpesaSettingsPanel';
 import MailSettingsPanel from '../components/MailSettingsPanel';
 import BackupPanel from '../components/BackupPanel';
+import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email' | 'backup';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email' | 'backup' | 'security';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -24,6 +25,7 @@ const TABS: [MasterTab, string][] = [
   ['mpesa', 'M-Pesa'],
   ['email', 'Email'],
   ['backup', 'Backup & Restore'],
+  ['security', 'Security'],
 ];
 
 const PERMISSION_LABELS: Record<PermissionKey, string> = {
@@ -236,10 +238,14 @@ export default function MasterData() {
     }
   }
 
+  // The Admin, and a role that handles money, costs, pay or the books, needs a 6-digit PIN; others at least 4.
+  const newStaffPinNeeds = requiredPinLength(newStaffRole, roles.find((r) => r.name === newStaffRole)?.permissions);
+
   async function addStaff() {
     if (!newFirst.trim()) return setError('First name is required');
     if (!newLast.trim()) return setError('Surname is required');
-    if (!/^\d{4}$/.test(newStaffPin)) return setError('A 4-digit PIN is required');
+    if (!/^\d+$/.test(newStaffPin) || newStaffPin.length < newStaffPinNeeds || newStaffPin.length > 6) return setError(`A PIN of ${newStaffPinNeeds === 6 ? '6 digits' : '4 to 6 digits'} is required for this role`);
+    if (isWeakPin(newStaffPin)) return setError('That PIN is too easy to guess (like 1234 or 0000). Choose a less obvious one');
     setError(null);
     try {
       const r = await api.post<{ emailed?: { ok: boolean; error?: string } }>('/master-data/staff', { firstName: newFirst, middleName: newMiddle, lastName: newLast, role: newStaffRole, pin: newStaffPin, email: newStaffEmail.trim(), emailPin: newStaffEmailPin && !!newStaffEmail.trim() });
@@ -653,8 +659,8 @@ export default function MasterData() {
               </select>
             </div>
             <div className="field">
-              <label>4-digit PIN</label>
-              <input className="input" value={newStaffPin} maxLength={4} onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, ''))} />
+              <label>{newStaffPinNeeds === 6 ? '6-digit PIN' : 'PIN (4–6 digits)'}</label>
+              <input className="input" value={newStaffPin} maxLength={6} onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, ''))} />
             </div>
             <div className="field">
               <label>Email (optional)</label>
@@ -1237,6 +1243,8 @@ export default function MasterData() {
       {tab === 'email' && <MailSettingsPanel />}
 
       {tab === 'backup' && <BackupPanel />}
+
+      {tab === 'security' && <SecurityPanel />}
 
       {tab === 'company' && (
         <>

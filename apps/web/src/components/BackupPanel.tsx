@@ -24,6 +24,8 @@ interface Status {
   lastStatus: string;
   lastError: string;
   folder: string;
+  /** True when the server has a DATA_KEY: backup files are encrypted. */
+  encrypted: boolean;
   files: BackupFileRow[];
 }
 interface RestoreCheck {
@@ -212,6 +214,18 @@ export default function BackupPanel() {
               </tr>
             )}
             <tr>
+              <td className="text-muted">Encryption</td>
+              <td>
+                {data.encrypted ? (
+                  <Tag tone="good">Backup files are encrypted</Tag>
+                ) : (
+                  <>
+                    <Tag tone="bad">Not encrypted</Tag> <span className="text-muted">Anyone with a copy of a backup file can read it. Set up the data key — see the Security tab.</span>
+                  </>
+                )}
+              </td>
+            </tr>
+            <tr>
               <td className="text-muted">Kept on the server in</td>
               <td>
                 <code>{data.folder}</code>
@@ -357,7 +371,7 @@ export default function BackupPanel() {
           <button type="button" className="btn btn-secondary" disabled={!!busy} onClick={() => fileInput.current?.click()}>
             Choose a backup file…
           </button>
-          <input ref={fileInput} type="file" accept=".gz,.json,application/gzip" hidden onChange={(e) => chooseRestoreFile(e.target.files?.[0])} />
+          <input ref={fileInput} type="file" accept=".gz,.enc,.json,application/gzip" hidden onChange={(e) => chooseRestoreFile(e.target.files?.[0])} />
           <span className="text-muted" style={{ fontSize: 12 }}>A file made by “Download a backup” or one from your Google Drive folder.</span>
         </div>
 

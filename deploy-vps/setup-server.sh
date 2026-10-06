@@ -83,13 +83,14 @@ NODE_ENV=production
 PORT=$API_PORT
 DATABASE_URL=postgresql://$DB_USER:$DB_PASS@127.0.0.1:5432/$DB_NAME
 JWT_SECRET=$(openssl rand -hex 32)
+DATA_KEY=$(openssl rand -hex 32)
 CORS_ORIGINS=https://$WEB_HOST
 TRUST_PROXY=1
 ENV
   )
   chown root:glm "$ENV_FILE"
   chmod 640 "$ENV_FILE"
-  echo "Wrote $ENV_FILE (new database password and JWT_SECRET; nobody else has seen them)."
+  echo "Wrote $ENV_FILE (new database password, JWT_SECRET and DATA_KEY; nobody else has seen them). Copy DATA_KEY into a password manager: sudo grep ^DATA_KEY= $ENV_FILE"
 else
   echo "$ENV_FILE already exists — left as it is."
 fi

@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { isWeakPin, pinProblem, requiredPinLength } from '@glm/shared';
 
 const prisma = new PrismaClient();
 
@@ -9,7 +10,7 @@ const prisma = new PrismaClient();
 // Also clears any failed-attempt lockout, which is the other common reason a
 // correct PIN "doesn't work".
 //
-//   node reset-pin.js "Name"            -> sets a fresh random 4-digit PIN
+//   node reset-pin.js "Name"            -> sets a fresh random PIN (6 digits for the Admin and roles that handle money)
 //   node reset-pin.js "Name" 1234       -> sets that PIN
 //   node reset-pin.js --list            -> lists users (id, name, role, email, lock status)
 //   node reset-pin.js "Name" --email a@b.com
@@ -35,13 +36,8 @@ async function main() {
       const locked = u.lockedUntil && u.lockedUntil > new Date() ? ` — LOCKED until ${u.lockedUntil.toISOString()}` : '';
       console.log(`${u.id}\t${u.name}\t${u.role}\t${u.email ?? '(no email)'}\tfailed attempts: ${u.failedLoginCount}${locked}${u.active ? '' : ' — SWITCHED OFF'}`);
     }
-    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [4-digit PIN]   |   node reset-pin.js "Name" --email you@example.com');
+    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [PIN, 4-6 digits]   |   node reset-pin.js "Name" --email you@example.com');
     return;
-  }
-
-  if (pinArg !== undefined && !/^\d{4}$/.test(pinArg)) {
-    console.error('The PIN must be exactly 4 digits (e.g. 0427).');
-    process.exit(1);
   }
 
   const matches = await prisma.user.findMany({ where: { name: nameArg } });
@@ -72,9 +68,22 @@ async function main() {
     if (pinArg === undefined) return;
   }
 
-  const pin = pinArg ?? String(crypto.randomInt(0, 10000)).padStart(4, '0');
+  // The Admin and any role that handles money, costs, pay or the books needs a 6-digit PIN; obvious PINs are refused.
+  const roleRow = user.role === 'Admin' ? null : await prisma.role.findUnique({ where: { name: user.role } });
+  const need = requiredPinLength(user.role, roleRow as Record<string, boolean> | null);
+  let pin = pinArg ?? '';
+  if (pinArg === undefined) {
+    do pin = String(crypto.randomInt(0, 10 ** need)).padStart(need, '0');
+    while (isWeakPin(pin));
+  } else {
+    const problem = pinProblem(pinArg, user.role, roleRow as Record<string, boolean> | null);
+    if (problem) {
+      console.error(problem + '.');
+      process.exit(1);
+    }
+  }
   const pinHash = await bcrypt.hash(pin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash, failedLoginCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash, pinLength: pin.length, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   console.log(`PIN for "${user.name}" (${user.role}) is now: ${pin}  (any lockout was cleared)`);
 }
 

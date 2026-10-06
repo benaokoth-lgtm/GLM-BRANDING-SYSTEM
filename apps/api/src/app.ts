@@ -21,10 +21,13 @@ import { qualityRouter } from './routes/quality';
 import { commissionRouter } from './routes/commission';
 import { pricelistsRouter } from './routes/pricelists';
 import { backupRouter } from './routes/backup';
+import { securityRouter } from './routes/security';
+import { auditMiddleware } from './audit';
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5174').split(',').map((o) => o.trim());
 
 export const app = express();
+app.disable('x-powered-by'); // do not announce which framework this is
 // Behind a reverse proxy (Nginx on a VPS) every request would otherwise appear to come from the proxy itself, so the login rate limit would be
 // shared by everybody. Set TRUST_PROXY=1 (the number of proxies in front) there; unset on hosts that already hand the real address through.
 if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
@@ -32,6 +35,21 @@ app.use(cors({ origin: allowedOrigins }));
 // Raised from Express's 100kb default so a small company logo (sent as a base64
 // data URL from Master Data) fits in the request body.
 app.use(express.json({ limit: '5mb' }));
+
+// Headers on every API response: no sniffing, no framing, nothing remembered by caches or sent on as a referrer, and the API may never be
+// treated as a page. (The branding endpoint sets its own short cache time.)
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
+  res.setHeader('Cache-Control', 'no-store');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') res.setHeader('Strict-Transport-Security', 'max-age=31536000');
+  next();
+});
+
+// Who did what: every change, refused request and sensitive read is written to the audit log.
+app.use(auditMiddleware);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRouter);
@@ -50,6 +68,7 @@ app.use('/api/quality', qualityRouter);
 app.use('/api/commission', commissionRouter);
 app.use('/api/pricelists', pricelistsRouter);
 app.use('/api/backup', backupRouter);
+app.use('/api/security', securityRouter);
 
 // Catch-all — any error forwarded here (including async rejections, thanks
 // to express-async-errors above) gets a clean JSON 500 instead of Express's

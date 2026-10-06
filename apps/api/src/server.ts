@@ -10,6 +10,9 @@ import { ensureBusinessHeadsOnce, ensurePurchasesOnce, ensureStoresAccess } from
 import { ensureStaffNamesOnce } from './staffNames';
 import { ensureMaterialItemsOnce } from './materials';
 import { startBackupScheduler } from './backup';
+import { pruneAudit } from './audit';
+import { sealStoredSecrets } from './secrets';
+import { dataKeyConfigured } from './crypto';
 
 const port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
@@ -19,6 +22,9 @@ app.listen(port, () => {
     .then(() => startDepreciationSchedule())
     .catch((e) => console.error('Accounting start-up failed', e));
   startBackupScheduler();
+  void pruneAudit();
+  sealStoredSecrets().catch((e) => console.error('Sealing saved secrets failed', e));
+  if (!dataKeyConfigured()) console.warn('DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data → Security.');
   // Give older requisitions a reference and a line; grant the production/quality permissions on databases that pre-date them.
   Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error('Start-up checks failed', e));
 });

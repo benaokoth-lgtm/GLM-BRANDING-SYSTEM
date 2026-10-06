@@ -116,7 +116,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     setEmailSent(false);
     try {
       const html = buildCorporateDocumentHtml(detail, company);
-      await api.post('/email/send', { to: emailTo.trim(), subject: `${documentTitleCase(detail)} ${detail.orderNo} — ${company.companyName}`, html });
+      await api.post('/email/send', { orderId: detail.id, to: emailTo.trim(), subject: `${documentTitleCase(detail)} ${detail.orderNo} — ${company.companyName}`, html });
       setEmailSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send email');

@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 import { Prisma } from '@prisma/client';
 import type { BackupSettings } from '@prisma/client';
 import { prisma } from './db';
+import { decryptBackup, encryptBackup, isEncryptedBackup, open } from './crypto';
 
 const gzip = promisify(zlib.gzip);
 const gunzip = promisify(zlib.gunzip);
@@ -62,7 +63,8 @@ export async function buildBackup(): Promise<{ data: Buffer; counts: Record<stri
     counts[m.name] = rows.length;
   }
   const file: BackupFile = { format: BACKUP_FORMAT, version: 1, createdAt: new Date().toISOString(), counts, tables };
-  return { data: await gzip(Buffer.from(JSON.stringify(file), 'utf8')), counts };
+  // Encrypted when DATA_KEY is set, so the file is unreadable to anyone who gets hold of it without the key.
+  return { data: encryptBackup(await gzip(Buffer.from(JSON.stringify(file), 'utf8'))), counts };
 }
 
 export function totalRows(counts: Record<string, number>): number {
@@ -70,7 +72,8 @@ export function totalRows(counts: Record<string, number>): number {
 }
 
 // ── Restoring ────────────────────────────────────────────────────────────────
-export async function parseBackup(raw: Buffer): Promise<BackupFile> {
+export async function parseBackup(input: Buffer): Promise<BackupFile> {
+  const raw = decryptBackup(input); // throws a clear message when the file is encrypted and this server has no (or another) DATA_KEY
   let text: string;
   try {
     text = (raw[0] === 0x1f && raw[1] === 0x8b ? await gunzip(raw) : raw).toString('utf8');
@@ -140,10 +143,11 @@ export function backupDir(): string {
 const stamp = (d = new Date()) => d.toISOString().replace(/[-:]/g, '').replace(/\..*/, '').replace('T', '-');
 
 export function saveLocal(data: Buffer, prefix = FILE_PREFIX): string {
-  fs.mkdirSync(backupDir(), { recursive: true });
-  let name = `${prefix}${stamp()}.json.gz`;
-  for (let n = 2; fs.existsSync(path.join(backupDir(), name)); n++) name = `${prefix}${stamp()}-${n}.json.gz`;
-  fs.writeFileSync(path.join(backupDir(), name), data);
+  fs.mkdirSync(backupDir(), { recursive: true, mode: 0o700 });
+  const ext = isEncryptedBackup(data) ? '.json.gz.enc' : '.json.gz';
+  let name = `${prefix}${stamp()}${ext}`;
+  for (let n = 2; fs.existsSync(path.join(backupDir(), name)); n++) name = `${prefix}${stamp()}-${n}${ext}`;
+  fs.writeFileSync(path.join(backupDir(), name), data, { mode: 0o600 });
   return name;
 }
 
@@ -159,7 +163,7 @@ export function listLocal(): LocalBackup[] {
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
-    .filter((n) => /^[\w.-]+\.json\.gz$/.test(n) && (n.startsWith(FILE_PREFIX) || n.startsWith(PRE_RESTORE_PREFIX)))
+    .filter((n) => /^[\w.-]+\.json\.gz(\.enc)?$/.test(n) && (n.startsWith(FILE_PREFIX) || n.startsWith(PRE_RESTORE_PREFIX)))
     .map((name) => {
       const st = fs.statSync(path.join(dir, name));
       return { name, size: st.size, modified: st.mtime.toISOString(), beforeRestore: name.startsWith(PRE_RESTORE_PREFIX) };
@@ -168,7 +172,7 @@ export function listLocal(): LocalBackup[] {
 }
 
 export function readLocal(name: string): Buffer | null {
-  if (!/^[\w.-]+\.json\.gz$/.test(name)) return null;
+  if (!/^[\w.-]+\.json\.gz(\.enc)?$/.test(name)) return null;
   const file = path.join(backupDir(), name);
   return fs.existsSync(file) ? fs.readFileSync(file) : null;
 }
@@ -190,7 +194,16 @@ export async function saveBeforeRestore(): Promise<string> {
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 export async function getBackupSettings(): Promise<BackupSettings> {
-  return prisma.backupSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  const row = await prisma.backupSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  // The Drive secret and token are kept sealed in the database (when DATA_KEY is set); everything that uses them gets them opened.
+  const safeOpen = (v: string) => {
+    try {
+      return open(v);
+    } catch {
+      return '';
+    }
+  };
+  return { ...row, driveClientSecret: safeOpen(row.driveClientSecret), driveRefreshToken: safeOpen(row.driveRefreshToken) };
 }
 
 // ── Google Drive ─────────────────────────────────────────────────────────────
@@ -256,7 +269,7 @@ async function uploadToDrive(s: BackupSettings, name: string, data: Buffer): Pro
   const boundary = `glm${Date.now().toString(16)}`;
   const meta = JSON.stringify({ name, parents: [folderId] });
   const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: application/gzip\r\n\r\n`),
+    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${boundary}\r\nContent-Type: ${isEncryptedBackup(data) ? 'application/octet-stream' : 'application/gzip'}\r\n\r\n`),
     data,
     Buffer.from(`\r\n--${boundary}--`),
   ]);

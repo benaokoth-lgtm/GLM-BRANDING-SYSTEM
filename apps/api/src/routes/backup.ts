@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import express, { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { dataKeyConfigured, isEncryptedBackup, seal } from '../crypto';
 import { requireAuth, requireRole } from '../middleware/auth';
 import {
   backupDir,
@@ -45,6 +46,7 @@ backupRouter.get('/status', ...admin, async (_req, res) => {
     lastStatus: s.lastStatus,
     lastError: s.lastError,
     folder: backupDir(),
+    encrypted: dataKeyConfigured(),
     files: listLocal(),
   });
 });
@@ -64,7 +66,7 @@ backupRouter.put('/settings', ...admin, async (req, res) => {
   const { driveClientSecret, ...rest } = parsed.data;
   const current = await getBackupSettings();
   const data: Record<string, unknown> = { ...rest };
-  if (driveClientSecret) data.driveClientSecret = driveClientSecret;
+  if (driveClientSecret) data.driveClientSecret = seal(driveClientSecret);
   // A different Google client means the old permission no longer applies.
   if (rest.driveClientId !== undefined && rest.driveClientId !== current.driveClientId && current.driveRefreshToken) {
     data.driveRefreshToken = '';
@@ -88,8 +90,8 @@ backupRouter.post('/run', ...admin, async (_req, res) => {
 
 backupRouter.get('/download', ...admin, async (_req, res) => {
   const { data } = await buildBackup();
-  res.setHeader('Content-Type', 'application/gzip');
-  res.setHeader('Content-Disposition', `attachment; filename="glm-pos-backup-${stamp()}.json.gz"`);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="glm-pos-backup-${stamp()}.json.gz${isEncryptedBackup(data) ? '.enc' : ''}"`);
   res.send(data);
 });
 
@@ -162,7 +164,7 @@ backupRouter.get('/google/callback', async (req, res) => {
   if (typeof req.query.error === 'string') return back(`Google said: ${req.query.error}`);
   try {
     const refreshToken = await exchangeGoogleCode(s, String(req.query.code ?? ''));
-    await prisma.backupSettings.update({ where: { id: 1 }, data: { driveRefreshToken: refreshToken, driveConnectedAt: new Date(), driveFolderId: '', lastError: '' } });
+    await prisma.backupSettings.update({ where: { id: 1 }, data: { driveRefreshToken: seal(refreshToken), driveConnectedAt: new Date(), driveFolderId: '', lastError: '' } });
     await prepareDrive();
     back('connected');
   } catch (err) {

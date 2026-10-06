@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { prisma } from './db';
+import { open } from './crypto';
 
 // The mail account the system sends from. The Admin sets it under Master Data → Email (stored in MailSettings, laid out like
 // the "mail client settings" cPanel shows for a mailbox). An install that has not saved anything there yet keeps sending from
@@ -26,7 +27,7 @@ export async function getMailSettingsRow() {
 export async function loadMailConfig(): Promise<MailConfig | null> {
   const row = await getMailSettingsRow();
   if (row && row.outgoingHost && row.username && row.password) {
-    return { source: 'settings', username: row.username, password: row.password, outgoingHost: row.outgoingHost, smtpPort: row.smtpPort, incomingHost: row.incomingHost, imapPort: row.imapPort, pop3Port: row.pop3Port, fromName: row.fromName, loginUrl: row.loginUrl };
+    return { source: 'settings', username: row.username, password: open(row.password), outgoingHost: row.outgoingHost, smtpPort: row.smtpPort, incomingHost: row.incomingHost, imapPort: row.imapPort, pop3Port: row.pop3Port, fromName: row.fromName, loginUrl: row.loginUrl };
   }
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;

@@ -3,10 +3,16 @@ import jwt from 'jsonwebtoken';
 import type { PermissionKey, Role } from '@glm/shared';
 import { prisma } from '../db';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
-if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET must be set in production');
+// Sessions are signed with JWT_SECRET. A real install (NODE_ENV=production, or a PostgreSQL database) refuses to start without a long random one,
+// so tokens can never be forged with a published default. Only a local SQLite development database may fall back to a throw-away default.
+const DEFAULT_SECRET = 'change-me-in-production';
+const realInstall = process.env.NODE_ENV === 'production' || /^postgres(ql)?:/i.test(process.env.DATABASE_URL ?? '');
+if (realInstall && (!process.env.JWT_SECRET || process.env.JWT_SECRET === DEFAULT_SECRET || process.env.JWT_SECRET.length < 32)) {
+  throw new Error('JWT_SECRET must be set to a long random value (at least 32 characters) — for example the output of: openssl rand -hex 32');
 }
+const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_SECRET;
+
+export const jwtSecretStrong = () => JWT_SECRET !== DEFAULT_SECRET && JWT_SECRET.length >= 32;
 
 export interface AuthedUser {
   id: number;
@@ -43,12 +49,31 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
   if (typeof payload.id !== 'number') return res.status(401).json({ error: 'Invalid or expired session' });
   try {
-    const user = await prisma.user.findUnique({ where: { id: payload.id }, select: { id: true, name: true, role: true, active: true, tokenVersion: true } });
+    const user = await prisma.user.findUnique({ where: { id: payload.id }, select: { id: true, name: true, role: true, active: true, tokenVersion: true, mustChangePin: true } });
     if (!user || !user.active || (payload.tv ?? 0) !== user.tokenVersion) return res.status(401).json({ error: 'Your session has ended — sign in again' });
+    // Someone who was handed a PIN (or whose role needs a longer one) can do nothing else until they have chosen their own.
+    if (user.mustChangePin && !req.originalUrl.startsWith('/api/auth/change-pin')) {
+      return res.status(403).json({ error: 'Choose your own PIN first', code: 'MUST_CHANGE_PIN' });
+    }
     req.user = { id: user.id, name: user.name, role: user.role };
     next();
   } catch (err) {
     next(err);
+  }
+}
+
+/** The short-lived proof that the PIN was right while the emailed sign-in code is still to be entered. */
+export function signChallenge(userId: number): string {
+  return jwt.sign({ purpose: 'login-code', id: userId }, JWT_SECRET, { expiresIn: '10m' });
+}
+
+export function verifyChallenge(token: unknown): number | null {
+  if (typeof token !== 'string') return null;
+  try {
+    const p = jwt.verify(token, JWT_SECRET) as { purpose?: string; id?: number };
+    return p.purpose === 'login-code' && typeof p.id === 'number' ? p.id : null;
+  } catch {
+    return null;
   }
 }
 

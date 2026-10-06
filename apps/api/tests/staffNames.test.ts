@@ -36,7 +36,7 @@ describe('staff names in three parts', () => {
     await prisma.$disconnect();
   });
 
-  const add = (extra: Record<string, unknown>) => call('admin', 'POST', '/master-data/staff', { role: 'Staff', pin: '1234', ...extra });
+  const add = (extra: Record<string, unknown>) => call('admin', 'POST', '/master-data/staff', { role: 'Staff', pin: '4821', ...extra });
 
   it('first name and surname are compulsory; the middle name is optional', async () => {
     const noFirst = await add({ lastName: 'Otieno' });
@@ -82,7 +82,7 @@ describe('staff names in three parts', () => {
   });
 
   it('only an Admin can add or rename staff', async () => {
-    assert.equal((await call('plain', 'POST', '/master-data/staff', { firstName: 'X', lastName: 'Y', role: 'Staff', pin: '1234' })).status, 403);
+    assert.equal((await call('plain', 'POST', '/master-data/staff', { firstName: 'X', lastName: 'Y', role: 'Staff', pin: '4821' })).status, 403);
     assert.equal((await call('plain', 'PUT', '/master-data/staff/1/name', { firstName: 'X', lastName: 'Y' })).status, 403);
   });
 

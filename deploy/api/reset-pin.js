@@ -50,9 +50,9 @@ var require_bcrypt = __commonJS({
           } catch (e) {
           }
         try {
-          var a;
-          (self["crypto"] || self["msCrypto"])["getRandomValues"](a = new Uint32Array(len));
-          return Array.prototype.slice.call(a);
+          var a2;
+          (self["crypto"] || self["msCrypto"])["getRandomValues"](a2 = new Uint32Array(len));
+          return Array.prototype.slice.call(a2);
         } catch (e) {
         }
         if (!randomFallback)
@@ -447,23 +447,23 @@ var require_bcrypt = __commonJS({
           }
         };
         utfx2.decodeUTF8 = function(src, dst) {
-          var a, b, c, d, fail = function(b2) {
+          var a2, b, c, d, fail = function(b2) {
             b2 = b2.slice(0, b2.indexOf(null));
             var err = Error(b2.toString());
             err.name = "TruncatedError";
             err["bytes"] = b2;
             throw err;
           };
-          while ((a = src()) !== null) {
-            if ((a & 128) === 0)
-              dst(a);
-            else if ((a & 224) === 192)
-              (b = src()) === null && fail([a, b]), dst((a & 31) << 6 | b & 63);
-            else if ((a & 240) === 224)
-              ((b = src()) === null || (c = src()) === null) && fail([a, b, c]), dst((a & 15) << 12 | (b & 63) << 6 | c & 63);
-            else if ((a & 248) === 240)
-              ((b = src()) === null || (c = src()) === null || (d = src()) === null) && fail([a, b, c, d]), dst((a & 7) << 18 | (b & 63) << 12 | (c & 63) << 6 | d & 63);
-            else throw RangeError("Illegal starting byte: " + a);
+          while ((a2 = src()) !== null) {
+            if ((a2 & 128) === 0)
+              dst(a2);
+            else if ((a2 & 224) === 192)
+              (b = src()) === null && fail([a2, b]), dst((a2 & 31) << 6 | b & 63);
+            else if ((a2 & 240) === 224)
+              ((b = src()) === null || (c = src()) === null) && fail([a2, b, c]), dst((a2 & 15) << 12 | (b & 63) << 6 | c & 63);
+            else if ((a2 & 248) === 240)
+              ((b = src()) === null || (c = src()) === null || (d = src()) === null) && fail([a2, b, c, d]), dst((a2 & 7) << 18 | (b & 63) << 12 | (c & 63) << 6 | d & 63);
+            else throw RangeError("Illegal starting byte: " + a2);
           }
         };
         utfx2.UTF16toUTF8 = function(src, dst) {
@@ -1851,6 +1851,214 @@ var require_bcryptjs = __commonJS({
 var import_client = require("@prisma/client");
 var import_bcryptjs = __toESM(require_bcryptjs());
 var import_crypto = __toESM(require("crypto"));
+
+// packages/shared/src/types.ts
+var PERMISSION_KEYS = [
+  "canCaptureOrders",
+  "canViewAllOrders",
+  "canManagePayments",
+  "canAccessPnl",
+  "canAccessFinance",
+  "canAccessStock",
+  "canApproveStock",
+  "canAccessReports",
+  "canAccessDtf",
+  "canManageDtf",
+  "canAccessAccounting",
+  "canSeeCosts",
+  "canAccessProduction",
+  "canManageProduction",
+  "canAccessQuality",
+  "canReceiveStock",
+  "canManageCommission"
+];
+
+// packages/shared/src/constants.ts
+var ALL_FALSE = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
+var ALL_TRUE = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
+var DEFAULT_ROLE_PERMISSIONS = {
+  // canAccessDtf lets Staff reach Film Order/Artwork Order (next to General
+  // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
+  // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
+  // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true },
+  Supervisor: {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessStock: true,
+    canReceiveStock: true,
+    canAccessDtf: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true
+  },
+  "Finance Manager": {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessPnl: true,
+    canAccessFinance: true,
+    canAccessStock: true,
+    canApproveStock: true,
+    canAccessReports: true,
+    canAccessDtf: true,
+    canManageDtf: true,
+    canAccessAccounting: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true,
+    canSeeCosts: true,
+    canManageCommission: true,
+    canReceiveStock: true
+  },
+  "General Manager": {
+    ...ALL_FALSE,
+    canViewAllOrders: true,
+    canManagePayments: true,
+    canAccessPnl: true,
+    canAccessFinance: true,
+    canAccessStock: true,
+    canApproveStock: true,
+    canAccessReports: true,
+    canAccessDtf: true,
+    canManageDtf: true,
+    canAccessAccounting: true,
+    canAccessProduction: true,
+    canManageProduction: true,
+    canAccessQuality: true,
+    canSeeCosts: true,
+    canManageCommission: true,
+    canReceiveStock: true
+  },
+  Admin: ALL_TRUE
+};
+
+// packages/shared/src/accounting.ts
+var ACCT = {
+  pettyCash: "1010",
+  cash: "1020",
+  mpesa: "1030",
+  card: "1040",
+  bank: "1050",
+  receivables: "1100",
+  inventory: "1200",
+  fixedAssets: "1500",
+  accumDepreciation: "1590",
+  payables: "2010",
+  vatPayable: "2100",
+  payePayable: "2200",
+  nssfPayable: "2210",
+  shifPayable: "2220",
+  housingLevyPayable: "2230",
+  customerCredits: "2300",
+  unallocatedMpesa: "2310",
+  loans: "2400",
+  capital: "3010",
+  drawings: "3020",
+  retainedEarnings: "3030",
+  printingIncome: "4010",
+  merchandiseIncome: "4020",
+  dtfIncome: "4030",
+  embroideryIncome: "4040",
+  otherIncome: "4100",
+  salesReturns: "4900",
+  costOfSales: "5000",
+  salaries: "5010",
+  depreciation: "6800",
+  uncategorised: "6999"
+};
+var a = (code, name, type, subtype = "", description = "") => ({ code, name, type, subtype, description });
+var DEFAULT_CHART = [
+  // Assets
+  a("1010", "Petty Cash", "Asset", "PettyCash", "The petty-cash float. Pays all wages and small expenses; topped up only by a bank withdrawal, a cash-sales allocation or an owner injection."),
+  a("1020", "Cash on Hand (Tills)", "Asset", "Cash", "Cash collected from customers, before it is banked."),
+  a("1030", "M-Pesa", "Asset", "Mobile", "M-Pesa receipts and payments."),
+  a("1040", "Card Settlements", "Asset", "Card", "Card payments awaiting settlement by the bank."),
+  a("1050", "Bank Account", "Asset", "Bank", "The business bank account."),
+  a("1100", "Accounts Receivable", "Asset", "Receivable", "What customers and corporate clients still owe on invoices."),
+  a("1200", "Stock & Inventory", "Asset", "Inventory", "Stock held in stores (opening balance and manual adjustments)."),
+  a("1500", "Machinery, Equipment & Vehicles (Cost)", "Asset", "FixedAsset", "Cost of fixed assets from the Asset Register."),
+  a("1590", "Accumulated Depreciation", "Asset", "FixedAsset", "Contra-asset: the depreciation charged to date on the Asset Register."),
+  // Liabilities
+  a("2010", "Accounts Payable", "Liability", "Payable", "Suppliers owed."),
+  a("2100", "VAT Payable", "Liability", "Tax", "Output VAT collected on sales, owed to KRA."),
+  a("2200", "PAYE Payable", "Liability", "Tax", "PAYE withheld from employees."),
+  a("2210", "NSSF Payable", "Liability", "Tax"),
+  a("2220", "SHIF Payable", "Liability", "Tax"),
+  a("2230", "Housing Levy Payable", "Liability", "Tax"),
+  a("2300", "Customer Deposits & Credits", "Liability", "Deposit", "Money received before an order is invoiced, or owed back to a customer after a credit note."),
+  a("2310", "Unallocated M-Pesa Receipts", "Liability", "Suspense", "M-Pesa money received that has not yet been matched to an order."),
+  a("2400", "Loans Payable", "Liability", "Loan"),
+  // Equity
+  a("3010", "Owner's Capital", "Equity", "Capital", "Money the owner has put into the business."),
+  a("3020", "Owner's Drawings", "Equity", "Drawings", "Money the owner has taken out of the business."),
+  a("3030", "Retained Earnings", "Equity", "RetainedEarnings", "Profit kept from earlier periods (opening balance)."),
+  // Income
+  a("4010", "Printing & Branding Services Income", "Income", "", "Default account for services with no account of their own."),
+  a("4020", "Merchandise & Materials Sales", "Income", "", "Caps, shirts, canvas and other materials sold."),
+  a("4030", "DTF Film & Printing Income", "Income"),
+  a("4040", "Embroidery Income", "Income"),
+  a("4100", "Other Income", "Income"),
+  a("4900", "Sales Returns & Credit Notes", "Income", "", "Credit notes issued to customers (a debit balance that reduces income)."),
+  // Cost of sales — what was bought to sell and produce with. It is simply the purchases: stock purchases and material
+  // expenses post here, there is no percentage assumption. Everything below it is an operating expense.
+  a("5000", "Cost of Sales \u2014 Purchases", "Expense", "CostOfSales", "Materials, blanks, film, ink and consumables purchased (stock purchases and the Printing Materials & Consumables expense head)."),
+  // Expenses
+  a("5010", "Salaries & Wages", "Expense", "Payroll"),
+  a("5100", "Production Supplies & Overheads", "Expense"),
+  a("5020", "Sales Commission", "Expense", "", "Commission paid to staff on sales they sourced and on film/artwork sold above the recommended price."),
+  a("5110", "Casual Labour", "Expense", "Payroll"),
+  a("5120", "Transport", "Expense"),
+  a("5130", "Utilities", "Expense"),
+  a("5140", "Equipment Maintenance", "Expense"),
+  a("5150", "Office Supplies", "Expense"),
+  a("5160", "Courier & Delivery", "Expense"),
+  a("5170", "Refreshments", "Expense"),
+  a("5180", "Airtime & Data", "Expense"),
+  a("5190", "Cleaning", "Expense"),
+  a("5200", "Bank Charges", "Expense"),
+  a("6800", "Depreciation", "Expense", "", "Charged automatically each month from the Asset Register."),
+  a("6900", "Miscellaneous Expenses", "Expense"),
+  a("6999", "Uncategorised Expenses", "Expense", "", "Catch-all for an expense head that has no account yet.")
+];
+var SYSTEM_ACCOUNT_CODES = [...Object.values(ACCT)];
+var CASH_ACCOUNT_CODES = [ACCT.pettyCash, ACCT.cash, ACCT.mpesa, ACCT.card, ACCT.bank];
+
+// packages/shared/src/pin.ts
+var PIN_MIN = 4;
+var PIN_MAX = 6;
+var PIN_LONG = 6;
+var PRIVILEGED_PERMISSIONS = ["canAccessFinance", "canAccessAccounting", "canManagePayments", "canAccessPnl", "canSeeCosts", "canManageCommission"];
+function requiredPinLength(role, permissions) {
+  if (role === "Admin") return PIN_LONG;
+  if (permissions && PRIVILEGED_PERMISSIONS.some((k) => permissions[k])) return PIN_LONG;
+  return PIN_MIN;
+}
+var COMMON = /* @__PURE__ */ new Set(["2580", "1122", "1212", "1004", "2000", "2001", "1010", "6969", "1357", "2468", "0852", "1313", "4200", "5683", "8888"]);
+function isWeakPin(pin) {
+  if (!/^\d+$/.test(pin)) return true;
+  if (/^(\d)\1+$/.test(pin)) return true;
+  if (COMMON.has(pin)) return true;
+  const d = [...pin].map(Number);
+  const step = (n) => d.every((x, i) => i === 0 || (x - d[i - 1] + 10) % 10 === n);
+  if (step(1) || step(9)) return true;
+  if (pin.length % 2 === 0) {
+    const half = pin.slice(0, pin.length / 2);
+    if (half.repeat(2) === pin) return true;
+  }
+  return false;
+}
+function pinProblem(pin, role, permissions) {
+  if (!/^\d+$/.test(pin)) return "A PIN is made of digits only";
+  const need = requiredPinLength(role, permissions);
+  if (pin.length > PIN_MAX) return `A PIN is at most ${PIN_MAX} digits`;
+  if (pin.length < need) return need === PIN_MIN ? `A PIN is at least ${PIN_MIN} digits` : `This role needs a ${need}-digit PIN`;
+  if (isWeakPin(pin)) return "That PIN is too easy to guess (like 1234 or 0000). Choose a less obvious one";
+  return null;
+}
+
+// apps/api/prisma/reset-pin.ts
 var prisma = new import_client.PrismaClient();
 async function main() {
   const args = process.argv.slice(2);
@@ -1871,12 +2079,8 @@ async function main() {
       const locked = u.lockedUntil && u.lockedUntil > /* @__PURE__ */ new Date() ? ` \u2014 LOCKED until ${u.lockedUntil.toISOString()}` : "";
       console.log(`${u.id}	${u.name}	${u.role}	${u.email ?? "(no email)"}	failed attempts: ${u.failedLoginCount}${locked}${u.active ? "" : " \u2014 SWITCHED OFF"}`);
     }
-    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [4-digit PIN]   |   node reset-pin.js "Name" --email you@example.com');
+    if (!nameArg) console.log('\nUsage: node reset-pin.js "Name" [PIN, 4-6 digits]   |   node reset-pin.js "Name" --email you@example.com');
     return;
-  }
-  if (pinArg !== void 0 && !/^\d{4}$/.test(pinArg)) {
-    console.error("The PIN must be exactly 4 digits (e.g. 0427).");
-    process.exit(1);
   }
   const matches = await prisma.user.findMany({ where: { name: nameArg } });
   if (matches.length === 0) {
@@ -1902,9 +2106,22 @@ async function main() {
     console.log(`Recovery email for "${user.name}" is now ${emailArg}.`);
     if (pinArg === void 0) return;
   }
-  const pin = pinArg ?? String(import_crypto.default.randomInt(0, 1e4)).padStart(4, "0");
+  const roleRow = user.role === "Admin" ? null : await prisma.role.findUnique({ where: { name: user.role } });
+  const need = requiredPinLength(user.role, roleRow);
+  let pin = pinArg ?? "";
+  if (pinArg === void 0) {
+    do
+      pin = String(import_crypto.default.randomInt(0, 10 ** need)).padStart(need, "0");
+    while (isWeakPin(pin));
+  } else {
+    const problem = pinProblem(pinArg, user.role, roleRow);
+    if (problem) {
+      console.error(problem + ".");
+      process.exit(1);
+    }
+  }
   const pinHash = await import_bcryptjs.default.hash(pin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash, failedLoginCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash, pinLength: pin.length, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   console.log(`PIN for "${user.name}" (${user.role}) is now: ${pin}  (any lockout was cleared)`);
 }
 main().catch((e) => {

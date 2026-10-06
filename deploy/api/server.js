@@ -107,7 +107,7 @@ var require_main = __commonJS({
     var fs5 = require("fs");
     var path4 = require("path");
     var os3 = require("os");
-    var crypto11 = require("crypto");
+    var crypto12 = require("crypto");
     var packageJson = require_package();
     var version2 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
@@ -326,7 +326,7 @@ var require_main = __commonJS({
       const authTag = ciphertext.subarray(-16);
       ciphertext = ciphertext.subarray(12, -16);
       try {
-        const aesgcm = crypto11.createDecipheriv("aes-256-gcm", key2, nonce);
+        const aesgcm = crypto12.createDecipheriv("aes-256-gcm", key2, nonce);
         aesgcm.setAuthTag(authTag);
         return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
       } catch (error2) {
@@ -17349,11 +17349,11 @@ var require_parse = __commonJS({
         segments[segments.length] = parent;
       }
       var n = key2.length;
-      var open = first;
+      var open2 = first;
       var collected = 0;
-      while (open >= 0 && collected < options.depth) {
+      while (open2 >= 0 && collected < options.depth) {
         var level = 1;
-        var i = open + 1;
+        var i = open2 + 1;
         var close = -1;
         while (i < n && close < 0) {
           var cu = key2.charCodeAt(i);
@@ -17368,23 +17368,23 @@ var require_parse = __commonJS({
           i += 1;
         }
         if (close < 0) {
-          segments[segments.length] = "[" + key2.slice(open) + "]";
+          segments[segments.length] = "[" + key2.slice(open2) + "]";
           return segments;
         }
-        var seg = key2.slice(open, close + 1);
+        var seg = key2.slice(open2, close + 1);
         var content = seg.slice(1, -1);
         if (!options.plainObjects && has.call(Object.prototype, content) && !options.allowPrototypes) {
           return;
         }
         segments[segments.length] = seg;
         collected += 1;
-        open = key2.indexOf("[", close + 1);
+        open2 = key2.indexOf("[", close + 1);
       }
-      if (open >= 0) {
+      if (open2 >= 0) {
         if (options.strictDepth === true) {
           throw new RangeError("Input depth exceeded depth option of " + options.depth + " and strictDepth is true");
         }
-        segments[segments.length] = "[" + key2.slice(open) + "]";
+        segments[segments.length] = "[" + key2.slice(open2) + "]";
       }
       return segments;
     };
@@ -20480,14 +20480,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports2, module2) {
     "use strict";
     module2.exports = etag;
-    var crypto11 = require("crypto");
+    var crypto12 = require("crypto");
     var Stats = require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto11.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto12.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -22380,7 +22380,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router18 = require_router();
+    var Router19 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22445,7 +22445,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router18({
+        this._router = new Router19({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -23396,11 +23396,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports2) {
-    var crypto11 = require("crypto");
+    var crypto12 = require("crypto");
     exports2.sign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto11.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto12.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports2.unsign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -23409,7 +23409,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto11.createHash("sha1").update(str).digest("hex");
+      return crypto12.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -24309,7 +24309,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router18 = require_router();
+    var Router19 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24332,7 +24332,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router18;
+    exports2.Router = Router19;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -26723,14 +26723,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports2, module2) {
     var Buffer3 = require_safe_buffer().Buffer;
-    var crypto11 = require("crypto");
+    var crypto12 = require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util4 = require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto11.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto12.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -26820,17 +26820,17 @@ var require_jwa = __commonJS({
       return function sign2(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac = crypto11.createHmac("sha" + bits, secret);
+        var hmac = crypto12.createHmac("sha" + bits, secret);
         var sig = (hmac.update(thing), hmac.digest("base64"));
         return fromBase64(sig);
       };
     }
     var bufferEqual;
-    var timingSafeEqual2 = "timingSafeEqual" in crypto11 ? function timingSafeEqual3(a2, b) {
+    var timingSafeEqual2 = "timingSafeEqual" in crypto12 ? function timingSafeEqual3(a2, b) {
       if (a2.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto11.timingSafeEqual(a2, b);
+      return crypto12.timingSafeEqual(a2, b);
     } : function timingSafeEqual3(a2, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -26847,7 +26847,7 @@ var require_jwa = __commonJS({
       return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto11.createSign("RSA-SHA" + bits);
+        var signer = crypto12.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig);
       };
@@ -26857,7 +26857,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto11.createVerify("RSA-SHA" + bits);
+        var verifier = crypto12.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -26866,11 +26866,11 @@ var require_jwa = __commonJS({
       return function sign2(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto11.createSign("RSA-SHA" + bits);
+        var signer = crypto12.createSign("RSA-SHA" + bits);
         var sig = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto11.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto11.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto12.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto12.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig);
       };
@@ -26880,12 +26880,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto11.createVerify("RSA-SHA" + bits);
+        var verifier = crypto12.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto11.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto11.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto12.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto12.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -30240,7 +30240,7 @@ var require_jsonwebtoken = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express17 = __toESM(require_express2());
+var import_express18 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -30289,7 +30289,7 @@ patchRouterParam();
 // apps/api/src/routes/auth.ts
 var import_express = __toESM(require_express2());
 var import_bcryptjs = __toESM(require_bcryptjs());
-var import_crypto = __toESM(require("crypto"));
+var import_crypto2 = __toESM(require("crypto"));
 
 // node_modules/express-rate-limit/dist/index.mjs
 var import_node_buffer = require("node:buffer");
@@ -42940,9 +42940,9 @@ function getTestMessageUrl(info) {
   const infoProps = /* @__PURE__ */ new Map();
   const response = info.response.toString();
   if (response.length > 2 && response.charAt(response.length - 1) === "]") {
-    const open = response.indexOf("[", response.lastIndexOf("]", response.length - 2) + 1);
-    if (open >= 0 && open < response.length - 2) {
-      const props = response.substring(open + 1, response.length - 1);
+    const open2 = response.indexOf("[", response.lastIndexOf("]", response.length - 2) + 1);
+    if (open2 >= 0 && open2 < response.length - 2) {
+      const props = response.substring(open2 + 1, response.length - 1);
       props.replace(/\b([A-Z0-9]+)=([^\s]+)/g, (m, key2, value) => {
         infoProps.set(key2, value);
         return m;
@@ -42961,6 +42961,64 @@ var nodemailer = {
 };
 var nodemailer_default = nodemailer;
 
+// apps/api/src/crypto.ts
+var import_node_crypto9 = __toESM(require("node:crypto"));
+var SEALED = "enc:v1:";
+var BACKUP_MAGIC = Buffer.from("GLMENC1\0");
+function rootKey() {
+  const k = process.env.DATA_KEY;
+  return k && k.length >= 16 ? Buffer.from(k, "utf8") : null;
+}
+function subKey(purpose) {
+  const root = rootKey();
+  return root ? Buffer.from(import_node_crypto9.default.hkdfSync("sha256", root, Buffer.from("glm-pos"), Buffer.from(purpose), 32)) : null;
+}
+var dataKeyConfigured = () => rootKey() !== null;
+var isSealed = (v) => !!v && v.startsWith(SEALED);
+function seal(plain2) {
+  const key2 = subKey("secrets");
+  if (!key2 || !plain2 || isSealed(plain2)) return plain2;
+  const iv = import_node_crypto9.default.randomBytes(12);
+  const c = import_node_crypto9.default.createCipheriv("aes-256-gcm", key2, iv);
+  const body = Buffer.concat([c.update(plain2, "utf8"), c.final()]);
+  return SEALED + Buffer.concat([iv, c.getAuthTag(), body]).toString("base64");
+}
+function open(stored) {
+  if (!isSealed(stored)) return stored;
+  const key2 = subKey("secrets");
+  if (!key2) throw new Error("A saved setting is protected with DATA_KEY, but DATA_KEY is not set on this server");
+  const raw = Buffer.from(stored.slice(SEALED.length), "base64");
+  try {
+    const d = import_node_crypto9.default.createDecipheriv("aes-256-gcm", key2, raw.subarray(0, 12));
+    d.setAuthTag(raw.subarray(12, 28));
+    return Buffer.concat([d.update(raw.subarray(28)), d.final()]).toString("utf8");
+  } catch {
+    throw new Error("A saved setting could not be opened \u2014 DATA_KEY is not the one it was sealed with");
+  }
+}
+var isEncryptedBackup = (b) => b.length > BACKUP_MAGIC.length && b.subarray(0, BACKUP_MAGIC.length).equals(BACKUP_MAGIC);
+function encryptBackup(data) {
+  const key2 = subKey("backup");
+  if (!key2) return data;
+  const iv = import_node_crypto9.default.randomBytes(12);
+  const c = import_node_crypto9.default.createCipheriv("aes-256-gcm", key2, iv);
+  const body = Buffer.concat([c.update(data), c.final()]);
+  return Buffer.concat([BACKUP_MAGIC, iv, c.getAuthTag(), body]);
+}
+function decryptBackup(data) {
+  if (!isEncryptedBackup(data)) return data;
+  const key2 = subKey("backup");
+  if (!key2) throw new Error("This backup is encrypted. Set the same DATA_KEY on this server (in its environment file) that the backup was made with, then restore it.");
+  const at = BACKUP_MAGIC.length;
+  try {
+    const d = import_node_crypto9.default.createDecipheriv("aes-256-gcm", key2, data.subarray(at, at + 12));
+    d.setAuthTag(data.subarray(at + 12, at + 28));
+    return Buffer.concat([d.update(data.subarray(at + 28)), d.final()]);
+  } catch {
+    throw new Error("This backup could not be decrypted \u2014 DATA_KEY on this server is not the key it was made with, or the file is damaged");
+  }
+}
+
 // apps/api/src/mailer.ts
 async function getMailSettingsRow() {
   return prisma.mailSettings.findUnique({ where: { id: 1 } });
@@ -42968,7 +43026,7 @@ async function getMailSettingsRow() {
 async function loadMailConfig() {
   const row = await getMailSettingsRow();
   if (row && row.outgoingHost && row.username && row.password) {
-    return { source: "settings", username: row.username, password: row.password, outgoingHost: row.outgoingHost, smtpPort: row.smtpPort, incomingHost: row.incomingHost, imapPort: row.imapPort, pop3Port: row.pop3Port, fromName: row.fromName, loginUrl: row.loginUrl };
+    return { source: "settings", username: row.username, password: open(row.password), outgoingHost: row.outgoingHost, smtpPort: row.smtpPort, incomingHost: row.incomingHost, imapPort: row.imapPort, pop3Port: row.pop3Port, fromName: row.fromName, loginUrl: row.loginUrl };
   }
   const { SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM } = process.env;
   if (!SMTP_HOST || !SMTP_PORT || !SMTP_USER || !SMTP_PASS) return null;
@@ -43016,10 +43074,13 @@ function explainMailError(e, c) {
 
 // apps/api/src/middleware/auth.ts
 var import_jsonwebtoken = __toESM(require_jsonwebtoken());
-var JWT_SECRET = process.env.JWT_SECRET || "change-me-in-production";
-if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
-  throw new Error("JWT_SECRET must be set in production");
+var DEFAULT_SECRET = "change-me-in-production";
+var realInstall = process.env.NODE_ENV === "production" || /^postgres(ql)?:/i.test(process.env.DATABASE_URL ?? "");
+if (realInstall && (!process.env.JWT_SECRET || process.env.JWT_SECRET === DEFAULT_SECRET || process.env.JWT_SECRET.length < 32)) {
+  throw new Error("JWT_SECRET must be set to a long random value (at least 32 characters) \u2014 for example the output of: openssl rand -hex 32");
 }
+var JWT_SECRET = process.env.JWT_SECRET || DEFAULT_SECRET;
+var jwtSecretStrong = () => JWT_SECRET !== DEFAULT_SECRET && JWT_SECRET.length >= 32;
 function signToken(user) {
   return import_jsonwebtoken.default.sign(user, JWT_SECRET, { expiresIn: "12h" });
 }
@@ -43036,12 +43097,27 @@ async function requireAuth(req, res, next) {
   }
   if (typeof payload.id !== "number") return res.status(401).json({ error: "Invalid or expired session" });
   try {
-    const user = await prisma.user.findUnique({ where: { id: payload.id }, select: { id: true, name: true, role: true, active: true, tokenVersion: true } });
+    const user = await prisma.user.findUnique({ where: { id: payload.id }, select: { id: true, name: true, role: true, active: true, tokenVersion: true, mustChangePin: true } });
     if (!user || !user.active || (payload.tv ?? 0) !== user.tokenVersion) return res.status(401).json({ error: "Your session has ended \u2014 sign in again" });
+    if (user.mustChangePin && !req.originalUrl.startsWith("/api/auth/change-pin")) {
+      return res.status(403).json({ error: "Choose your own PIN first", code: "MUST_CHANGE_PIN" });
+    }
     req.user = { id: user.id, name: user.name, role: user.role };
     next();
   } catch (err) {
     next(err);
+  }
+}
+function signChallenge(userId) {
+  return import_jsonwebtoken.default.sign({ purpose: "login-code", id: userId }, JWT_SECRET, { expiresIn: "10m" });
+}
+function verifyChallenge(token) {
+  if (typeof token !== "string") return null;
+  try {
+    const p = import_jsonwebtoken.default.verify(token, JWT_SECRET);
+    return p.purpose === "login-code" && typeof p.id === "number" ? p.id : null;
+  } catch {
+    return null;
   }
 }
 async function userHasPermission(roleName, key2) {
@@ -43068,6 +43144,80 @@ function requirePermission(...keys) {
     next();
   };
 }
+
+// apps/api/src/audit.ts
+var SECRET_KEY = /pin|pass|secret|token|html|logo|raw|authorization|credential|^code$|^key$|apikey|consumerkey|privatekey/i;
+var MAX_DETAIL = 1500;
+function ipOf(req) {
+  return (req.ip || req.socket.remoteAddress || "").replace(/^::ffff:/, "");
+}
+function summarise(body) {
+  if (!body || typeof body !== "object" || Buffer.isBuffer(body)) return "";
+  const parts = [];
+  for (const [k, v] of Object.entries(body)) {
+    if (SECRET_KEY.test(k)) parts.push(`${k}=\u2022\u2022\u2022`);
+    else if (v === null || v === void 0) parts.push(`${k}=\u2205`);
+    else if (typeof v === "string") parts.push(`${k}=${v.length > 60 ? v.slice(0, 57) + "\u2026" : v}`);
+    else if (typeof v === "number" || typeof v === "boolean") parts.push(`${k}=${v}`);
+    else if (Array.isArray(v)) parts.push(`${k}=[${v.length}]`);
+    else parts.push(`${k}={\u2026}`);
+  }
+  return parts.join(", ").slice(0, MAX_DETAIL);
+}
+async function writeAudit(e) {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        userId: e.userId ?? null,
+        userName: e.userName ?? "",
+        role: e.role ?? "",
+        method: e.method ?? "",
+        action: e.action.slice(0, 200),
+        path: (e.path ?? "").slice(0, 300),
+        status: e.status ?? 0,
+        detail: (e.detail ?? "").slice(0, MAX_DETAIL),
+        ip: e.ip ?? ""
+      }
+    });
+  } catch (err) {
+    console.error("Audit log write failed", err);
+  }
+}
+var AUDITED_READS = [/^\/api\/backup\//, /^\/api\/finance\/(employees|p9|payroll)/, /^\/api\/master-data\/staff-details/, /^\/api\/pricelists\/.*\.xlsx$/];
+var SKIPPED = [/^\/api\/auth\/login/, /^\/api\/auth\/forgot-pin/, /^\/api\/auth\/reset-pin/, /^\/api\/mpesa\/(callback|c2b)/, /^\/api\/health/];
+function auditMiddleware(req, res, next) {
+  res.on("finish", () => {
+    const url = req.originalUrl.split("?")[0];
+    if (SKIPPED.some((r) => r.test(url))) return;
+    const write = !["GET", "HEAD", "OPTIONS"].includes(req.method);
+    const refused = res.statusCode === 403;
+    const sensitiveRead = !write && res.statusCode < 400 && AUDITED_READS.some((r) => r.test(url));
+    if (!(write && (res.statusCode < 400 || refused)) && !sensitiveRead && !(refused && !write)) return;
+    const route = req.route?.path ? `${req.baseUrl}${typeof req.route.path === "string" ? req.route.path : ""}` : url;
+    void writeAudit({
+      userId: req.user?.id ?? null,
+      userName: req.user?.name ?? "",
+      role: req.user?.role ?? "",
+      method: req.method,
+      action: `${req.method} ${route}${refused ? " \u2014 REFUSED" : ""}`,
+      path: url,
+      status: res.statusCode,
+      detail: write ? summarise(req.body) : "",
+      ip: ipOf(req)
+    });
+  });
+  next();
+}
+async function pruneAudit() {
+  try {
+    await prisma.auditLog.deleteMany({ where: { at: { lt: new Date(Date.now() - 730 * 24 * 3600 * 1e3) } } });
+  } catch (err) {
+    console.error("Audit prune failed", err);
+  }
+}
+
+// apps/api/src/pins.ts
+var import_node_crypto10 = __toESM(require("node:crypto"));
 
 // packages/shared/src/types.ts
 var PERMISSION_KEYS = [
@@ -43879,6 +44029,80 @@ function materialName(item, size) {
   return z ? `${i} \u2014 ${z}` : i;
 }
 
+// packages/shared/src/pin.ts
+var PIN_MIN = 4;
+var PIN_MAX = 6;
+var PIN_LONG = 6;
+var PRIVILEGED_PERMISSIONS = ["canAccessFinance", "canAccessAccounting", "canManagePayments", "canAccessPnl", "canSeeCosts", "canManageCommission"];
+function requiredPinLength(role, permissions) {
+  if (role === "Admin") return PIN_LONG;
+  if (permissions && PRIVILEGED_PERMISSIONS.some((k) => permissions[k])) return PIN_LONG;
+  return PIN_MIN;
+}
+var COMMON = /* @__PURE__ */ new Set(["2580", "1122", "1212", "1004", "2000", "2001", "1010", "6969", "1357", "2468", "0852", "1313", "4200", "5683", "8888"]);
+function isWeakPin(pin) {
+  if (!/^\d+$/.test(pin)) return true;
+  if (/^(\d)\1+$/.test(pin)) return true;
+  if (COMMON.has(pin)) return true;
+  const d = [...pin].map(Number);
+  const step = (n) => d.every((x, i) => i === 0 || (x - d[i - 1] + 10) % 10 === n);
+  if (step(1) || step(9)) return true;
+  if (pin.length % 2 === 0) {
+    const half = pin.slice(0, pin.length / 2);
+    if (half.repeat(2) === pin) return true;
+  }
+  return false;
+}
+function pinProblem(pin, role, permissions) {
+  if (!/^\d+$/.test(pin)) return "A PIN is made of digits only";
+  const need = requiredPinLength(role, permissions);
+  if (pin.length > PIN_MAX) return `A PIN is at most ${PIN_MAX} digits`;
+  if (pin.length < need) return need === PIN_MIN ? `A PIN is at least ${PIN_MIN} digits` : `This role needs a ${need}-digit PIN`;
+  if (isWeakPin(pin)) return "That PIN is too easy to guess (like 1234 or 0000). Choose a less obvious one";
+  return null;
+}
+
+// apps/api/src/pins.ts
+var PIN_ROUNDS = 10;
+var MAX_ATTEMPTS = 5;
+var BASE_LOCK_MINUTES = 15;
+var MAX_LOCK_MINUTES = 24 * 60;
+var QUIET_RESET_MS = 24 * 3600 * 1e3;
+async function permissionsOfRole(roleName) {
+  return roleName === "Admin" ? null : prisma.role.findUnique({ where: { name: roleName } });
+}
+async function requiredLengthFor(roleName) {
+  if (roleName === "Admin") return PIN_LONG;
+  return requiredPinLength(roleName, await permissionsOfRole(roleName));
+}
+async function pinProblemFor(pin, roleName) {
+  return pinProblem(pin, roleName, await permissionsOfRole(roleName));
+}
+function randomPin(length) {
+  for (; ; ) {
+    const pin = String(import_node_crypto10.default.randomInt(0, 10 ** length)).padStart(length, "0");
+    if (!isWeakPin(pin)) return pin;
+  }
+}
+async function registerFailedPin(user, ip = "") {
+  const now = /* @__PURE__ */ new Date();
+  const quiet = !user.lastFailedAt || now.getTime() - user.lastFailedAt.getTime() > QUIET_RESET_MS;
+  const lockCount = quiet ? 0 : user.lockCount;
+  const failed = (quiet ? 0 : user.failedLoginCount) + 1;
+  if (failed >= MAX_ATTEMPTS) {
+    const minutes = Math.min(MAX_LOCK_MINUTES, BASE_LOCK_MINUTES * 2 ** lockCount);
+    await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockCount: lockCount + 1, lockedUntil: new Date(now.getTime() + minutes * 6e4), lastFailedAt: now } });
+    await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: "AUTH", action: `LOCKED OUT for ${minutes} minutes after wrong PINs`, ip });
+    return { lockedMinutes: minutes };
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: failed, lockCount, lastFailedAt: now } });
+  return { lockedMinutes: null };
+}
+async function clearPinFailures(userId) {
+  await prisma.user.update({ where: { id: userId }, data: { failedLoginCount: 0, lockCount: 0, lockedUntil: null } });
+}
+var minutesLeft = (until) => Math.max(1, Math.ceil((until.getTime() - Date.now()) / 6e4));
+
 // apps/api/src/permissions.ts
 var ALL_TRUE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, true]));
 var ALL_FALSE2 = Object.fromEntries(PERMISSION_KEYS.map((k) => [k, false]));
@@ -44097,8 +44321,9 @@ async function systemName() {
 // apps/api/src/routes/auth.ts
 var authRouter = (0, import_express.Router)();
 var loginLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 30, standardHeaders: true, legacyHeaders: false });
-var LOCK_MINUTES = 15;
-var MAX_ATTEMPTS = 5;
+var changePinLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `pin-${req.user?.id ?? "anon"}`, validate: false });
+var CODE_MINUTES = 10;
+var CODE_MAX_ATTEMPTS = 5;
 function initials(name2) {
   return name2.split(" ").filter(Boolean).map((p) => p[0].toUpperCase()).slice(0, 2).join("");
 }
@@ -44113,30 +44338,85 @@ authRouter.get("/features", requireAuth, async (_req, res) => {
 authRouter.get("/users", async (_req, res) => {
   const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
   res.json(
-    users.map((u) => ({ id: u.id, name: u.name, role: u.role, initials: initials(u.name) }))
+    users.map((u) => ({ id: u.id, name: u.name, role: u.role, initials: initials(u.name), pinLength: u.pinLength }))
   );
 });
-authRouter.post("/login", loginLimiter, async (req, res) => {
-  const { userId, pin } = req.body;
-  if (!userId || !pin) return res.status(400).json({ error: "userId and pin are required" });
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
-  if (!user) return res.status(401).json({ error: "Invalid PIN" });
-  if (!user.active) return res.status(401).json({ error: "This sign-in has been switched off. Ask the Admin if you think this is a mistake." });
-  if (user.lockedUntil && user.lockedUntil > /* @__PURE__ */ new Date()) {
-    return res.status(423).json({ error: "Account locked, try again shortly" });
+var maskEmail = (e) => e.replace(/^(.).*(@.*)$/, "$1\u2022\u2022\u2022$2");
+async function completeLogin(req, res, user) {
+  const need = await requiredLengthFor(user.role);
+  let mustChangePin = user.mustChangePin;
+  if (user.pinLength < need && !mustChangePin) {
+    await prisma.user.update({ where: { id: user.id }, data: { mustChangePin: true } });
+    mustChangePin = true;
   }
-  const ok = await import_bcryptjs.default.compare(pin, user.pinHash);
-  if (!ok) {
-    const failedLoginCount = user.failedLoginCount + 1;
-    const lockedUntil = failedLoginCount >= MAX_ATTEMPTS ? new Date(Date.now() + LOCK_MINUTES * 60 * 1e3) : null;
-    await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount, lockedUntil } });
-    return res.status(401).json({ error: "Invalid PIN" });
-  }
-  await prisma.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
   const authedUser = { id: user.id, name: user.name, role: user.role };
   const token = signToken({ ...authedUser, tv: user.tokenVersion });
   const permissions = await permissionsForRole(user.role);
-  res.json({ token, user: { ...authedUser, permissions, mustChangePin: user.mustChangePin } });
+  await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: "AUTH", action: "LOGIN OK", ip: ipOf(req) });
+  res.json({ token, user: { ...authedUser, permissions, mustChangePin, pinLength: user.pinLength, pinNeeds: need } });
+}
+authRouter.post("/login", loginLimiter, async (req, res) => {
+  const { userId, pin } = req.body;
+  if (!userId || !pin || typeof pin !== "string") return res.status(400).json({ error: "userId and pin are required" });
+  const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
+  if (!user) return res.status(401).json({ error: "Invalid PIN" });
+  const who = { userId: user.id, userName: user.name, role: user.role, method: "AUTH", ip: ipOf(req) };
+  if (!user.active) {
+    await writeAudit({ ...who, action: "LOGIN REFUSED \u2014 sign-in is switched off" });
+    return res.status(401).json({ error: "This sign-in has been switched off. Ask the Admin if you think this is a mistake." });
+  }
+  if (user.lockedUntil && user.lockedUntil > /* @__PURE__ */ new Date()) {
+    const minutes = minutesLeft(user.lockedUntil);
+    await writeAudit({ ...who, action: "LOGIN REFUSED \u2014 account is locked" });
+    return res.status(423).json({ error: `This account is locked after too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.`, retryAfterMinutes: minutes });
+  }
+  const ok = await import_bcryptjs.default.compare(pin, user.pinHash);
+  if (!ok) {
+    const r = await registerFailedPin(user, ipOf(req));
+    await writeAudit({ ...who, action: "LOGIN FAILED \u2014 wrong PIN" });
+    return res.status(401).json({ error: "Invalid PIN", ...r.lockedMinutes ? { lockedMinutes: r.lockedMinutes } : {} });
+  }
+  await clearPinFailures(user.id);
+  const setting = await prisma.setting.findUnique({ where: { id: 1 } });
+  if (setting?.requireAdminCode && user.role === "Admin" && user.email) {
+    const mailer = await getMailer();
+    if (mailer) {
+      const code = String(import_crypto2.default.randomInt(0, 1e6)).padStart(6, "0");
+      await prisma.user.update({ where: { id: user.id }, data: { loginCodeHash: await import_bcryptjs.default.hash(code, PIN_ROUNDS), loginCodeExpires: new Date(Date.now() + CODE_MINUTES * 6e4), loginCodeAttempts: 0 } });
+      try {
+        await mailer.sendMail({
+          to: user.email,
+          subject: `${await systemName()} \u2014 sign-in code`,
+          text: `Your sign-in code is ${code}. It expires in ${CODE_MINUTES} minutes.
+
+If you did not just enter your PIN, someone else knows it \u2014 change it and tell your manager.`
+        });
+        await writeAudit({ ...who, action: "LOGIN CODE SENT" });
+        return res.json({ codeRequired: true, challenge: signChallenge(user.id), sentTo: maskEmail(user.email) });
+      } catch (e) {
+        await prisma.user.update({ where: { id: user.id }, data: { loginCodeHash: null, loginCodeExpires: null } });
+        await writeAudit({ ...who, action: "LOGIN CODE NOT SENT \u2014 the email failed, signed in on the PIN alone", detail: explainMailError(e, mailer.config) });
+      }
+    }
+  }
+  return completeLogin(req, res, user);
+});
+authRouter.post("/login-code", loginLimiter, async (req, res) => {
+  const { challenge, code } = req.body;
+  const expired = { error: "This sign-in has expired. Start again." };
+  const id = verifyChallenge(challenge);
+  if (id === null || typeof code !== "string") return res.status(401).json(expired);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user || !user.active || !user.loginCodeHash || !user.loginCodeExpires || user.loginCodeExpires < /* @__PURE__ */ new Date()) return res.status(401).json(expired);
+  const who = { userId: user.id, userName: user.name, role: user.role, method: "AUTH", ip: ipOf(req) };
+  if (!await import_bcryptjs.default.compare(code.trim(), user.loginCodeHash)) {
+    const attempts = user.loginCodeAttempts + 1;
+    await prisma.user.update({ where: { id: user.id }, data: attempts >= CODE_MAX_ATTEMPTS ? { loginCodeHash: null, loginCodeExpires: null, loginCodeAttempts: 0 } : { loginCodeAttempts: attempts } });
+    await writeAudit({ ...who, action: "LOGIN CODE WRONG" });
+    return res.status(401).json({ error: attempts >= CODE_MAX_ATTEMPTS ? "Too many wrong codes. Start again." : "That code is not right" });
+  }
+  await prisma.user.update({ where: { id: user.id }, data: { loginCodeHash: null, loginCodeExpires: null, loginCodeAttempts: 0 } });
+  return completeLogin(req, res, user);
 });
 var RESET_CODE_MINUTES = 15;
 var RESET_MAX_ATTEMPTS = 5;
@@ -44154,7 +44434,7 @@ authRouter.post("/forgot-pin", resetLimiter, async (req, res) => {
   }
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.active || user.role !== "Admin") return res.json(GENERIC_FORGOT_REPLY);
-  const code = String(import_crypto.default.randomInt(0, 1e6)).padStart(6, "0");
+  const code = String(import_crypto2.default.randomInt(0, 1e6)).padStart(6, "0");
   await prisma.user.update({
     where: { id: user.id },
     data: {
@@ -44180,7 +44460,9 @@ authRouter.post("/reset-pin", resetLimiter, async (req, res) => {
   const { code, newPin } = req.body;
   const email = normalizeEmail(req.body.email);
   if (!email || !code) return res.status(400).json({ error: "Email and code are required" });
-  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ error: "New PIN must be 4 digits" });
+  if (!newPin || typeof newPin !== "string") return res.status(400).json({ error: "A new PIN is required" });
+  const weak = await pinProblemFor(newPin, "Admin");
+  if (weak) return res.status(400).json({ error: weak });
   const invalid = { error: "That code is invalid or has expired. Request a new one." };
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user || !user.active || user.role !== "Admin" || !user.resetCodeHash || !user.resetCodeExpires || user.resetCodeExpires < /* @__PURE__ */ new Date()) {
@@ -44198,10 +44480,12 @@ authRouter.post("/reset-pin", resetLimiter, async (req, res) => {
   await prisma.user.update({
     where: { id: user.id },
     data: {
-      pinHash: await import_bcryptjs.default.hash(newPin, 10),
+      pinHash: await import_bcryptjs.default.hash(newPin, PIN_ROUNDS),
+      pinLength: newPin.length,
       tokenVersion: { increment: 1 },
       // any session opened with the old PIN ends
       failedLoginCount: 0,
+      lockCount: 0,
       lockedUntil: null,
       resetCodeHash: null,
       resetCodeExpires: null,
@@ -44211,16 +44495,28 @@ authRouter.post("/reset-pin", resetLimiter, async (req, res) => {
   });
   res.json({ ok: true });
 });
-authRouter.post("/change-pin", requireAuth, async (req, res) => {
+authRouter.post("/change-pin", requireAuth, changePinLimiter, async (req, res) => {
   const { currentPin, newPin } = req.body;
-  if (!newPin || !/^\d{4}$/.test(newPin)) return res.status(400).json({ error: "New PIN must be 4 digits" });
+  if (typeof newPin !== "string") return res.status(400).json({ error: "A new PIN is required" });
   const user = await prisma.user.findUnique({ where: { id: req.user.id } });
   if (!user) return res.status(404).json({ error: "User not found" });
-  const ok = await import_bcryptjs.default.compare(currentPin || "", user.pinHash);
-  if (!ok) return res.status(400).json({ error: "Current PIN is incorrect" });
-  const pinHash = await import_bcryptjs.default.hash(newPin, 10);
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash, mustChangePin: false } });
-  res.json({ ok: true });
+  if (user.lockedUntil && user.lockedUntil > /* @__PURE__ */ new Date()) {
+    const minutes = minutesLeft(user.lockedUntil);
+    return res.status(423).json({ error: `This account is locked after too many wrong PINs. Try again in ${minutes} minute${minutes === 1 ? "" : "s"}.` });
+  }
+  const problem = await pinProblemFor(newPin, user.role);
+  if (problem) return res.status(400).json({ error: problem });
+  if (!await import_bcryptjs.default.compare(typeof currentPin === "string" ? currentPin : "", user.pinHash)) {
+    await registerFailedPin(user, ipOf(req));
+    return res.status(400).json({ error: "Current PIN is incorrect" });
+  }
+  if (newPin === currentPin) return res.status(400).json({ error: "The new PIN must differ from the current one" });
+  const saved = await prisma.user.update({
+    where: { id: user.id },
+    data: { pinHash: await import_bcryptjs.default.hash(newPin, PIN_ROUNDS), pinLength: newPin.length, mustChangePin: false, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } }
+  });
+  await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: "AUTH", action: "PIN CHANGED", ip: ipOf(req) });
+  res.json({ ok: true, token: signToken({ id: saved.id, name: saved.name, role: saved.role, tv: saved.tokenVersion }) });
 });
 
 // apps/api/src/routes/masterdata.ts
@@ -48268,9 +48564,6 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// apps/api/src/routes/masterdata.ts
-var import_crypto2 = __toESM(require("crypto"));
-
 // apps/api/src/materials.ts
 async function ensureMaterialItems() {
   const rows = await prisma.material.findMany({ where: { item: "" }, select: { id: true, name: true } });
@@ -48391,7 +48684,7 @@ async function nameTaken(full, exceptId) {
 var staffSchema = external_exports.object({
   ...nameParts,
   role: external_exports.string().min(1),
-  pin: external_exports.string().regex(/^\d{4}$/),
+  pin: external_exports.string().regex(/^\d{4,6}$/, "A PIN is 4 to 6 digits"),
   email: external_exports.string().trim().toLowerCase().email().optional().or(external_exports.literal("")),
   // Email them their login details now (needs an email and a mail account set up under Master Data → Email).
   emailPin: external_exports.boolean().optional()
@@ -48409,8 +48702,10 @@ masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
     const roleExists = await prisma.role.findUnique({ where: { name: role } });
     if (!roleExists) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
   }
-  const pinHash = await import_bcryptjs2.default.hash(pin, 10);
-  const user = await prisma.user.create({ data: { name: name2, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  const weak = await pinProblemFor(pin, role);
+  if (weak) return res.status(400).json({ error: weak });
+  const pinHash = await import_bcryptjs2.default.hash(pin, PIN_ROUNDS);
+  const user = await prisma.user.create({ data: { pinLength: pin.length, name: name2, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
   let emailed;
   if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
   res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
@@ -48434,7 +48729,7 @@ Choose your name on the sign-in screen and enter this PIN:
 
     ${pin}
 
-You will be asked to choose your own 4-digit PIN the first time you sign in. Please do that straight away, and delete this email afterwards.
+You will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.
 
 If you were not expecting this message, tell your manager.`
     });
@@ -48491,9 +48786,9 @@ masterDataRouter.post("/staff/:id/send-pin", requireRole("Admin"), async (req, r
   if (!user) return res.status(404).json({ error: "Staff member not found" });
   if (!user.email) return res.status(400).json({ error: `${user.name} has no email address yet \u2014 add one first` });
   if (!await loadMailConfig()) return res.status(400).json({ error: "Email isn't set up yet \u2014 set it up under Master Data \u2192 Email first" });
-  const pin = String(import_crypto2.default.randomInt(0, 1e4)).padStart(4, "0");
+  const pin = randomPin(await requiredLengthFor(user.role));
   const previous = { pinHash: user.pinHash, mustChangePin: user.mustChangePin };
-  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await import_bcryptjs2.default.hash(pin, 10), mustChangePin: true, failedLoginCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
+  await prisma.user.update({ where: { id: user.id }, data: { pinHash: await import_bcryptjs2.default.hash(pin, PIN_ROUNDS), pinLength: pin.length, mustChangePin: true, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   const sent = await emailPin(user.name, user.email, pin);
   if (!sent.ok) {
     await prisma.user.update({ where: { id: user.id }, data: previous });
@@ -48548,7 +48843,7 @@ masterDataRouter.put("/mail", requireRole("Admin"), async (req, res) => {
   if (b.loginUrl && !/^https?:\/\//.test(b.loginUrl)) return res.status(400).json({ error: "The sign-in address must start with https://" });
   const data = {
     username,
-    password: b.password ? b.password : row?.password ?? carried?.password ?? "",
+    password: seal(b.password ? b.password : row?.password ?? carried?.password ?? ""),
     outgoingHost: b.outgoingHost ?? row?.outgoingHost ?? carried?.outgoingHost ?? "",
     smtpPort: b.smtpPort ?? row?.smtpPort ?? carried?.smtpPort ?? 465,
     incomingHost: b.incomingHost ?? row?.incomingHost ?? "",
@@ -51313,21 +51608,35 @@ reportsRouter.get("/business-head-detail", async (req, res) => {
 var import_express7 = __toESM(require_express2());
 var emailRouter = (0, import_express7.Router)();
 emailRouter.use(requireAuth);
+var sendLimiter = lib_default({
+  windowMs: 60 * 60 * 1e3,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `mail-${req.user?.id ?? "anon"}`,
+  validate: false,
+  message: { error: "You have sent a lot of emails this hour. Try again later, or ask a manager." }
+});
 var sendSchema = external_exports.object({
+  // The document is always an order's invoice, quotation or receipt: say which, and the sender must be able to see that order.
+  orderId: external_exports.number().int().positive(),
   to: external_exports.string().email(),
   subject: external_exports.string().min(1).max(200),
   // Pre-rendered HTML from the frontend (same template used for print — see
   // buildCorporateDocumentHtml in apps/web/src/utils/printInvoice.ts) so the
   // invoice/quotation layout is defined in exactly one place.
-  html: external_exports.string().min(1)
+  html: external_exports.string().min(1).max(15e5)
 });
-emailRouter.post("/send", async (req, res) => {
+emailRouter.post("/send", sendLimiter, async (req, res) => {
   const mailer = await getMailer();
   if (!mailer) {
     return res.status(501).json({ error: "Email isn't set up yet \u2014 an Admin can set it up under Master Data \u2192 Email" });
   }
   const parsed = sendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, select: { staffId: true } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
   try {
     await mailer.sendMail({
       to: parsed.data.to,
@@ -51342,7 +51651,7 @@ emailRouter.post("/send", async (req, res) => {
 
 // apps/api/src/routes/mpesa.ts
 var import_express8 = __toESM(require_express2());
-var import_crypto4 = require("crypto");
+var import_crypto6 = require("crypto");
 
 // apps/api/src/accounting/reports.ts
 var inRange3 = (d, from, to) => d >= from && d <= to;
@@ -51770,8 +52079,8 @@ async function importStatement(text, by) {
 }
 
 // apps/api/src/mpesaConfig.ts
-var import_crypto3 = require("crypto");
-var newCallbackSecret = () => (0, import_crypto3.randomBytes)(24).toString("hex");
+var import_crypto4 = require("crypto");
+var newCallbackSecret = () => (0, import_crypto4.randomBytes)(24).toString("hex");
 async function getSettingsRow() {
   return await prisma.mpesaSettings.findUnique({ where: { id: 1 } }) ?? prisma.mpesaSettings.create({ data: { id: 1 } });
 }
@@ -51784,11 +52093,11 @@ async function loadMpesaConfig() {
       environment: row.environment === "production" ? "production" : "sandbox",
       shortCode: row.shortCode,
       isTill: row.isTill,
-      consumerKey: row.consumerKey,
-      consumerSecret: row.consumerSecret,
-      passkey: row.passkey,
+      consumerKey: open(row.consumerKey),
+      consumerSecret: open(row.consumerSecret),
+      passkey: open(row.passkey),
       publicBaseUrl: row.publicBaseUrl.replace(/\/+$/, ""),
-      callbackSecret: row.callbackSecret,
+      callbackSecret: open(row.callbackSecret),
       c2bRegisteredAt: row.c2bRegisteredAt
     };
   }
@@ -51851,6 +52160,7 @@ function darajaTimestamp() {
 
 // apps/api/src/routes/mpesa.ts
 var mpesaRouter = (0, import_express8.Router)();
+var MAX_STK_AMOUNT = 25e4;
 var NOT_SET_UP = "M-Pesa isn't set up (or is switched off) \u2014 an Admin can set it up under Master Data \u2192 M-Pesa";
 function normalizePhone(raw) {
   const digits = raw.replace(/[^\d]/g, "");
@@ -51901,11 +52211,11 @@ mpesaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res)
     environment: b.environment ?? base2.environment,
     shortCode: b.shortCode ?? base2.shortCode,
     isTill: b.isTill ?? base2.isTill,
-    consumerKey: b.consumerKey ? b.consumerKey : base2.consumerKey,
-    consumerSecret: b.consumerSecret ? b.consumerSecret : base2.consumerSecret,
-    passkey: b.passkey ? b.passkey : base2.passkey,
+    consumerKey: seal(b.consumerKey ? b.consumerKey : base2.consumerKey),
+    consumerSecret: seal(b.consumerSecret ? b.consumerSecret : base2.consumerSecret),
+    passkey: seal(b.passkey ? b.passkey : base2.passkey),
     publicBaseUrl: base2.publicBaseUrl,
-    callbackSecret: base2.callbackSecret || newCallbackSecret(),
+    callbackSecret: seal(base2.callbackSecret || newCallbackSecret()),
     enabled: b.enabled ?? base2.enabled
   };
   if (b.publicBaseUrl !== void 0) {
@@ -51967,12 +52277,18 @@ mpesaRouter.post("/stkpush", requireAuth, async (req, res) => {
   const parsed = stkPushSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   if (parsed.data.orderId) {
-    const target = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, select: { staffId: true } });
+    const target = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, include: orderInclude });
     if (!target) return res.status(404).json({ error: "Order not found" });
     if (!await canAccessOrder(req.user, target) || !await canTakePayment(req.user, target)) return res.status(403).json({ error: "Not permitted" });
+    const owed = serializeSummary(target).totals.balanceDue;
+    if (Math.round(parsed.data.amount) > Math.ceil(owed)) return res.status(400).json({ error: `This order only has Ksh ${Math.round(owed).toLocaleString("en-KE")} still to pay` });
   }
+  if (parsed.data.amount > MAX_STK_AMOUNT) return res.status(400).json({ error: `M-Pesa takes at most Ksh ${MAX_STK_AMOUNT.toLocaleString("en-KE")} in one payment` });
+  const recent = new Date(Date.now() - 10 * 6e4);
+  if (await prisma.mpesaTransaction.count({ where: { createdByName: req.user.name, kind: "STK", createdAt: { gt: recent } } }) >= 10) return res.status(429).json({ error: "You have sent a lot of M-Pesa prompts in the last few minutes. Wait a little before sending another." });
   const phone = normalizePhone(parsed.data.phone);
   if (!phone) return res.status(400).json({ error: "Enter a valid Kenyan phone number (e.g. 07xx xxx xxx)" });
+  if (await prisma.mpesaTransaction.count({ where: { phone, kind: "STK", createdAt: { gt: new Date(Date.now() - 10 * 6e4) } } }) >= 3) return res.status(429).json({ error: "That number has already been sent several prompts in the last few minutes. Ask the customer to check their phone, or wait a little." });
   try {
     const token = await getAccessToken(cfg);
     const timestamp = darajaTimestamp();
@@ -52048,7 +52364,7 @@ async function handleStkCallback(body) {
 function secretOk(given, want) {
   const a2 = Buffer.from(given);
   const b = Buffer.from(want);
-  return want.length >= 16 && a2.length === b.length && (0, import_crypto4.timingSafeEqual)(a2, b);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto6.timingSafeEqual)(a2, b);
 }
 mpesaRouter.post("/callback/:secret", async (req, res) => {
   const cfg = await loadMpesaConfig();
@@ -54460,7 +54776,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
 });
 
 // apps/api/src/routes/backup.ts
-var import_node_crypto9 = __toESM(require("node:crypto"));
+var import_node_crypto11 = __toESM(require("node:crypto"));
 var import_express16 = __toESM(require_express2());
 
 // apps/api/src/backup.ts
@@ -54504,12 +54820,13 @@ async function buildBackup() {
     counts[m.name] = rows.length;
   }
   const file = { format: BACKUP_FORMAT, version: 1, createdAt: (/* @__PURE__ */ new Date()).toISOString(), counts, tables };
-  return { data: await gzip(Buffer.from(JSON.stringify(file), "utf8")), counts };
+  return { data: encryptBackup(await gzip(Buffer.from(JSON.stringify(file), "utf8"))), counts };
 }
 function totalRows(counts) {
   return Object.values(counts).reduce((a2, b) => a2 + b, 0);
 }
-async function parseBackup(raw) {
+async function parseBackup(input) {
+  const raw = decryptBackup(input);
   let text;
   try {
     text = (raw[0] === 31 && raw[1] === 139 ? await gunzip(raw) : raw).toString("utf8");
@@ -54572,22 +54889,23 @@ function backupDir() {
 }
 var stamp = (d = /* @__PURE__ */ new Date()) => d.toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
 function saveLocal(data, prefix = FILE_PREFIX) {
-  import_node_fs4.default.mkdirSync(backupDir(), { recursive: true });
-  let name2 = `${prefix}${stamp()}.json.gz`;
-  for (let n = 2; import_node_fs4.default.existsSync(import_node_path3.default.join(backupDir(), name2)); n++) name2 = `${prefix}${stamp()}-${n}.json.gz`;
-  import_node_fs4.default.writeFileSync(import_node_path3.default.join(backupDir(), name2), data);
+  import_node_fs4.default.mkdirSync(backupDir(), { recursive: true, mode: 448 });
+  const ext = isEncryptedBackup(data) ? ".json.gz.enc" : ".json.gz";
+  let name2 = `${prefix}${stamp()}${ext}`;
+  for (let n = 2; import_node_fs4.default.existsSync(import_node_path3.default.join(backupDir(), name2)); n++) name2 = `${prefix}${stamp()}-${n}${ext}`;
+  import_node_fs4.default.writeFileSync(import_node_path3.default.join(backupDir(), name2), data, { mode: 384 });
   return name2;
 }
 function listLocal() {
   const dir = backupDir();
   if (!import_node_fs4.default.existsSync(dir)) return [];
-  return import_node_fs4.default.readdirSync(dir).filter((n) => /^[\w.-]+\.json\.gz$/.test(n) && (n.startsWith(FILE_PREFIX) || n.startsWith(PRE_RESTORE_PREFIX))).map((name2) => {
+  return import_node_fs4.default.readdirSync(dir).filter((n) => /^[\w.-]+\.json\.gz(\.enc)?$/.test(n) && (n.startsWith(FILE_PREFIX) || n.startsWith(PRE_RESTORE_PREFIX))).map((name2) => {
     const st = import_node_fs4.default.statSync(import_node_path3.default.join(dir, name2));
     return { name: name2, size: st.size, modified: st.mtime.toISOString(), beforeRestore: name2.startsWith(PRE_RESTORE_PREFIX) };
   }).sort((a2, b) => b.modified.localeCompare(a2.modified) || b.name.localeCompare(a2.name));
 }
 function readLocal(name2) {
-  if (!/^[\w.-]+\.json\.gz$/.test(name2)) return null;
+  if (!/^[\w.-]+\.json\.gz(\.enc)?$/.test(name2)) return null;
   const file = import_node_path3.default.join(backupDir(), name2);
   return import_node_fs4.default.existsSync(file) ? import_node_fs4.default.readFileSync(file) : null;
 }
@@ -54603,7 +54921,15 @@ async function saveBeforeRestore() {
   return name2;
 }
 async function getBackupSettings() {
-  return prisma.backupSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  const row = await prisma.backupSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  const safeOpen = (v) => {
+    try {
+      return open(v);
+    } catch {
+      return "";
+    }
+  };
+  return { ...row, driveClientSecret: safeOpen(row.driveClientSecret), driveRefreshToken: safeOpen(row.driveRefreshToken) };
 }
 var GOOGLE_AUTH = "https://accounts.google.com/o/oauth2/v2/auth";
 var GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
@@ -54662,7 +54988,7 @@ Content-Type: application/json; charset=UTF-8\r
 \r
 ${meta}\r
 --${boundary}\r
-Content-Type: application/gzip\r
+Content-Type: ${isEncryptedBackup(data) ? "application/octet-stream" : "application/gzip"}\r
 \r
 `),
     data,
@@ -54754,6 +55080,7 @@ backupRouter.get("/status", ...admin, async (_req, res) => {
     lastStatus: s.lastStatus,
     lastError: s.lastError,
     folder: backupDir(),
+    encrypted: dataKeyConfigured(),
     files: listLocal()
   });
 });
@@ -54771,7 +55098,7 @@ backupRouter.put("/settings", ...admin, async (req, res) => {
   const { driveClientSecret, ...rest } = parsed.data;
   const current = await getBackupSettings();
   const data = { ...rest };
-  if (driveClientSecret) data.driveClientSecret = driveClientSecret;
+  if (driveClientSecret) data.driveClientSecret = seal(driveClientSecret);
   if (rest.driveClientId !== void 0 && rest.driveClientId !== current.driveClientId && current.driveRefreshToken) {
     data.driveRefreshToken = "";
     data.driveFolderId = "";
@@ -54790,8 +55117,8 @@ backupRouter.post("/run", ...admin, async (_req, res) => {
 });
 backupRouter.get("/download", ...admin, async (_req, res) => {
   const { data } = await buildBackup();
-  res.setHeader("Content-Type", "application/gzip");
-  res.setHeader("Content-Disposition", `attachment; filename="glm-pos-backup-${stamp2()}.json.gz"`);
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.setHeader("Content-Disposition", `attachment; filename="glm-pos-backup-${stamp2()}.json.gz${isEncryptedBackup(data) ? ".enc" : ""}"`);
   res.send(data);
 });
 backupRouter.get("/files/:name", ...admin, (req, res) => {
@@ -54834,14 +55161,14 @@ backupRouter.post("/google/connect", ...admin, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
   const s = await getBackupSettings();
   if (!s.driveClientId || !s.driveClientSecret) return res.status(400).json({ error: "Save the Google client ID and client secret first" });
-  const state = import_node_crypto9.default.randomBytes(24).toString("hex");
+  const state = import_node_crypto11.default.randomBytes(24).toString("hex");
   await prisma.backupSettings.update({ where: { id: 1 }, data: { oauthState: state, oauthRedirectUri: parsed.data.redirectUri, oauthReturnUrl: parsed.data.returnUrl, oauthExpires: new Date(Date.now() + 10 * 6e4) } });
   res.json({ url: googleAuthUrl(s, parsed.data.redirectUri, state) });
 });
 backupRouter.get("/google/callback", async (req, res) => {
   const s = await getBackupSettings();
   const state = typeof req.query.state === "string" ? req.query.state : "";
-  const valid = !!s.oauthState && state.length === s.oauthState.length && import_node_crypto9.default.timingSafeEqual(Buffer.from(state), Buffer.from(s.oauthState)) && !!s.oauthExpires && s.oauthExpires > /* @__PURE__ */ new Date();
+  const valid = !!s.oauthState && state.length === s.oauthState.length && import_node_crypto11.default.timingSafeEqual(Buffer.from(state), Buffer.from(s.oauthState)) && !!s.oauthExpires && s.oauthExpires > /* @__PURE__ */ new Date();
   if (!valid) return res.status(400).send("This Google sign-in link has expired or was not started from the system. Go back to Master Data \u2192 Backup & Restore and press Connect Google Drive again.");
   const back = (message) => {
     const url = new URL(s.oauthReturnUrl);
@@ -54852,7 +55179,7 @@ backupRouter.get("/google/callback", async (req, res) => {
   if (typeof req.query.error === "string") return back(`Google said: ${req.query.error}`);
   try {
     const refreshToken = await exchangeGoogleCode(s, String(req.query.code ?? ""));
-    await prisma.backupSettings.update({ where: { id: 1 }, data: { driveRefreshToken: refreshToken, driveConnectedAt: /* @__PURE__ */ new Date(), driveFolderId: "", lastError: "" } });
+    await prisma.backupSettings.update({ where: { id: 1 }, data: { driveRefreshToken: seal(refreshToken), driveConnectedAt: /* @__PURE__ */ new Date(), driveFolderId: "", lastError: "" } });
     await prepareDrive();
     back("connected");
   } catch (err) {
@@ -54867,12 +55194,108 @@ backupRouter.post("/google/disconnect", ...admin, async (_req, res) => {
   res.json({ ok: true });
 });
 
+// apps/api/src/routes/security.ts
+var import_express17 = __toESM(require_express2());
+
+// apps/api/src/secrets.ts
+var plain = (v) => !!v && !isSealed(v);
+async function secretStatus() {
+  const unsealed = [];
+  const m = await prisma.mpesaSettings.findUnique({ where: { id: 1 } });
+  if (m) {
+    for (const k of ["consumerKey", "consumerSecret", "passkey", "callbackSecret"]) if (plain(m[k])) unsealed.push(`M-Pesa ${k}`);
+  }
+  const mail = await prisma.mailSettings.findUnique({ where: { id: 1 } });
+  if (plain(mail?.password)) unsealed.push("Email password");
+  const b = await prisma.backupSettings.findUnique({ where: { id: 1 } });
+  if (b) {
+    for (const k of ["driveClientSecret", "driveRefreshToken"]) if (plain(b[k])) unsealed.push(`Google Drive ${k}`);
+  }
+  return { unsealed };
+}
+async function sealStoredSecrets() {
+  if (!dataKeyConfigured()) return;
+  const m = await prisma.mpesaSettings.findUnique({ where: { id: 1 } });
+  if (m && ["consumerKey", "consumerSecret", "passkey", "callbackSecret"].some((k) => plain(m[k]))) {
+    await prisma.mpesaSettings.update({ where: { id: 1 }, data: { consumerKey: seal(m.consumerKey), consumerSecret: seal(m.consumerSecret), passkey: seal(m.passkey), callbackSecret: seal(m.callbackSecret) } });
+  }
+  const mail = await prisma.mailSettings.findUnique({ where: { id: 1 } });
+  if (mail && plain(mail.password)) await prisma.mailSettings.update({ where: { id: 1 }, data: { password: seal(mail.password) } });
+  const b = await prisma.backupSettings.findUnique({ where: { id: 1 } });
+  if (b && (plain(b.driveClientSecret) || plain(b.driveRefreshToken))) {
+    await prisma.backupSettings.update({ where: { id: 1 }, data: { driveClientSecret: seal(b.driveClientSecret), driveRefreshToken: seal(b.driveRefreshToken) } });
+  }
+}
+
+// apps/api/src/routes/security.ts
+var securityRouter = (0, import_express17.Router)();
+securityRouter.use(requireAuth, requireRole("Admin"));
+securityRouter.get("/status", async (req, res) => {
+  const setting = await prisma.setting.findUnique({ where: { id: 1 } });
+  const users = await prisma.user.findMany({ select: { id: true, name: true, role: true, active: true, email: true, pinLength: true } });
+  const active = users.filter((u) => u.active);
+  const short = [];
+  for (const u of active) if (u.pinLength < await requiredLengthFor(u.role)) short.push(u.name);
+  const admins = active.filter((u) => u.role === "Admin");
+  res.json({
+    dataKey: dataKeyConfigured(),
+    unsealedSecrets: (await secretStatus()).unsealed,
+    jwtSecretStrong: jwtSecretStrong(),
+    requireAdminCode: !!setting?.requireAdminCode,
+    mailConfigured: !!await getMailer(),
+    youHaveEmail: !!users.find((u) => u.id === req.user.id)?.email,
+    adminsWithoutEmail: admins.filter((a2) => !a2.email).map((a2) => a2.name),
+    shortPinPeople: short,
+    // people whose role needs a longer PIN than they have (they change it at next sign-in)
+    activeUsers: active.length,
+    switchedOff: users.length - active.length
+  });
+});
+securityRouter.put("/settings", async (req, res) => {
+  const parsed = external_exports.object({ requireAdminCode: external_exports.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
+  if (parsed.data.requireAdminCode) {
+    const me = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!me?.email) return res.status(400).json({ error: "Add your own email address under Staff & Users first \u2014 the code is sent to it, and you would not be able to sign in without it" });
+    if (!await getMailer()) return res.status(400).json({ error: "Set up the mail account under Master Data \u2192 Email first" });
+  }
+  await prisma.setting.upsert({ where: { id: 1 }, update: { requireAdminCode: parsed.data.requireAdminCode }, create: { id: 1, requireAdminCode: parsed.data.requireAdminCode } });
+  res.json({ ok: true, requireAdminCode: parsed.data.requireAdminCode });
+});
+securityRouter.get("/audit", async (req, res) => {
+  const day = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+  const from = day(req.query.from);
+  const to = day(req.query.to);
+  const user = typeof req.query.user === "string" ? req.query.user.trim().toLowerCase() : "";
+  const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+  const limit = Math.min(1e3, Math.max(1, Number(req.query.limit) || 300));
+  const rows = await prisma.auditLog.findMany({
+    where: { at: { ...from ? { gte: /* @__PURE__ */ new Date(`${from}T00:00:00.000Z`) } : {}, ...to ? { lte: /* @__PURE__ */ new Date(`${to}T23:59:59.999Z`) } : {} } },
+    orderBy: { id: "desc" },
+    take: 5e3
+  });
+  const hit = (r) => (!user || r.userName.toLowerCase().includes(user)) && (!q || `${r.action} ${r.path} ${r.detail}`.toLowerCase().includes(q));
+  const matched = rows.filter(hit);
+  res.json({ total: matched.length, rows: matched.slice(0, limit) });
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express17.default)();
+var app = (0, import_express18.default)();
+app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express17.default.json({ limit: "5mb" }));
+app.use(import_express18.default.json({ limit: "5mb" }));
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+  res.setHeader("Cache-Control", "no-store");
+  if (req.secure || req.headers["x-forwarded-proto"] === "https") res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  next();
+});
+app.use(auditMiddleware);
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
 app.use("/api/master-data", masterDataRouter);
@@ -54890,6 +55313,7 @@ app.use("/api/quality", qualityRouter);
 app.use("/api/commission", commissionRouter);
 app.use("/api/pricelists", pricelistsRouter);
 app.use("/api/backup", backupRouter);
+app.use("/api/security", securityRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });
@@ -54901,5 +55325,8 @@ app.listen(port, () => {
   console.log(`POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
   startBackupScheduler();
+  void pruneAudit();
+  sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
+  if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
   Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

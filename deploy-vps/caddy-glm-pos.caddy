@@ -1,6 +1,6 @@
 # Caddy sites for the GLM Branding POS. setup-server.sh writes a copy to /etc/caddy/glm-pos.caddy with the names filled in, and
 # enable-site.sh adds `import /etc/caddy/glm-pos.caddy` to the Caddyfile at cutover. Caddy gets and renews the HTTPS certificates by itself
-# once the DNS records point at this server.
+# once the DNS records point at this server. To apply changes to a server that is already running, use apply-caddy.sh.
 
 # The web app: static files built by `npm run build:cpanel` (deploy/web), copied to /var/www/pos by update.sh.
 __WEB_HOST__ {
@@ -13,6 +13,19 @@ __WEB_HOST__ {
 	@page not path /assets/*
 	header @page Cache-Control "no-cache"
 
+	# Security headers: HTTPS only for a year, no sniffing, no framing (clickjacking), no referrer leaks, no camera/microphone/location.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		# Report-only for now: the browser console lists anything this policy would block, so it can be checked before it is enforced.
+		# (The printing windows load a barcode script from cdn.jsdelivr.net and fonts from Google, hence those two sources.)
+		Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; connect-src 'self' https://__API_HOST__; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		-Server
+	}
+
 	# Single-page app: unknown paths (/orders/all …) load index.html.
 	try_files {path} /index.html
 	file_server
@@ -20,9 +33,24 @@ __WEB_HOST__ {
 
 # The API: Node, listening only on 127.0.0.1.
 __API_HOST__ {
-	# A company logo is sent as a base64 data URL in a JSON body; the API accepts up to 5 MB.
-	request_body {
-		max_size 6MB
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
 	}
-	reverse_proxy 127.0.0.1:__API_PORT__
+
+	# A backup being restored is uploaded in one request, so that one address takes a much larger body …
+	handle /api/backup/restore {
+		request_body {
+			max_size 250MB
+		}
+		reverse_proxy 127.0.0.1:__API_PORT__
+	}
+
+	# … and everything else stays small: a company logo is sent as a base64 data URL in a JSON body (the API accepts up to 5 MB).
+	handle {
+		request_body {
+			max_size 6MB
+		}
+		reverse_proxy 127.0.0.1:__API_PORT__
+	}
 }

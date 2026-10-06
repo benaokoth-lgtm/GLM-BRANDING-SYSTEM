@@ -270,7 +270,7 @@ ${p.map(g).join("")}
       ${t.totals.orderDiscount>0?`<div class="row"><span>Discount</span><span>-${y(t.totals.orderDiscount)}</span></div>`:""}
       <div class="row small"><span>Total excluding VAT</span><span>${y(p)}</span></div>
       <div class="row"><span>VAT @${Math.round(Ja*100)}%</span><span>${y(g)}</span></div>
-      <div class="total"><span>${a?"TOTAL DUE":"TOTAL"}</span><span>${y(C)}</span></div>
+      <div class="total"><span>TOTAL DUE</span><span>${y(C)}</span></div>
       ${a?`${t.payments.length?`<div class="payments">${t.payments.map(j=>`<div><span>Paid ${ee(j.date)} &middot; ${st(j.method)}</span><span>${N(j.amount)}</span></div>`).join("")}</div>`:""}
             ${t.totals.balanceDue>.009?`<div class="total due"><span>BALANCE DUE</span><span>${y(t.totals.balanceDue)}</span></div>`:""}
             <div class="status ${o?"":"due"}">${o?"PAID IN FULL":t.totals.balanceDue>.009&&S<=.009?"PAYMENT DUE":""}</div>`:""}

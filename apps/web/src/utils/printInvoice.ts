@@ -198,7 +198,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
       ${order.totals.orderDiscount > 0 ? `<div class="row"><span>Discount</span><span>-${ksh2(order.totals.orderDiscount)}</span></div>` : ''}
       <div class="row small"><span>Total excluding VAT</span><span>${ksh2(net)}</span></div>
       <div class="row"><span>VAT @${Math.round(VAT_RATE * 100)}%</span><span>${ksh2(vat)}</span></div>
-      <div class="total"><span>TOTAL DUE</span><span>${ksh2(grand)}</span></div>
+      <div class="total"><span>${isInvoice ? 'TOTAL DUE' : 'TOTAL'}</span><span>${ksh2(grand)}</span></div>
       ${
         isInvoice
           ? `${

@@ -14,9 +14,11 @@ export const PETTY_CASH_METHOD = 'Petty Cash';
 /** What a customer can pay an order with. */
 export const RECEIPT_METHODS = ['Cash', 'M-Pesa', 'Bank Transfer', 'Card'] as const;
 /** What an expense can be paid with — the receipt methods plus the petty-cash float. */
-export const EXPENSE_METHODS = [PETTY_CASH_METHOD, 'Cash', 'M-Pesa', 'Bank Transfer', 'Card'] as const;
+export const EXPENSE_METHODS = [PETTY_CASH_METHOD, 'Cash', 'M-Pesa', 'Cheque', 'Bank Transfer', 'Card'] as const;
+/** How a freelance sales person likes to be paid (their usual way — any method can still be used for a given payout). */
+export const FREELANCE_PAY_METHODS = ['M-Pesa', 'Cash', 'Cheque', 'Bank Transfer', 'Card'] as const;
 /** What a supplier can be paid with, or a customer refunded with. */
-export const PAYOUT_METHODS = ['Cash', 'M-Pesa', 'Bank Transfer', 'Card', PETTY_CASH_METHOD] as const;
+export const PAYOUT_METHODS = ['Cash', 'M-Pesa', 'Cheque', 'Bank Transfer', 'Card', PETTY_CASH_METHOD] as const;
 
 /** Built-in accounts the ledger posts to. Codes are stable; names can be edited. */
 export const ACCT = {
@@ -32,6 +34,7 @@ export const ACCT = {
   payables: '2010',
   vatPayable: '2100',
   payePayable: '2200',
+  whtPayable: '2240',
   nssfPayable: '2210',
   shifPayable: '2220',
   housingLevyPayable: '2230',
@@ -81,6 +84,7 @@ export const DEFAULT_CHART: ChartAccountDef[] = [
   a('2210', 'NSSF Payable', 'Liability', 'Tax'),
   a('2220', 'SHIF Payable', 'Liability', 'Tax'),
   a('2230', 'Housing Levy Payable', 'Liability', 'Tax'),
+  a('2240', 'Withholding Tax Payable', 'Liability', '', 'Tax withheld from commission paid to freelance sales persons, held until it is paid over to KRA.'),
   a('2300', 'Customer Deposits & Credits', 'Liability', 'Deposit', 'Money received before an order is invoiced, or owed back to a customer after a credit note.'),
   a('2310', 'Unallocated M-Pesa Receipts', 'Liability', 'Suspense', 'M-Pesa money received that has not yet been matched to an order.'),
   a('2400', 'Loans Payable', 'Liability', 'Loan'),

@@ -265,4 +265,29 @@ describe('paying freelance commission to their M-Pesa phone', () => {
       assert.deepEqual([list.length, list[0].status, list[0].amount, list[0].phone], [1, 'Pending', 2500, '254722000222']);
     });
   });
+
+  describe('withholding tax', () => {
+    it('the person is sent the commission less the tax; the cost booked is the commission, with the tax held back', async () => {
+      const w = await prisma.freelancePayout.create({ data: { weekStart: addWeeks(week, -60), agentId: ids.ann!, amount: 4000, withholdingRate: 5, withholdingTax: 200 } });
+      assert.equal((await call('boss', 'POST', `/freelance/payouts/${w.id}/send-mpesa`)).status, 202);
+      assert.equal(lastSent().Amount, 3800, 'Ksh 4,000 less 5% tax');
+      const d = await prisma.mpesaDisbursement.findFirstOrThrow({ where: { payoutId: w.id } });
+      assert.equal(d.amount, 3800);
+      await callback('result', success(d.originatorConversationId, 'NLM5TX00AA'));
+      const row = await prisma.freelancePayout.findUniqueOrThrow({ where: { id: w.id } });
+      assert.deepEqual([row.status, row.amount, row.withholdingTax, row.receipt], ['Paid', 4000, 200, 'NLM5TX00AA']);
+      const exp = await prisma.expense.findUniqueOrThrow({ where: { id: row.expenseId! } });
+      assert.deepEqual([exp.amount, exp.withholdingTax, exp.method], [4000, 200, 'M-Pesa']);
+    });
+
+    it('whole shillings are sent: the cost is worked back from what actually went out, plus the tax', async () => {
+      const w = await prisma.freelancePayout.create({ data: { weekStart: addWeeks(week, -61), agentId: ids.ann!, amount: 4193.97, withholdingRate: 5, withholdingTax: 209.7 } });
+      await call('boss', 'POST', `/freelance/payouts/${w.id}/send-mpesa`);
+      assert.equal(lastSent().Amount, 3984); // 4,193.97 − 209.70 = 3,984.27 → 3,984
+      const d = await prisma.mpesaDisbursement.findFirstOrThrow({ where: { payoutId: w.id } });
+      await callback('result', success(d.originatorConversationId, 'NLM5TX00BB'));
+      const exp = await prisma.expense.findUniqueOrThrow({ where: { id: (await prisma.freelancePayout.findUniqueOrThrow({ where: { id: w.id } })).expenseId! } });
+      assert.deepEqual([exp.amount, exp.withholdingTax], [4193.7, 209.7]); // 3,984 paid + 209.70 tax
+    });
+  });
 });

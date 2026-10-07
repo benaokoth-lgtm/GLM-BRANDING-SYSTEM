@@ -4,11 +4,12 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { todayStr, weekEnd, weekStart } from '@glm/shared';
+import { ACCT, addWeeks, methodAccountCode, todayStr, weekEnd, weekStart } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
 import { ensureChartOfAccounts } from '../src/accounting/chart';
+import { loadLedger, naturalBalance, sumByAccount } from '../src/accounting/ledger';
 
 let server: Server;
 let base = '';
@@ -377,6 +378,129 @@ describe('freelance sales persons', () => {
       const noPhone = await order('amina', [{ qty: 1, unitPrice: 1160 }], { freelanceAgentId: agents.owner1, customerName: 'No Phone Person', phone: '' });
       assert.equal(noPhone.status, 400);
       assert.match(noPhone.body.error, /name and phone/);
+    });
+  });
+
+  describe('paid by any method: M-Pesa, cash, cheque, bank — nothing forces one', () => {
+    let n2 = 0;
+    const payoutFor = (agent: number, amount: number) => prisma.freelancePayout.create({ data: { weekStart: addWeeks(week, -(++n2) - 30), agentId: agent, amount, status: 'Approved' } });
+    const pay = (id: number, body: Record<string, unknown>) => call('boss', 'POST', `/freelance/payouts/${id}/pay`, body);
+
+    it('each freelancer has the way they like to be paid; it defaults to M-Pesa and can be anything', async () => {
+      const a = await call('boss', 'POST', '/freelance/agents', { name: 'Cheque Lover', phone: '0711 400 001', payMethod: 'Cheque' });
+      assert.equal(a.status, 201);
+      agents.cheque = a.body.id;
+      assert.equal((await prisma.freelanceAgent.findUniqueOrThrow({ where: { id: agents.cheque! } })).payMethod, 'Cheque');
+      const b = await call('boss', 'POST', '/freelance/agents', { name: 'Default Pay', phone: '0711 400 002' });
+      agents.defaultPay = b.body.id;
+      assert.equal((await prisma.freelanceAgent.findUniqueOrThrow({ where: { id: agents.defaultPay! } })).payMethod, 'M-Pesa');
+      assert.equal((await call('boss', 'PUT', `/freelance/agents/${agents.defaultPay}`, { payMethod: 'Cash' })).body.payMethod, 'Cash');
+      assert.equal((await call('boss', 'POST', '/freelance/agents', { name: 'Odd Method', phone: '0711 400 003', payMethod: 'Barter' })).status, 400);
+      // it comes with the weekly statement, so the pay screen can pre-select it
+      await order('amina', [{ qty: 10, unitPrice: 1160 }], { freelanceAgentId: agents.cheque });
+      const st = (await call('boss', 'GET', `/freelance/statement?week=${week}`)).body;
+      assert.equal(st.statements.find((s: any) => s.agentId === agents.cheque).payMethod, 'Cheque');
+      assert.equal(st.b2cReady, false, 'sending to a phone from here is optional — M-Pesa can be recorded by hand like any other method');
+    });
+
+    it('a payout can be settled by cheque (with its number), cash, M-Pesa by hand, bank transfer, card or petty cash', async () => {
+      for (const [method, reference] of [['Cheque', 'CHQ 000123'], ['Cash', undefined], ['M-Pesa', 'QWE4567890'], ['Bank Transfer', 'EFT-77'], ['Card', undefined]] as const) {
+        const p = await payoutFor(agents.cheque!, 1000);
+        const r = await pay(p.id, { method, ...(reference ? { reference } : {}) });
+        assert.equal(r.status, 200, method);
+        const row = await prisma.freelancePayout.findUniqueOrThrow({ where: { id: p.id } });
+        assert.deepEqual([row.status, row.paidMethod, row.receipt], ['Paid', method, reference ?? null]);
+        const exp = await prisma.expense.findUniqueOrThrow({ where: { id: row.expenseId! } });
+        assert.deepEqual([exp.category, exp.method, exp.amount], ['Freelance Commission', method, 1000]);
+        if (reference) assert.match(exp.note, new RegExp(reference));
+      }
+      assert.equal((await pay((await payoutFor(agents.cheque!, 1000)).id, { method: 'Barter' })).status, 400); // only real payment methods
+    });
+
+    it('a cheque is posted to the bank account, cash to cash, M-Pesa to M-Pesa — so the books are right whichever way they are paid', () => {
+      assert.deepEqual(['Cheque', 'Cash', 'M-Pesa', 'Bank Transfer', 'Petty Cash'].map(methodAccountCode), [ACCT.bank, ACCT.cash, ACCT.mpesa, ACCT.bank, ACCT.pettyCash]);
+    });
+  });
+
+  describe('withholding tax is deducted from what they are paid', () => {
+    const bal = async (code: string) => {
+      const l = await loadLedger();
+      return naturalBalance(l.byCode.get(code)!.type, sumByAccount(l.postings).get(l.byCode.get(code)!.id));
+    };
+    const thisMonth = todayStr().slice(0, 7);
+    let tax: { payoutId: number };
+
+    it('the standard rate comes off the commission: the person is paid the rest, and the week shows all three figures', async () => {
+      const cfg = (await call('boss', 'GET', '/commission/settings')).body;
+      assert.equal(cfg.freelanceWhtRate, 5);
+      agents.tax = (await call('boss', 'POST', '/freelance/agents', { name: 'Tax Agent', phone: '0712 900 001', kraPin: 'A000000009Z', payMethod: 'Cheque' })).body.id;
+      assert.equal((await order('amina', [{ qty: 100, unitPrice: 1160 }], { freelanceAgentId: agents.tax })).status, 201); // 100,000 net → 1,500 + 2,500
+      const s = await stmt('tax');
+      assert.deepEqual([s.commission, s.whtRate, s.withholdingTax, s.netPay], [4000, 5, 200, 3800]);
+      const week = (await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body;
+      assert.ok(week.totals.withholdingTax >= 200);
+    });
+
+    it('approving the week fixes the tax; paying by cheque books the commission as the cost, only the net as money out, and the tax as owed to KRA', async () => {
+      const approved = await call('boss', 'POST', '/freelance/payouts/approve', { weekStart: weekStart(todayStr()) });
+      assert.equal(approved.status, 200);
+      const p = await prisma.freelancePayout.findFirstOrThrow({ where: { agentId: agents.tax } });
+      assert.deepEqual([p.amount, p.withholdingRate, p.withholdingTax], [4000, 5, 200]);
+      tax = { payoutId: p.id };
+
+      const owedBefore = await bal(ACCT.whtPayable);
+      const bankBefore = await bal(ACCT.bank);
+      const paid = await call('boss', 'POST', `/freelance/payouts/${p.id}/pay`, { method: 'Cheque', reference: 'CHQ 556677' });
+      assert.equal(paid.status, 200);
+      const exp = await prisma.expense.findUniqueOrThrow({ where: { id: paid.body.expenseId } });
+      assert.deepEqual([exp.category, exp.amount, exp.withholdingTax, exp.method], ['Freelance Commission', 4000, 200, 'Cheque']);
+      assert.match(exp.note, /CHQ 556677/);
+      assert.equal(Math.round((await bal(ACCT.whtPayable) - owedBefore) * 100) / 100, 200, 'held as a liability until it is paid over to KRA');
+      assert.equal(Math.round((bankBefore - (await bal(ACCT.bank))) * 100) / 100, 3800, 'only the net leaves the bank');
+    });
+
+    it('a person can have their own rate — 0 if exempt — and the standard rate is a setting; a manager decides, not whoever adds them at the till', async () => {
+      const mk = async (phone: string, whtRate: number | null | undefined, who = 'boss') => {
+        const a = await call(who, 'POST', '/freelance/agents', { name: `Rate ${phone.slice(-3)}`, phone, ...(whtRate === undefined ? {} : { whtRate }) });
+        return a.body.id as number;
+      };
+      const exempt = await mk('0712 900 010', 0);
+      const ten = await mk('0712 900 011', 10);
+      const byStaff = await mk('0712 900 012', 0, 'amina'); // staff cannot set a rate
+      assert.equal((await prisma.freelanceAgent.findUniqueOrThrow({ where: { id: exempt } })).whtRate, 0);
+      assert.equal((await prisma.freelanceAgent.findUniqueOrThrow({ where: { id: ten } })).whtRate, 10);
+      assert.equal((await prisma.freelanceAgent.findUniqueOrThrow({ where: { id: byStaff } })).whtRate, null);
+      for (const id of [exempt, ten, byStaff]) await order('amina', [{ qty: 100, unitPrice: 1160 }], { freelanceAgentId: id });
+      const st = (await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements;
+      const by = (id: number) => st.find((x: any) => x.agentId === id);
+      assert.deepEqual([by(exempt).whtRate, by(exempt).withholdingTax, by(exempt).netPay], [0, 0, 4000]);
+      assert.deepEqual([by(ten).whtRate, by(ten).withholdingTax, by(ten).netPay], [10, 400, 3600]);
+      assert.deepEqual([by(byStaff).whtRate, by(byStaff).withholdingTax], [5, 200]);
+
+      const cfg = (await call('boss', 'GET', '/commission/settings')).body;
+      const save = (rate: number) => call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceWhtRate: rate });
+      assert.equal((await save(3)).body.freelanceWhtRate, 3);
+      assert.equal((await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements.find((x: any) => x.agentId === byStaff).withholdingTax, 120);
+      assert.equal((await save(0)).status, 200); // none at all
+      assert.equal((await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements.find((x: any) => x.agentId === byStaff).withholdingTax, 0);
+      assert.equal((await save(101)).status, 400);
+      await save(5);
+    });
+
+    it('the report lists what was withheld in a month for KRA, with the people whose KRA PIN is missing; the account page shows the total', async () => {
+      const r = (await call('boss', 'GET', `/freelance/withholding?month=${thisMonth}`)).body;
+      const row = r.rows.find((x: any) => x.agentName === 'Tax Agent');
+      assert.deepEqual([row.kraPin, row.gross, row.rate, row.withheld, row.net, row.method, row.reference], ['A000000009Z', 4000, 5, 200, 3800, 'Cheque', 'CHQ 556677']);
+      assert.ok(r.totals.withheld >= 200);
+      assert.ok(!r.missingPin.includes('Tax Agent'));
+      const noPin = await prisma.freelancePayout.create({ data: { weekStart: addWeeks(weekStart(todayStr()), -40), agentId: agents.defaultPay!, amount: 1000, withholdingRate: 5, withholdingTax: 50, status: 'Paid', paidOn: todayStr(), paidMethod: 'Cash' } });
+      const again = (await call('boss', 'GET', `/freelance/withholding?month=${thisMonth}`)).body;
+      assert.ok(again.missingPin.includes('Default Pay'), 'someone withheld from with no KRA PIN on file is flagged');
+      void noPin;
+      assert.equal((await call('brian', 'GET', `/freelance/withholding?month=${thisMonth}`)).status, 403);
+      const acct = (await call('boss', 'GET', `/freelance/agents/${agents.tax}/account`)).body;
+      assert.deepEqual([acct.summary.paid, acct.summary.taxWithheld, acct.weeks[0].withheld], [4000, 200, 200]);
+      void tax;
     });
   });
 });

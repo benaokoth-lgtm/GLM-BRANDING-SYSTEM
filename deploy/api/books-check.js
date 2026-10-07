@@ -231,6 +231,7 @@ var ACCT = {
   payables: "2010",
   vatPayable: "2100",
   payePayable: "2200",
+  whtPayable: "2240",
   nssfPayable: "2210",
   shifPayable: "2220",
   housingLevyPayable: "2230",
@@ -270,6 +271,7 @@ var DEFAULT_CHART = [
   a("2210", "NSSF Payable", "Liability", "Tax"),
   a("2220", "SHIF Payable", "Liability", "Tax"),
   a("2230", "Housing Levy Payable", "Liability", "Tax"),
+  a("2240", "Withholding Tax Payable", "Liability", "", "Tax withheld from commission paid to freelance sales persons, held until it is paid over to KRA."),
   a("2300", "Customer Deposits & Credits", "Liability", "Deposit", "Money received before an order is invoiced, or owed back to a customer after a credit note."),
   a("2310", "Unallocated M-Pesa Receipts", "Liability", "Suspense", "M-Pesa money received that has not yet been matched to an order."),
   a("2400", "Loans Payable", "Liability", "Loan"),
@@ -554,7 +556,9 @@ async function expensePostings(book, ctx) {
     else book.drId(e.date, expenseAcctId(ctx, e.category), cost, "Expense", ref, memo);
     book.dr(e.date, ACCT.vatPayable, vat, "Expense", ref, `Input VAT \u2014 ${memo}`);
     if (e.paid) {
-      book.cr(e.date, methodAccountCode(e.method), e.amount, "Expense", ref, memo);
+      const wht = e.withholdingTax || 0;
+      book.cr(e.date, methodAccountCode(e.method), e.amount - wht, "Expense", ref, memo);
+      if (wht > 0) book.cr(e.date, ACCT.whtPayable, wht, "Expense", ref, `Withholding tax \u2014 ${memo}`);
       continue;
     }
     book.cr(e.date, ACCT.payables, e.amount, "Expense", ref, memo);

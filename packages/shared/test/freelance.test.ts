@@ -41,3 +41,14 @@ test('a heat press fee is passed through, not counted against the base; nothing 
   assert.equal(qualifyingShare([]), 0);
   assert.equal(qualifyingShare([line(0, 100, 100)]), 0);
 });
+
+import { withholdingOn } from '../src/commission.ts';
+
+test('withholding tax is a percentage of the commission, to the cent, and never negative', () => {
+  assert.equal(withholdingOn(4000, 5), 200);
+  assert.equal(withholdingOn(4193.97, 5), 209.7); // 209.6985
+  assert.equal(withholdingOn(1000, 0), 0); // exempt
+  assert.equal(withholdingOn(0, 5), 0);
+  assert.equal(withholdingOn(-50, 5), 0);
+  assert.equal(withholdingOn(1000, 7.5), 75);
+});

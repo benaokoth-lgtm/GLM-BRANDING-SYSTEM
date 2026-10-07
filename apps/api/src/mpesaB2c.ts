@@ -30,7 +30,8 @@ export async function sendPayoutToPhone(payoutId: number, requestedByName: strin
   if (payout.agent.status !== 'Active') return { ok: false, error: `${payout.agent.name} is not an active freelance sales person, so this cannot be paid` };
   const phone = payout.agent.mpesaNumber || payout.agent.phone;
   if (!/^254[17]\d{8}$/.test(phone)) return { ok: false, error: `${payout.agent.name} has no valid M-Pesa number on file` };
-  const amount = Math.round(payout.amount);
+  // They are paid the commission less the tax withheld, in whole shillings.
+  const amount = Math.round(payout.amount - payout.withholdingTax);
   if (amount < B2C_MIN) return { ok: false, error: `Ksh ${amount} is below the smallest M-Pesa payment (Ksh ${B2C_MIN}). Pay it another way, or let it build up to a later week.` };
   if (amount > B2C_MAX) return { ok: false, error: `M-Pesa sends at most Ksh ${B2C_MAX.toLocaleString('en-KE')} at a time. Pay this one another way.` };
 
@@ -101,7 +102,7 @@ export async function handleB2cResult(body: unknown): Promise<void> {
     await ensureChartOnce();
     await prisma.$transaction(async (tx) => {
       await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Success', resultCode: 0, resultDesc: r.ResultDesc ?? '', receipt, conversationId: r.ConversationID ?? d.conversationId, completedAt: new Date(), rawJson: raw } });
-      await settlePayout(tx, d.payoutId, { method: 'M-Pesa', date: todayStr(), byName: `${d.requestedByName} (M-Pesa)`, receipt, amount: d.amount });
+      await settlePayout(tx, d.payoutId, { method: 'M-Pesa', date: todayStr(), byName: `${d.requestedByName} (M-Pesa)`, receipt, paidOut: d.amount });
     });
   } else {
     await prisma.$transaction([

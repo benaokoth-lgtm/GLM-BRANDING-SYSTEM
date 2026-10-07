@@ -227,6 +227,19 @@ export function salesTarget(o: { multiplier: number; mode: TargetMode; salary: n
 // commission it is earned on money RECEIVED in the week, net of VAT.
 
 /** Placeholders — weekly net sales received, Ksh. Editable in Commission → Rates. */
+/**
+ * Withholding tax on commission paid to freelance sales persons (not employees: no PAYE). The company deducts it from what it pays them and pays it
+ * over to KRA. The standard rate is set under Commission → Rates (a placeholder to confirm with your accountant); a person can be given their own rate,
+ * or 0 if they hold an exemption.
+ */
+export const DEFAULT_FREELANCE_WHT_RATE = 5;
+
+/** The tax to withhold from a gross commission at this rate (percent), to the cent. Never negative. */
+export function withholdingOn(gross: number, ratePct: number): number {
+  if (!(gross > 0) || !(ratePct > 0)) return 0;
+  return Math.round((gross * ratePct) / 100 * 100 + Number.EPSILON) / 100;
+}
+
 export const DEFAULT_FREELANCE_BANDS: Band[] = [
   { from: 0, rate: 3 },
   { from: 50000, rate: 5 },

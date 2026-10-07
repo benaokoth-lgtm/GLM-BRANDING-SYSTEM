@@ -4,7 +4,7 @@
 // paid); managers (Commission permission) approve them, approve each week's commission and pay it.
 import { Router } from 'express';
 import { z } from 'zod';
-import { EXPENSE_METHODS, PETTY_CASH_METHOD, addWeeks, cleanKraPin, cleanNationalId, round2, todayStr, weekEnd, weekStart, whatsappNumber } from '@glm/shared';
+import { EXPENSE_METHODS, FREELANCE_PAY_METHODS, PETTY_CASH_METHOD, addWeeks, cleanKraPin, cleanNationalId, round2, todayStr, weekEnd, weekStart, whatsappNumber } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, userHasPermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
@@ -12,6 +12,7 @@ import { settlePayout } from '../freelancePay';
 import { sendPayoutToPhone } from '../mpesaB2c';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { buildFreelanceStatements, commissionEnabled, getCommissionConfig } from '../commission';
+import { isB2cReady, loadMpesaConfig } from '../mpesaConfig';
 import { ownershipEnd } from '@glm/shared';
 
 export const freelanceRouter = Router();
@@ -48,6 +49,10 @@ const agentFields = {
   mpesaNumber: z.string().trim().max(40).optional(),
   bankName: z.string().trim().max(120).optional(),
   bankAccount: z.string().trim().max(60).optional(),
+  // How they like to be paid — it only pre-selects the method when their commission is paid; any method can be used
+  payMethod: z.enum(FREELANCE_PAY_METHODS).optional(),
+  // Their own withholding tax rate in percent (0 = exempt); null/blank = the standard rate
+  whtRate: z.number().min(0).max(100).nullable().optional(),
   note: z.string().trim().max(300).optional(),
 };
 
@@ -89,6 +94,9 @@ freelanceRouter.post('/agents', capture, async (req, res) => {
       mpesaNumber: t.mpesa ?? phone,
       bankName: d.bankName ?? '',
       bankAccount: d.bankAccount ?? '',
+      payMethod: d.payMethod ?? 'M-Pesa',
+      // a rate of their own is a manager's decision: staff adding someone at order capture cannot set it
+      ...(isManager && d.whtRate !== undefined ? { whtRate: d.whtRate } : {}),
       note: d.note ?? '',
       status: isManager ? 'Active' : 'Pending',
       createdByName: req.user!.name,
@@ -126,7 +134,7 @@ freelanceRouter.put('/agents/:id', manage, async (req, res) => {
     if (d.kraPin !== undefined) data.kraPin = t.kraPin;
     if (d.mpesaNumber !== undefined) data.mpesaNumber = t.mpesa ?? (data.phone as string | undefined) ?? current.phone;
   }
-  for (const k of ['email', 'bankName', 'bankAccount', 'note'] as const) if (d[k] !== undefined) data[k] = d[k];
+  for (const k of ['email', 'bankName', 'bankAccount', 'note', 'payMethod', 'whtRate'] as const) if (d[k] !== undefined) data[k] = d[k];
   if (d.status !== undefined && d.status !== current.status) {
     data.status = d.status;
     if (d.status === 'Active') {
@@ -174,12 +182,18 @@ freelanceRouter.get('/statement', manage, async (req, res) => {
     weekEnd: weekEnd(week),
     open: weekEnd(week) >= todayStr(), // the week is not over, so more money may still arrive
     bands: config.freelanceBands,
+    // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
+    b2cReady: isB2cReady(await loadMpesaConfig()),
     statements: statements.map((s) => {
       const p = byAgent.get(s.agentId);
       const a = p ? latest.get(p.id) : undefined;
-      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod, receipt: p.receipt, mpesa: a ? { id: a.id, status: a.status, resultDesc: a.resultDesc, receipt: a.receipt, phone: a.phone, amount: a.amount } : null } : null };
+      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, withholdingTax: p.withholdingTax, netPay: round2(p.amount - p.withholdingTax), paidOn: p.paidOn, paidMethod: p.paidMethod, receipt: p.receipt, mpesa: a ? { id: a.id, status: a.status, resultDesc: a.resultDesc, receipt: a.receipt, phone: a.phone, amount: a.amount } : null } : null };
     }),
-    totals: { commission: round2(statements.reduce((a, s) => a + s.commission, 0)) },
+    totals: {
+      commission: round2(statements.reduce((a, s) => a + s.commission, 0)),
+      withholdingTax: round2(statements.reduce((a, s) => a + s.withholdingTax, 0)),
+      netPay: round2(statements.reduce((a, s) => a + s.netPay, 0)),
+    },
   });
 });
 
@@ -205,6 +219,8 @@ freelanceRouter.post('/payouts/approve', manage, async (req, res) => {
     const data = {
       qualifyingNet: s.qualifyingNet,
       amount: s.commission,
+      withholdingRate: s.whtRate,
+      withholdingTax: s.withholdingTax,
       detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, belowBaseNet: s.belowBaseNet, orders: s.orders }),
       status: 'Approved',
       approvedByName: req.user!.name,
@@ -224,7 +240,9 @@ freelanceRouter.get('/payouts', manage, async (req, res) => {
   res.json(rows.map((r) => ({ id: r.id, weekStart: r.weekStart, agentId: r.agentId, agentName: r.agent.name, payTo: r.agent.mpesaNumber || r.agent.phone, amount: r.amount, status: r.status, approvedByName: r.approvedByName, paidOn: r.paidOn, paidMethod: r.paidMethod })));
 });
 
-const paySchema = z.object({ method: z.enum(EXPENSE_METHODS), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+// Any method may be used — M-Pesa, cash, cheque, bank transfer, card or petty cash — with the reference of the payment (a cheque number, a bank or M-Pesa
+// reference) if there is one.
+const paySchema = z.object({ method: z.enum(EXPENSE_METHODS), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), reference: z.string().trim().max(60).optional() });
 
 /** Paying records an expense under 'Freelance Commission', so it reaches the books and, from petty cash, the float. */
 freelanceRouter.post('/payouts/:id/pay', manage, async (req, res) => {
@@ -237,11 +255,13 @@ freelanceRouter.post('/payouts/:id/pay', manage, async (req, res) => {
   if (payout.agent.status !== 'Active') return res.status(400).json({ error: `${payout.agent.name} is not an active freelance sales person, so this cannot be paid` });
   const date = parsed.data.date ?? todayStr();
   if (parsed.data.method === PETTY_CASH_METHOD) {
-    const check = await pettyCashShortfall(payout.amount, date);
-    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString('en-KE')} available, Ksh ${Math.round(payout.amount).toLocaleString('en-KE')} needed)` });
+    // only what is paid out of the float: the commission less the tax withheld
+    const pays = round2(payout.amount - payout.withholdingTax);
+    const check = await pettyCashShortfall(pays, date);
+    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString('en-KE')} available, Ksh ${Math.round(pays).toLocaleString('en-KE')} needed)` });
   }
   await ensureChartOnce();
-  const updated = await prisma.$transaction((tx) => settlePayout(tx, payout.id, { method: parsed.data.method, date, byName: req.user!.name }));
+  const updated = await prisma.$transaction((tx) => settlePayout(tx, payout.id, { method: parsed.data.method, date, byName: req.user!.name, receipt: parsed.data.reference || null }));
   res.json(updated);
 });
 
@@ -291,9 +311,41 @@ freelanceRouter.post('/disbursements/:id/resolve', manage, async (req, res) => {
   await ensureChartOnce();
   await prisma.$transaction(async (tx) => {
     await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Success', receipt, resultDesc: `Confirmed by hand by ${req.user!.name}`, completedAt: new Date() } });
-    await settlePayout(tx, d.payoutId, { method: 'M-Pesa', byName: req.user!.name, receipt, amount: d.amount });
+    await settlePayout(tx, d.payoutId, { method: 'M-Pesa', byName: req.user!.name, receipt, paidOut: d.amount });
   });
   res.json({ ok: true });
+});
+
+// ── Withholding tax report ──────────────────────────────────────────────────
+// What was withheld from freelance commission paid in a month — the figures for KRA's withholding return and for paying the tax over (the money sits in
+// Withholding Tax Payable until it is paid over; record that payment as a journal: debit Withholding Tax Payable, credit the bank).
+freelanceRouter.get('/withholding', manage, async (req, res) => {
+  const month = typeof req.query.month === 'string' && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : todayStr().slice(0, 7);
+  const rows = await prisma.freelancePayout.findMany({
+    where: { status: 'Paid', paidOn: { gte: `${month}-01`, lte: `${month}-31` } },
+    include: { agent: { select: { name: true, kraPin: true, nationalId: true } } },
+    orderBy: [{ paidOn: 'asc' }, { id: 'asc' }],
+  });
+  const out = rows.map((r) => ({
+    id: r.id,
+    paidOn: r.paidOn,
+    weekStart: r.weekStart,
+    agentName: r.agent.name,
+    kraPin: r.agent.kraPin,
+    nationalId: r.agent.nationalId,
+    gross: r.amount,
+    rate: r.withholdingRate,
+    withheld: r.withholdingTax,
+    net: round2(r.amount - r.withholdingTax),
+    method: r.paidMethod,
+    reference: r.receipt,
+  }));
+  res.json({
+    month,
+    rows: out,
+    totals: { gross: round2(out.reduce((a, r) => a + r.gross, 0)), withheld: round2(out.reduce((a, r) => a + r.withheld, 0)), net: round2(out.reduce((a, r) => a + r.net, 0)) },
+    missingPin: [...new Set(out.filter((r) => r.withheld > 0 && !r.kraPin).map((r) => r.agentName))],
+  });
 });
 
 // ── One person's account ────────────────────────────────────────────────────
@@ -306,7 +358,7 @@ freelanceRouter.get('/agents/:id/account', manage, async (req, res) => {
   const payouts = await prisma.freelancePayout.findMany({ where: { agentId: id }, orderBy: { weekStart: 'desc' }, take: 104 });
   const have = new Map(payouts.map((p) => [p.weekStart, p]));
   const thisWeek = weekStart(todayStr());
-  const weeks: { weekStart: string; weekEnd: string; amount: number; status: string; paidOn: string | null; paidMethod: string | null }[] = [];
+  const weeks: { weekStart: string; weekEnd: string; amount: number; withheld: number; status: string; paidOn: string | null; paidMethod: string | null }[] = [];
   let notApproved = 0;
   for (let i = 0; i < 12; i++) {
     const ws = addWeeks(thisWeek, -i);
@@ -315,15 +367,21 @@ freelanceRouter.get('/agents/:id/account', manage, async (req, res) => {
     const st = (await buildFreelanceStatements(ws, id)).statements[0];
     if (st && st.commission > 0) {
       notApproved = round2(notApproved + st.commission);
-      weeks.push({ weekStart: ws, weekEnd: weekEnd(ws), amount: st.commission, status: i === 0 ? 'This week so far' : 'Not yet approved', paidOn: null, paidMethod: null });
+      weeks.push({ weekStart: ws, weekEnd: weekEnd(ws), amount: st.commission, withheld: st.withholdingTax, status: i === 0 ? 'This week so far' : 'Not yet approved', paidOn: null, paidMethod: null });
     }
   }
-  for (const p of payouts) weeks.push({ weekStart: p.weekStart, weekEnd: weekEnd(p.weekStart), amount: p.amount, status: p.status, paidOn: p.paidOn, paidMethod: p.paidMethod });
+  for (const p of payouts) weeks.push({ weekStart: p.weekStart, weekEnd: weekEnd(p.weekStart), amount: p.amount, withheld: p.withholdingTax, status: p.status, paidOn: p.paidOn, paidMethod: p.paidMethod });
   weeks.sort((a, b) => b.weekStart.localeCompare(a.weekStart));
   const sum = (status: string) => round2(payouts.filter((p) => p.status === status).reduce((a, p) => a + p.amount, 0));
   res.json({
     agent,
-    summary: { paid: sum('Paid'), approvedToPay: sum('Approved'), notYetApproved: notApproved, owed: round2(sum('Approved') + notApproved) },
+    summary: {
+      paid: sum('Paid'),
+      approvedToPay: sum('Approved'),
+      notYetApproved: notApproved,
+      owed: round2(sum('Approved') + notApproved),
+      taxWithheld: round2(payouts.filter((p) => p.status === 'Paid').reduce((a, p) => a + p.withholdingTax, 0)),
+    },
     weeks,
     bands: (await getCommissionConfig()).freelanceBands,
   });

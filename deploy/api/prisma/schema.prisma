@@ -262,6 +262,9 @@ model Expense {
   category        String
   note            String   @default("")
   amount          Float
+  // Tax withheld from this payment (freelance commission): the cost is `amount`, but only amount − withholdingTax leaves the bank / cash; the rest is held
+  // in Withholding Tax Payable until it is paid over to KRA. 0 for every other expense.
+  withholdingTax  Float    @default(0)
   // RETIRED — input VAT is now worked out automatically from the expense head (ExpenseHead.vatApplicable), not stored per expense. The
   // column is kept only so databases that already have it need no destructive change.
   vatAmount       Float    @default(0)
@@ -989,6 +992,8 @@ model CommissionSettings {
   // Freelance sales persons — marginal bands on the weekly net sales received on orders credited to them, at or above base prices.
   // A client a freelance sales person brought stays theirs while an order comes in at least this often (months); each order restarts the count.
   freelanceOwnershipMonths Int @default(12)
+  // Withholding tax deducted from freelance commission (percent, 0 = none) — confirm the rate with your accountant
+  freelanceWhtRate Float @default(5)
   freelanceBandsJson String @default("[{\"from\":0,\"rate\":3},{\"from\":50000,\"rate\":5},{\"from\":150000,\"rate\":7}]")
   // The sales target: a person must sell this many times their basic monthly salary (net of VAT, money received) in a month before any commission
   // is earned. 0 = no target. 'above' = the bands start at the target; 'all' = once met, the bands apply to all sales (see shared/commission.ts).
@@ -1008,6 +1013,9 @@ model FreelanceAgent {
   nationalId    String   @default("")
   kraPin        String   @default("")
   mpesaNumber   String   @default("") // where the weekly pay is sent (defaults to the phone)
+  // Withholding tax rate for THIS person (percent): blank = the standard rate; 0 = exempt (they hold an exemption certificate)
+  whtRate       Float?
+  payMethod     String   @default("M-Pesa") // how they like to be paid: M-Pesa | Cash | Cheque | Bank Transfer | Card — any method can still be used for a payout
   bankName      String   @default("")
   bankAccount   String   @default("")
   status        String   @default("Pending") // Pending | Active | Suspended
@@ -1056,7 +1064,11 @@ model FreelancePayout {
   paidMethod     String?
   paidByName     String?
   expenseId      Int?
-  receipt        String? // the M-Pesa receipt when it was paid to their phone from here
+  receipt        String? // the reference of the payment: an M-Pesa receipt code, a cheque number, a bank reference
+  // Withholding tax, worked out when the week is approved: `amount` is the commission earned; the person is paid amount − withholdingTax, and the tax is
+  // held in Withholding Tax Payable until it is paid over to KRA.
+  withholdingRate Float   @default(0)
+  withholdingTax  Float   @default(0)
   disbursements  MpesaDisbursement[]
 
   @@unique([weekStart, agentId])

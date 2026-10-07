@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
-import { EXPENSE_METHODS, addWeeks, fmtDate, fmtKsh, todayStr, weekStart } from '@glm/shared';
+import { EXPENSE_METHODS, FREELANCE_PAY_METHODS, addWeeks, fmtDate, fmtKsh, todayStr, weekStart } from '@glm/shared';
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from '../pages/accounting/shared';
 
@@ -13,16 +13,25 @@ interface Statement {
   status: string;
   phone: string;
   mpesaNumber: string;
+  /** How they like to be paid — it pre-selects the method below. */
+  payMethod: string;
   received: number;
   qualifyingNet: number;
   belowBaseNet: number;
   commission: number;
+  /** Withholding tax: the rate for this person, the tax deducted, and what they are paid after it. */
+  whtRate: number;
+  withholdingTax: number;
+  netPay: number;
+  kraPin: string;
   band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
   orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number }[];
   payout: {
     id: number;
     status: string;
     amount: number;
+    withholdingTax: number;
+    netPay: number;
     paidOn: string | null;
     paidMethod: string | null;
     receipt: string | null;
@@ -34,8 +43,10 @@ interface WeekData {
   weekStart: string;
   weekEnd: string;
   open: boolean;
+  /** Can money be sent straight to their phone from here? (If not, M-Pesa is recorded by hand like any other method.) */
+  b2cReady: boolean;
   statements: Statement[];
-  totals: { commission: number };
+  totals: { commission: number; withholdingTax: number; netPay: number };
 }
 interface AgentRow {
   id: number;
@@ -45,6 +56,9 @@ interface AgentRow {
   nationalId: string;
   kraPin: string;
   mpesaNumber: string;
+  /** Their own withholding tax rate (0 = exempt); null = the standard rate. */
+  whtRate: number | null;
+  payMethod: string;
   bankName: string;
   bankAccount: string;
   status: string;
@@ -54,8 +68,8 @@ interface AgentRow {
 }
 interface Account {
   agent: AgentRow;
-  summary: { paid: number; approvedToPay: number; notYetApproved: number; owed: number };
-  weeks: { weekStart: string; weekEnd: string; amount: number; status: string; paidOn: string | null; paidMethod: string | null }[];
+  summary: { paid: number; approvedToPay: number; notYetApproved: number; owed: number; taxWithheld: number };
+  weeks: { weekStart: string; weekEnd: string; amount: number; withheld: number; status: string; paidOn: string | null; paidMethod: string | null }[];
 }
 
 const statusTone = (s: string): 'good' | 'bad' | 'neutral' => (s === 'Active' ? 'good' : s === 'Suspended' ? 'bad' : 'neutral');
@@ -80,13 +94,50 @@ function useRun(reload: () => void) {
   return { msg, err, busy, run };
 }
 
+// ── Paying one approved payout: any method — M-Pesa, cash, cheque, bank transfer, card, petty cash ──────────────
+const METHOD_LABEL: Record<string, string> = { 'Petty Cash': 'Petty cash', Cash: 'Cash', 'M-Pesa': 'M-Pesa (sent by hand)', Cheque: 'Cheque', 'Bank Transfer': 'Bank transfer', Card: 'Card' };
+const REFERENCE_HINT: Record<string, string> = { Cheque: 'Cheque no.', 'Bank Transfer': 'Bank reference', 'M-Pesa': 'M-Pesa code', Card: 'Reference' };
+
+function PayCell({ s, b2cReady, busy, run }: { s: Statement; b2cReady: boolean; busy: boolean; run: (fn: () => Promise<string>) => Promise<void> }) {
+  // Their usual way pre-selects the method — but any method can be chosen for any payout.
+  const usual = (FREELANCE_PAY_METHODS as readonly string[]).includes(s.payMethod) ? s.payMethod : 'M-Pesa';
+  const [method, setMethod] = useState<string>(usual === 'M-Pesa' && b2cReady ? 'phone' : usual);
+  const [reference, setReference] = useState('');
+  const p = s.payout!;
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Tag tone="bad">approved · pays {fmtKsh(p.netPay)}</Tag>
+      <select className="input" style={{ width: 190 }} value={method} onChange={(e) => setMethod(e.target.value)} aria-label="How to pay">
+        {b2cReady && <option value="phone">M-Pesa — send to their phone now</option>}
+        {EXPENSE_METHODS.map((m) => (
+          <option key={m} value={m}>
+            {METHOD_LABEL[m] ?? m}
+          </option>
+        ))}
+      </select>
+      {method !== 'phone' && REFERENCE_HINT[method] && <input className="input" style={{ width: 120 }} value={reference} onChange={(e) => setReference(e.target.value)} placeholder={REFERENCE_HINT[method]} aria-label="Payment reference" />}
+      {method === 'phone' ? (
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/payouts/${p.id}/send-mpesa`, {}); return `Sent to Safaricom for ${s.agentName} (${s.mpesaNumber}) — it is marked paid when M-Pesa confirms.`; })}>
+          Send to M-Pesa
+        </button>
+      ) : (
+        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/payouts/${p.id}/pay`, { method, ...(reference.trim() ? { reference: reference.trim() } : {}) }); return `${s.agentName} paid ${fmtKsh(p.amount)} by ${METHOD_LABEL[method] ?? method}${reference.trim() ? ' (' + reference.trim() + ')' : ''}`; })}>
+          Mark paid
+        </button>
+      )}
+      {p.mpesa?.status === 'Failed' && <span className="note" style={{ color: '#a33', margin: 0, flexBasis: '100%' }}>Last M-Pesa attempt failed: {p.mpesa.resultDesc}</span>}
+      <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(async () => { await api.del(`/freelance/payouts/${p.id}`); return 'Approval withdrawn'; })}>
+        Withdraw
+      </button>
+    </span>
+  );
+}
+
 // ── The week ────────────────────────────────────────────────────────────────
 function WeekTab() {
   const [week, setWeek] = useState(weekStart(todayStr()));
   const { data, error, loading, reload } = useLoad<WeekData>(`/freelance/statement?week=${week}`);
   const [open, setOpen] = useState<number | null>(null);
-  // 'phone' = send it to their M-Pesa number from here; anything else is recorded as paid by hand
-  const [method, setMethod] = useState<'phone' | (typeof EXPENSE_METHODS)[number]>('phone');
   const { msg, err, busy, run } = useRun(reload);
   const thisWeek = weekStart(todayStr());
 
@@ -124,7 +175,7 @@ function WeekTab() {
           {data.open && <p className="note">This week is not over, so more money may still arrive. Approve it once the week has closed (Sunday).</p>}
           <Card
             title="Weekly pay"
-            hint={`${fmtKsh(data.totals.commission)} in total. Paid on net sales (VAT out) received this week, at or above our base prices.`}
+            hint={`${fmtKsh(data.totals.commission)} commission, ${fmtKsh(data.totals.withholdingTax)} withholding tax deducted, ${fmtKsh(data.totals.netPay)} to pay. Earned on net sales (VAT out) received this week, at or above our base prices.`}
             actions={
               <button type="button" className="btn btn-primary btn-sm" disabled={busy || !approvable} onClick={() => run(async () => {
                 const r = await api.post<{ payouts: unknown[]; skipped: { agentName: string; reason: string }[] }>('/freelance/payouts/approve', { weekStart: week });
@@ -146,7 +197,9 @@ function WeekTab() {
                       <th style={numStyle}>Sales at/above base (net)</th>
                       <th style={numStyle}>Below base (net, not paid)</th>
                       <th style={numStyle}>Commission</th>
-                      <th>Pay to</th>
+                      <th style={numStyle}>Tax withheld</th>
+                      <th style={numStyle}>To pay</th>
+                      <th>Usually paid by</th>
                       <th>Payout</th>
                     </tr>
                   </thead>
@@ -163,36 +216,16 @@ function WeekTab() {
                           <td style={numStyle}>{fmtKsh(s.received)}</td>
                           <td style={numStyle}>{fmtKsh(s.qualifyingNet)}</td>
                           <td style={numStyle}>{s.belowBaseNet > 0 ? fmtKsh(s.belowBaseNet) : '—'}</td>
-                          <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(s.commission)}</td>
-                          <td className="text-muted">{s.mpesaNumber ? `M-Pesa ${s.mpesaNumber}` : s.phone}</td>
+                          <td style={numStyle}>{fmtKsh(s.commission)}</td>
+                          <td style={numStyle}>
+                            {s.withholdingTax > 0 ? fmtKsh(s.withholdingTax) : '—'}
+                            {s.withholdingTax > 0 && <div className="text-muted" style={{ fontSize: 11 }}>{s.whtRate}%{!s.kraPin ? ' · no KRA PIN' : ''}</div>}
+                          </td>
+                          <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(s.netPay)}</td>
+                          <td className="text-muted">{s.payMethod === 'M-Pesa' ? `M-Pesa ${s.mpesaNumber || s.phone}` : METHOD_LABEL[s.payMethod] ?? s.payMethod}</td>
                           <td style={{ whiteSpace: 'nowrap' }}>
                             {!s.payout && s.commission > 0 && <Tag>{s.status === 'Active' ? 'not approved' : 'agent not approved'}</Tag>}
-                            {s.payout?.status === 'Approved' && (
-                              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-                                <Tag tone="bad">approved</Tag>
-                                <select className="input" style={{ width: 190 }} value={method} onChange={(e) => setMethod(e.target.value as 'phone' | (typeof EXPENSE_METHODS)[number])}>
-                                  <option value="phone">M-Pesa to their phone (automatic)</option>
-                                  {EXPENSE_METHODS.map((m) => (
-                                    <option key={m} value={m}>
-                                      {m} (paid by hand)
-                                    </option>
-                                  ))}
-                                </select>
-                                {method === 'phone' ? (
-                                  <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/payouts/${s.payout!.id}/send-mpesa`, {}); return `Sent to Safaricom for ${s.agentName} (${s.mpesaNumber}) — it is marked paid when M-Pesa confirms.`; })}>
-                                    Send to M-Pesa
-                                  </button>
-                                ) : (
-                                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/payouts/${s.payout!.id}/pay`, { method }); return `${s.agentName} paid ${fmtKsh(s.payout!.amount)} by ${method}`; })}>
-                                    Mark paid
-                                  </button>
-                                )}
-                                {s.payout.mpesa?.status === 'Failed' && <span className="note" style={{ color: '#a33', margin: 0, flexBasis: '100%' }}>Last M-Pesa attempt failed: {s.payout.mpesa.resultDesc}</span>}
-                                <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(async () => { await api.del(`/freelance/payouts/${s.payout!.id}`); return 'Approval withdrawn'; })}>
-                                  Withdraw
-                                </button>
-                              </span>
-                            )}
+                            {s.payout?.status === 'Approved' && <PayCell s={s} b2cReady={data.b2cReady} busy={busy} run={run} />}
                             {s.payout?.status === 'Sending' && (
                               <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                                 <Tag tone="bad">on its way to {s.payout.mpesa?.phone ?? 'their phone'}…</Tag>
@@ -212,7 +245,7 @@ function WeekTab() {
                         </tr>
                         {open === s.agentId && (
                           <tr>
-                            <td colSpan={7}>
+                            <td colSpan={9}>
                               <div style={{ padding: 'var(--space-3)' }}>
                                 <p className="note" style={{ marginTop: 0 }}>
                                   In the <b>{s.band.rate}%</b> band{s.band.toNext != null && s.band.nextRate != null ? <> — {fmtKsh(s.band.toNext)} more takes the next slice to {s.band.nextRate}%</> : null}.
@@ -251,7 +284,7 @@ function WeekTab() {
                 </table>
               </div>
             )}
-            <p className="note">“Send to M-Pesa” asks Safaricom to pay the person’s own M-Pesa number from your Paybill — the payout is marked paid, and the expense booked, when Safaricom confirms it (set up under Master Data → M-Pesa). The other methods are for when you paid some other way. Either way the expense reaches the books under Freelance Commission. Only an approved (Active) freelance sales person is paid.</p>
+            <p className="note">Pay by whatever suits them — M-Pesa, cash, cheque, bank transfer, card or petty cash — and note the cheque number or reference if there is one. Their usual way is pre-selected, but you can choose any method for any payout. “M-Pesa — send to their phone now” (when set up under Master Data → M-Pesa) asks Safaricom to pay their number from your Paybill and marks it paid when Safaricom confirms; “M-Pesa (sent by hand)” is for when you sent it yourself. Whatever the method, the expense reaches the books under Freelance Commission. Only an approved (Active) freelance sales person is paid.</p>
           </Card>
         </>
       )}
@@ -260,7 +293,7 @@ function WeekTab() {
 }
 
 // ── The people ──────────────────────────────────────────────────────────────
-const blank = { name: '', phone: '', mpesaNumber: '', nationalId: '', kraPin: '', bankName: '', bankAccount: '' };
+const blank = { name: '', phone: '', mpesaNumber: '', nationalId: '', kraPin: '', bankName: '', bankAccount: '', payMethod: 'M-Pesa', whtRate: '' };
 
 interface ClientsData {
   months: number;
@@ -282,7 +315,7 @@ function PeopleTab() {
 
   if (!data) return <Loading loading={loading} error={error} />;
   const set = (setter: (f: typeof blank) => void, f: typeof blank, k: keyof typeof blank) => (e: React.ChangeEvent<HTMLInputElement>) => setter({ ...f, [k]: e.target.value });
-  const payload = (f: typeof blank) => ({ name: f.name, phone: f.phone, mpesaNumber: f.mpesaNumber, nationalId: f.nationalId, kraPin: f.kraPin, bankName: f.bankName, bankAccount: f.bankAccount });
+  const payload = (f: typeof blank) => ({ name: f.name, phone: f.phone, mpesaNumber: f.mpesaNumber, nationalId: f.nationalId, kraPin: f.kraPin, bankName: f.bankName, bankAccount: f.bankAccount, payMethod: f.payMethod, whtRate: f.whtRate.trim() === '' ? null : Number(f.whtRate) });
   const pending = data.filter((a) => a.status === 'Pending').length;
 
   return (
@@ -296,7 +329,7 @@ function PeopleTab() {
               <tr>
                 <th>Name</th>
                 <th>Phone</th>
-                <th>Pays to</th>
+                <th>Usually paid by</th>
                 <th style={numStyle}>Orders</th>
                 <th>Status</th>
                 <th></th>
@@ -319,8 +352,9 @@ function PeopleTab() {
                     </td>
                     <td>{a.phone}</td>
                     <td className="text-muted">
-                      M-Pesa {a.mpesaNumber || a.phone}
+                      {a.payMethod === 'M-Pesa' || !a.payMethod ? `M-Pesa ${a.mpesaNumber || a.phone}` : METHOD_LABEL[a.payMethod] ?? a.payMethod}
                       {a.bankAccount ? ` · ${a.bankName} ${a.bankAccount}` : ''}
+                      {a.whtRate != null ? (a.whtRate === 0 ? ' · tax exempt' : ` · tax ${a.whtRate}%`) : ''}
                     </td>
                     <td style={numStyle}>{a.orders}</td>
                     <td>
@@ -330,7 +364,7 @@ function PeopleTab() {
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAccount(account === a.id ? null : a.id)}>
                         Account
                       </button>{' '}
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditing(editing === a.id ? null : a.id); setDraft({ name: a.name, phone: a.phone, mpesaNumber: a.mpesaNumber, nationalId: a.nationalId, kraPin: a.kraPin, bankName: a.bankName, bankAccount: a.bankAccount }); }}>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditing(editing === a.id ? null : a.id); setDraft({ name: a.name, phone: a.phone, mpesaNumber: a.mpesaNumber, nationalId: a.nationalId, kraPin: a.kraPin, bankName: a.bankName, bankAccount: a.bankAccount, payMethod: a.payMethod || 'M-Pesa', whtRate: a.whtRate == null ? '' : String(a.whtRate) }); }}>
                         Edit
                       </button>{' '}
                       {a.status !== 'Active' && (
@@ -355,6 +389,20 @@ function PeopleTab() {
                               <input className="input" value={draft[k]} onChange={set(setDraft, draft, k)} />
                             </div>
                           ))}
+                        </div>
+                        <div className="field" style={{ margin: '0 0 var(--space-2)', maxWidth: 260 }}>
+                          <label>Usually paid by</label>
+                          <select className="input" value={draft.payMethod} onChange={(e) => setDraft({ ...draft, payMethod: e.target.value })}>
+                            {FREELANCE_PAY_METHODS.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="field" style={{ margin: '0 0 var(--space-2)', maxWidth: 260 }}>
+                          <label>Withholding tax rate % (blank = standard, 0 = exempt)</label>
+                          <input className="input" inputMode="decimal" value={draft.whtRate} onChange={(e) => setDraft({ ...draft, whtRate: e.target.value })} />
                         </div>
                         <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(async () => { await api.put(`/freelance/agents/${a.id}`, payload(draft)); setEditing(null); return 'Saved'; })}>
                           Save
@@ -381,6 +429,7 @@ function PeopleTab() {
                   ['Approved, waiting to be paid', acct.data.summary.approvedToPay],
                   ['Not yet approved', acct.data.summary.notYetApproved],
                   ['Owed in total', acct.data.summary.owed],
+                  ['Tax withheld to date', acct.data.summary.taxWithheld],
                 ].map(([label, v]) => (
                   <div key={label as string} style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-3)', minWidth: 170 }}>
                     <div className="card-kicker">{label as string}</div>
@@ -393,13 +442,14 @@ function PeopleTab() {
                   <tr>
                     <th>Week</th>
                     <th style={numStyle}>Commission</th>
+                    <th style={numStyle}>Tax withheld</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {acct.data.weeks.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="text-muted">
+                      <td colSpan={4} className="text-muted">
                         Nothing earned yet.
                       </td>
                     </tr>
@@ -410,6 +460,7 @@ function PeopleTab() {
                         {fmtDate(w.weekStart)} – {fmtDate(w.weekEnd)}
                       </td>
                       <td style={numStyle}>{fmtKsh(w.amount)}</td>
+                      <td style={numStyle}>{w.withheld > 0 ? fmtKsh(w.withheld) : '—'}</td>
                       <td>
                         <Tag tone={w.status === 'Paid' ? 'good' : w.status === 'Approved' ? 'bad' : 'neutral'}>{w.status}</Tag>
                         {w.status === 'Paid' && <span className="text-muted"> {w.paidOn ? fmtDate(w.paidOn) : ''} · {w.paidMethod}</span>}
@@ -473,13 +524,28 @@ function PeopleTab() {
             </div>
           ))}
         </div>
+        <div className="field" style={{ margin: 'var(--space-2) 0 0', maxWidth: 260 }}>
+          <label>Withholding tax rate % (blank = standard, 0 = exempt)</label>
+          <input className="input" inputMode="decimal" value={form.whtRate} onChange={(e) => setForm({ ...form, whtRate: e.target.value })} />
+        </div>
+        <div className="field" style={{ margin: 'var(--space-2) 0 0', maxWidth: 260 }}>
+          <label>Usually paid by</label>
+          <select className="input" value={form.payMethod} onChange={(e) => setForm({ ...form, payMethod: e.target.value })}>
+            {FREELANCE_PAY_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        </div>
         <div style={{ marginTop: 'var(--space-3)' }}>
           <button
             type="button"
             className="btn btn-primary btn-sm"
             disabled={busy || !form.name.trim() || !form.phone.trim()}
             onClick={() => run(async () => {
-              const body: Record<string, string> = { name: form.name, phone: form.phone };
+              const body: Record<string, string | number> = { name: form.name, phone: form.phone, payMethod: form.payMethod };
+              if (form.whtRate.trim() !== '') body.whtRate = Number(form.whtRate);
               for (const k of ['mpesaNumber', 'nationalId', 'kraPin', 'bankName', 'bankAccount'] as const) if (form[k].trim()) body[k] = form[k];
               const r = await api.post<{ name: string; existing: boolean }>('/freelance/agents', body);
               setForm(blank);
@@ -494,8 +560,99 @@ function PeopleTab() {
   );
 }
 
+// ── Tax withheld ────────────────────────────────────────────────────────────
+interface TaxData {
+  month: string;
+  rows: { id: number; paidOn: string | null; agentName: string; kraPin: string; nationalId: string; gross: number; rate: number; withheld: number; net: number; method: string | null; reference: string | null }[];
+  totals: { gross: number; withheld: number; net: number };
+  missingPin: string[];
+}
+
+function TaxTab() {
+  const [month, setMonth] = useState(todayStr().slice(0, 7));
+  const { data, error, loading } = useLoad<TaxData>(`/freelance/withholding?month=${month}`);
+  return (
+    <>
+      <div className="field" style={{ margin: 0, maxWidth: 200 }}>
+        <label>Month paid</label>
+        <input className="input" type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+      </div>
+      {!data ? (
+        <Loading loading={loading} error={error} />
+      ) : (
+        <Card
+          title="Withholding tax on freelance commission"
+          hint={`${fmtKsh(data.totals.withheld)} withheld from ${fmtKsh(data.totals.gross)} of commission paid in the month — the figures for the withholding return. The tax is held in Withholding Tax Payable until it is paid over to KRA.`}
+        >
+          {data.missingPin.length > 0 && (
+            <p className="note" style={{ color: '#a33' }}>
+              No KRA PIN on file for {data.missingPin.join(', ')}. KRA needs it for the withholding certificate — add it under Freelance sales persons → Edit.
+            </p>
+          )}
+          {data.rows.length === 0 ? (
+            <p className="note" style={{ margin: 0 }}>No commission with tax withheld was paid this month.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Paid</th>
+                    <th>Freelance sales person</th>
+                    <th>KRA PIN</th>
+                    <th style={numStyle}>Commission</th>
+                    <th style={numStyle}>Rate</th>
+                    <th style={numStyle}>Tax withheld</th>
+                    <th style={numStyle}>Paid to them</th>
+                    <th>How</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.rows.map((r) => (
+                    <tr key={r.id}>
+                      <td>{r.paidOn ? fmtDate(r.paidOn) : ''}</td>
+                      <td>{r.agentName}</td>
+                      <td>{r.kraPin || <Tag tone="bad">missing</Tag>}</td>
+                      <td style={numStyle}>{fmtKsh(r.gross)}</td>
+                      <td style={numStyle}>{r.rate}%</td>
+                      <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(r.withheld)}</td>
+                      <td style={numStyle}>{fmtKsh(r.net)}</td>
+                      <td className="text-muted">
+                        {r.method}
+                        {r.reference ? ` ${r.reference}` : ''}
+                      </td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td colSpan={3}>
+                      <b>Total</b>
+                    </td>
+                    <td style={numStyle}>
+                      <b>{fmtKsh(data.totals.gross)}</b>
+                    </td>
+                    <td></td>
+                    <td style={numStyle}>
+                      <b>{fmtKsh(data.totals.withheld)}</b>
+                    </td>
+                    <td style={numStyle}>
+                      <b>{fmtKsh(data.totals.net)}</b>
+                    </td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+          <p className="note">
+            Pay the total over to KRA (iTax) by the date it falls due — check the deadline and the rate with your accountant — then record the payment as a journal in Accounting: debit Withholding Tax Payable, credit the bank. Change the standard rate under Commission → Rates, or give a person their own rate (or 0 if they hold an exemption) under Freelance sales persons → Edit.
+          </p>
+        </Card>
+      )}
+    </>
+  );
+}
+
 export default function FreelancePanel() {
-  const [part, setPart] = useState<'week' | 'people'>('week');
+  const [part, setPart] = useState<'week' | 'people' | 'tax'>('week');
   return (
     <>
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -505,8 +662,11 @@ export default function FreelancePanel() {
         <button type="button" className={'btn btn-sm ' + (part === 'people' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('people')}>
           Freelance sales persons &amp; accounts
         </button>
+        <button type="button" className={'btn btn-sm ' + (part === 'tax' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('tax')}>
+          Tax withheld
+        </button>
       </div>
-      {part === 'week' ? <WeekTab /> : <PeopleTab />}
+      {part === 'week' ? <WeekTab /> : part === 'people' ? <PeopleTab /> : <TaxTab />}
     </>
   );
 }

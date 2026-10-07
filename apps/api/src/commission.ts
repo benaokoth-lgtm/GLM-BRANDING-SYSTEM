@@ -4,6 +4,7 @@ import {
   DEFAULT_FILM_BANDS,
   DEFAULT_GENERAL_BANDS,
   DEFAULT_FREELANCE_BANDS,
+  DEFAULT_FREELANCE_WHT_RATE,
   DEFAULT_OWNERSHIP_MONTHS,
   DEFAULT_TARGET_MODE,
   DEFAULT_TARGET_MULTIPLIER,
@@ -25,6 +26,7 @@ import {
   round2,
   weekEnd,
   salesTarget,
+  withholdingOn,
   systemJobCalc,
   todayStr,
 } from '@glm/shared';
@@ -74,6 +76,8 @@ export interface CommissionConfig {
   freelanceBands: Band[];
   /** A freelancer keeps a client while an order comes in at least this often (months); every order restarts the count. */
   freelanceOwnershipMonths: number;
+  /** The standard withholding tax rate (percent) deducted from freelance commission. */
+  freelanceWhtRate: number;
   /** Times their basic monthly salary a person must sell before commission starts; 0 = no target. */
   targetMultiplier: number;
   targetMode: TargetMode;
@@ -99,6 +103,7 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
+    freelanceWhtRate: row?.freelanceWhtRate ?? DEFAULT_FREELANCE_WHT_RATE,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
     targetMode: (TARGET_MODES as readonly string[]).includes(row?.targetMode ?? '') ? (row!.targetMode as TargetMode) : DEFAULT_TARGET_MODE,
   };
@@ -553,6 +558,9 @@ export interface FreelanceStatement {
   status: string;
   phone: string;
   mpesaNumber: string;
+  /** How they like to be paid. */
+  payMethod: string;
+  kraPin: string;
   weekStart: string;
   weekEnd: string;
   /** Money received in the week on their orders (VAT included), less what was refunded. */
@@ -562,6 +570,10 @@ export interface FreelanceStatement {
   /** Net of VAT that did not qualify (sold below a base price): earns nothing. */
   belowBaseNet: number;
   commission: number;
+  /** Withholding tax: the rate that applies to this person, the tax to deduct, and what they are paid after it. */
+  whtRate: number;
+  withholdingTax: number;
+  netPay: number;
   band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
   orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number }[];
 }
@@ -593,7 +605,7 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
     const id = o.freelanceAgentId!;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, belowBaseNet: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id)!;
@@ -615,7 +627,13 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
   const statements = [...people.values()]
     .map((s) => {
       const a = byId.get(s.agentId);
-      return { ...s, agentName: a?.name ?? `Agent #${s.agentId}`, status: a?.status ?? '', phone: a?.phone ?? '', mpesaNumber: a?.mpesaNumber || a?.phone || '' };
+      return { ...s, agentName: a?.name ?? `Agent #${s.agentId}`, status: a?.status ?? '', phone: a?.phone ?? '', mpesaNumber: a?.mpesaNumber || a?.phone || '', payMethod: a?.payMethod || 'M-Pesa', kraPin: a?.kraPin ?? '' };
+    })
+    .map((s) => {
+      // tax is withheld from what they are paid: their own rate if they have one (0 = exempt), otherwise the standard rate
+      const rate = byId.get(s.agentId)?.whtRate ?? config.freelanceWhtRate;
+      const tax = withholdingOn(s.commission, rate);
+      return { ...s, whtRate: rate, withholdingTax: tax, netPay: round2(s.commission - tax) };
     })
     .sort((a, b) => b.commission - a.commission || a.agentName.localeCompare(b.agentName));
   return { config, statements };

@@ -121,7 +121,9 @@ async function expensePostings(book: Book, ctx: Ctx) {
     else book.drId(e.date, expenseAcctId(ctx, e.category), cost, 'Expense', ref, memo);
     book.dr(e.date, ACCT.vatPayable, vat, 'Expense', ref, `Input VAT — ${memo}`);
     if (e.paid) {
-      book.cr(e.date, methodAccountCode(e.method), e.amount, 'Expense', ref, memo);
+      const wht = e.withholdingTax || 0;
+      book.cr(e.date, methodAccountCode(e.method), e.amount - wht, 'Expense', ref, memo);
+      if (wht > 0) book.cr(e.date, ACCT.whtPayable, wht, 'Expense', ref, `Withholding tax — ${memo}`);
       continue;
     }
     book.cr(e.date, ACCT.payables, e.amount, 'Expense', ref, memo);

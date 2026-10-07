@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FREELANCE_PAY_METHODS } from '@glm/shared';
 import { api } from '../api/client';
 
 // Pick the freelance sales person who brought this order — or add them on the spot, with the details their account needs. A new person waits for
@@ -11,7 +12,7 @@ interface Agent {
   status: string;
 }
 
-const blank = { name: '', phone: '', mpesaNumber: '', nationalId: '', kraPin: '', bankName: '', bankAccount: '' };
+const blank = { name: '', phone: '', mpesaNumber: '', nationalId: '', kraPin: '', bankName: '', bankAccount: '', payMethod: 'M-Pesa' };
 
 export default function FreelancePicker({ value, onChange }: { value: number | null; onChange: (id: number | null) => void }) {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -34,6 +35,7 @@ export default function FreelancePicker({ value, onChange }: { value: number | n
       const r = await api.post<Agent & { existing: boolean }>('/freelance/agents', {
         name: form.name,
         phone: form.phone,
+        payMethod: form.payMethod,
         ...(form.mpesaNumber.trim() ? { mpesaNumber: form.mpesaNumber } : {}),
         ...(form.nationalId.trim() ? { nationalId: form.nationalId } : {}),
         ...(form.kraPin.trim() ? { kraPin: form.kraPin } : {}),
@@ -103,6 +105,16 @@ export default function FreelancePicker({ value, onChange }: { value: number | n
             <div className="field" style={{ margin: 0 }}>
               <label>KRA PIN</label>
               <input className="input" value={form.kraPin} maxLength={11} onChange={(e) => setForm((f) => ({ ...f, kraPin: e.target.value.toUpperCase() }))} />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>How are they paid?</label>
+              <select className="input" value={form.payMethod} onChange={(e) => setForm((f) => ({ ...f, payMethod: e.target.value }))}>
+                {FREELANCE_PAY_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="field" style={{ margin: 0 }}>
               <label>Bank (optional)</label>

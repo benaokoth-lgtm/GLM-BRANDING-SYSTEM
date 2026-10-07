@@ -469,7 +469,7 @@ export default function Compliance() {
                 {vat.statement.outsourced.bills.rows.length === 0 && (
                   <tr>
                     <td colSpan={5} className="text-muted">
-                      No supplier bills in this period — record the supplier’s bill under Finance → Expenses (Outsourced Services) to claim its VAT.
+                      No supplier bills in this period — record a supplier bill on the order to claim its VAT.
                     </td>
                   </tr>
                 )}

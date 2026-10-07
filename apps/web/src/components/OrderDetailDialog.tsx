@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { STAGES, fmtDate, fmtKsh, whatsappNumber } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
-import { api } from '../api/client';
+import { api, fetchFile } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printCorporateDocument, printOrderDocument } from '../utils/printInvoice';
 import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
@@ -33,6 +33,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
   const [sharePanel, setSharePanel] = useState<'email' | 'whatsapp' | null>(null);
   const [emailTo, setEmailTo] = useState('');
   const [waTo, setWaTo] = useState('');
+  const [waFile, setWaFile] = useState<File | null>(null);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
 
@@ -133,7 +134,57 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     }
   }
 
-  function sendWhatsapp() {
+  // The PDF is fetched as soon as the WhatsApp panel opens, so that pressing the button can hand it over straight away (a browser only lets a file be
+  // shared in direct response to a tap or click).
+  useEffect(() => {
+    if (sharePanel !== 'whatsapp' || waFile || !detail) return;
+    let live = true;
+    fetchFile(`/orders/${detail.id}/pdf`, `${documentTitleCase(detail)}-${detail.orderNo}.pdf`)
+      .then((f) => live && setWaFile(f))
+      .catch(() => live && setWaFile(null));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharePanel, detail?.id]);
+
+  /**
+   * Sends the document on WhatsApp as a PDF. WhatsApp's own link (wa.me) can only carry text, so the file goes through the device's share sheet where it
+   * has one (a phone, tablet or recent Chrome/Edge): choose WhatsApp, then the customer. Where it has none, the PDF is saved and the chat is opened
+   * for the file to be attached with the paperclip.
+   */
+  async function sendWhatsapp() {
+    if (!detail || !waFile) return;
+    setError(null);
+    const message = whatsappMessage(detail, company);
+    if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [waFile] })) {
+      try {
+        await navigator.share({ files: [waFile], text: message, title: waFile.name });
+      } catch (e) {
+        if (!(e instanceof DOMException && e.name === 'AbortError')) setError('Could not open the share sheet. Use "Save the PDF and open the chat" instead.');
+      }
+      return;
+    }
+    saveAndOpenChat();
+  }
+
+  function saveAndOpenChat() {
+    if (!detail || !waFile) return;
+    const number = whatsappNumber(waTo);
+    if (!number) return setError('Enter the customer\'s WhatsApp number, like 0797 785 033');
+    setError(null);
+    const url = URL.createObjectURL(waFile);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = waFile.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    window.open(`https://wa.me/${number}?text=${encodeURIComponent(whatsappMessage(detail, company))}`, '_blank');
+  }
+
+  function sendWhatsappText() {
     if (!detail) return;
     const number = whatsappNumber(waTo);
     if (!number) return setError('Enter the customer\'s WhatsApp number, like 0797 785 033');
@@ -434,10 +485,18 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             ) : (
               <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
                 <input className="input" type="tel" style={{ flex: '1 1 200px', maxWidth: 240 }} value={waTo} onChange={(e) => setWaTo(e.target.value)} placeholder="0797 785 033" autoFocus />
-                <button type="button" className="btn btn-primary" onClick={sendWhatsapp} disabled={!waTo.trim()}>
-                  Open WhatsApp
+                <button type="button" className="btn btn-primary" onClick={sendWhatsapp} disabled={!waFile}>
+                  {waFile ? 'Send the PDF on WhatsApp' : 'Preparing the PDF…'}
                 </button>
-                <span className="note" style={{ margin: 0 }}>Opens WhatsApp with the message ready to send — the figures, the balance and how to reach us. WhatsApp cannot attach the document; email or print it for that.</span>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={saveAndOpenChat} disabled={!waFile || !waTo.trim()}>
+                  Save the PDF and open the chat
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={sendWhatsappText} disabled={!waTo.trim()}>
+                  Message only
+                </button>
+                <span className="note" style={{ margin: 0 }}>
+                  <b>Send the PDF</b> opens your device's share list with the PDF and the message: choose WhatsApp, then the customer. WhatsApp's own link cannot attach a file, so where the device has no share list, <b>Save the PDF and open the chat</b> saves it and opens the customer's chat (the number above) for you to attach it with the paperclip.
+                </span>
               </div>
             )}
           </div>

@@ -256,5 +256,13 @@ describe('email settings and emailing login PINs', () => {
     const otherToken = signToken({ id: other.id, name: other.name, role: 'Staff' });
     assert.equal((await call(otherToken, 'POST', '/email/send', { orderId: invoice.id, to: 'x@test.local', subject: 'x' })).status, 403);
     assert.equal((await call(admin, 'POST', '/email/send', { orderId: 99999999, to: 'x@test.local', subject: 'x' })).status, 404);
+
+    // the same PDF can be fetched for sharing on WhatsApp, by anyone who may open the order
+    const file = await fetch(`${base}/api/orders/${invoice.id}/pdf`, { headers: { Authorization: `Bearer ${admin}` } });
+    assert.equal(file.status, 200);
+    assert.equal(file.headers.get('content-type'), 'application/pdf');
+    assert.match(file.headers.get('content-disposition') ?? '', /filename="Invoice-W-PDF-INV.pdf"/);
+    assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
+    assert.equal((await fetch(`${base}/api/orders/${invoice.id}/pdf`, { headers: { Authorization: `Bearer ${otherToken}` } })).status, 403);
   });
 });

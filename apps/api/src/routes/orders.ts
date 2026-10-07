@@ -8,6 +8,7 @@ import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
+import { buildOrderPdf, documentKind } from '../orderPdf';
 import { defaultExpenseVatApplicable } from '@glm/shared';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
@@ -261,6 +262,21 @@ ordersRouter.get('/', async (req, res) => {
 });
 
 // ── Detail ───────────────────────────────────────────────────────────────
+// The invoice / quotation / receipt as a PDF file — for sharing on WhatsApp or saving. The same document that is attached to emails (see orderPdf.ts).
+ordersRouter.get('/:id/pdf', async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
+  const detail = serializeDetail(order);
+  const company = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  const file = `${documentKind(detail).label}-${detail.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, '-') + '.pdf';
+  const pdf = await buildOrderPdf(detail, company);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
+  res.setHeader('Content-Length', String(pdf.length));
+  res.send(pdf);
+});
+
 ordersRouter.get('/:id', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });

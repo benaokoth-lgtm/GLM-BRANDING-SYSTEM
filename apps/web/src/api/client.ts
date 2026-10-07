@@ -63,6 +63,19 @@ export async function downloadFile(path: string, fallbackName: string): Promise<
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** Fetches a file the API generates as a File object (to attach, share or save), without saving it. */
+export async function fetchFile(path: string, fallbackName: string): Promise<File> {
+  const token = getToken();
+  const res = await fetch(`${BASE_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data && data.error) || `Could not get the file (${res.status})`);
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName;
+  const blob = await res.blob();
+  return new File([blob], name, { type: blob.type || 'application/pdf' });
+}
+
 /** Sends a chosen file to the API as raw bytes. */
 export async function uploadFile<T>(path: string, file: File): Promise<T> {
   const token = getToken();

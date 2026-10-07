@@ -109,12 +109,12 @@ export default function NewWalkinOrder() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <div className="field">
-          <label>Customer name (optional)</label>
-          <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in (optional)" />
+          <label>{sourced ? 'Customer name *' : 'Customer name (optional)'}</label>
+          <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in (optional)" style={sourced && !isNamedClient(customerName) ? { borderColor: '#a33' } : undefined} />
         </div>
         <div className="field">
-          <label>Phone (optional)</label>
-          <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
+          <label>{sourced ? 'Phone *' : 'Phone (optional)'}</label>
+          <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: '#a33' } : undefined} />
         </div>
         <div className="field">
           <label>Payment timing</label>

@@ -40,6 +40,9 @@ interface Props {
 export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPrice, client, needsApproval = false, onClose, onDone }: Props) {
   const { materials } = useCatalog();
   const { user } = useAuth();
+  // The client's name, prefilled from the previous page but editable here, beside the phone: crediting a client to a staff member needs both, and a
+  // name left blank on the page before can be filled in without going back.
+  const [clientName, setClientName] = useState(client);
   const [phone, setPhone] = useState('');
   const [sourced, setSourced] = useState(false);
   const [freelanceId, setFreelanceId] = useState<number | null>(null);
@@ -64,7 +67,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   // No artwork job is processed without the heat press fee.
   const heatPressMissing = mode === 'job' && !(heatPress > 0);
   // Name and phone are optional (a blank client is recorded as "Walk-in") — except when the client is credited to a staff member.
-  const sourcingIncomplete = sourced && (!phone.trim() || !isNamedClient(client));
+  const sourcingIncomplete = sourced && (!phone.trim() || !isNamedClient(clientName));
 
   function addMaterialLine() {
     const first = materials[0];
@@ -87,6 +90,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
     try {
       const payload = {
         ...basePayload,
+        client: clientName,
         phone,
         sourcedBy: sourced && user ? user.id : null,
         freelanceAgentId: freelanceId,
@@ -142,15 +146,19 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
           <>
         <div className="dialog-body">
         <p className="note" style={{ marginTop: 0 }}>
-          {client ? `Client: ${client}` : 'Walk-in client'} — {mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
+          {clientName.trim() ? `Client: ${clientName.trim()}` : 'Walk-in client'} — {mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
-          <Field label="Phone (optional)">
-            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
+          <Field label={sourced ? 'Client name *' : 'Client name (optional)'}>
+            <input className="input" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Walk-in (optional)" style={sourced && !isNamedClient(clientName) ? { borderColor: '#a33' } : undefined} />
           </Field>
 
-          <SourcingField phone={phone} name={client} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} />
+          <Field label={sourced ? 'Phone *' : 'Phone (optional)'}>
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: '#a33' } : undefined} />
+          </Field>
+
+          <SourcingField phone={phone} name={clientName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} />
 
           {mode === 'job' && (
             <Field label="Heat press fee (Ksh/pc) — required">
@@ -207,7 +215,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
                 Deposit / pay later
               </button>
             </div>
-            {!needsApproval && <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={client || 'DTF order'} />}
+            {!needsApproval && <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={clientName || 'DTF order'} />}
             {payProblem && <p className="note" style={{ color: '#a33' }}>{payProblem}</p>}
           </div>
 

@@ -214,4 +214,47 @@ describe('email settings and emailing login PINs', () => {
     assert.match(mail2.data, /Acme Counter System/);
     await call(admin, 'PUT', '/master-data/settings', { companyName: 'GLM Branding', systemName: '' });
   });
+
+  it('an invoice or quotation is emailed as a PDF attachment, built from the order, with a short message in the body', async () => {
+    const svc = await prisma.service.create({ data: { name: 'Mail Test Banner', unit: 'piece', price: 1160 } });
+    const mk = (orderNo: string, status: string, customerName: string) =>
+      prisma.order.create({
+        data: { orderNo, kind: 'walkin', staffId: adminId, createdDate: '2031-05-01', status, dueDate: status === 'Invoice' ? '2031-05-08' : null, stage: 'Order Received', customerName, lineItems: { create: [{ itemType: 'service', serviceId: svc.id, qty: 3, unitPrice: 1160 }, { itemType: 'service', serviceId: svc.id, qty: 1, unitPrice: 580, discountPct: 10 }] }, payments: status === 'Invoice' ? { create: [{ date: '2031-05-01', amount: 1000, method: 'Cash' }] } : undefined },
+      });
+    const invoice = await mk('W-PDF-INV', 'Invoice', 'Ngũgĩ wa Thiong’o 日本');
+    const quote = await mk('W-PDF-QUO', 'Quote', 'Walk-in');
+
+    const grab = (data: string) => {
+      const m = /filename="?([^"\r\n;]+)"?[\s\S]*?\r\n\r\n([A-Za-z0-9+/=\r\n]+)/.exec(data);
+      return m ? { name: m[1]!, bytes: Buffer.from(m[2]!.replace(/\s/g, ''), 'base64') } : null;
+    };
+
+    const before = inbox.length;
+    const r = await call(admin, 'POST', '/email/send', { orderId: invoice.id, to: 'client@test.local', subject: 'Invoice W-PDF-INV' });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const mail = inbox.slice(before).find((m) => m.to.includes('client@test.local'))!;
+    assert.ok(mail, 'the email arrived');
+    assert.match(mail.data, /Content-Type: application\/pdf/i);
+    const att = grab(mail.data)!;
+    assert.equal(att.name, 'Invoice-W-PDF-INV.pdf');
+    assert.equal(att.bytes.subarray(0, 5).toString(), '%PDF-', 'a real PDF file');
+    assert.ok(att.bytes.length > 1500);
+    const unfold = (s: string) => s.split('=\r\n').join(''); // quoted-printable soft line breaks
+    assert.match(unfold(mail.data), /Please find attached our invoice W-PDF-INV/); // the body is a short message, not the document
+
+    // a quotation goes the same way, named as one; a note can be added; an older tab's rendered HTML is ignored
+    const b2 = inbox.length;
+    const q = await call(admin, 'POST', '/email/send', { orderId: quote.id, to: 'client2@test.local', subject: 'Quotation W-PDF-QUO', message: 'Thanks for asking.', html: '<h1>old</h1>' });
+    assert.equal(q.status, 200);
+    const mail2 = inbox.slice(b2).find((m) => m.to.includes('client2@test.local'))!;
+    assert.equal(grab(mail2.data)!.name, 'Quotation-W-PDF-QUO.pdf');
+    assert.match(unfold(mail2.data), /Thanks for asking\./);
+    assert.doesNotMatch(mail2.data, /<h1>old<\/h1>/);
+
+    // only someone who may open the order can send it
+    const other = await prisma.user.create({ data: { name: 'Other (mail test)', role: 'Staff', pinHash: 'x' } }); // fresh: the earlier staff token was retired when their PIN changed
+    const otherToken = signToken({ id: other.id, name: other.name, role: 'Staff' });
+    assert.equal((await call(otherToken, 'POST', '/email/send', { orderId: invoice.id, to: 'x@test.local', subject: 'x' })).status, 403);
+    assert.equal((await call(admin, 'POST', '/email/send', { orderId: 99999999, to: 'x@test.local', subject: 'x' })).status, 404);
+  });
 });

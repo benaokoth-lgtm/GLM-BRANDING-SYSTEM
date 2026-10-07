@@ -3,7 +3,7 @@ import { STAGES, fmtDate, fmtKsh, whatsappNumber } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
 import { api } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
-import { buildCorporateDocumentHtml, printCorporateDocument, printOrderDocument } from '../utils/printInvoice';
+import { printCorporateDocument, printOrderDocument } from '../utils/printInvoice';
 import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
@@ -123,8 +123,8 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     setEmailBusy(true);
     setEmailSent(false);
     try {
-      const html = buildCorporateDocumentHtml(detail, company);
-      await api.post('/email/send', { orderId: detail.id, to: emailTo.trim(), subject: `${documentTitleCase(detail)} ${detail.orderNo} — ${company.companyName}`, html });
+      // The PDF is built and attached on the server from the order itself; only who it goes to and the subject are sent from here.
+      await api.post('/email/send', { orderId: detail.id, to: emailTo.trim(), subject: `${documentTitleCase(detail)} ${detail.orderNo} — ${company.companyName}` });
       setEmailSent(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to send email');
@@ -429,7 +429,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                   {emailBusy ? 'Sending…' : 'Send email'}
                 </button>
                 {emailSent && <span className="tag tag-accent">Sent</span>}
-                <span className="note" style={{ margin: 0 }}>Sends the A4 {documentLabel(detail)} itself.</span>
+                <span className="note" style={{ margin: 0 }}>Sent as a PDF attachment: the A4 {documentLabel(detail)}.</span>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>

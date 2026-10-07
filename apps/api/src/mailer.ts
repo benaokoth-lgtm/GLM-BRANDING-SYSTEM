@@ -59,7 +59,7 @@ export function createTransport(c: MailConfig) {
 
 export interface Mailer {
   config: MailConfig;
-  sendMail(msg: { to: string; subject: string; text?: string; html?: string }): Promise<unknown>;
+  sendMail(msg: { to: string; subject: string; text?: string; html?: string; attachments?: { filename: string; content: Buffer; contentType?: string }[] }): Promise<unknown>;
 }
 
 /** A ready-to-use mailer (From set from the mail settings), or null when mail isn't set up. */

@@ -350,7 +350,7 @@ export interface StaffStatement {
   total: number;
   /** This month's sales measured against the sales target (3 × basic salary). Commission below is what is payable AFTER the target. */
   target: SalesTarget;
-  /** Commission already earned on the month's sales but held back until the target is met (or the salary is recorded). */
+  /** What would have been paid on the month's sales had the target been met (shown, never paid, and not carried into the next month). Artwork is never held: it is earned whether or not the target is met. */
   heldCommission: number;
   general: {
     received: number; // money received this month on orders credited to this person (VAT included), less refunds of what had been paid
@@ -542,10 +542,11 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     const filmFull = st.film.commission;
     const artFull = st.artwork.commission;
     if (target.held) {
-      // What they would be paid if the target were met on these sales — shown to them, not paid.
-      st.heldCommission = round2(filmFull + artFull + (config.targetMode === 'all' ? bandedAmount(config.generalBands, st.general.netSales) : 0));
+      // A month's target not met means no commission on that month's sales, and nothing rolls over to the next month. What they would have been
+      // paid had the target been met is shown to them, not paid. The exception is artwork: the extra charged above the recommended price is
+      // earned whether or not the target was met, so it stays in the total (and the sales still count towards the target).
+      st.heldCommission = round2(filmFull + (config.targetMode === 'all' ? bandedAmount(config.generalBands, st.general.netSales) : 0));
       st.film.commission = 0;
-      st.artwork.commission = 0;
       st.general.commission = 0;
     } else {
       st.general.commission = bandedAmount(config.generalBands, target.eligibleSales);

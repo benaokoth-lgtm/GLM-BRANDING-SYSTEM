@@ -44501,9 +44501,8 @@ async function buildStatements(period, only) {
     const filmFull = st.film.commission;
     const artFull = st.artwork.commission;
     if (target.held) {
-      st.heldCommission = round2(filmFull + artFull + (config.targetMode === "all" ? bandedAmount(config.generalBands, st.general.netSales) : 0));
+      st.heldCommission = round2(filmFull + (config.targetMode === "all" ? bandedAmount(config.generalBands, st.general.netSales) : 0));
       st.film.commission = 0;
-      st.artwork.commission = 0;
       st.general.commission = 0;
     } else {
       st.general.commission = bandedAmount(config.generalBands, target.eligibleSales);

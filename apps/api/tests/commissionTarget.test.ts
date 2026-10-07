@@ -38,7 +38,7 @@ describe('commission needs the sales target first', () => {
   before(async () => {
     await prisma.role.create({ data: { name: 'Target Counter', canCaptureOrders: true, canAccessDtf: true } });
     await prisma.role.create({ data: { name: 'Target Boss', canCaptureOrders: true, canAccessFinance: true, canAccessAccounting: true, canManageCommission: true } });
-    for (const [key, role, salary] of [['amina', 'Target Counter', 40000], ['brian', 'Target Counter', null], ['carol', 'Target Counter', null], ['boss', 'Target Boss', null]] as const) {
+    for (const [key, role, salary] of [['amina', 'Target Counter', 40000], ['brian', 'Target Counter', null], ['carol', 'Target Counter', null], ['dave', 'Target Counter', null], ['boss', 'Target Boss', null]] as const) {
       const u = await prisma.user.create({ data: { name: `${key} (target test)`, role, pinHash: 'x', basicSalary: salary } });
       ids[key] = u.id;
       tokens[key] = signToken({ id: u.id, name: u.name, role });
@@ -139,6 +139,24 @@ describe('commission needs the sales target first', () => {
     assert.equal((await call('boss', 'GET', '/finance/employees')).body.find((e: any) => e.id === ids.brian).basicSalary, null);
   });
 
+  it('artwork is the exception: the extra above the recommended price is earned even when the target is not met, and nothing is carried to the next month', async () => {
+    // dave has no salary on record, so he has no target to measure: film and sourcing commission would be held, artwork is not.
+    // 2 running metres on 108 pieces → recommended 70 a piece; charged 80, paid in full with the 20 heat press fee (10,800): 108 × 10 = 1,080 → 931.03 net → 50% = 465.52
+    const job = await call('dave', 'POST', '/dtf/jobs', { rollId: 'ROLL-TGT', client: 'Artwork Buyer', phone: '0744 000 777', runningMetres: 2, pieces: 108, heatPressFee: 20, pricePerPiece: 80, amountPaid: 10800 });
+    assert.equal(job.status, 201, JSON.stringify(job.body));
+    const film = await call('dave', 'POST', '/dtf/sales', { rollId: 'ROLL-TGT', client: 'Film Buyer Two', phone: '0744 000 888', metres: 10, pricePerM: 450, amountPaid: 4500 });
+    assert.equal(film.status, 201);
+    let s = await mine('dave');
+    assert.deepEqual([s.target.held, s.artwork.commission, s.film.commission, s.general.commission, s.total], [true, 465.52, 0, 0, 465.52]);
+    assert.equal(s.heldCommission, 75.43, 'only the film premium is held back — it is shown, never paid');
+
+    // a salary is recorded and the target is still not met: artwork is still paid, film is not
+    assert.equal((await call('boss', 'PUT', `/finance/employees/${ids.dave}`, { basicSalary: 40000 })).status, 200);
+    s = await mine('dave');
+    assert.deepEqual([s.target.met, s.artwork.commission, s.film.commission, s.total], [false, 465.52, 0, 465.52]);
+    assert.equal((await call('boss', 'PUT', `/finance/employees/${ids.dave}`, { basicSalary: null })).status, 200);
+  });
+
   it('prices at order taking are untouched: a film sale below the floor is still refused, so a target cannot be met by under-pricing', async () => {
     const low = await call('brian', 'POST', '/dtf/sales', { rollId: 'ROLL-TGT', client: 'Cheap', metres: 100, pricePerM: 399, amountPaid: 39900 });
     assert.equal(low.status, 400);
@@ -151,6 +169,8 @@ describe('commission needs the sales target first', () => {
     const names = r.body.payouts.map((p: any) => p.staffName);
     assert.ok(names.includes('amina (target test)') && names.includes('carol (target test)'));
     assert.ok(!names.includes('brian (target test)'), 'brian is short of his target, so there is nothing to pay');
+    assert.ok(names.includes('dave (target test)'), 'dave is short of his target but earned artwork commission, which is paid regardless');
+    assert.equal((await prisma.commissionPayout.findUniqueOrThrow({ where: { period_staffId: { period, staffId: ids.dave! } } })).amount, 465.52);
     const payout = await prisma.commissionPayout.findUniqueOrThrow({ where: { period_staffId: { period, staffId: ids.amina! } } });
     assert.equal(payout.amount, 600);
     assert.equal(JSON.parse(payout.detailJson).target.required, 120000);

@@ -147,7 +147,7 @@ function TargetCard({ s, you }: { s: Statement; you?: boolean }) {
             ) : (
               <>
                 {' '}
-                — <b>{fmtKsh(t.remaining)} to go</b>.{s.heldCommission > 0 && <> {fmtKsh(s.heldCommission)} already earned on film and artwork is held until then.</>}
+                — <b>{fmtKsh(t.remaining)} to go</b>.{s.heldCommission > 0 && <> {fmtKsh(s.heldCommission)} earned on film would have been paid had the target been met.</>} A month that misses its target earns no commission on its sales, and nothing rolls over to the next month. Artwork extras are the exception: they are paid whether or not the target is met.
               </>
             )}
           </p>
@@ -296,7 +296,7 @@ function SchemeNote({ config }: { config: Config }) {
       {config.targetMultiplier > 0 && (
         <li>
           <b>Sales target first:</b> no commission is earned in a month until your net sales received reach <b>{config.targetMultiplier}× your basic monthly salary</b>.{' '}
-          {config.targetMode === 'above' ? 'The bands below then start at the target — only what you sell above it earns.' : 'Once it is met, the bands below apply to all of your sales.'} Film and artwork extras are paid in full once the target is met. Prices are never relaxed to help reach it: the minimum prices at order taking stay as they are.
+          {config.targetMode === 'above' ? 'The bands below then start at the target — only what you sell above it earns.' : 'Once it is met, the bands below apply to all of your sales.'} Film extras are paid in full once the target is met. If the target is missed, there is no commission on that month’s sales and nothing rolls over to the next month. The exception is artwork: the extra you charge above the recommended price is paid whether or not the target is met. Prices are never relaxed to help reach it: the minimum prices at order taking stay as they are.
         </li>
       )}
       <li>
@@ -443,7 +443,7 @@ function TeamTab({ period }: { period: string }) {
                       ) : s.target.met ? (
                         <Tag tone="good">met · {fmtKsh(s.target.required)}</Tag>
                       ) : (
-                        <span title={s.heldCommission > 0 ? `${fmtKsh(s.heldCommission)} held until the target is met` : undefined}>{fmtKsh(s.target.remaining)} to go of {fmtKsh(s.target.required)}</span>
+                        <span title={s.heldCommission > 0 ? `${fmtKsh(s.heldCommission)} earned on film but not paid: the target was not met` : undefined}>{fmtKsh(s.target.remaining)} to go of {fmtKsh(s.target.required)}</span>
                       )}
                     </td>
                     <td style={numStyle}>{fmtKsh(s.general.commission)}</td>
@@ -722,7 +722,7 @@ function RatesTab() {
         <div>
           <div className="card-kicker">Sales target before commission</div>
           <p className="note" style={{ marginTop: 0 }}>
-            A person must sell this many times their basic monthly salary — net of VAT, money received in the month — before they earn any commission. Their salary is kept on their staff record (Compliance → Employees); with no salary recorded, commission is held. For example 3 × a salary of 40,000 = a target of 120,000. Set 0 for no target. Prices at order taking are not affected, so the minimum price rules still stop sales being under-priced to reach a target.
+            A person must sell this many times their basic monthly salary — net of VAT, money received in the month — before they earn any commission. Their salary is kept on their staff record (Compliance → Employees); with no salary recorded, commission is held. For example 3 × a salary of 40,000 = a target of 120,000. Set 0 for no target. A month that misses its target earns no commission on its sales and nothing rolls over to the next month; the one exception is artwork, whose extra above the recommended price is always paid. Prices at order taking are not affected, so the minimum price rules still stop sales being under-priced to reach a target.
           </p>
           <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div className="field" style={{ margin: 0 }}>

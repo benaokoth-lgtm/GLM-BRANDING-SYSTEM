@@ -169,7 +169,9 @@ export function clientKeyFor(c: { corporateClientId?: number | null; phone?: str
 // target can never be met by under-pricing.
 //   'above' — the bands start at the target: only the part of the month's sales ABOVE it earns general commission.
 //   'all'   — once the target is met, the bands apply to all of the month's sales.
-// Film and artwork premium commission (earned only by charging above the floor price) is paid in full once the target is met, nothing before.
+// Film premium commission (earned only by charging above the floor price) is paid in full once the target is met, nothing before. A month whose target
+// is not met earns no sales-based commission and nothing rolls over to the next month. The exception is artwork: the extra charged above the recommended
+// price is earned whether or not the target was met (the artwork sales still count towards the target).
 // A person whose salary is not recorded cannot be measured against a target, so their commission is held until it is.
 
 export const DEFAULT_TARGET_MULTIPLIER = 3;

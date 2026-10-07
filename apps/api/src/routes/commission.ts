@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { EXPENSE_METHODS, PETTY_CASH_METHOD, bandsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
+import { EXPENSE_METHODS, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
 import { pettyCashShortfall } from '../accounting/ledger';
-import { activeOwner, blankStatement, buildStatements, canManageCommission, commissionEnabled, ensureCommissionAccessOnce, getCommissionConfig } from '../commission';
+import { activeOwner, blankStatement, buildStatements, canManageCommission, commissionEnabled, ensureCommissionAccessOnce, getCommissionConfig, targetFor } from '../commission';
 
 // Staff sales commission. Everyone who captures orders can see their own statement and the scheme they are paid under;
 // managers (canManageCommission) see everyone's, set the rates, manage who owns which client, and approve and pay.
@@ -36,6 +36,9 @@ const settingsSchema = z.object({
   filmBands: z.array(bandSchema).min(1),
   artworkRatePct: z.number().min(0).max(100),
   ownershipMonths: z.number().int().min(1).max(60),
+  // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
+  targetMultiplier: z.number().min(0).max(20).optional(),
+  targetMode: z.enum(TARGET_MODES).optional(),
 });
 
 commissionRouter.put('/settings', manage, async (req, res) => {
@@ -50,6 +53,8 @@ commissionRouter.put('/settings', manage, async (req, res) => {
     filmBandsJson: JSON.stringify(sort(d.filmBands)),
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
+    ...(d.targetMultiplier !== undefined ? { targetMultiplier: d.targetMultiplier } : {}),
+    ...(d.targetMode !== undefined ? { targetMode: d.targetMode } : {}),
     updatedByName: req.user!.name,
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -61,7 +66,7 @@ commissionRouter.get('/my', async (req, res) => {
   const period = periodSchema.safeParse(req.query.period ?? thisMonth());
   if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
   const { config, statements } = await buildStatements(period.data, req.user!.id);
-  const mine = statements[0] ?? blankStatement(req.user!.id, req.user!.name);
+  const mine = statements[0] ?? blankStatement(req.user!.id, req.user!.name, await targetFor(req.user!.id, period.data, config));
   const payout = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: req.user!.id } } });
   const clients = await prisma.clientOwner.findMany({ where: { staffId: req.user!.id, status: 'Active', endDate: { gte: todayStr() } }, orderBy: { endDate: 'asc' } });
   res.json({
@@ -193,7 +198,7 @@ commissionRouter.post('/payouts/approve', manage, async (req, res) => {
       filmAmount: s.film.commission,
       artworkAmount: s.artwork.commission,
       amount: s.total,
-      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork }),
+      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, target: s.target }),
       status: 'Approved',
       approvedByName: req.user!.name,
       approvedAt: new Date(),

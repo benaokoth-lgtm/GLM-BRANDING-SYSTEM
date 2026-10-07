@@ -113,7 +113,7 @@ export default function Compliance() {
 
   // Employee details (National ID, KRA PIN, SHIF number) and the P9 for a year.
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
-  const [empDrafts, setEmpDrafts] = useState<Record<number, { nationalId: string; kraPin: string; shifNumber: string }>>({});
+  const [empDrafts, setEmpDrafts] = useState<Record<number, { nationalId: string; kraPin: string; shifNumber: string; basicSalary: string }>>({});
   const [p9Year, setP9Year] = useState(todayStr().slice(0, 4));
   const [p9, setP9] = useState<P9Data | null>(null);
 
@@ -139,7 +139,9 @@ export default function Compliance() {
     setError(null);
     setBusy(true);
     try {
-      await api.put(`/finance/employees/${id}`, d);
+      const salary = d.basicSalary.replace(/[,\s]/g, '');
+      if (salary && !(Number(salary) >= 0)) throw new Error('The basic salary must be a number');
+      await api.put(`/finance/employees/${id}`, { nationalId: d.nationalId, kraPin: d.kraPin, shifNumber: d.shifNumber, basicSalary: salary ? Number(salary) : null });
       setEmpDrafts((x) => {
         const { [id]: _drop, ...rest } = x;
         return rest;
@@ -660,13 +662,14 @@ export default function Compliance() {
                 <th>National ID</th>
                 <th>KRA PIN</th>
                 <th>SHIF No.</th>
+                <th title="Sets the sales target for commission: 3 × this, by default">Basic salary (Ksh / month)</th>
                 <th style={{ width: 150 }}></th>
               </tr>
             </thead>
             <tbody>
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-muted">
+                  <td colSpan={7} className="text-muted">
                     No staff yet.
                   </td>
                 </tr>
@@ -694,6 +697,9 @@ export default function Compliance() {
                           <input className="input" style={{ width: 150 }} value={draft.shifNumber} onChange={(e) => setEmpDrafts((x) => ({ ...x, [u.id]: { ...x[u.id]!, shifNumber: e.target.value } }))} placeholder="SHIF number" />
                         </td>
                         <td>
+                          <input className="input" style={{ width: 120 }} inputMode="decimal" value={draft.basicSalary} onChange={(e) => setEmpDrafts((x) => ({ ...x, [u.id]: { ...x[u.id]!, basicSalary: e.target.value } }))} placeholder="e.g. 40000" />
+                        </td>
+                        <td>
                           <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                             <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => saveEmployee(u.id)}>
                               Save
@@ -709,8 +715,9 @@ export default function Compliance() {
                         <td>{u.nationalId ?? <span className="text-muted">—</span>}</td>
                         <td>{u.kraPin ?? <span className="text-muted">—</span>}</td>
                         <td>{u.shifNumber ?? <span className="text-muted">—</span>}</td>
+                        <td>{u.basicSalary ? u.basicSalary.toLocaleString('en-KE') : <span className="text-muted">—</span>}</td>
                         <td>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmpDrafts((x) => ({ ...x, [u.id]: { nationalId: u.nationalId ?? '', kraPin: u.kraPin ?? '', shifNumber: u.shifNumber ?? '' } }))}>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmpDrafts((x) => ({ ...x, [u.id]: { nationalId: u.nationalId ?? '', kraPin: u.kraPin ?? '', shifNumber: u.shifNumber ?? '', basicSalary: u.basicSalary ? String(u.basicSalary) : '' } }))}>
                             {incomplete ? 'Add details' : 'Edit'}
                           </button>
                         </td>

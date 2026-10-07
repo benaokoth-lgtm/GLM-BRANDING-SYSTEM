@@ -4,6 +4,9 @@ import {
   DEFAULT_FILM_BANDS,
   DEFAULT_GENERAL_BANDS,
   DEFAULT_OWNERSHIP_MONTHS,
+  DEFAULT_TARGET_MODE,
+  DEFAULT_TARGET_MULTIPLIER,
+  TARGET_MODES,
   DEFAULT_ROLE_PERMISSIONS,
   VAT_RATE,
   artworkPremiumCommission,
@@ -18,10 +21,11 @@ import {
   filmPremiumPerM,
   ownershipEnd,
   round2,
+  salesTarget,
   systemJobCalc,
   todayStr,
 } from '@glm/shared';
-import type { Band, LineItemInput } from '@glm/shared';
+import type { Band, LineItemInput, SalesTarget, TargetMode } from '@glm/shared';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
 
@@ -63,6 +67,9 @@ export interface CommissionConfig {
   filmBands: Band[];
   artworkRatePct: number;
   ownershipMonths: number;
+  /** Times their basic monthly salary a person must sell before commission starts; 0 = no target. */
+  targetMultiplier: number;
+  targetMode: TargetMode;
 }
 
 function readBands(json: string | null | undefined, fallback: Band[]): Band[] {
@@ -83,6 +90,8 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
+    targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
+    targetMode: (TARGET_MODES as readonly string[]).includes(row?.targetMode ?? '') ? (row!.targetMode as TargetMode) : DEFAULT_TARGET_MODE,
   };
 }
 
@@ -191,6 +200,10 @@ export interface StaffStatement {
   staffId: number;
   staffName: string;
   total: number;
+  /** This month's sales measured against the sales target (3 × basic salary). Commission below is what is payable AFTER the target. */
+  target: SalesTarget;
+  /** Commission already earned on the month's sales but held back until the target is met (or the salary is recorded). */
+  heldCommission: number;
   general: {
     received: number; // money received this month on orders credited to this person (VAT included), less refunds of what had been paid
     netSales: number; // the same with the VAT taken out — what the bands apply to
@@ -221,11 +234,13 @@ export interface StaffStatement {
   };
 }
 
-export function blankStatement(staffId: number, staffName = ''): StaffStatement {
+export function blankStatement(staffId: number, staffName = '', target?: SalesTarget): StaffStatement {
   return {
     staffId,
     staffName,
     total: 0,
+    target: target ?? salesTarget({ multiplier: DEFAULT_TARGET_MULTIPLIER, mode: DEFAULT_TARGET_MODE, salary: null, achieved: 0 }),
+    heldCommission: 0,
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
@@ -235,6 +250,28 @@ export function blankStatement(staffId: number, staffName = ''): StaffStatement 
 
 export function periodRange(period: string): { start: string; end: string } {
   return { start: `${period}-01`, end: `${period}-31` };
+}
+
+/**
+ * Each person's basic monthly salary: the one recorded on their staff record (Compliance → Employees) or, failing that, their latest payroll
+ * pay-run amount up to the end of the month. People with neither are left out — their commission is held until a salary is recorded.
+ */
+export async function salariesFor(staffIds: number[], endDate: string): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (staffIds.length === 0) return out;
+  for (const u of await prisma.user.findMany({ where: { id: { in: staffIds } }, select: { id: true, basicSalary: true } })) if (u.basicSalary && u.basicSalary > 0) out.set(u.id, u.basicSalary);
+  const missing = staffIds.filter((id) => !out.has(id));
+  if (missing.length) {
+    const pay = await prisma.payrollEntry.findMany({ where: { staffId: { in: missing }, employeeType: 'Employee', date: { lte: endDate } }, orderBy: { date: 'desc' }, select: { staffId: true, grossPay: true } });
+    for (const p of pay) if (!out.has(p.staffId) && p.grossPay > 0) out.set(p.staffId, p.grossPay);
+  }
+  return out;
+}
+
+/** One person's target for a month (used for the "my commission" page when they have not sold anything yet). */
+export async function targetFor(staffId: number, period: string, config: CommissionConfig, achieved = 0): Promise<SalesTarget> {
+  const salary = (await salariesFor([staffId], periodRange(period).end)).get(staffId) ?? null;
+  return salesTarget({ multiplier: config.targetMultiplier, mode: config.targetMode, salary, achieved });
 }
 
 export async function buildStatements(period: string, only?: number): Promise<{ config: CommissionConfig; statements: StaffStatement[] }> {
@@ -259,6 +296,10 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
   const orderIds = [...flows.keys()];
   const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
 
+  // Net sales (VAT out, money received) on the film and artwork orders each person captured — they count towards the sales target
+  const dtfNet = new Map<number, number>();
+  const addDtfNet = (id: number, net: number) => dtfNet.set(id, (dtfNet.get(id) ?? 0) + net / (1 + VAT_RATE));
+
   const people = new Map<number, StaffStatement>();
   const who = (id: number) => {
     let s = people.get(id);
@@ -275,10 +316,12 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     if (o.dtfFilmSale) {
       const s = o.dtfFilmSale;
       const full = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
+      if (full <= 0) addDtfNet(o.staffId, net);
       if (full > 0) {
         const c = round2(full * share);
         const st = who(o.staffId);
         st.film.commission = round2(st.film.commission + c);
+        addDtfNet(o.staffId, net);
         st.film.sales.push({ orderNo: o.orderNo, customer: customerOf(o), metres: s.metres, pricePerM: s.pricePerM, premiumPerM: filmPremiumPerM(s.pricePerM, s.minPriceAtSale), orderTotal: round2(total), moneyIn: round2(net), commission: c });
       }
     } else if (o.dtfArtworkJob) {
@@ -286,10 +329,12 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       const sys = systemJobCalc({ id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
       const charged = Math.max(sys, j.chargedPerPiece ?? sys);
       const full = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
+      if (full <= 0) addDtfNet(o.staffId, net);
       if (full > 0) {
         const c = round2(full * share);
         const st = who(o.staffId);
         st.artwork.commission = round2(st.artwork.commission + c);
+        addDtfNet(o.staffId, net);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net), commission: c });
       }
     } else if (o.channel !== 'dtf' && o.sourcedByStaffId && o.status !== 'Quote') {
@@ -331,11 +376,30 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
   }
 
-  // The bands, once each person's month is known
+  // The bands, once each person's month is known — behind the sales target. Nothing is earned until a person has sold `multiplier` × their basic
+  // salary in the month (net of VAT, money received); then the bands start at the target ('above') or apply to everything ('all').
+  const salaries = await salariesFor([...people.keys()], end);
   for (const st of people.values()) {
     st.general.netSales = round2(Math.max(0, st.general.received) / (1 + VAT_RATE));
-    st.general.commission = bandedAmount(config.generalBands, st.general.netSales);
-    st.general.band = bandPosition(config.generalBands, st.general.netSales);
+    const target = salesTarget({
+      multiplier: config.targetMultiplier,
+      mode: config.targetMode,
+      salary: salaries.get(st.staffId) ?? null,
+      achieved: st.general.netSales + (dtfNet.get(st.staffId) ?? 0),
+    });
+    st.target = target;
+    const filmFull = st.film.commission;
+    const artFull = st.artwork.commission;
+    if (target.held) {
+      // What they would be paid if the target were met on these sales — shown to them, not paid.
+      st.heldCommission = round2(filmFull + artFull + (config.targetMode === 'all' ? bandedAmount(config.generalBands, st.general.netSales) : 0));
+      st.film.commission = 0;
+      st.artwork.commission = 0;
+      st.general.commission = 0;
+    } else {
+      st.general.commission = bandedAmount(config.generalBands, target.eligibleSales);
+    }
+    st.general.band = bandPosition(config.generalBands, target.eligibleSales);
     st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
   }
 

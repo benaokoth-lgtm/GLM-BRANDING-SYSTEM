@@ -27,6 +27,9 @@ model User {
   nationalId       String?
   kraPin           String?
   shifNumber       String?
+  // Their basic monthly salary (Ksh). Used for the sales target that must be met before commission is earned (Commission → Rates). When blank, the
+  // latest payroll pay-run amount for them is used instead; with neither, their commission is held.
+  basicSalary      Float?
   role             String // free-text role name — must match a Role.name row (validated at write time, not a DB-level FK so existing rows survive a role rename's own migration)
   pinHash          String
   failedLoginCount Int       @default(0)
@@ -970,6 +973,10 @@ model CommissionSettings {
   // Artwork — % of the amount charged above the system-recommended price
   artworkRatePct   Float    @default(50)
   ownershipMonths  Int      @default(12)
+  // The sales target: a person must sell this many times their basic monthly salary (net of VAT, money received) in a month before any commission
+  // is earned. 0 = no target. 'above' = the bands start at the target; 'all' = once met, the bands apply to all sales (see shared/commission.ts).
+  targetMultiplier Float    @default(3)
+  targetMode       String   @default("above")
   updatedByName    String   @default("")
   updatedAt        DateTime @updatedAt
 }

@@ -161,3 +161,58 @@ export function clientKeyFor(c: { corporateClientId?: number | null; phone?: str
   const name = (c.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
   return name.length >= 3 ? `n:${name}` : null;
 }
+
+// ── The sales target ────────────────────────────────────────────────────────
+// Before any commission is earned in a month, a person must sell at least `multiplier` × their basic monthly salary (3 × 40,000 = 120,000).
+// "Sold" means NET sales (VAT out) whose money was received in the month, on everything credited to them: clients they sourced, and the film
+// and artwork orders they captured. Prices are not touched by this — the minimum-price rules at order taking stay exactly as they are, so a
+// target can never be met by under-pricing.
+//   'above' — the bands start at the target: only the part of the month's sales ABOVE it earns general commission.
+//   'all'   — once the target is met, the bands apply to all of the month's sales.
+// Film and artwork premium commission (earned only by charging above the floor price) is paid in full once the target is met, nothing before.
+// A person whose salary is not recorded cannot be measured against a target, so their commission is held until it is.
+
+export const DEFAULT_TARGET_MULTIPLIER = 3;
+export const TARGET_MODES = ['above', 'all'] as const;
+export type TargetMode = (typeof TARGET_MODES)[number];
+export const DEFAULT_TARGET_MODE: TargetMode = 'above';
+
+export interface SalesTarget {
+  /** False when the multiplier is 0: there is no target and everything works as it did before. */
+  applies: boolean;
+  multiplier: number;
+  mode: TargetMode;
+  /** Their basic monthly salary, or null when it has not been recorded. */
+  salary: number | null;
+  salaryKnown: boolean;
+  /** multiplier × salary. */
+  required: number;
+  /** Net sales received this month that count towards it. */
+  achieved: number;
+  met: boolean;
+  /** How much more must be sold to reach the target. */
+  remaining: number;
+  /** The part of the month's sales that the general bands apply to (see the modes above). */
+  eligibleSales: number;
+  /** Commission is not paid at all this month: the target is not met, or there is no salary to measure it against. */
+  held: boolean;
+}
+
+export function salesTarget(o: { multiplier: number; mode: TargetMode; salary: number | null; achieved: number }): SalesTarget {
+  const achieved = r2(Math.max(0, o.achieved));
+  const applies = o.multiplier > 0;
+  const salaryKnown = o.salary != null && o.salary > 0;
+  const base = { applies, multiplier: o.multiplier, mode: o.mode, salary: salaryKnown ? o.salary : null, salaryKnown, achieved };
+  if (!applies) return { ...base, required: 0, met: true, remaining: 0, eligibleSales: achieved, held: false };
+  if (!salaryKnown) return { ...base, required: 0, met: false, remaining: 0, eligibleSales: 0, held: true };
+  const required = r2(o.salary! * o.multiplier);
+  const met = achieved >= required;
+  return {
+    ...base,
+    required,
+    met,
+    remaining: r2(Math.max(0, required - achieved)),
+    eligibleSales: !met ? 0 : o.mode === 'all' ? achieved : r2(achieved - required),
+    held: !met,
+  };
+}

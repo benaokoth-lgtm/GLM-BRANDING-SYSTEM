@@ -103,13 +103,15 @@ financeRouter.get('/payroll', async (req, res) => {
 financeRouter.get('/employees', async (_req, res) => {
   await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary })));
 });
 
 const employeeSchema = z.object({
   nationalId: z.string().max(40).optional().default(''),
   kraPin: z.string().max(40).optional().default(''),
   shifNumber: z.string().max(60).optional().default(''),
+  // Their basic monthly salary (Ksh): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
+  basicSalary: z.number().min(0).max(100_000_000).nullable().optional(),
 });
 
 financeRouter.put('/employees/:id', async (req, res) => {
@@ -130,8 +132,11 @@ financeRouter.put('/employees/:id', async (req, res) => {
     const other = await prisma.user.findFirst({ where: { kraPin: kraPin.value, id: { not: id } } });
     if (other) return res.status(400).json({ error: `That KRA PIN is already recorded for ${other.name}` });
   }
-  const u = await prisma.user.update({ where: { id }, data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value } });
-  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber });
+  const u = await prisma.user.update({
+    where: { id },
+    data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value, ...(parsed.data.basicSalary !== undefined ? { basicSalary: parsed.data.basicSalary && parsed.data.basicSalary > 0 ? parsed.data.basicSalary : null } : {}) },
+  });
+  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary });
 });
 
 // ── P9 (tax deduction card) ───────────────────────────────────────────────

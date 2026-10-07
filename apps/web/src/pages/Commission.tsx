@@ -17,11 +17,30 @@ interface Config {
   filmBands: Band[];
   artworkRatePct: number;
   ownershipMonths: number;
+  /** Times their basic monthly salary a person must sell before commission starts (0 = no target). */
+  targetMultiplier: number;
+  targetMode: 'above' | 'all';
+}
+interface Target {
+  applies: boolean;
+  multiplier: number;
+  mode: 'above' | 'all';
+  salary: number | null;
+  salaryKnown: boolean;
+  required: number;
+  achieved: number;
+  met: boolean;
+  remaining: number;
+  eligibleSales: number;
+  held: boolean;
 }
 interface Statement {
   staffId: number;
   staffName: string;
   total: number;
+  target: Target;
+  /** Earned on the month's sales but held back until the target is met. */
+  heldCommission: number;
   general: {
     received: number;
     netSales: number;
@@ -91,12 +110,52 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
+/** Where the person stands against the sales target (3 × basic salary), with a bar. */
+function TargetCard({ s, you }: { s: Statement; you?: boolean }) {
+  const t = s.target;
+  if (!t.applies) return null;
+  const who = you ? 'You' : s.staffName;
+  const done = t.required > 0 ? Math.min(100, Math.round((t.achieved / t.required) * 100)) : 0;
+  return (
+    <div>
+      <div className="card-kicker">Sales target — {!t.salaryKnown ? 'salary needed' : t.met ? 'met' : `${done}% there`}</div>
+      {!t.salaryKnown ? (
+        <p className="note" style={{ marginTop: 0, color: '#a33' }}>
+          {you ? 'Your' : 'Their'} basic salary has not been recorded, so there is no target to measure and commission is <b>on hold</b>. Finance adds it under Compliance → Employees.
+          {s.heldCommission > 0 && <> {fmtKsh(s.heldCommission)} is waiting.</>}
+        </p>
+      ) : (
+        <>
+          <p className="note" style={{ marginTop: 0 }}>
+            Commission starts once {you ? 'you have' : 'they have'} sold {t.multiplier}× {you ? 'your' : 'their'} basic salary of {fmtKsh(t.salary!)} — <b>{fmtKsh(t.required)}</b> in net sales (VAT out) received in the month. {who} {you ? 'have' : 'has'} sold <b>{fmtKsh(t.achieved)}</b>
+            {t.met ? (
+              <>
+                {' '}
+                — <b>target met</b>. {t.mode === 'above' ? <>Commission is paid on the {fmtKsh(t.eligibleSales)} sold above the target.</> : <>Commission is paid on all {fmtKsh(t.achieved)} sold.</>}
+              </>
+            ) : (
+              <>
+                {' '}
+                — <b>{fmtKsh(t.remaining)} to go</b>.{s.heldCommission > 0 && <> {fmtKsh(s.heldCommission)} already earned on film and artwork is held until then.</>}
+              </>
+            )}
+          </p>
+          <div style={{ background: 'var(--color-divider)', height: 10, maxWidth: 520 }} aria-label={`${done}% of the sales target`}>
+            <div style={{ width: `${done}%`, height: '100%', background: t.met ? 'var(--color-accent)' : 'var(--color-text)' }} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /** How a month's figure was made up — shown to the staff member themselves and to managers. */
 function StatementDetail({ s, config, you }: { s: Statement; config: Config; you?: boolean }) {
   const p = s.productivity;
   const who = you ? 'you' : s.staffName;
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
+      <TargetCard s={s} you={you} />
       <div>
         <div className="card-kicker">Sales {you ? 'you' : 'they'} sourced — {fmtKsh(s.general.commission)}</div>
         <p className="note" style={{ marginTop: 0 }}>
@@ -223,6 +282,12 @@ function StatementDetail({ s, config, you }: { s: Statement; config: Config; you
 function SchemeNote({ config }: { config: Config }) {
   return (
     <ul className="note" style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>
+      {config.targetMultiplier > 0 && (
+        <li>
+          <b>Sales target first:</b> no commission is earned in a month until your net sales received reach <b>{config.targetMultiplier}× your basic monthly salary</b>.{' '}
+          {config.targetMode === 'above' ? 'The bands below then start at the target — only what you sell above it earns.' : 'Once it is met, the bands below apply to all of your sales.'} Film and artwork extras are paid in full once the target is met. Prices are never relaxed to help reach it: the minimum prices at order taking stay as they are.
+        </li>
+      )}
       <li>
         <b>Sales you source:</b> a percentage of the net sales (VAT out) <i>received</i> in the month from clients credited to you, in bands —{' '}
         {config.generalBands.map((b, i) => `${i === 0 ? 'up to ' : ''}${i === 0 && config.generalBands[1] ? fmtKsh(config.generalBands[1].from) : i > 0 ? `from ${fmtKsh(b.from)}` : ''} at ${pct(b.rate)}`).join(' · ')}. A client you bring in stays yours for {config.ownershipMonths} months.
@@ -248,10 +313,15 @@ function MyTab({ period }: { period: string }) {
     <>
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
         <Stat label="Your commission" value={fmtKsh(s.total)} sub={data.payout ? `${data.payout.status}${data.payout.paidOn ? ' on ' + fmtDate(data.payout.paidOn) : ''}` : 'not yet approved'} />
-        <Stat label="Sales you sourced" value={fmtKsh(s.general.commission)} sub={`${fmtKsh(s.general.netSales)} net received · ${pct(s.general.band.rate)} band`} />
+        <Stat label="Sales you sourced" value={fmtKsh(s.general.commission)} sub={s.target.held ? `${fmtKsh(s.general.netSales)} net received · below your sales target` : `${fmtKsh(s.general.netSales)} net received · ${pct(s.general.band.rate)} band`} />
         <Stat label="Film" value={fmtKsh(s.film.commission)} />
         <Stat label="Artwork" value={fmtKsh(s.artwork.commission)} />
       </div>
+      {s.target.applies && (
+        <Card title="Your sales target" hint="Sell this much in the month and commission starts.">
+          <TargetCard s={s} you />
+        </Card>
+      )}
       <Card title="How you earn" hint="The scheme as it stands today.">
         <SchemeNote config={data.config} />
       </Card>
@@ -336,6 +406,7 @@ function TeamTab({ period }: { period: string }) {
               <tr>
                 <th>Staff</th>
                 <th style={numStyle}>Net sales received</th>
+                <th>Sales target</th>
                 <th style={numStyle}>Sourced sales</th>
                 <th style={numStyle}>Film</th>
                 <th style={numStyle}>Artwork</th>
@@ -352,7 +423,18 @@ function TeamTab({ period }: { period: string }) {
                         {open === s.staffId ? '▾' : '▸'} {s.staffName}
                       </button>
                     </td>
-                    <td style={numStyle}>{fmtKsh(s.general.netSales)}</td>
+                    <td style={numStyle}>{fmtKsh(s.target.achieved)}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {!s.target.applies ? (
+                        <span className="text-muted">—</span>
+                      ) : !s.target.salaryKnown ? (
+                        <Tag tone="bad">salary needed</Tag>
+                      ) : s.target.met ? (
+                        <Tag tone="good">met · {fmtKsh(s.target.required)}</Tag>
+                      ) : (
+                        <span title={s.heldCommission > 0 ? `${fmtKsh(s.heldCommission)} held until the target is met` : undefined}>{fmtKsh(s.target.remaining)} to go of {fmtKsh(s.target.required)}</span>
+                      )}
+                    </td>
                     <td style={numStyle}>{fmtKsh(s.general.commission)}</td>
                     <td style={numStyle}>{fmtKsh(s.film.commission)}</td>
                     <td style={numStyle}>{fmtKsh(s.artwork.commission)}</td>
@@ -380,7 +462,7 @@ function TeamTab({ period }: { period: string }) {
                   </tr>
                   {open === s.staffId && (
                     <tr>
-                      <td colSpan={7} style={{ background: 'var(--color-surface-2, transparent)' }}>
+                      <td colSpan={8} style={{ background: 'var(--color-surface-2, transparent)' }}>
                         <div style={{ padding: 'var(--space-3)' }}>
                           <StatementDetail s={s} config={data.config} />
                         </div>
@@ -577,6 +659,8 @@ function RatesTab() {
   const [film, setFilm] = useState<{ from: string; rate: string }[]>([]);
   const [artwork, setArtwork] = useState('');
   const [months, setMonths] = useState('');
+  const [multiplier, setMultiplier] = useState('');
+  const [mode, setMode] = useState<'above' | 'all'>('above');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -587,6 +671,8 @@ function RatesTab() {
     setFilm(data.filmBands.map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setArtwork(String(data.artworkRatePct));
     setMonths(String(data.ownershipMonths));
+    setMultiplier(String(data.targetMultiplier));
+    setMode(data.targetMode);
   }, [data]);
 
   if (!data) return <Loading loading={loading} error={error} />;
@@ -598,7 +684,7 @@ function RatesTab() {
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), artworkRatePct: Number(artwork), ownershipMonths: Number(months) });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), artworkRatePct: Number(artwork), ownershipMonths: Number(months), targetMultiplier: Number(multiplier), targetMode: mode });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -612,6 +698,26 @@ function RatesTab() {
     <Card title="Commission rates" hint="Placeholders to start with — adjust them as you learn what a good month looks like.">
       <Notice error={err} message={msg} />
       <div style={{ display: 'grid', gap: 'var(--space-5)' }}>
+        <div>
+          <div className="card-kicker">Sales target before commission</div>
+          <p className="note" style={{ marginTop: 0 }}>
+            A person must sell this many times their basic monthly salary — net of VAT, money received in the month — before they earn any commission. Their salary is kept on their staff record (Compliance → Employees); with no salary recorded, commission is held. For example 3 × a salary of 40,000 = a target of 120,000. Set 0 for no target. Prices at order taking are not affected, so the minimum price rules still stop sales being under-priced to reach a target.
+          </p>
+          <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Target = this many × basic salary</label>
+              <input className="input" style={{ maxWidth: 120 }} inputMode="decimal" value={multiplier} onChange={(e) => setMultiplier(e.target.value)} />
+            </div>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Once the target is met, the bands apply to</label>
+              <select className="input" value={mode} onChange={(e) => setMode(e.target.value as 'above' | 'all')}>
+                <option value="above">only the sales above the target</option>
+                <option value="all">all of the month's sales</option>
+              </select>
+            </div>
+          </div>
+          {mode === 'above' && Number(multiplier) > 0 && <p className="note">With “only the sales above the target”, the first band below starts at the target itself — so a first band of 0 to 150,000 at 0% would mean nothing is paid until 150,000 <i>past</i> the target. Set the first band's rate to what should be paid just past the target.</p>}
+        </div>
         <BandEditor
           title="Sales you source"
           hint="Marginal bands on a staff member’s monthly NET sales received from clients credited to them: each rate applies only to the slice of the month that falls inside its band."
@@ -639,7 +745,7 @@ function RatesTab() {
         </div>
         {problem && <p className="note" style={{ color: '#a33', margin: 0 }}>{problem}</p>}
         <div>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!problem || !(Number(artwork) >= 0 && Number(artwork) <= 100) || !(Number(months) >= 1)} onClick={save}>
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!problem || !(Number(artwork) >= 0 && Number(artwork) <= 100) || !(Number(months) >= 1) || !(Number(multiplier) >= 0 && Number(multiplier) <= 20)} onClick={save}>
             Save rates
           </button>
         </div>

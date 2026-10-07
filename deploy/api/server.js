@@ -43888,6 +43888,27 @@ function clientKeyFor(c) {
   const name2 = (c.name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   return name2.length >= 3 ? `n:${name2}` : null;
 }
+var DEFAULT_TARGET_MULTIPLIER = 3;
+var TARGET_MODES = ["above", "all"];
+var DEFAULT_TARGET_MODE = "above";
+function salesTarget(o) {
+  const achieved = r22(Math.max(0, o.achieved));
+  const applies = o.multiplier > 0;
+  const salaryKnown = o.salary != null && o.salary > 0;
+  const base2 = { applies, multiplier: o.multiplier, mode: o.mode, salary: salaryKnown ? o.salary : null, salaryKnown, achieved };
+  if (!applies) return { ...base2, required: 0, met: true, remaining: 0, eligibleSales: achieved, held: false };
+  if (!salaryKnown) return { ...base2, required: 0, met: false, remaining: 0, eligibleSales: 0, held: true };
+  const required = r22(o.salary * o.multiplier);
+  const met = achieved >= required;
+  return {
+    ...base2,
+    required,
+    met,
+    remaining: r22(Math.max(0, required - achieved)),
+    eligibleSales: !met ? 0 : o.mode === "all" ? achieved : r22(achieved - required),
+    held: !met
+  };
+}
 
 // packages/shared/src/purchasing.ts
 var r23 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -44145,7 +44166,9 @@ async function getCommissionConfig(db = prisma) {
     generalBands: readBands(row?.generalBandsJson, DEFAULT_GENERAL_BANDS),
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
-    ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS
+    ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
+    targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
+    targetMode: TARGET_MODES.includes(row?.targetMode ?? "") ? row.targetMode : DEFAULT_TARGET_MODE
   };
 }
 async function activeOwner(db, clientKey, today = todayStr()) {
@@ -44201,11 +44224,13 @@ var toInput = (li) => ({
 });
 var orderTotal = (o) => computeOrderTotals({ lineItems: o.lineItems.map(toInput), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
 var customerOf = (o) => o.corporateClient?.name || o.customerName || "Walk-in customer";
-function blankStatement(staffId, staffName = "") {
+function blankStatement(staffId, staffName = "", target) {
   return {
     staffId,
     staffName,
     total: 0,
+    target: target ?? salesTarget({ multiplier: DEFAULT_TARGET_MULTIPLIER, mode: DEFAULT_TARGET_MODE, salary: null, achieved: 0 }),
+    heldCommission: 0,
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
@@ -44214,6 +44239,21 @@ function blankStatement(staffId, staffName = "") {
 }
 function periodRange(period) {
   return { start: `${period}-01`, end: `${period}-31` };
+}
+async function salariesFor(staffIds, endDate) {
+  const out = /* @__PURE__ */ new Map();
+  if (staffIds.length === 0) return out;
+  for (const u of await prisma.user.findMany({ where: { id: { in: staffIds } }, select: { id: true, basicSalary: true } })) if (u.basicSalary && u.basicSalary > 0) out.set(u.id, u.basicSalary);
+  const missing = staffIds.filter((id) => !out.has(id));
+  if (missing.length) {
+    const pay = await prisma.payrollEntry.findMany({ where: { staffId: { in: missing }, employeeType: "Employee", date: { lte: endDate } }, orderBy: { date: "desc" }, select: { staffId: true, grossPay: true } });
+    for (const p of pay) if (!out.has(p.staffId) && p.grossPay > 0) out.set(p.staffId, p.grossPay);
+  }
+  return out;
+}
+async function targetFor(staffId, period, config, achieved = 0) {
+  const salary = (await salariesFor([staffId], periodRange(period).end)).get(staffId) ?? null;
+  return salesTarget({ multiplier: config.targetMultiplier, mode: config.targetMode, salary, achieved });
 }
 async function buildStatements(period, only) {
   const { start, end } = periodRange(period);
@@ -44233,6 +44273,8 @@ async function buildStatements(period, only) {
   for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
   const orderIds = [...flows.keys()];
   const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
+  const dtfNet = /* @__PURE__ */ new Map();
+  const addDtfNet = (id, net8) => dtfNet.set(id, (dtfNet.get(id) ?? 0) + net8 / (1 + VAT_RATE));
   const people = /* @__PURE__ */ new Map();
   const who = (id) => {
     let s = people.get(id);
@@ -44247,10 +44289,12 @@ async function buildStatements(period, only) {
     if (o.dtfFilmSale) {
       const s = o.dtfFilmSale;
       const full = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
+      if (full <= 0) addDtfNet(o.staffId, net8);
       if (full > 0) {
         const c = round2(full * share);
         const st = who(o.staffId);
         st.film.commission = round2(st.film.commission + c);
+        addDtfNet(o.staffId, net8);
         st.film.sales.push({ orderNo: o.orderNo, customer: customerOf(o), metres: s.metres, pricePerM: s.pricePerM, premiumPerM: filmPremiumPerM(s.pricePerM, s.minPriceAtSale), orderTotal: round2(total), moneyIn: round2(net8), commission: c });
       }
     } else if (o.dtfArtworkJob) {
@@ -44258,10 +44302,12 @@ async function buildStatements(period, only) {
       const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
       const charged = Math.max(sys, j.chargedPerPiece ?? sys);
       const full = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
+      if (full <= 0) addDtfNet(o.staffId, net8);
       if (full > 0) {
         const c = round2(full * share);
         const st = who(o.staffId);
         st.artwork.commission = round2(st.artwork.commission + c);
+        addDtfNet(o.staffId, net8);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net8), commission: c });
       }
     } else if (o.channel !== "dtf" && o.sourcedByStaffId && o.status !== "Quote") {
@@ -44300,10 +44346,27 @@ async function buildStatements(period, only) {
     p.filmAvgPricePerM = p.filmMetres > 0 ? round2(b.filmRevenue / p.filmMetres) : null;
     p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
   }
+  const salaries = await salariesFor([...people.keys()], end);
   for (const st of people.values()) {
     st.general.netSales = round2(Math.max(0, st.general.received) / (1 + VAT_RATE));
-    st.general.commission = bandedAmount(config.generalBands, st.general.netSales);
-    st.general.band = bandPosition(config.generalBands, st.general.netSales);
+    const target = salesTarget({
+      multiplier: config.targetMultiplier,
+      mode: config.targetMode,
+      salary: salaries.get(st.staffId) ?? null,
+      achieved: st.general.netSales + (dtfNet.get(st.staffId) ?? 0)
+    });
+    st.target = target;
+    const filmFull = st.film.commission;
+    const artFull = st.artwork.commission;
+    if (target.held) {
+      st.heldCommission = round2(filmFull + artFull + (config.targetMode === "all" ? bandedAmount(config.generalBands, st.general.netSales) : 0));
+      st.film.commission = 0;
+      st.artwork.commission = 0;
+      st.general.commission = 0;
+    } else {
+      st.general.commission = bandedAmount(config.generalBands, target.eligibleSales);
+    }
+    st.general.band = bandPosition(config.generalBands, target.eligibleSales);
     st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
   }
   const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
@@ -50238,12 +50301,14 @@ financeRouter.get("/payroll", async (req, res) => {
 financeRouter.get("/employees", async (_req, res) => {
   await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary })));
 });
 var employeeSchema = external_exports.object({
   nationalId: external_exports.string().max(40).optional().default(""),
   kraPin: external_exports.string().max(40).optional().default(""),
-  shifNumber: external_exports.string().max(60).optional().default("")
+  shifNumber: external_exports.string().max(60).optional().default(""),
+  // Their basic monthly salary (Ksh): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
+  basicSalary: external_exports.number().min(0).max(1e8).nullable().optional()
 });
 financeRouter.put("/employees/:id", async (req, res) => {
   const parsed = employeeSchema.safeParse(req.body);
@@ -50263,8 +50328,11 @@ financeRouter.put("/employees/:id", async (req, res) => {
     const other = await prisma.user.findFirst({ where: { kraPin: kraPin.value, id: { not: id } } });
     if (other) return res.status(400).json({ error: `That KRA PIN is already recorded for ${other.name}` });
   }
-  const u = await prisma.user.update({ where: { id }, data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value } });
-  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber });
+  const u = await prisma.user.update({
+    where: { id },
+    data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value, ...parsed.data.basicSalary !== void 0 ? { basicSalary: parsed.data.basicSalary && parsed.data.basicSalary > 0 ? parsed.data.basicSalary : null } : {} }
+  });
+  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary });
 });
 financeRouter.get("/p9", async (req, res) => {
   const year = String(req.query.year || "");
@@ -54192,7 +54260,10 @@ var settingsSchema4 = external_exports.object({
   generalBands: external_exports.array(bandSchema).min(1),
   filmBands: external_exports.array(bandSchema).min(1),
   artworkRatePct: external_exports.number().min(0).max(100),
-  ownershipMonths: external_exports.number().int().min(1).max(60)
+  ownershipMonths: external_exports.number().int().min(1).max(60),
+  // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
+  targetMultiplier: external_exports.number().min(0).max(20).optional(),
+  targetMode: external_exports.enum(TARGET_MODES).optional()
 });
 commissionRouter.put("/settings", manage, async (req, res) => {
   const parsed = settingsSchema4.safeParse(req.body);
@@ -54206,6 +54277,8 @@ commissionRouter.put("/settings", manage, async (req, res) => {
     filmBandsJson: JSON.stringify(sort(d.filmBands)),
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
+    ...d.targetMultiplier !== void 0 ? { targetMultiplier: d.targetMultiplier } : {},
+    ...d.targetMode !== void 0 ? { targetMode: d.targetMode } : {},
     updatedByName: req.user.name
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -54215,7 +54288,7 @@ commissionRouter.get("/my", async (req, res) => {
   const period = periodSchema.safeParse(req.query.period ?? thisMonth());
   if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
   const { config, statements } = await buildStatements(period.data, req.user.id);
-  const mine = statements[0] ?? blankStatement(req.user.id, req.user.name);
+  const mine = statements[0] ?? blankStatement(req.user.id, req.user.name, await targetFor(req.user.id, period.data, config));
   const payout = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: req.user.id } } });
   const clients = await prisma.clientOwner.findMany({ where: { staffId: req.user.id, status: "Active", endDate: { gte: todayStr() } }, orderBy: { endDate: "asc" } });
   res.json({
@@ -54336,7 +54409,7 @@ commissionRouter.post("/payouts/approve", manage, async (req, res) => {
       filmAmount: s.film.commission,
       artworkAmount: s.artwork.commission,
       amount: s.total,
-      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork }),
+      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, target: s.target }),
       status: "Approved",
       approvedByName: req.user.name,
       approvedAt: /* @__PURE__ */ new Date()

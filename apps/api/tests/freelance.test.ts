@@ -97,7 +97,7 @@ describe('freelance sales persons', () => {
     it('those capturing orders see names to pick from, not pay details; only managers see the accounts', async () => {
       const list = (await call('brian', 'GET', '/freelance/pickable')).body as any[];
       assert.ok(list.some((a) => a.name === 'Wanjiku Maina'));
-      assert.ok(!JSON.stringify(list).includes('0123456789') && !JSON.stringify(list).includes('254711222333'));
+      assert.ok(!JSON.stringify(list).includes('0123456789') && !JSON.stringify(list).includes('254711222333')); // no bank details, no raw number
       assert.equal((await call('brian', 'GET', '/freelance/agents')).status, 403);
       assert.equal((await call('brian', 'GET', `/freelance/statement?week=${week}`)).status, 403);
       assert.ok(((await call('boss', 'GET', '/freelance/agents')).body as any[]).some((a) => a.bankAccount === '0123456789'));
@@ -114,7 +114,10 @@ describe('freelance sales persons', () => {
       assert.deepEqual((await find('722000')).map((a) => a.id), [agents.otieno]); // or part of it
       assert.deepEqual(await find('nobody here'), []);
       assert.deepEqual(((await call('brian', 'GET', `/freelance/pickable?id=${agents.wanjiku}`)).body as any[]).map((a) => a.id), [agents.wanjiku]); // one person, to show who is chosen
-      assert.ok(!JSON.stringify(await find('0722 000 111')).includes('254722000111'), 'the full number is never sent back');
+      // picking them fills in how to reach them (their phone number, as written on a form), but never their pay, bank or tax details
+      const picked = (await find('0722 000 111'))[0];
+      assert.deepEqual([picked.phone, picked.phoneTail], ['0722 000 111', '111']);
+      assert.ok(!/kra|bank|mpesa|nationalId|whtRate/i.test(JSON.stringify(picked)), JSON.stringify(picked));
       assert.equal(((await call('boss', 'GET', '/freelance/agents')).body as any[]).find((a) => a.id === agents.otieno).code, code);
     });
   });

@@ -10,6 +10,8 @@ interface Agent {
   /** Register number, FL-001 … */
   code: string;
   name: string;
+  /** Their phone number, written as on a form: 0712 345 678 */
+  phone: string;
   phoneTail: string;
   status: string;
 }
@@ -77,11 +79,13 @@ export default function FreelancePicker({ value, onChange }: { value: number | n
     <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
       {value && chosen && !adding ? (
         <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', border: '1px solid var(--color-divider)', padding: 'var(--space-2) var(--space-3)' }}>
-          <b>{chosen.name}</b>
-          <span className="text-muted">
-            {chosen.code} · …{chosen.phoneTail}
-            {chosen.status === 'Pending' ? ' · awaiting approval' : ''}
-          </span>
+          <div style={{ display: 'grid', gap: 2 }}>
+            <b>{chosen.name}</b>
+            <span className="text-muted" style={{ fontSize: 13 }}>
+              {chosen.code} · Phone {chosen.phone || '…' + chosen.phoneTail}
+              {chosen.status === 'Pending' ? ' · awaiting approval' : ''}
+            </span>
+          </div>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setChosen(null); setQuery(''); setNote(''); onChange(null); }}>
             Change
           </button>
@@ -104,7 +108,7 @@ export default function FreelancePicker({ value, onChange }: { value: number | n
                     <b>{a.name}</b>
                     {a.status === 'Pending' ? <span className="text-muted"> · awaiting approval</span> : null}
                   </span>
-                  <span className="text-muted">{a.code} · …{a.phoneTail}</span>
+                  <span className="text-muted">{a.code} · {a.phone || '…' + a.phoneTail}</span>
                 </button>
               ))}
             </div>

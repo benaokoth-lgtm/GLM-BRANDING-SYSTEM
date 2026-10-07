@@ -34,8 +34,15 @@ const weekOf = (v: unknown): string => (typeof v === 'string' && /^\d{4}-\d{2}-\
 /** A freelance sales person's register number, from their record number: FL-001, FL-002 … */
 const codeFor = (id: number): string => `FL-${String(id).padStart(3, '0')}`;
 
-/** What someone capturing an order may see of an agent: enough to pick them, not their pay details. */
-const pickable = (a: { id: number; name: string; phone: string; status: string }) => ({ id: a.id, code: codeFor(a.id), name: a.name, phoneTail: a.phone.slice(-3), status: a.status });
+/** 254712345678 → "0712 345 678", the way it is written on a form. */
+const localPhone = (p: string): string => {
+  const d = p.replace(/\D/g, '');
+  const n = d.startsWith('254') ? '0' + d.slice(3) : d;
+  return n.length === 10 ? `${n.slice(0, 4)} ${n.slice(4, 7)} ${n.slice(7)}` : n;
+};
+
+/** What someone capturing an order sees of an agent: who they are and how to reach them — their name, register number, phone number and standing. Never their pay, bank or tax details. */
+const pickable = (a: { id: number; name: string; phone: string; status: string }) => ({ id: a.id, code: codeFor(a.id), name: a.name, phone: localPhone(a.phone), phoneTail: a.phone.slice(-3), status: a.status });
 
 // The register, for picking at order capture. ?q= finds people by name, register number or phone number; ?id= returns one person (to show who is
 // already chosen). Suspended people cannot be picked.

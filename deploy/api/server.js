@@ -55800,7 +55800,12 @@ var kePhone = (raw) => {
 };
 var weekOf = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? weekStart(v) : weekStart(todayStr());
 var codeFor = (id) => `FL-${String(id).padStart(3, "0")}`;
-var pickable = (a2) => ({ id: a2.id, code: codeFor(a2.id), name: a2.name, phoneTail: a2.phone.slice(-3), status: a2.status });
+var localPhone = (p) => {
+  const d = p.replace(/\D/g, "");
+  const n = d.startsWith("254") ? "0" + d.slice(3) : d;
+  return n.length === 10 ? `${n.slice(0, 4)} ${n.slice(4, 7)} ${n.slice(7)}` : n;
+};
+var pickable = (a2) => ({ id: a2.id, code: codeFor(a2.id), name: a2.name, phone: localPhone(a2.phone), phoneTail: a2.phone.slice(-3), status: a2.status });
 freelanceRouter.get("/pickable", capture, async (req, res) => {
   const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
   const only = typeof req.query.id === "string" ? Number(req.query.id) : 0;

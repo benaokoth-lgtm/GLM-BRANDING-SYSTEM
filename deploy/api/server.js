@@ -44269,6 +44269,9 @@ async function activeOwner(db, clientKey, today = todayStr()) {
   });
   return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
 }
+function ownableKey(key2) {
+  return key2 && (key2.startsWith("c:") || key2.startsWith("p:")) ? key2 : null;
+}
 async function activeFreelanceOwner(db, clientKey, today = todayStr(), months) {
   const window2 = months ?? (await getCommissionConfig(db)).freelanceOwnershipMonths;
   const rows = await db.freelanceClient.findMany({ where: { clientKey, status: "Active" }, include: { agent: { select: { name: true, status: true } } }, orderBy: { id: "desc" } });
@@ -44299,7 +44302,7 @@ async function resolveSourcing(db, o) {
     return { salesSource: "freelance", sourcedByStaffId: null, clientKey, freelanceAgentId: agentId, freelanceQualifyingShare: split.qualifying, freelanceBaseShare: split.base, freelanceLowShare: split.low, freelancePremiumShare: split.premium };
   };
   if (o.freelanceAgentId) {
-    await takeFreelanceClient(db, clientKey, o.freelanceAgentId, label, today);
+    await takeFreelanceClient(db, ownableKey(clientKey), o.freelanceAgentId, label, today);
     return creditFreelancer(o.freelanceAgentId);
   }
   if (!clientKey) return { ...house };
@@ -44333,10 +44336,8 @@ async function claimProblem(user, o) {
     const agent = await prisma.freelanceAgent.findUnique({ where: { id: o.freelanceAgentId } });
     if (!agent) return "That freelance sales person does not exist";
     if (agent.status === "Suspended") return `${agent.name} is suspended, so orders cannot be credited to them`;
-    const key3 = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-    if (!key3 || !o.corporateClientId && (!key3.startsWith("p:") || !isNamedClient(o.name))) {
-      return "Enter the client's name and phone number \u2014 they are needed to credit the client to the freelance sales person and to recognise them on their next order";
-    }
+    const key3 = ownableKey(clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name }));
+    if (!key3) return null;
     const owner = await activeOwner(prisma, key3);
     if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;
     const fo = await activeFreelanceOwner(prisma, key3);

@@ -452,10 +452,19 @@ describe('freelance sales persons', () => {
       assert.equal((await call('boss', 'POST', `/freelance/clients/${row.id}/release`)).status, 400);
     });
 
-    it('a freelancer\'s mark needs a client who can be recognised next time', async () => {
+    it('the client\'s name and phone are optional on a freelancer\'s order: it is credited to them, but no client is tied to them', async () => {
       const noPhone = await order('amina', [{ qty: 1, unitPrice: 1160 }], { freelanceAgentId: agents.owner1, customerName: 'No Phone Person', phone: '' });
-      assert.equal(noPhone.status, 400);
-      assert.match(noPhone.body.error, /name and phone/);
+      assert.equal(noPhone.status, 201);
+      assert.deepEqual([noPhone.body.salesSource, noPhone.body.sourcedByStaffId], ['freelance', null]);
+      assert.equal(await prisma.freelanceClient.count({ where: { clientName: 'No Phone Person' } }), 0, 'nobody can be recognised from that, so no client is owned');
+      // a blank client is the same: a walk-in
+      const blank = await call('amina', 'POST', '/orders/walkin', { customerName: 'Walk-in', phone: '', staffId: ids.amina, paymentTiming: 'onAcceptance', lineItems: [{ itemType: 'service', serviceId: banner, qty: 1, unitPrice: 1160 }], payments: [{ method: 'Cash', amount: 1160 }], freelanceAgentId: agents.owner1 });
+      assert.equal(blank.status, 201);
+      assert.equal(blank.body.salesSource, 'freelance');
+      // with a phone the client is theirs, as before
+      const withPhone = await order('amina', [{ qty: 1, unitPrice: 1160 }], { freelanceAgentId: agents.owner1, customerName: 'Has Phone Person', phone: '0700 555 987' });
+      assert.equal(withPhone.status, 201);
+      assert.equal(await prisma.freelanceClient.count({ where: { clientName: 'Has Phone Person', agentId: agents.owner1 } }), 1);
     });
   });
 

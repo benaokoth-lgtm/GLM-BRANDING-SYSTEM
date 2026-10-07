@@ -183,6 +183,14 @@ export async function activeOwner(db: Db, clientKey: string, today = todayStr())
   return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
 }
 
+/**
+ * The client key a freelancer can own: a corporate client, or a named client with a phone number. An anonymous walk-in, or one known only by a name, is
+ * not a client anyone can be tied to, so an order for them is credited to the freelancer without owning the client.
+ */
+function ownableKey(key: string | null): string | null {
+  return key && (key.startsWith('c:') || key.startsWith('p:')) ? key : null;
+}
+
 export interface FreelanceOwnerInfo {
   id: number;
   agentId: number;
@@ -255,7 +263,7 @@ export async function resolveSourcing(
 
   // Marked for a freelance account: credited to them alone, no staff member is credited, and the client becomes theirs.
   if (o.freelanceAgentId) {
-    await takeFreelanceClient(db, clientKey, o.freelanceAgentId, label, today);
+    await takeFreelanceClient(db, ownableKey(clientKey), o.freelanceAgentId, label, today);
     return creditFreelancer(o.freelanceAgentId);
   }
   if (!clientKey) return { ...house };
@@ -300,11 +308,10 @@ export async function claimProblem(
     const agent = await prisma.freelanceAgent.findUnique({ where: { id: o.freelanceAgentId } });
     if (!agent) return 'That freelance sales person does not exist';
     if (agent.status === 'Suspended') return `${agent.name} is suspended, so orders cannot be credited to them`;
-    // The client must be recognisable next time — that is how they stay the freelancer's for as long as they keep bringing orders.
-    const key = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-    if (!key || (!o.corporateClientId && (!key.startsWith('p:') || !isNamedClient(o.name)))) {
-      return "Enter the client's name and phone number — they are needed to credit the client to the freelance sales person and to recognise them on their next order";
-    }
+    // The client's name and phone are optional. With them the client can stay the freelancer's for as long as they keep bringing orders; without them
+    // (an anonymous walk-in) the order is still credited to the freelancer, it just does not tie a client to them.
+    const key = ownableKey(clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name }));
+    if (!key) return null;
     // A client a staff member already owns is theirs for the window: the order cannot also be given to a freelancer.
     const owner = await activeOwner(prisma, key);
     if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;

@@ -127,7 +127,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
             <>
               <FreelancePicker value={freelanceId ?? null} onChange={onFreelanceChange} />
               <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>
-                The order is credited to them alone and they are paid weekly on it — no staff member earns commission on it, and the client is not credited to staff. Commission is paid only on lines sold at or above our base prices.
+                The order is credited to them alone and they are paid weekly on it — no staff member earns commission on it, and the client is not credited to staff. Commission is paid only on lines sold at or above our base prices. The client’s name and phone are optional here: add them if the client should stay with this freelance sales person on their next orders.
               </p>
             </>
           ) : (

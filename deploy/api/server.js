@@ -49495,82 +49495,6 @@ masterDataRouter.put("/settings", requireRole("Admin"), async (req, res) => {
 var import_express3 = __toESM(require_express2());
 var import_client2 = require("@prisma/client");
 
-// apps/api/src/accounting/chart.ts
-var CUSTOM_EXPENSE_START = 5300;
-var CUSTOM_EXPENSE_CEILING = 5999;
-async function nextCustomExpenseCode() {
-  const rows = await prisma.account.findMany({ where: { type: "Expense" }, select: { code: true } });
-  let max = CUSTOM_EXPENSE_START - 10;
-  for (const r of rows) {
-    const n = Number(r.code);
-    if (Number.isFinite(n) && n >= CUSTOM_EXPENSE_START && n <= CUSTOM_EXPENSE_CEILING && n > max) max = n;
-  }
-  return String(max + 10);
-}
-async function accountIdForNewExpenseHead(name2) {
-  const standardCode = EXPENSE_HEAD_ACCOUNT_CODES[name2];
-  if (standardCode) {
-    const acc = await prisma.account.findUnique({ where: { code: standardCode } });
-    if (acc && acc.type === "Expense") return acc.id;
-  }
-  const created = await prisma.account.create({
-    data: { code: await nextCustomExpenseCode(), name: name2, type: "Expense", description: `Auto-created for the \u201C${name2}\u201D expense head.` }
-  });
-  return created.id;
-}
-async function ensureChartOfAccounts() {
-  const existing = await prisma.account.findMany({ select: { code: true } });
-  const have = new Set(existing.map((a2) => a2.code));
-  for (const def of DEFAULT_CHART) {
-    if (have.has(def.code)) continue;
-    await prisma.account.create({
-      data: { code: def.code, name: def.name, type: def.type, subtype: def.subtype, description: def.description || "", system: SYSTEM_ACCOUNT_CODES.includes(def.code) }
-    });
-  }
-  for (const name2 of EXPENSE_CATEGORIES) {
-    const head = await prisma.expenseHead.findUnique({ where: { name: name2 } });
-    if (!head) await prisma.expenseHead.create({ data: { name: name2, accountId: await accountIdForNewExpenseHead(name2) } });
-  }
-  {
-    const cos = await prisma.account.findUnique({ where: { code: ACCT.costOfSales } });
-    const head = await prisma.expenseHead.findUnique({ where: { name: "Printing Materials & Consumables" }, include: { account: true } });
-    if (cos && head && head.account?.code === "5100") await prisma.expenseHead.update({ where: { id: head.id }, data: { accountId: cos.id } });
-  }
-  const used = await prisma.expense.findMany({ distinct: ["category"], select: { category: true } });
-  for (const { category } of used) {
-    if (!await prisma.expenseHead.findUnique({ where: { name: category } })) {
-      await prisma.expenseHead.create({ data: { name: category, accountId: await accountIdForNewExpenseHead(category) } });
-    }
-  }
-  for (const head of await prisma.expenseHead.findMany({ where: { accountId: null } })) {
-    await prisma.expenseHead.update({ where: { id: head.id }, data: { accountId: await accountIdForNewExpenseHead(head.name) } });
-  }
-  const byCode = new Map((await prisma.account.findMany()).map((x) => [x.code, x.id]));
-  for (const s of await prisma.service.findMany({ where: { accountId: null } })) {
-    const id = byCode.get(defaultServiceIncomeCode(s.name)) ?? byCode.get(ACCT.printingIncome);
-    if (id) await prisma.service.update({ where: { id: s.id }, data: { accountId: id } });
-  }
-  if (await prisma.role.count({ where: { canAccessAccounting: true } }) === 0) {
-    await prisma.role.updateMany({ where: { name: { in: ["Finance Manager", "General Manager"] } }, data: { canAccessAccounting: true } });
-  }
-}
-var ensured = null;
-function ensureChartOnce() {
-  if (!ensured) {
-    ensured = ensureChartOfAccounts().finally(() => {
-      ensured = null;
-    });
-  }
-  return ensured;
-}
-async function validateAccountChoice(requested, type) {
-  if (requested === void 0 || requested === null || requested === "") return null;
-  const acc = await prisma.account.findUnique({ where: { id: Number(requested) } });
-  if (!acc || !acc.active) throw new Error("Choose an existing, active account");
-  if (acc.type !== type) throw new Error(`That head must be linked to an ${type} account`);
-  return acc.id;
-}
-
 // apps/api/src/orderHeads.ts
 var DTF_HEAD = "DTF Printing";
 function lineHead(li) {
@@ -49590,278 +49514,6 @@ function headGroup(head, dtfKind) {
   if (dtfKind === "film") return `${DTF_HEAD} \u2014 Film sales`;
   if (dtfKind === "artwork") return `${DTF_HEAD} \u2014 Artwork sales`;
   return head;
-}
-
-// apps/api/src/accounting/ledger.ts
-async function loadCtx() {
-  const [accounts, heads] = await Promise.all([prisma.account.findMany(), prisma.expenseHead.findMany()]);
-  return {
-    byId: new Map(accounts.map((a2) => [a2.id, a2])),
-    byCode: new Map(accounts.map((a2) => [a2.code, a2])),
-    expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId])),
-    vatApplicable: (head) => {
-      const set = heads.find((h) => h.name === head)?.vatApplicable;
-      return set ?? defaultExpenseVatApplicable(head);
-    }
-  };
-}
-function idOf(ctx, code) {
-  const a2 = ctx.byCode.get(code);
-  if (!a2) throw new Error(`Chart of accounts is missing account ${code}`);
-  return a2.id;
-}
-var Book = class {
-  constructor(ctx) {
-    this.ctx = ctx;
-    this.postings = [];
-  }
-  push(date, accountId, debit, credit, source, ref, memo) {
-    if (!(debit > 0 || credit > 0)) return;
-    this.postings.push({ date, accountId, debit: round2(debit), credit: round2(credit), source, ref, memo });
-  }
-  dr(date, code, amount, source, ref, memo) {
-    this.push(date, idOf(this.ctx, code), amount, 0, source, ref, memo);
-  }
-  cr(date, code, amount, source, ref, memo) {
-    this.push(date, idOf(this.ctx, code), 0, amount, source, ref, memo);
-  }
-  drId(date, accountId, amount, source, ref, memo) {
-    this.push(date, accountId, amount, 0, source, ref, memo);
-  }
-  crId(date, accountId, amount, source, ref, memo) {
-    this.push(date, accountId, 0, amount, source, ref, memo);
-  }
-};
-function expenseAcctId(ctx, head) {
-  return ctx.expenseHeadAcct.get(head) || idOf(ctx, ACCT.uncategorised);
-}
-async function journalPostings(book) {
-  const entries = await prisma.journalEntry.findMany({ include: { lines: true } });
-  for (const e of entries) {
-    for (const l of e.lines) {
-      book.postings.push({ date: e.date, accountId: l.accountId, debit: l.debit, credit: l.credit, memo: l.memo || e.memo, source: e.source, ref: e.ref });
-    }
-  }
-}
-async function expensePostings(book, ctx) {
-  const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
-  for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
-    const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
-    const ref = e.invoiceNumber || `EXP-${e.id}`;
-    const vat = ctx.vatApplicable(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
-    const cost = e.amount - vat;
-    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, cost, "Expense", ref, memo);
-    else book.drId(e.date, expenseAcctId(ctx, e.category), cost, "Expense", ref, memo);
-    book.dr(e.date, ACCT.vatPayable, vat, "Expense", ref, `Input VAT \u2014 ${memo}`);
-    if (e.paid) {
-      const wht = e.withholdingTax || 0;
-      book.cr(e.date, methodAccountCode(e.method), e.amount - wht, "Expense", ref, memo);
-      if (wht > 0) book.cr(e.date, ACCT.whtPayable, wht, "Expense", ref, `Withholding tax \u2014 ${memo}`);
-      continue;
-    }
-    book.cr(e.date, ACCT.payables, e.amount, "Expense", ref, memo);
-    for (const p of e.payments) {
-      book.dr(p.date, ACCT.payables, p.amount, "Expense", ref, `Payment \u2014 ${memo}`);
-      book.cr(p.date, methodAccountCode(p.method), p.amount, "Expense", ref, `Payment \u2014 ${memo}`);
-    }
-  }
-}
-async function payrollPostings(book) {
-  for (const p of await prisma.payrollEntry.findMany({ include: { staff: true } })) {
-    const pay = computePay(p.grossPay, p.employeeType, p.date);
-    const ref = `WAGE-${p.id}`;
-    const memo = `${p.staff.name} (${p.employeeType}${p.department ? `, ${p.department}` : ""})`;
-    const gross = round2(pay.grossPay);
-    const paye = round2(pay.paye);
-    const nssf = round2(pay.nssf);
-    const shif = round2(pay.shif);
-    const housing = round2(pay.housingLevy);
-    const net8 = round2(gross - paye - nssf - shif - housing);
-    const nssfEr = round2(pay.nssfEmployer);
-    const housingEr = round2(pay.housingLevyEmployer);
-    const salaryAcct = p.employeeType === "Casual" ? "5110" : ACCT.salaries;
-    book.dr(p.date, salaryAcct, gross, "Wages", ref, memo);
-    book.dr(p.date, salaryAcct, round2(nssfEr + housingEr), "Wages", ref, `Employer NSSF & housing levy \u2014 ${memo}`);
-    book.cr(p.date, methodAccountCode(p.paymentSource), net8, "Wages", ref, memo);
-    book.cr(p.date, ACCT.payePayable, paye, "Wages", ref, memo);
-    book.cr(p.date, ACCT.nssfPayable, round2(nssf + nssfEr), "Wages", ref, memo);
-    book.cr(p.date, ACCT.shifPayable, shif, "Wages", ref, memo);
-    book.cr(p.date, ACCT.housingLevyPayable, round2(housing + housingEr), "Wages", ref, memo);
-  }
-}
-async function unlinkedPurchasePostings(book) {
-  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } }, include: { material: true, lines: { include: { material: true } } } })) {
-    const ref = p.poRef ?? `PUR-${p.id}`;
-    const what = p.lines.length ? p.lines.map((l) => l.material.name).join(", ") : p.material?.name ?? "stock";
-    const memo = `Stock purchase \u2014 ${what}${p.supplier ? ` \u2014 ${p.supplier}` : ""}`;
-    book.dr(p.date, ACCT.costOfSales, p.totalCost, "Purchase", ref, memo);
-    book.cr(p.date, ACCT.bank, p.totalCost, "Purchase", ref, memo);
-  }
-}
-var TOP_UP_FUNDING = {
-  "Bank Withdrawal": ACCT.bank,
-  "Cash Sales Allocation": ACCT.cash,
-  "Owner Injection": ACCT.capital
-};
-async function pettyCashTopUpPostings(book) {
-  for (const t of await prisma.pettyCashTopUp.findMany()) {
-    const ref = `PCT-${t.id}`;
-    const memo = `Petty cash top-up \u2014 ${t.source}${t.note ? ` (${t.note})` : ""}`;
-    book.dr(t.date, ACCT.pettyCash, t.amount, "Petty cash top-up", ref, memo);
-    book.cr(t.date, TOP_UP_FUNDING[t.source] || ACCT.cash, t.amount, "Petty cash top-up", ref, memo);
-  }
-}
-async function orderPostings(book, ctx) {
-  const merchandise = idOf(ctx, ACCT.merchandiseIncome);
-  const orders = await prisma.order.findMany({
-    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true }
-  });
-  for (const o of orders) {
-    const party = o.customerName || o.corporateClient?.name || "Customer";
-    const memo = `${o.orderNo} \u2014 ${party}`;
-    const lines = o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    }));
-    const totals = computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-    const total = round2(totals.grandTotal);
-    const recognised = o.kind === "walkin" || o.status !== "Quote";
-    if (recognised && total > 0) {
-      const { net: net8, vat } = splitGross(total, VAT_RATE);
-      book.dr(o.createdDate, ACCT.receivables, total, "Order", o.orderNo, memo);
-      const weights = o.lineItems.map((li, i) => ({ li, w: buildLineTotal(lines[i]) }));
-      const wSum = weights.reduce((a2, x) => a2 + x.w, 0) || 1;
-      let allocated = 0;
-      weights.forEach(({ li, w }, i) => {
-        const share = i === weights.length - 1 ? round2(net8 - allocated) : round2(net8 * w / wSum);
-        allocated += share;
-        const accountId = li.itemType === "material" ? li.material?.accountId ?? merchandise : li.service?.accountId ?? idOf(ctx, defaultServiceIncomeCode(li.service?.name ?? ""));
-        book.crId(o.createdDate, accountId, share, "Order", o.orderNo, memo);
-      });
-      book.cr(o.createdDate, ACCT.vatPayable, vat, "Order", o.orderNo, memo);
-    }
-    for (const p of o.payments) {
-      const received = !!p.mpesaTransaction && p.mpesaTransaction.kind !== "STK";
-      const label = `Payment (${p.method}${p.reference ? ` ${p.reference}` : ""}) \u2014 ${memo}`;
-      if (received) {
-        book.dr(p.date, ACCT.unallocatedMpesa, p.amount, "Payment", o.orderNo, label);
-      } else {
-        book.dr(p.date, methodAccountCode(p.method), p.amount, "Payment", o.orderNo, label);
-      }
-      book.cr(p.date, recognised ? ACCT.receivables : ACCT.customerCredits, p.amount, "Payment", o.orderNo, label);
-    }
-  }
-}
-async function mpesaPostings(book) {
-  for (const t of await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: { in: ["Unmatched", "Applied"] } } })) {
-    const date = t.receivedOn || t.createdAt.toISOString().slice(0, 10);
-    const ref = t.mpesaReceipt || `MPESA-${t.id}`;
-    const memo = `M-Pesa receipt ${t.mpesaReceipt || ""} \u2014 ${t.payerName || t.phone}`.trim();
-    book.dr(date, ACCT.mpesa, t.amount, "M-Pesa receipt", ref, memo);
-    book.cr(date, ACCT.unallocatedMpesa, t.amount, "M-Pesa receipt", ref, memo);
-  }
-}
-async function notePostings(book, ctx) {
-  const purchaseLinked = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
-  for (const n of await prisma.adjustmentNote.findMany({ include: { expense: true } })) {
-    const memo = `${n.number} \u2014 ${n.party} \u2014 ${n.reason}`;
-    if (n.type === "Credit") {
-      book.dr(n.date, ACCT.salesReturns, n.net, "Credit note", n.number, memo);
-      book.dr(n.date, ACCT.vatPayable, n.vat, "Credit note", n.number, memo);
-      book.cr(n.date, ACCT.receivables, n.receivableAmt, "Credit note", n.number, memo);
-      book.cr(n.date, ACCT.customerCredits, n.creditAmt, "Credit note", n.number, memo);
-      if (n.refundAmt > 0 && n.refundMethod) {
-        book.dr(n.date, ACCT.customerCredits, n.refundAmt, "Credit note", n.number, `Refund \u2014 ${memo}`);
-        book.cr(n.date, methodAccountCode(n.refundMethod), n.refundAmt, "Credit note", n.number, `Refund \u2014 ${memo}`);
-      }
-    } else if (n.type === "Debit") {
-      book.dr(n.date, ACCT.receivables, n.total, "Debit note", n.number, memo);
-      if (n.incomeAccountId) book.crId(n.date, n.incomeAccountId, n.net, "Debit note", n.number, memo);
-      else book.cr(n.date, ACCT.otherIncome, n.net, "Debit note", n.number, memo);
-      book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
-    } else {
-      book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
-      const vatShare = n.expense && n.expense.amount > 0 && ctx.vatApplicable(n.expense.category) ? splitGross(n.total, VAT_RATE).vat : 0;
-      book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), round2(n.total - vatShare), "Supplier debit note", n.number, memo);
-      book.cr(n.date, ACCT.vatPayable, vatShare, "Supplier debit note", n.number, `Input VAT \u2014 ${memo}`);
-    }
-  }
-}
-var ASSET_FUNDING = {
-  Bank: ACCT.bank,
-  Cash: ACCT.cash,
-  "M-Pesa": ACCT.mpesa,
-  "Petty Cash": ACCT.pettyCash,
-  "Owner Capital": ACCT.capital,
-  "Opening Balance": ACCT.retainedEarnings
-};
-async function assetPostings(book) {
-  for (const a2 of await prisma.asset.findMany({ include: { depreciations: true } })) {
-    const cost = round2(a2.value ?? 0);
-    if (cost > 0 && a2.purchaseDate) {
-      const memo = `${a2.tag} ${a2.name}`;
-      book.dr(a2.purchaseDate, ACCT.fixedAssets, cost, "Asset purchase", a2.tag, memo);
-      book.cr(a2.purchaseDate, ASSET_FUNDING[a2.fundedBy] || ACCT.capital, cost, "Asset purchase", a2.tag, `Funded by ${a2.fundedBy} \u2014 ${memo}`);
-    }
-    for (const d of a2.depreciations) {
-      const memo = `Depreciation ${d.period} \u2014 ${a2.tag} ${a2.name}`;
-      book.dr(d.date, ACCT.depreciation, d.amount, "Depreciation", `${a2.tag}@${d.period}`, memo);
-      book.cr(d.date, ACCT.accumDepreciation, d.amount, "Depreciation", `${a2.tag}@${d.period}`, memo);
-    }
-  }
-}
-async function loadLedger() {
-  const ctx = await loadCtx();
-  const book = new Book(ctx);
-  await journalPostings(book);
-  await orderPostings(book, ctx);
-  await mpesaPostings(book);
-  await expensePostings(book, ctx);
-  await unlinkedPurchasePostings(book);
-  await payrollPostings(book);
-  await pettyCashTopUpPostings(book);
-  await notePostings(book, ctx);
-  await assetPostings(book);
-  return { accounts: [...ctx.byId.values()], byId: ctx.byId, byCode: ctx.byCode, postings: book.postings };
-}
-async function pettyCashBalance(asOf) {
-  const ctx = await loadCtx();
-  const book = new Book(ctx);
-  await expensePostings(book, ctx);
-  await payrollPostings(book);
-  await pettyCashTopUpPostings(book);
-  await notePostings(book, ctx);
-  await journalPostings(book);
-  const petty = idOf(ctx, ACCT.pettyCash);
-  return round2(
-    book.postings.filter((p) => p.accountId === petty && (!asOf || p.date <= asOf)).reduce((a2, p) => a2 + p.debit - p.credit, 0)
-  );
-}
-async function pettyCashShortfall(amount, date) {
-  const [atDate, now] = await Promise.all([pettyCashBalance(date), pettyCashBalance()]);
-  const available = Math.min(atDate, now);
-  return { short: amount > available + 5e-3, available };
-}
-function sumByAccount(postings, filter) {
-  const out = /* @__PURE__ */ new Map();
-  for (const p of postings) {
-    if (filter && !filter(p)) continue;
-    const cur = out.get(p.accountId) || { debit: 0, credit: 0 };
-    cur.debit += p.debit;
-    cur.credit += p.credit;
-    out.set(p.accountId, cur);
-  }
-  return out;
-}
-function naturalBalance(type, b) {
-  if (!b) return 0;
-  return round2(isDebitNormal(type) ? b.debit - b.credit : b.credit - b.debit);
 }
 
 // apps/api/src/routes/orders.ts
@@ -50358,54 +50010,6 @@ ordersRouter.put("/:id/costing", async (req, res) => {
   );
   res.json(await jobCosting(order.id));
 });
-var supplierBillSchema = external_exports.object({
-  supplierName: external_exports.string().trim().min(1, "Who is the supplier?").max(120),
-  amount: external_exports.number().positive("Enter the amount the supplier is charging (VAT included)"),
-  paidNow: external_exports.number().min(0).default(0),
-  method: external_exports.enum(EXPENSE_METHODS).default("Bank Transfer"),
-  invoiceNumber: external_exports.string().trim().max(100).optional(),
-  dueDate: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  note: external_exports.string().max(200).optional()
-});
-ordersRouter.post("/:id/supplier-bills", async (req, res) => {
-  if (!await requireCosts(req, res)) return;
-  const parsed = supplierBillSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const d = parsed.data;
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { lineItems: { include: { service: true } } } });
-  if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!order.lineItems.some((l) => l.service?.outsourced)) return res.status(400).json({ error: "This order has no outsourced service on it" });
-  if (d.paidNow > d.amount + 5e-3) return res.status(400).json({ error: "The amount paid now is more than the bill" });
-  if (d.paidNow > 0 && d.method === PETTY_CASH_METHOD) {
-    const check = await pettyCashShortfall(d.paidNow, todayStr());
-    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString("en-KE")} available, Ksh ${Math.round(d.paidNow).toLocaleString("en-KE")} needed)` });
-  }
-  await ensureChartOnce();
-  const today = todayStr();
-  const fullyPaid = d.paidNow >= d.amount - 5e-3;
-  const expense = await prisma.expense.create({
-    data: {
-      date: today,
-      category: BILL_CATEGORY,
-      amount: d.amount,
-      supplier: d.supplierName,
-      invoiceNumber: d.invoiceNumber || null,
-      note: d.note ? d.note : `${order.orderNo} \u2014 outsourced job${d.paidNow > 0 && !fullyPaid ? " (deposit paid, balance owing)" : ""}`,
-      orderId: order.id,
-      // The supplier's bill is a cost of the line of business the contracted-out service belongs to.
-      businessHeadId: order.lineItems.find((l) => l.service?.outsourced)?.service?.businessHeadId ?? null,
-      capturedByName: req.user.name,
-      // Paid in full: a plain paid expense. Otherwise it is a bill on credit, with the deposit (if any) recorded as a payment against it.
-      paid: fullyPaid,
-      method: fullyPaid ? d.method : PETTY_CASH_METHOD,
-      dueDate: fullyPaid ? null : d.dueDate ?? null
-    }
-  });
-  if (!fullyPaid && d.paidNow > 0) {
-    await prisma.expensePayment.create({ data: { expenseId: expense.id, date: today, amount: d.paidNow, method: d.method, note: "Deposit", capturedByName: req.user.name } });
-  }
-  res.status(201).json(await jobCosting(order.id));
-});
 var handoverSchema = external_exports.object({ onCredit: external_exports.boolean().optional() });
 ordersRouter.post("/:id/handover", async (req, res) => {
   const parsed = handoverSchema.safeParse(req.body ?? {});
@@ -50448,6 +50052,356 @@ ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canView
 
 // apps/api/src/routes/finance.ts
 var import_express4 = __toESM(require_express2());
+
+// apps/api/src/accounting/chart.ts
+var CUSTOM_EXPENSE_START = 5300;
+var CUSTOM_EXPENSE_CEILING = 5999;
+async function nextCustomExpenseCode() {
+  const rows = await prisma.account.findMany({ where: { type: "Expense" }, select: { code: true } });
+  let max = CUSTOM_EXPENSE_START - 10;
+  for (const r of rows) {
+    const n = Number(r.code);
+    if (Number.isFinite(n) && n >= CUSTOM_EXPENSE_START && n <= CUSTOM_EXPENSE_CEILING && n > max) max = n;
+  }
+  return String(max + 10);
+}
+async function accountIdForNewExpenseHead(name2) {
+  const standardCode = EXPENSE_HEAD_ACCOUNT_CODES[name2];
+  if (standardCode) {
+    const acc = await prisma.account.findUnique({ where: { code: standardCode } });
+    if (acc && acc.type === "Expense") return acc.id;
+  }
+  const created = await prisma.account.create({
+    data: { code: await nextCustomExpenseCode(), name: name2, type: "Expense", description: `Auto-created for the \u201C${name2}\u201D expense head.` }
+  });
+  return created.id;
+}
+async function ensureChartOfAccounts() {
+  const existing = await prisma.account.findMany({ select: { code: true } });
+  const have = new Set(existing.map((a2) => a2.code));
+  for (const def of DEFAULT_CHART) {
+    if (have.has(def.code)) continue;
+    await prisma.account.create({
+      data: { code: def.code, name: def.name, type: def.type, subtype: def.subtype, description: def.description || "", system: SYSTEM_ACCOUNT_CODES.includes(def.code) }
+    });
+  }
+  for (const name2 of EXPENSE_CATEGORIES) {
+    const head = await prisma.expenseHead.findUnique({ where: { name: name2 } });
+    if (!head) await prisma.expenseHead.create({ data: { name: name2, accountId: await accountIdForNewExpenseHead(name2) } });
+  }
+  {
+    const cos = await prisma.account.findUnique({ where: { code: ACCT.costOfSales } });
+    const head = await prisma.expenseHead.findUnique({ where: { name: "Printing Materials & Consumables" }, include: { account: true } });
+    if (cos && head && head.account?.code === "5100") await prisma.expenseHead.update({ where: { id: head.id }, data: { accountId: cos.id } });
+  }
+  const used = await prisma.expense.findMany({ distinct: ["category"], select: { category: true } });
+  for (const { category } of used) {
+    if (!await prisma.expenseHead.findUnique({ where: { name: category } })) {
+      await prisma.expenseHead.create({ data: { name: category, accountId: await accountIdForNewExpenseHead(category) } });
+    }
+  }
+  for (const head of await prisma.expenseHead.findMany({ where: { accountId: null } })) {
+    await prisma.expenseHead.update({ where: { id: head.id }, data: { accountId: await accountIdForNewExpenseHead(head.name) } });
+  }
+  const byCode = new Map((await prisma.account.findMany()).map((x) => [x.code, x.id]));
+  for (const s of await prisma.service.findMany({ where: { accountId: null } })) {
+    const id = byCode.get(defaultServiceIncomeCode(s.name)) ?? byCode.get(ACCT.printingIncome);
+    if (id) await prisma.service.update({ where: { id: s.id }, data: { accountId: id } });
+  }
+  if (await prisma.role.count({ where: { canAccessAccounting: true } }) === 0) {
+    await prisma.role.updateMany({ where: { name: { in: ["Finance Manager", "General Manager"] } }, data: { canAccessAccounting: true } });
+  }
+}
+var ensured = null;
+function ensureChartOnce() {
+  if (!ensured) {
+    ensured = ensureChartOfAccounts().finally(() => {
+      ensured = null;
+    });
+  }
+  return ensured;
+}
+async function validateAccountChoice(requested, type) {
+  if (requested === void 0 || requested === null || requested === "") return null;
+  const acc = await prisma.account.findUnique({ where: { id: Number(requested) } });
+  if (!acc || !acc.active) throw new Error("Choose an existing, active account");
+  if (acc.type !== type) throw new Error(`That head must be linked to an ${type} account`);
+  return acc.id;
+}
+
+// apps/api/src/accounting/ledger.ts
+async function loadCtx() {
+  const [accounts, heads] = await Promise.all([prisma.account.findMany(), prisma.expenseHead.findMany()]);
+  return {
+    byId: new Map(accounts.map((a2) => [a2.id, a2])),
+    byCode: new Map(accounts.map((a2) => [a2.code, a2])),
+    expenseHeadAcct: new Map(heads.filter((h) => h.accountId).map((h) => [h.name, h.accountId])),
+    vatApplicable: (head) => {
+      const set = heads.find((h) => h.name === head)?.vatApplicable;
+      return set ?? defaultExpenseVatApplicable(head);
+    }
+  };
+}
+function idOf(ctx, code) {
+  const a2 = ctx.byCode.get(code);
+  if (!a2) throw new Error(`Chart of accounts is missing account ${code}`);
+  return a2.id;
+}
+var Book = class {
+  constructor(ctx) {
+    this.ctx = ctx;
+    this.postings = [];
+  }
+  push(date, accountId, debit, credit, source, ref, memo) {
+    if (!(debit > 0 || credit > 0)) return;
+    this.postings.push({ date, accountId, debit: round2(debit), credit: round2(credit), source, ref, memo });
+  }
+  dr(date, code, amount, source, ref, memo) {
+    this.push(date, idOf(this.ctx, code), amount, 0, source, ref, memo);
+  }
+  cr(date, code, amount, source, ref, memo) {
+    this.push(date, idOf(this.ctx, code), 0, amount, source, ref, memo);
+  }
+  drId(date, accountId, amount, source, ref, memo) {
+    this.push(date, accountId, amount, 0, source, ref, memo);
+  }
+  crId(date, accountId, amount, source, ref, memo) {
+    this.push(date, accountId, 0, amount, source, ref, memo);
+  }
+};
+function expenseAcctId(ctx, head) {
+  return ctx.expenseHeadAcct.get(head) || idOf(ctx, ACCT.uncategorised);
+}
+async function journalPostings(book) {
+  const entries = await prisma.journalEntry.findMany({ include: { lines: true } });
+  for (const e of entries) {
+    for (const l of e.lines) {
+      book.postings.push({ date: e.date, accountId: l.accountId, debit: l.debit, credit: l.credit, memo: l.memo || e.memo, source: e.source, ref: e.ref });
+    }
+  }
+}
+async function expensePostings(book, ctx) {
+  const purchaseExpenseIds = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
+  for (const e of await prisma.expense.findMany({ include: { payments: true } })) {
+    const memo = [e.category, e.supplier, e.note].filter(Boolean).join(" \xB7 ");
+    const ref = e.invoiceNumber || `EXP-${e.id}`;
+    const vat = ctx.vatApplicable(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
+    const cost = e.amount - vat;
+    if (purchaseExpenseIds.has(e.id)) book.dr(e.date, ACCT.costOfSales, cost, "Expense", ref, memo);
+    else book.drId(e.date, expenseAcctId(ctx, e.category), cost, "Expense", ref, memo);
+    book.dr(e.date, ACCT.vatPayable, vat, "Expense", ref, `Input VAT \u2014 ${memo}`);
+    if (e.paid) {
+      const wht = e.withholdingTax || 0;
+      book.cr(e.date, methodAccountCode(e.method), e.amount - wht, "Expense", ref, memo);
+      if (wht > 0) book.cr(e.date, ACCT.whtPayable, wht, "Expense", ref, `Withholding tax \u2014 ${memo}`);
+      continue;
+    }
+    book.cr(e.date, ACCT.payables, e.amount, "Expense", ref, memo);
+    for (const p of e.payments) {
+      book.dr(p.date, ACCT.payables, p.amount, "Expense", ref, `Payment \u2014 ${memo}`);
+      book.cr(p.date, methodAccountCode(p.method), p.amount, "Expense", ref, `Payment \u2014 ${memo}`);
+    }
+  }
+}
+async function payrollPostings(book) {
+  for (const p of await prisma.payrollEntry.findMany({ include: { staff: true } })) {
+    const pay = computePay(p.grossPay, p.employeeType, p.date);
+    const ref = `WAGE-${p.id}`;
+    const memo = `${p.staff.name} (${p.employeeType}${p.department ? `, ${p.department}` : ""})`;
+    const gross = round2(pay.grossPay);
+    const paye = round2(pay.paye);
+    const nssf = round2(pay.nssf);
+    const shif = round2(pay.shif);
+    const housing = round2(pay.housingLevy);
+    const net8 = round2(gross - paye - nssf - shif - housing);
+    const nssfEr = round2(pay.nssfEmployer);
+    const housingEr = round2(pay.housingLevyEmployer);
+    const salaryAcct = p.employeeType === "Casual" ? "5110" : ACCT.salaries;
+    book.dr(p.date, salaryAcct, gross, "Wages", ref, memo);
+    book.dr(p.date, salaryAcct, round2(nssfEr + housingEr), "Wages", ref, `Employer NSSF & housing levy \u2014 ${memo}`);
+    book.cr(p.date, methodAccountCode(p.paymentSource), net8, "Wages", ref, memo);
+    book.cr(p.date, ACCT.payePayable, paye, "Wages", ref, memo);
+    book.cr(p.date, ACCT.nssfPayable, round2(nssf + nssfEr), "Wages", ref, memo);
+    book.cr(p.date, ACCT.shifPayable, shif, "Wages", ref, memo);
+    book.cr(p.date, ACCT.housingLevyPayable, round2(housing + housingEr), "Wages", ref, memo);
+  }
+}
+async function unlinkedPurchasePostings(book) {
+  for (const p of await prisma.purchase.findMany({ where: { expenseId: null, status: { not: "Rejected" } }, include: { material: true, lines: { include: { material: true } } } })) {
+    const ref = p.poRef ?? `PUR-${p.id}`;
+    const what = p.lines.length ? p.lines.map((l) => l.material.name).join(", ") : p.material?.name ?? "stock";
+    const memo = `Stock purchase \u2014 ${what}${p.supplier ? ` \u2014 ${p.supplier}` : ""}`;
+    book.dr(p.date, ACCT.costOfSales, p.totalCost, "Purchase", ref, memo);
+    book.cr(p.date, ACCT.bank, p.totalCost, "Purchase", ref, memo);
+  }
+}
+var TOP_UP_FUNDING = {
+  "Bank Withdrawal": ACCT.bank,
+  "Cash Sales Allocation": ACCT.cash,
+  "Owner Injection": ACCT.capital
+};
+async function pettyCashTopUpPostings(book) {
+  for (const t of await prisma.pettyCashTopUp.findMany()) {
+    const ref = `PCT-${t.id}`;
+    const memo = `Petty cash top-up \u2014 ${t.source}${t.note ? ` (${t.note})` : ""}`;
+    book.dr(t.date, ACCT.pettyCash, t.amount, "Petty cash top-up", ref, memo);
+    book.cr(t.date, TOP_UP_FUNDING[t.source] || ACCT.cash, t.amount, "Petty cash top-up", ref, memo);
+  }
+}
+async function orderPostings(book, ctx) {
+  const merchandise = idOf(ctx, ACCT.merchandiseIncome);
+  const orders = await prisma.order.findMany({
+    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true }
+  });
+  for (const o of orders) {
+    const party = o.customerName || o.corporateClient?.name || "Customer";
+    const memo = `${o.orderNo} \u2014 ${party}`;
+    const lines = o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    }));
+    const totals = computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+    const total = round2(totals.grandTotal);
+    const recognised = o.kind === "walkin" || o.status !== "Quote";
+    if (recognised && total > 0) {
+      const { net: net8, vat } = splitGross(total, VAT_RATE);
+      book.dr(o.createdDate, ACCT.receivables, total, "Order", o.orderNo, memo);
+      const weights = o.lineItems.map((li, i) => ({ li, w: buildLineTotal(lines[i]) }));
+      const wSum = weights.reduce((a2, x) => a2 + x.w, 0) || 1;
+      let allocated = 0;
+      weights.forEach(({ li, w }, i) => {
+        const share = i === weights.length - 1 ? round2(net8 - allocated) : round2(net8 * w / wSum);
+        allocated += share;
+        const accountId = li.itemType === "material" ? li.material?.accountId ?? merchandise : li.service?.accountId ?? idOf(ctx, defaultServiceIncomeCode(li.service?.name ?? ""));
+        book.crId(o.createdDate, accountId, share, "Order", o.orderNo, memo);
+      });
+      book.cr(o.createdDate, ACCT.vatPayable, vat, "Order", o.orderNo, memo);
+    }
+    for (const p of o.payments) {
+      const received = !!p.mpesaTransaction && p.mpesaTransaction.kind !== "STK";
+      const label = `Payment (${p.method}${p.reference ? ` ${p.reference}` : ""}) \u2014 ${memo}`;
+      if (received) {
+        book.dr(p.date, ACCT.unallocatedMpesa, p.amount, "Payment", o.orderNo, label);
+      } else {
+        book.dr(p.date, methodAccountCode(p.method), p.amount, "Payment", o.orderNo, label);
+      }
+      book.cr(p.date, recognised ? ACCT.receivables : ACCT.customerCredits, p.amount, "Payment", o.orderNo, label);
+    }
+  }
+}
+async function mpesaPostings(book) {
+  for (const t of await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: { in: ["Unmatched", "Applied"] } } })) {
+    const date = t.receivedOn || t.createdAt.toISOString().slice(0, 10);
+    const ref = t.mpesaReceipt || `MPESA-${t.id}`;
+    const memo = `M-Pesa receipt ${t.mpesaReceipt || ""} \u2014 ${t.payerName || t.phone}`.trim();
+    book.dr(date, ACCT.mpesa, t.amount, "M-Pesa receipt", ref, memo);
+    book.cr(date, ACCT.unallocatedMpesa, t.amount, "M-Pesa receipt", ref, memo);
+  }
+}
+async function notePostings(book, ctx) {
+  const purchaseLinked = new Set((await prisma.purchase.findMany({ where: { expenseId: { not: null } }, select: { expenseId: true } })).map((p) => p.expenseId));
+  for (const n of await prisma.adjustmentNote.findMany({ include: { expense: true } })) {
+    const memo = `${n.number} \u2014 ${n.party} \u2014 ${n.reason}`;
+    if (n.type === "Credit") {
+      book.dr(n.date, ACCT.salesReturns, n.net, "Credit note", n.number, memo);
+      book.dr(n.date, ACCT.vatPayable, n.vat, "Credit note", n.number, memo);
+      book.cr(n.date, ACCT.receivables, n.receivableAmt, "Credit note", n.number, memo);
+      book.cr(n.date, ACCT.customerCredits, n.creditAmt, "Credit note", n.number, memo);
+      if (n.refundAmt > 0 && n.refundMethod) {
+        book.dr(n.date, ACCT.customerCredits, n.refundAmt, "Credit note", n.number, `Refund \u2014 ${memo}`);
+        book.cr(n.date, methodAccountCode(n.refundMethod), n.refundAmt, "Credit note", n.number, `Refund \u2014 ${memo}`);
+      }
+    } else if (n.type === "Debit") {
+      book.dr(n.date, ACCT.receivables, n.total, "Debit note", n.number, memo);
+      if (n.incomeAccountId) book.crId(n.date, n.incomeAccountId, n.net, "Debit note", n.number, memo);
+      else book.cr(n.date, ACCT.otherIncome, n.net, "Debit note", n.number, memo);
+      book.cr(n.date, ACCT.vatPayable, n.vat, "Debit note", n.number, memo);
+    } else {
+      book.dr(n.date, ACCT.payables, n.total, "Supplier debit note", n.number, memo);
+      const vatShare = n.expense && n.expense.amount > 0 && ctx.vatApplicable(n.expense.category) ? splitGross(n.total, VAT_RATE).vat : 0;
+      book.crId(n.date, n.expense ? purchaseLinked.has(n.expense.id) ? idOf(ctx, ACCT.costOfSales) : expenseAcctId(ctx, n.expense.category) : idOf(ctx, ACCT.uncategorised), round2(n.total - vatShare), "Supplier debit note", n.number, memo);
+      book.cr(n.date, ACCT.vatPayable, vatShare, "Supplier debit note", n.number, `Input VAT \u2014 ${memo}`);
+    }
+  }
+}
+var ASSET_FUNDING = {
+  Bank: ACCT.bank,
+  Cash: ACCT.cash,
+  "M-Pesa": ACCT.mpesa,
+  "Petty Cash": ACCT.pettyCash,
+  "Owner Capital": ACCT.capital,
+  "Opening Balance": ACCT.retainedEarnings
+};
+async function assetPostings(book) {
+  for (const a2 of await prisma.asset.findMany({ include: { depreciations: true } })) {
+    const cost = round2(a2.value ?? 0);
+    if (cost > 0 && a2.purchaseDate) {
+      const memo = `${a2.tag} ${a2.name}`;
+      book.dr(a2.purchaseDate, ACCT.fixedAssets, cost, "Asset purchase", a2.tag, memo);
+      book.cr(a2.purchaseDate, ASSET_FUNDING[a2.fundedBy] || ACCT.capital, cost, "Asset purchase", a2.tag, `Funded by ${a2.fundedBy} \u2014 ${memo}`);
+    }
+    for (const d of a2.depreciations) {
+      const memo = `Depreciation ${d.period} \u2014 ${a2.tag} ${a2.name}`;
+      book.dr(d.date, ACCT.depreciation, d.amount, "Depreciation", `${a2.tag}@${d.period}`, memo);
+      book.cr(d.date, ACCT.accumDepreciation, d.amount, "Depreciation", `${a2.tag}@${d.period}`, memo);
+    }
+  }
+}
+async function loadLedger() {
+  const ctx = await loadCtx();
+  const book = new Book(ctx);
+  await journalPostings(book);
+  await orderPostings(book, ctx);
+  await mpesaPostings(book);
+  await expensePostings(book, ctx);
+  await unlinkedPurchasePostings(book);
+  await payrollPostings(book);
+  await pettyCashTopUpPostings(book);
+  await notePostings(book, ctx);
+  await assetPostings(book);
+  return { accounts: [...ctx.byId.values()], byId: ctx.byId, byCode: ctx.byCode, postings: book.postings };
+}
+async function pettyCashBalance(asOf) {
+  const ctx = await loadCtx();
+  const book = new Book(ctx);
+  await expensePostings(book, ctx);
+  await payrollPostings(book);
+  await pettyCashTopUpPostings(book);
+  await notePostings(book, ctx);
+  await journalPostings(book);
+  const petty = idOf(ctx, ACCT.pettyCash);
+  return round2(
+    book.postings.filter((p) => p.accountId === petty && (!asOf || p.date <= asOf)).reduce((a2, p) => a2 + p.debit - p.credit, 0)
+  );
+}
+async function pettyCashShortfall(amount, date) {
+  const [atDate, now] = await Promise.all([pettyCashBalance(date), pettyCashBalance()]);
+  const available = Math.min(atDate, now);
+  return { short: amount > available + 5e-3, available };
+}
+function sumByAccount(postings, filter) {
+  const out = /* @__PURE__ */ new Map();
+  for (const p of postings) {
+    if (filter && !filter(p)) continue;
+    const cur = out.get(p.accountId) || { debit: 0, credit: 0 };
+    cur.debit += p.debit;
+    cur.credit += p.credit;
+    out.set(p.accountId, cur);
+  }
+  return out;
+}
+function naturalBalance(type, b) {
+  if (!b) return 0;
+  return round2(isDebitNormal(type) ? b.debit - b.credit : b.credit - b.debit);
+}
+
+// apps/api/src/routes/finance.ts
 var financeRouter = (0, import_express4.Router)();
 financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
 function inRange(d, from, to) {

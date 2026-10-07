@@ -33,15 +33,6 @@ const bal = async (code: string) => {
   return naturalBalance(a.type, sumByAccount(l.postings).get(a.id));
 };
 
-
-// A supplier's bill tied to an order, as Finance's expense records it: the whole bill is the cost, a deposit is a payment against it.
-async function bill(orderId: number, supplier: string, amount: number, paidNow: number, method: string, invoiceNumber?: string) {
-  const fullyPaid = paidNow >= amount - 0.005;
-  const e = await prisma.expense.create({ data: { date: new Date().toISOString().slice(0, 10), category: 'Outsourced Services', amount, supplier, invoiceNumber: invoiceNumber ?? null, note: 'test bill', orderId, capturedByName: 'test', paid: fullyPaid, method: fullyPaid ? method : 'Petty Cash', dueDate: null } });
-  if (!fullyPaid && paidNow > 0) await prisma.expensePayment.create({ data: { expenseId: e.id, date: new Date().toISOString().slice(0, 10), amount: paidNow, method, note: 'Deposit', capturedByName: 'test' } });
-  return e;
-}
-
 describe('outsourced services', () => {
   before(async () => {
     await prisma.role.create({ data: { name: 'Counter', canCaptureOrders: true } });
@@ -127,13 +118,13 @@ describe('outsourced services', () => {
 
   it('a supplier bill with a deposit: cost of sales in full, the balance owed to the supplier', async () => {
     const order = await prisma.order.findFirstOrThrow({ where: { customerName: 'Mourning family' }, orderBy: { id: 'asc' } });
-    // an order's window cannot add a bill any more, for anyone: Finance records it under Expenses
-    assert.equal((await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000 })).status, 404);
+    assert.equal((await call('counter', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000 })).status, 403);
+    assert.equal((await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000, paidNow: 9000 })).status, 400); // more than the bill
 
     const cosBefore = await bal('5000');
     const bankBefore = await bal('1050');
-    await bill(order.id, 'Print House', 8000, 3000, 'Bank Transfer', 'PH-114');
-    const r = { body: await (await call('boss', 'GET', `/orders/${order.id}/costing`)).body };
+    const r = await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000, paidNow: 3000, method: 'Bank Transfer', invoiceNumber: 'PH-114' });
+    assert.equal(r.status, 201);
     assert.equal(r.body.billed, 8000);
     assert.equal(r.body.paid, 3000);
     assert.equal(r.body.owing, 5000);
@@ -146,8 +137,7 @@ describe('outsourced services', () => {
     assert.equal(Math.round(((await bal('1050')) - bankBefore) * 100) / 100, -3000); // the deposit left the bank (rounded: other test files share this database)
 
     // a second bill paid in full is a plain paid expense
-    await bill(order.id, 'Print House', 1000, 1000, 'M-Pesa');
-    const full = { body: (await call('boss', 'GET', `/orders/${order.id}/costing`)).body };
+    const full = await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 1000, paidNow: 1000, method: 'M-Pesa' });
     assert.equal(full.body.billed, 9000);
     assert.equal(full.body.owing, 5000);
     assert.equal((await buildTrialBalance('9999-12-31')).balanced, true);

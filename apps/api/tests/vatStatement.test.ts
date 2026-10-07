@@ -65,8 +65,8 @@ describe('VAT statement by income and expense accounts', () => {
     const o = await order(eulogy, 200, 60, { supplierCost: 40, markupType: 'percent', markupValue: 50, supplierName: 'Print House' });
     assert.equal(o.status, 201);
     // 200 × 60 = 12,000 → 10,344.83 + 1,655.17 VAT
-    // the supplier's bill, as Finance records it under Expenses, tied to the order
-    await prisma.expense.create({ data: { date: new Date().toISOString().slice(0, 10), category: 'Outsourced Services', amount: 8000, supplier: 'Print House', invoiceNumber: 'PH-STMT-1', note: 'test bill', orderId: o.body.id, capturedByName: 'test', paid: true, method: 'Bank Transfer' } });
+    const bill = await call('fin', 'POST', `/orders/${o.body.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000, invoiceNumber: 'PH-STMT-1' });
+    assert.equal(bill.status, 201);
 
     const s = await stmt();
     const out = s.statement.outsourced;

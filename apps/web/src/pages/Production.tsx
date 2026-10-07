@@ -363,7 +363,7 @@ function OutsourcedJobs() {
               </div>
             ))}
           </div>
-          <Card title="Contracted-out jobs" hint="Open an order (All Orders) to cost it; Finance records the supplier’s bill under Finance → Expenses. Profit in the books takes the VAT out of the sale and out of the supplier's bill (the supplier's VAT is claimed back as input VAT).">
+          <Card title="Contracted-out jobs" hint="Open an order (All Orders) to cost it or record a supplier bill. Profit in the books takes the VAT out of the sale and out of the supplier's bill (the supplier's VAT is claimed back as input VAT).">
             <table className="table">
               <thead>
                 <tr>

@@ -120,34 +120,37 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
 <style>
   @page { size: ${THERMAL_WIDTH_MM}mm auto; margin: 2mm; }
   * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+  /* A thermal head burns solid black dots, so thin strokes and grey text break up and fade. Everything is a heavy sans-serif in pure black, with a
+     hairline stroke added to thicken the letters — Courier New's fine strokes were what printed faintly. */
   body {
     width: ${THERMAL_WIDTH_MM - 6}mm; margin: 0 auto; padding: 2mm 1mm;
-    font-family: 'Courier New', Courier, monospace; font-size: 11px; color: #111;
+    font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif; font-size: 12.5px; font-weight: 700; line-height: 1.25; color: #000;
+    -webkit-text-stroke: 0.25px #000;
   }
   .center { text-align: center; }
   .logo { display: block; margin: 0 auto 3px; max-width: 46mm; max-height: 20mm; object-fit: contain; filter: grayscale(1) contrast(1.3); }
-  .brand { font-size: 18px; font-weight: 700; letter-spacing: 0.03em; }
-  .tagline { font-size: 10px; color: #333; margin-top: 1px; }
-  .meta { font-size: 10px; color: #333; }
+  .brand { font-size: 20px; font-weight: 900; letter-spacing: 0.02em; }
+  .tagline { font-size: 11.5px; color: #000; margin-top: 1px; }
+  .meta { font-size: 11.5px; color: #000; }
   .row { display: flex; justify-content: space-between; gap: 6px; }
-  hr { border: none; border-top: 1px dashed #111; margin: 4px 0; }
-  .item-row { display: flex; justify-content: space-between; font-weight: 700; }
-  .item-sub, .disc { font-size: 10px; color: #333; padding-left: 4px; }
+  hr { border: none; border-top: 2px dashed #000; margin: 5px 0; }
+  .item-row { display: flex; justify-content: space-between; gap: 6px; font-weight: 900; overflow-wrap: anywhere; }
+  .item-sub, .disc { font-size: 11.5px; color: #000; padding-left: 4px; }
   .totals .row { padding: 1px 0; }
-  .grand { font-weight: 700; font-size: 14px; border-top: 1px solid #111; margin-top: 3px; padding-top: 3px; }
-  .vat-note { font-size: 10px; color: #333; }
-  .balance { font-weight: 700; }
-  .keep-note { font-size: 10px; text-align: center; margin-top: 2px; }
+  .grand { font-weight: 900; font-size: 16px; border-top: 2px solid #000; margin-top: 3px; padding-top: 3px; }
+  .vat-note { font-size: 11.5px; color: #000; }
+  .balance { font-weight: 900; font-size: 14px; }
+  .keep-note { font-size: 11.5px; text-align: center; margin-top: 2px; }
   .barcode-wrap { text-align: center; margin: 6px 0; }
-  .footer { text-align: center; margin-top: 6px; font-size: 10px; }
-  .copy-label { font-weight: 700; font-size: 13px; letter-spacing: 0.05em; border: 1px solid #111; padding: 2px 4px; margin: 3px 0; }
+  .footer { text-align: center; margin-top: 6px; font-size: 11.5px; }
+  .copy-label { font-weight: 900; font-size: 15px; letter-spacing: 0.05em; border: 2px solid #000; padding: 3px 4px; margin: 4px 0; }
   .cut { page-break-before: always; }
 </style>
 </head>
 <body>
 ${labels.map(copyHtml).join('')}
   <script>
-    ${labels.map((_, i) => `try { JsBarcode('#barcode${i}', ${JSON.stringify(order.orderNo)}, { format: 'CODE128', width: 1.4, height: 34, displayValue: true, fontSize: 10, margin: 0 }); } catch (e) {}`).join('\n    ')}
+    ${labels.map((_, i) => `try { JsBarcode('#barcode${i}', ${JSON.stringify(order.orderNo)}, { format: 'CODE128', width: 1.6, height: 34, displayValue: true, fontSize: 13, font: 'Arial', fontOptions: 'bold', margin: 0 }); } catch (e) {}`).join('\n    ')}
   </script>
 </body>
 </html>`;

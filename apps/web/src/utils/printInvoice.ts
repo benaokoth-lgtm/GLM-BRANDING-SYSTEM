@@ -251,11 +251,12 @@ export function printCorporateDocument(w: Window | null, order: OrderDetail, com
 }
 
 /**
- * Prints an order the way it should look on paper: an invoice or a quotation — whoever it is for, walk-in or corporate — is the A4 document in the
- * house layout (navy title, logo, ruled table, TOTAL, Thank you and terms); only a walk-in order that is paid in full is a till receipt, printed on the
- * 80 mm thermal printer.
+ * Prints an order the way it should look on paper. Every walk-in order (General, Film, Artwork), paid in full or not, is the 80 mm thermal receipt —
+ * two copies, CUSTOMER COPY and PRODUCTION COPY. One that still owes a balance is an invoice in the background and its slip says so; later payments
+ * are taken against that same invoice. A corporate invoice or a quotation is the A4 document in the house layout (navy title, logo, ruled table,
+ * TOTAL, Thank you and terms). A walk-in invoice can still be printed on A4 with printCorporateDocument.
  */
 export function printOrderDocument(w: Window | null, order: OrderDetail, company: CompanySettings, copyLabel?: string) {
-  if (order.kind === 'walkin' && order.status === 'Order') printWalkinReceipt(w, order, company, copyLabel);
+  if (order.kind === 'walkin') printWalkinReceipt(w, order, company, copyLabel);
   else printCorporateDocument(w, order, company, copyLabel);
 }

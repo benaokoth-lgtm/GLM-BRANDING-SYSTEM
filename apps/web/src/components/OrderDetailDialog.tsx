@@ -3,7 +3,7 @@ import { STAGES, fmtDate, fmtKsh, whatsappNumber } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
 import { api } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
-import { buildCorporateDocumentHtml, printOrderDocument } from '../utils/printInvoice';
+import { buildCorporateDocumentHtml, printCorporateDocument, printOrderDocument } from '../utils/printInvoice';
 import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
@@ -104,8 +104,16 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     // company profile (name/address/logo) has loaded.
     const w = window.open('', '_blank');
     const co = company ?? (await api.get<CompanySettings>('/master-data/settings'));
-    // Invoices and quotations print on A4; a walk-in order paid in full prints on the thermal receipt printer.
+    // A walk-in order (paid or not) prints on the thermal receipt printer, two copies; corporate invoices and quotations print on A4.
     printOrderDocument(w, detail, co);
+  }
+
+  // A walk-in order that still owes a balance is an invoice: it can also be printed on A4, in the house layout.
+  async function printA4() {
+    if (!detail) return;
+    const w = window.open('', '_blank');
+    const co = company ?? (await api.get<CompanySettings>('/master-data/settings'));
+    printCorporateDocument(w, detail, co);
   }
 
   async function sendEmail() {
@@ -455,8 +463,17 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             <i className="corner tr"></i>
             <i className="corner bl"></i>
             <i className="corner br"></i>
-            {detail.kind === 'walkin' ? '🖶 Print receipt' : detail.status === 'Quote' ? '🖶 Print quotation (A4)' : '🖶 Print invoice (A4)'}
+            {detail.kind === 'walkin' ? '🖶 Print receipt (2 copies)' : detail.status === 'Quote' ? '🖶 Print quotation (A4)' : '🖶 Print invoice (A4)'}
           </button>
+          {detail.kind === 'walkin' && detail.status === 'Invoice' && (
+            <button type="button" className="btn btn-secondary blueprint" onClick={printA4}>
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              🖶 Print invoice (A4)
+            </button>
+          )}
           <button type="button" className="btn btn-secondary blueprint" onClick={onClose}>
             <i className="corner tl"></i>
             <i className="corner tr"></i>

@@ -4,7 +4,7 @@ import type { CompanySettings, OrderDetail } from '../api/models';
 const THERMAL_WIDTH_MM = 80;
 
 /** The two receipts every order prints: one for the customer and one that stays with production. */
-export const CUSTOMER_COPY_LABEL = "CUSTOMER'S COPY";
+export const CUSTOMER_COPY_LABEL = 'CUSTOMER COPY';
 export const PRODUCTION_COPY_LABEL = 'PRODUCTION COPY';
 
 function esc(s: string): string {
@@ -78,11 +78,12 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   </div>
   ${contactLine ? `<div class="center meta">${contactLine}</div>` : ''}
   ${websiteLine ? `<div class="center meta">${websiteLine}</div>` : ''}
-  <div class="center meta">${order.totals.balanceDue <= 0 ? 'RECEIPT — PAID IN FULL' : 'RECEIPT — BALANCE DUE'}</div>
+  <div class="center meta">${order.totals.balanceDue <= 0 ? 'RECEIPT — PAID IN FULL' : 'INVOICE — BALANCE DUE'}</div>
   <div class="center copy-label">${esc(label)}</div>
   <hr />
   <div class="row"><span>ORDER NO.</span><span>${esc(order.orderNo)}</span></div>
   <div class="row"><span>DATE</span><span>${fmtDate(order.createdDate)}</span></div>
+  ${order.totals.balanceDue > 0 && order.dueDate ? `<div class="row"><span>PAY BY</span><span>${fmtDate(order.dueDate)}</span></div>` : ''}
   <div class="row"><span>CUSTOMER</span><span>${esc(order.customerName || '—')}</span></div>
   ${order.phone ? `<div class="row"><span>PHONE</span><span>${esc(order.phone)}</span></div>` : ''}
   <div class="row"><span>SERVED BY</span><span>${esc(order.staff.name)}</span></div>
@@ -102,7 +103,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
     .join('')}
   ${order.totals.balanceDue > 0 ? `<div class="row balance"><span>BALANCE DUE</span><span>${fmtKsh(order.totals.balanceDue)}</span></div>` : ''}
   <hr />
-  <div class="keep-note">PLEASE KEEP THIS RECEIPT FOR YOUR RECORDS</div>
+  <div class="keep-note">${order.totals.balanceDue > 0 ? 'PAY THE BALANCE AGAINST THIS ORDER NUMBER' : 'PLEASE KEEP THIS RECEIPT FOR YOUR RECORDS'}</div>
   <div class="keep-note">ITEMS: ${itemCount}</div>
   <div class="barcode-wrap"><svg id="barcode${i}"></svg></div>
   <div class="footer">Thank you for choosing ${companyName}!</div>

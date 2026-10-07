@@ -86,7 +86,7 @@ export default function NewWalkinOrder() {
         }),
         api.get<CompanySettings>('/master-data/settings'),
       ]);
-      printOrderDocument(printWindow, order, company); // paid in full → thermal receipt; with a balance it is an invoice → A4
+      printOrderDocument(printWindow, order, company); // thermal receipt, CUSTOMER COPY + PRODUCTION COPY; with a balance the order is an invoice in the background
       navigate('/orders/all');
     } catch (err) {
       printWindow?.close();

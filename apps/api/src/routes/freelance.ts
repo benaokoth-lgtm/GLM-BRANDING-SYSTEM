@@ -182,6 +182,8 @@ freelanceRouter.get('/statement', manage, async (req, res) => {
     weekEnd: weekEnd(week),
     open: weekEnd(week) >= todayStr(), // the week is not over, so more money may still arrive
     bands: config.freelanceBands,
+    premiumPct: config.freelancePremiumPct,
+    lowMarginPct: config.freelanceLowMarginPct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
     b2cReady: isB2cReady(await loadMpesaConfig()),
     statements: statements.map((s) => {
@@ -221,7 +223,7 @@ freelanceRouter.post('/payouts/approve', manage, async (req, res) => {
       amount: s.commission,
       withholdingRate: s.whtRate,
       withholdingTax: s.withholdingTax,
-      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, belowBaseNet: s.belowBaseNet, orders: s.orders }),
+      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, belowBaseNet: s.belowBaseNet, orders: s.orders }),
       status: 'Approved',
       approvedByName: req.user!.name,
       approvedAt: new Date(),
@@ -384,5 +386,6 @@ freelanceRouter.get('/agents/:id/account', manage, async (req, res) => {
     },
     weeks,
     bands: (await getCommissionConfig()).freelanceBands,
+    premiumPct: (await getCommissionConfig()).freelancePremiumPct,
   });
 });

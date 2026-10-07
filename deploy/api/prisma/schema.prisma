@@ -546,6 +546,10 @@ model Order {
   freelanceAgent    FreelanceAgent? @relation(fields: [freelanceAgentId], references: [id])
   // The share (0..1) of the order's value that was sold at or above base prices when it was captured — only that share earns the freelancer commission.
   freelanceQualifyingShare Float @default(1)
+  // How that qualifying share divides (each a share 0..1 of the order's value): the base-price part, the thin-margin (contracted-out / stock) part of the base, and the premium above base.
+  freelanceBaseShare       Float @default(1)
+  freelanceLowShare        Float @default(0)
+  freelancePremiumShare    Float @default(0)
   clientKey         String? // how this client is recognised across orders — see clientKeyFor in shared/commission.ts
 
   lineItems         OrderLineItem[]
@@ -994,7 +998,11 @@ model CommissionSettings {
   freelanceOwnershipMonths Int @default(12)
   // Withholding tax deducted from freelance commission (percent, 0 = none) — confirm the rate with your accountant
   freelanceWhtRate Float @default(5)
-  freelanceBandsJson String @default("[{\"from\":0,\"rate\":3},{\"from\":50000,\"rate\":5},{\"from\":150000,\"rate\":7}]")
+  freelanceBandsJson String @default("[{\"from\":0,\"rate\":2},{\"from\":50000,\"rate\":3},{\"from\":150000,\"rate\":4}]")
+  // Bands apply to the BASE-price part of their sales only; this % of whatever was charged above base is paid on top (the premium is nearly all profit).
+  freelancePremiumPct Float @default(30)
+  // Contracted-out services and stock resale carry a thin mark-up: their base part counts at this % weight towards the bands (100 = no reduction).
+  freelanceLowMarginPct Float @default(50)
   // The sales target: a person must sell this many times their basic monthly salary (net of VAT, money received) in a month before any commission
   // is earned. 0 = no target. 'above' = the bands start at the target; 'all' = once met, the bands apply to all sales (see shared/commission.ts).
   targetMultiplier Float    @default(3)

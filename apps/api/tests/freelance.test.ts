@@ -55,7 +55,7 @@ describe('freelance sales persons', () => {
       tokens[key] = signToken({ id: u.id, name: u.name, role });
     }
     await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, targetMultiplier: 0 }, create: { id: 1, enabled: true, targetMultiplier: 0 } });
-    banner = (await prisma.service.create({ data: { name: 'Banner (freelance test)', unit: 'piece', price: 1000 } })).id;
+    banner = (await prisma.service.create({ data: { name: 'Banner (freelance test)', unit: 'piece', price: 1160 } })).id;
     for (const [name, unit, price] of [['DTF Sheet (per metre)', 'metre', 500], ['DTF Printing', 'piece', 70]] as const) {
       if (!(await prisma.service.findFirst({ where: { name } }))) await prisma.service.create({ data: { name, unit, price } });
     }
@@ -163,22 +163,27 @@ describe('freelance sales persons', () => {
   });
 
   describe('commission: weekly bands on sales at or above base prices', () => {
-    it("the week's net sales received are banded: 3% of the first 50,000, 5% of the next", async () => {
+    it("the week's base-price sales are banded: 2% of the first 50,000, 3% of the next, plus 30% of what the film was charged above base", async () => {
       // the film sale above (4,500 paid) is already in; add two orders of 40,000 and 60,000 net
       assert.equal((await order('amina', [{ qty: 60, unitPrice: 1160 }], { freelanceAgentId: agents.otieno })).status, 201);
       const s = await stmt('otieno');
       // net received: 40,000 + 60,000 + (4,500 film / 1.16 = 3,879.31) = 103,879.31 — all at or above base
       assert.equal(s.qualifyingNet, 103879.31);
       assert.equal(s.belowBaseNet, 0);
-      assert.equal(s.commission, 4193.97);
-      assert.deepEqual([s.band.rate, s.band.nextRate], [5, 7]);
+      // the film sale is 4,000 at base and 500 above it (450 a metre against the 400 floor): 3,448.28 + 431.03 net
+      assert.equal(s.baseNet, 103448.28);
+      assert.equal(s.premiumNet, 431.03);
+      assert.equal(s.baseCommission, 2603.45); // 50,000 × 2% + 53,448.28 × 3%
+      assert.equal(s.premiumCommission, 129.31); // 30% of 431.03
+      assert.equal(s.commission, 2732.76);
+      assert.deepEqual([s.band.rate, s.band.nextRate], [3, 4]);
       assert.equal(s.orders.length, 3);
     });
 
     it('a line sold below its base price earns nothing; a mixed order counts only the lines at or above', async () => {
       const b = await call('boss', 'POST', '/freelance/agents', { name: 'Base Checker', phone: '0755 000 111' });
       agents.base = b.body.id;
-      // listed at 1,000: priced at 900 → no commission at all
+      // listed at 1,160: priced at 900 → no commission at all
       assert.equal((await order('amina', [{ qty: 10, unitPrice: 900 }], { freelanceAgentId: agents.base })).status, 201);
       let s = await stmt('base');
       assert.deepEqual([s.qualifyingNet, s.commission, s.belowBaseNet], [0, 0, 7758.62]);
@@ -189,15 +194,15 @@ describe('freelance sales persons', () => {
       assert.equal(Math.round((await prisma.order.findUniqueOrThrow({ where: { id: mixed.body.id } })).freelanceQualifyingShare * 1000) / 1000, 0.592);
       s = await stmt('base');
       assert.equal(s.qualifyingNet, 10000);
-      assert.equal(s.commission, 300);
+      assert.equal(s.commission, 200); // 2% of 10,000
     });
 
     it('a discount that takes a line under its base price disqualifies it; a high enough price survives the discount', async () => {
       const d = await call('boss', 'POST', '/freelance/agents', { name: 'Discount Checker', phone: '0766 000 222' });
       agents.disc = d.body.id;
-      const cut = await order('amina', [{ qty: 10, unitPrice: 1000 }], { freelanceAgentId: agents.disc, orderDiscountPct: 10 }); // 900 a unit after 10% off
+      const cut = await order('amina', [{ qty: 10, unitPrice: 1160 }], { freelanceAgentId: agents.disc, orderDiscountPct: 10 }); // 1,044 a unit after 10% off
       assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: cut.body.id } })).freelanceQualifyingShare, 0);
-      const kept = await order('amina', [{ qty: 10, unitPrice: 1200 }], { freelanceAgentId: agents.disc, orderDiscountPct: 10 }); // 1,080 a unit after 10% off: still above 1,000
+      const kept = await order('amina', [{ qty: 10, unitPrice: 1300 }], { freelanceAgentId: agents.disc, orderDiscountPct: 10 }); // 1,170 a unit after 10% off: still above 1,160
       assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: kept.body.id } })).freelanceQualifyingShare, 1);
     });
 
@@ -228,7 +233,62 @@ describe('freelance sales persons', () => {
       assert.equal((await call('boss', 'POST', '/accounting/notes/credit', { orderId: o.body.id, reason: 'Returned', amount: 11600 })).status, 201); // 10,000 net back
       const s = await stmt('refund');
       assert.equal(s.qualifyingNet, 40000);
-      assert.equal(s.commission, 1200); // 3% of 40,000
+      assert.equal(s.commission, 800); // 2% of 40,000
+    });
+  });
+
+  describe('premium share: commission never eats into the base price', () => {
+    it('an order sold above base pays a small band on the base part and 30% of the extra; the base price itself carries only the small band', async () => {
+      const p = await call('boss', 'POST', '/freelance/agents', { name: 'Premium Agent', phone: '0711 800 001' });
+      agents.premium = p.body.id;
+      // 10 banners listed at 1,160 sold at 1,392 (20% above): 13,920 paid = 12,000 net, of which 10,000 is base and 2,000 is the extra
+      const o = await order('amina', [{ qty: 10, unitPrice: 1392 }], { freelanceAgentId: agents.premium });
+      assert.equal(o.status, 201);
+      const row = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } });
+      assert.deepEqual([row.freelanceQualifyingShare, Math.round(row.freelanceBaseShare * 1e4) / 1e4, Math.round(row.freelancePremiumShare * 1e4) / 1e4], [1, 0.8333, 0.1667]);
+      const s = await stmt('premium');
+      assert.deepEqual([s.baseNet, s.premiumNet], [10000, 2000]);
+      assert.deepEqual([s.baseCommission, s.premiumCommission, s.commission], [200, 600, 800]);
+      // the company keeps 11,200 of the 12,000 net, whereas 3/5/7% of the whole sale would have taken far more of the base margin
+      assert.ok(s.commission / s.qualifyingNet < 0.07);
+    });
+
+    it('selling at base earns only the small band, with no premium', async () => {
+      const p = await call('boss', 'POST', '/freelance/agents', { name: 'At Base Agent', phone: '0711 800 002' });
+      agents.atBase = p.body.id;
+      assert.equal((await order('amina', [{ qty: 10, unitPrice: 1160 }], { freelanceAgentId: agents.atBase })).status, 201);
+      const s = await stmt('atBase');
+      assert.deepEqual([s.baseNet, s.premiumNet, s.premiumCommission, s.commission], [10000, 0, 0, 200]);
+    });
+
+    it('a contracted-out service counts at a reduced weight towards the bands, and its premium is still shared in full', async () => {
+      const out = await prisma.service.create({ data: { name: 'Eulogy printing (freelance test)', unit: 'piece', price: 1160, outsourced: true, supplierName: 'Print Co' } });
+      const p = await call('boss', 'POST', '/freelance/agents', { name: 'Outsourced Agent', phone: '0711 800 003' });
+      agents.outsourced = p.body.id;
+      const o = await call('amina', 'POST', '/orders/walkin', {
+        customerName: 'Freelance Client Out', phone: '0722 800 003', staffId: ids.amina, paymentTiming: 'onAcceptance',
+        lineItems: [{ itemType: 'service', serviceId: out.id, qty: 10, unitPrice: 1392 }],
+        payments: [{ method: 'Cash', amount: 13920 }], freelanceAgentId: agents.outsourced,
+      });
+      assert.equal(o.status, 201, JSON.stringify(o.body));
+      const row = await prisma.order.findUniqueOrThrow({ where: { id: o.body.id } });
+      assert.ok(row.freelanceLowShare > 0.83 && row.freelanceLowShare < 0.84);
+      const s = await stmt('outsourced');
+      // 10,000 net is base: at 50% weight 5,000 is banded (2% → 100); the 2,000 extra pays 30% (600)
+      assert.deepEqual([s.baseNet, s.premiumNet, s.baseCommission, s.premiumCommission, s.commission], [5000, 2000, 100, 600, 700]);
+    });
+
+    it('the premium share and the thin-margin weight are settings a manager can change', async () => {
+      const cfg = (await call('boss', 'GET', '/commission/settings')).body;
+      assert.deepEqual([cfg.freelancePremiumPct, cfg.freelanceLowMarginPct], [30, 50]);
+      const base = { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12 };
+      const put = await call('boss', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 20, freelanceLowMarginPct: 100 });
+      assert.equal(put.status, 200);
+      assert.deepEqual([put.body.freelancePremiumPct, put.body.freelanceLowMarginPct], [20, 100]);
+      const s = await stmt('premium');
+      assert.equal(s.premiumCommission, 400); // the week is recalculated at 20% of 2,000
+      assert.equal((await call('boss', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 101 })).status, 400);
+      await call('boss', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 30, freelanceLowMarginPct: 50 });
     });
   });
 
@@ -242,7 +302,7 @@ describe('freelance sales persons', () => {
       assert.ok(names.includes('Otieno Agency'));
       assert.ok(!names.includes('Wanjiku Maina'));
       assert.ok(r.body.skipped.some((s: any) => s.agentName === 'Wanjiku Maina' && /not approved/.test(s.reason)));
-      assert.equal(((await prisma.freelancePayout.findFirstOrThrow({ where: { agentId: agents.otieno } })).amount), 4193.97);
+      assert.equal(((await prisma.freelancePayout.findFirstOrThrow({ where: { agentId: agents.otieno } })).amount), 2732.76);
       // a manager approves her; the week can be approved again
       assert.equal((await call('boss', 'PUT', `/freelance/agents/${agents.wanjiku}`, { status: 'Active' })).status, 200);
       const again = await call('boss', 'POST', '/freelance/payouts/approve', { weekStart: week });
@@ -254,7 +314,7 @@ describe('freelance sales persons', () => {
       const paid = await call('boss', 'POST', `/freelance/payouts/${payout.id}/pay`, { method: 'M-Pesa' });
       assert.equal(paid.status, 200);
       const expense = await prisma.expense.findUniqueOrThrow({ where: { id: paid.body.expenseId } });
-      assert.deepEqual([expense.category, expense.amount, expense.supplier], ['Freelance Commission', 4193.97, 'Otieno Agency']);
+      assert.deepEqual([expense.category, expense.amount, expense.supplier], ['Freelance Commission', 2732.76, 'Otieno Agency']);
       assert.equal((await call('boss', 'POST', `/freelance/payouts/${payout.id}/pay`, { method: 'M-Pesa' })).status, 400); // once
       assert.equal((await call('boss', 'DELETE', `/freelance/payouts/${payout.id}`)).status, 400);
       const wanjiku = await prisma.freelancePayout.findFirstOrThrow({ where: { agentId: agents.wanjiku } });
@@ -267,17 +327,17 @@ describe('freelance sales persons', () => {
     it("an agent's account shows what has been paid, what is waiting to be paid and what is not yet approved", async () => {
       const a = await call('boss', 'GET', `/freelance/agents/${agents.otieno}/account`);
       assert.equal(a.status, 200);
-      assert.equal(a.body.summary.paid, 4193.97);
+      assert.equal(a.body.summary.paid, 2732.76);
       assert.equal(a.body.summary.owed, 0);
       assert.deepEqual([a.body.weeks[0].weekStart, a.body.weeks[0].status, a.body.weeks[0].paidMethod], [week, 'Paid', 'M-Pesa']);
       // the week's commission for Base Checker was approved above and is waiting to be paid
       const b = await call('boss', 'GET', `/freelance/agents/${agents.base}/account`);
-      assert.deepEqual([b.body.summary.approvedToPay, b.body.summary.owed, b.body.weeks[0].status], [300, 300, 'Approved']);
+      assert.deepEqual([b.body.summary.approvedToPay, b.body.summary.owed, b.body.weeks[0].status], [200, 200, 'Approved']);
       // a new agent with sales this week that have not been approved yet
       const late = await call('boss', 'POST', '/freelance/agents', { name: 'Late Agent', phone: '0799 000 555' });
       assert.equal((await order('amina', [{ qty: 10, unitPrice: 1160 }], { freelanceAgentId: late.body.id })).status, 201);
       const l = await call('boss', 'GET', `/freelance/agents/${late.body.id}/account`);
-      assert.deepEqual([l.body.summary.notYetApproved, l.body.summary.owed, l.body.weeks[0].status], [300, 300, 'This week so far']);
+      assert.deepEqual([l.body.summary.notYetApproved, l.body.summary.owed, l.body.weeks[0].status], [200, 200, 'This week so far']);
       assert.equal((await call('brian', 'GET', `/freelance/agents/${agents.otieno}/account`)).status, 403);
     });
 
@@ -287,7 +347,7 @@ describe('freelance sales persons', () => {
       const empty = (await call('boss', 'GET', '/freelance/statement?week=2020-01-06')).body;
       assert.equal(empty.statements.length, 0);
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
-      assert.deepEqual(cfg.freelanceBands, [{ from: 0, rate: 3 }, { from: 50000, rate: 5 }, { from: 150000, rate: 7 }]);
+      assert.deepEqual(cfg.freelanceBands, [{ from: 0, rate: 2 }, { from: 50000, rate: 3 }, { from: 150000, rate: 4 }]);
       const put = await call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: [{ from: 0, rate: 4 }] });
       assert.equal(put.status, 200);
       assert.deepEqual(put.body.freelanceBands, [{ from: 0, rate: 4 }]);
@@ -434,18 +494,18 @@ describe('freelance sales persons', () => {
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
       assert.equal(cfg.freelanceWhtRate, 5);
       agents.tax = (await call('boss', 'POST', '/freelance/agents', { name: 'Tax Agent', phone: '0712 900 001', kraPin: 'A000000009Z', payMethod: 'Cheque' })).body.id;
-      assert.equal((await order('amina', [{ qty: 100, unitPrice: 1160 }], { freelanceAgentId: agents.tax })).status, 201); // 100,000 net → 1,500 + 2,500
+      assert.equal((await order('amina', [{ qty: 100, unitPrice: 1160 }], { freelanceAgentId: agents.tax })).status, 201); // 100,000 net → 1,000 + 1,500
       const s = await stmt('tax');
-      assert.deepEqual([s.commission, s.whtRate, s.withholdingTax, s.netPay], [4000, 5, 200, 3800]);
+      assert.deepEqual([s.commission, s.whtRate, s.withholdingTax, s.netPay], [2500, 5, 125, 2375]);
       const week = (await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body;
-      assert.ok(week.totals.withholdingTax >= 200);
+      assert.ok(week.totals.withholdingTax >= 125);
     });
 
     it('approving the week fixes the tax; paying by cheque books the commission as the cost, only the net as money out, and the tax as owed to KRA', async () => {
       const approved = await call('boss', 'POST', '/freelance/payouts/approve', { weekStart: weekStart(todayStr()) });
       assert.equal(approved.status, 200);
       const p = await prisma.freelancePayout.findFirstOrThrow({ where: { agentId: agents.tax } });
-      assert.deepEqual([p.amount, p.withholdingRate, p.withholdingTax], [4000, 5, 200]);
+      assert.deepEqual([p.amount, p.withholdingRate, p.withholdingTax], [2500, 5, 125]);
       tax = { payoutId: p.id };
 
       const owedBefore = await bal(ACCT.whtPayable);
@@ -453,10 +513,10 @@ describe('freelance sales persons', () => {
       const paid = await call('boss', 'POST', `/freelance/payouts/${p.id}/pay`, { method: 'Cheque', reference: 'CHQ 556677' });
       assert.equal(paid.status, 200);
       const exp = await prisma.expense.findUniqueOrThrow({ where: { id: paid.body.expenseId } });
-      assert.deepEqual([exp.category, exp.amount, exp.withholdingTax, exp.method], ['Freelance Commission', 4000, 200, 'Cheque']);
+      assert.deepEqual([exp.category, exp.amount, exp.withholdingTax, exp.method], ['Freelance Commission', 2500, 125, 'Cheque']);
       assert.match(exp.note, /CHQ 556677/);
-      assert.equal(Math.round((await bal(ACCT.whtPayable) - owedBefore) * 100) / 100, 200, 'held as a liability until it is paid over to KRA');
-      assert.equal(Math.round((bankBefore - (await bal(ACCT.bank))) * 100) / 100, 3800, 'only the net leaves the bank');
+      assert.equal(Math.round((await bal(ACCT.whtPayable) - owedBefore) * 100) / 100, 125, 'held as a liability until it is paid over to KRA');
+      assert.equal(Math.round((bankBefore - (await bal(ACCT.bank))) * 100) / 100, 2375, 'only the net leaves the bank');
     });
 
     it('a person can have their own rate — 0 if exempt — and the standard rate is a setting; a manager decides, not whoever adds them at the till', async () => {
@@ -473,14 +533,14 @@ describe('freelance sales persons', () => {
       for (const id of [exempt, ten, byStaff]) await order('amina', [{ qty: 100, unitPrice: 1160 }], { freelanceAgentId: id });
       const st = (await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements;
       const by = (id: number) => st.find((x: any) => x.agentId === id);
-      assert.deepEqual([by(exempt).whtRate, by(exempt).withholdingTax, by(exempt).netPay], [0, 0, 4000]);
-      assert.deepEqual([by(ten).whtRate, by(ten).withholdingTax, by(ten).netPay], [10, 400, 3600]);
-      assert.deepEqual([by(byStaff).whtRate, by(byStaff).withholdingTax], [5, 200]);
+      assert.deepEqual([by(exempt).whtRate, by(exempt).withholdingTax, by(exempt).netPay], [0, 0, 2500]);
+      assert.deepEqual([by(ten).whtRate, by(ten).withholdingTax, by(ten).netPay], [10, 250, 2250]);
+      assert.deepEqual([by(byStaff).whtRate, by(byStaff).withholdingTax], [5, 125]);
 
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
       const save = (rate: number) => call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceWhtRate: rate });
       assert.equal((await save(3)).body.freelanceWhtRate, 3);
-      assert.equal((await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements.find((x: any) => x.agentId === byStaff).withholdingTax, 120);
+      assert.equal((await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements.find((x: any) => x.agentId === byStaff).withholdingTax, 75); // 3% of 2,500
       assert.equal((await save(0)).status, 200); // none at all
       assert.equal((await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements.find((x: any) => x.agentId === byStaff).withholdingTax, 0);
       assert.equal((await save(101)).status, 400);
@@ -490,8 +550,8 @@ describe('freelance sales persons', () => {
     it('the report lists what was withheld in a month for KRA, with the people whose KRA PIN is missing; the account page shows the total', async () => {
       const r = (await call('boss', 'GET', `/freelance/withholding?month=${thisMonth}`)).body;
       const row = r.rows.find((x: any) => x.agentName === 'Tax Agent');
-      assert.deepEqual([row.kraPin, row.gross, row.rate, row.withheld, row.net, row.method, row.reference], ['A000000009Z', 4000, 5, 200, 3800, 'Cheque', 'CHQ 556677']);
-      assert.ok(r.totals.withheld >= 200);
+      assert.deepEqual([row.kraPin, row.gross, row.rate, row.withheld, row.net, row.method, row.reference], ['A000000009Z', 2500, 5, 125, 2375, 'Cheque', 'CHQ 556677']);
+      assert.ok(r.totals.withheld >= 125);
       assert.ok(!r.missingPin.includes('Tax Agent'));
       const noPin = await prisma.freelancePayout.create({ data: { weekStart: addWeeks(weekStart(todayStr()), -40), agentId: agents.defaultPay!, amount: 1000, withholdingRate: 5, withholdingTax: 50, status: 'Paid', paidOn: todayStr(), paidMethod: 'Cash' } });
       const again = (await call('boss', 'GET', `/freelance/withholding?month=${thisMonth}`)).body;
@@ -499,7 +559,7 @@ describe('freelance sales persons', () => {
       void noPin;
       assert.equal((await call('brian', 'GET', `/freelance/withholding?month=${thisMonth}`)).status, 403);
       const acct = (await call('boss', 'GET', `/freelance/agents/${agents.tax}/account`)).body;
-      assert.deepEqual([acct.summary.paid, acct.summary.taxWithheld, acct.weeks[0].withheld], [4000, 200, 200]);
+      assert.deepEqual([acct.summary.paid, acct.summary.taxWithheld, acct.weeks[0].withheld], [2500, 125, 125]);
       void tax;
     });
   });

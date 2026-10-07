@@ -240,11 +240,21 @@ export function withholdingOn(gross: number, ratePct: number): number {
   return Math.round((gross * ratePct) / 100 * 100 + Number.EPSILON) / 100;
 }
 
+/**
+ * A freelance sales person is paid in two parts, so commission never eats into our base prices:
+ *   • a small banded % on the BASE-price part of what they sell (the price-list price: the part that already carries only our minimum margin);
+ *   • a share of whatever was charged ABOVE base (the premium). The cost of the job does not change, so the premium is almost pure profit.
+ * Contracted-out services and stock resale carry a thin mark-up, so the base part of those lines counts at a reduced weight towards the bands.
+ */
 export const DEFAULT_FREELANCE_BANDS: Band[] = [
-  { from: 0, rate: 3 },
-  { from: 50000, rate: 5 },
-  { from: 150000, rate: 7 },
+  { from: 0, rate: 2 },
+  { from: 50000, rate: 3 },
+  { from: 150000, rate: 4 },
 ];
+/** The % of the amount charged above base that the freelancer keeps. */
+export const DEFAULT_FREELANCE_PREMIUM_PCT = 30;
+/** The weight (%) at which the base part of contracted-out and stock lines counts towards the bands: 100 = same as any other line. */
+export const DEFAULT_FREELANCE_LOW_MARGIN_PCT = 50;
 
 const DAY_MS = 86_400_000;
 const parseDay = (s: string) => {
@@ -280,6 +290,20 @@ export interface BaseCheckLine {
   heatPressFee?: number | null;
   /** The base price of one unit (VAT included, before any heat press fee): the list price, or the floor for film / artwork. */
   baseUnit: number;
+  /** A thin-margin line (contracted-out service, stock resale): its base part counts at a reduced weight. */
+  lowMargin?: boolean;
+}
+
+/** How an order's value divides, each as a share (0..1) of the order's total: the base part and the premium of the lines sold at or above base. */
+export interface FreelanceSplit {
+  /** base + premium: everything sold at or above base prices. */
+  qualifying: number;
+  /** The part of the qualifying lines that is the base price itself. */
+  base: number;
+  /** Of the whole order, the base part that belongs to thin-margin lines (a subset of base). */
+  low: number;
+  /** What was charged above base on the qualifying lines. */
+  premium: number;
 }
 
 /**
@@ -287,16 +311,31 @@ export interface BaseCheckLine {
  * discount. A line that falls short of its base price is left out whole. Paid commission is worked out on this share of the money received.
  */
 export function qualifyingShare(lines: BaseCheckLine[], orderDiscountPct = 0, orderDiscountAmt = 0): number {
+  return freelanceSplit(lines, orderDiscountPct, orderDiscountAmt).qualifying;
+}
+
+/** Splits an order's value into the base part, the premium above base, and the thin-margin part of the base (see FreelanceSplit). */
+export function freelanceSplit(lines: BaseCheckLine[], orderDiscountPct = 0, orderDiscountAmt = 0): FreelanceSplit {
+  const zero: FreelanceSplit = { qualifying: 0, base: 0, low: 0, premium: 0 };
   const total = (l: BaseCheckLine) => Math.max(0, (Number(l.qty) || 0) * ((Number(l.unitPrice) || 0) + (Number(l.heatPressFee) || 0)) * (1 - (Number(l.discountPct) || 0) / 100) - (Number(l.discountAmt) || 0));
   const subtotal = lines.reduce((a, l) => a + total(l), 0);
   const grand = Math.max(0, subtotal * (1 - (Number(orderDiscountPct) || 0) / 100) - (Number(orderDiscountAmt) || 0));
-  if (!(grand > 0) || !(subtotal > 0)) return 0;
+  if (!(grand > 0) || !(subtotal > 0)) return zero;
   const factor = grand / subtotal;
-  let ok = 0;
+  let base = 0;
+  let low = 0;
+  let premium = 0;
   for (const l of lines) {
     const got = total(l) * factor;
     const need = (Number(l.qty) || 0) * (l.baseUnit + (Number(l.heatPressFee) || 0));
-    if (got + 0.5 >= need) ok += got;
+    if (got + 0.5 >= need) {
+      const b = Math.min(got, need);
+      base += b;
+      if (l.lowMargin) low += b;
+      premium += Math.max(0, got - need);
+    }
   }
-  return r2(Math.min(1, ok / grand) * 1e6) / 1e6;
+  const share = (v: number) => r2(Math.min(1, v / grand) * 1e6) / 1e6;
+  const qualifying = share(base + premium);
+  return { qualifying, base: Math.min(qualifying, share(base)), low: Math.min(share(low), share(base)), premium: Math.min(qualifying, share(premium)) };
 }

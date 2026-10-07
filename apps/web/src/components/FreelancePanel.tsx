@@ -17,6 +17,11 @@ interface Statement {
   payMethod: string;
   received: number;
   qualifyingNet: number;
+  /** The base-price part the bands apply to, and what was charged above base (the premium); the two parts of the commission. */
+  baseNet: number;
+  premiumNet: number;
+  baseCommission: number;
+  premiumCommission: number;
   belowBaseNet: number;
   commission: number;
   /** Withholding tax: the rate for this person, the tax deducted, and what they are paid after it. */
@@ -25,7 +30,7 @@ interface Statement {
   netPay: number;
   kraPin: string;
   band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
-  orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number }[];
+  orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number; premiumNet: number }[];
   payout: {
     id: number;
     status: string;
@@ -46,6 +51,9 @@ interface WeekData {
   /** Can money be sent straight to their phone from here? (If not, M-Pesa is recorded by hand like any other method.) */
   b2cReady: boolean;
   statements: Statement[];
+  /** The share of what was charged above base that is paid on top of the bands. */
+  premiumPct: number;
+  lowMarginPct: number;
   totals: { commission: number; withholdingTax: number; netPay: number };
 }
 interface AgentRow {
@@ -175,7 +183,7 @@ function WeekTab() {
           {data.open && <p className="note">This week is not over, so more money may still arrive. Approve it once the week has closed (Sunday).</p>}
           <Card
             title="Weekly pay"
-            hint={`${fmtKsh(data.totals.commission)} commission, ${fmtKsh(data.totals.withholdingTax)} withholding tax deducted, ${fmtKsh(data.totals.netPay)} to pay. Earned on net sales (VAT out) received this week, at or above our base prices.`}
+            hint={`${fmtKsh(data.totals.commission)} commission, ${fmtKsh(data.totals.withholdingTax)} withholding tax deducted, ${fmtKsh(data.totals.netPay)} to pay. Earned on net sales (VAT out) received this week: a banded rate on the base-price part, plus ${data.premiumPct}% of what was charged above base. Lines sold below base earn nothing.`}
             actions={
               <button type="button" className="btn btn-primary btn-sm" disabled={busy || !approvable} onClick={() => run(async () => {
                 const r = await api.post<{ payouts: unknown[]; skipped: { agentName: string; reason: string }[] }>('/freelance/payouts/approve', { weekStart: week });
@@ -194,7 +202,8 @@ function WeekTab() {
                     <tr>
                       <th>Freelance sales person</th>
                       <th style={numStyle}>Received</th>
-                      <th style={numStyle}>Sales at/above base (net)</th>
+                      <th style={numStyle}>Base-price sales (net)</th>
+                      <th style={numStyle}>Charged above base (net)</th>
                       <th style={numStyle}>Below base (net, not paid)</th>
                       <th style={numStyle}>Commission</th>
                       <th style={numStyle}>Tax withheld</th>
@@ -214,9 +223,13 @@ function WeekTab() {
                             <Tag tone={statusTone(s.status)}>{s.status}</Tag>
                           </td>
                           <td style={numStyle}>{fmtKsh(s.received)}</td>
-                          <td style={numStyle}>{fmtKsh(s.qualifyingNet)}</td>
+                          <td style={numStyle}>{fmtKsh(s.baseNet)}</td>
+                          <td style={numStyle}>{s.premiumNet > 0 ? fmtKsh(s.premiumNet) : '—'}</td>
                           <td style={numStyle}>{s.belowBaseNet > 0 ? fmtKsh(s.belowBaseNet) : '—'}</td>
-                          <td style={numStyle}>{fmtKsh(s.commission)}</td>
+                          <td style={numStyle}>
+                            {fmtKsh(s.commission)}
+                            {s.premiumCommission > 0 && <div className="text-muted" style={{ fontSize: 11 }}>{fmtKsh(s.baseCommission)} bands + {fmtKsh(s.premiumCommission)} above base</div>}
+                          </td>
                           <td style={numStyle}>
                             {s.withholdingTax > 0 ? fmtKsh(s.withholdingTax) : '—'}
                             {s.withholdingTax > 0 && <div className="text-muted" style={{ fontSize: 11 }}>{s.whtRate}%{!s.kraPin ? ' · no KRA PIN' : ''}</div>}
@@ -245,7 +258,7 @@ function WeekTab() {
                         </tr>
                         {open === s.agentId && (
                           <tr>
-                            <td colSpan={9}>
+                            <td colSpan={10}>
                               <div style={{ padding: 'var(--space-3)' }}>
                                 <p className="note" style={{ marginTop: 0 }}>
                                   In the <b>{s.band.rate}%</b> band{s.band.toNext != null && s.band.nextRate != null ? <> — {fmtKsh(s.band.toNext)} more takes the next slice to {s.band.nextRate}%</> : null}.
@@ -259,6 +272,7 @@ function WeekTab() {
                                       <th style={numStyle}>Received</th>
                                       <th style={numStyle}>At/above base</th>
                                       <th style={numStyle}>Counts (net)</th>
+                                      <th style={numStyle}>Of which above base</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -270,6 +284,7 @@ function WeekTab() {
                                         <td style={numStyle}>{fmtKsh(o.moneyIn)}</td>
                                         <td style={numStyle}>{o.qualifyingPct}%</td>
                                         <td style={numStyle}>{fmtKsh(o.qualifyingNet)}</td>
+                                        <td style={numStyle}>{o.premiumNet > 0 ? fmtKsh(o.premiumNet) : '—'}</td>
                                       </tr>
                                     ))}
                                   </tbody>

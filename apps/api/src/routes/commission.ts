@@ -41,6 +41,8 @@ const settingsSchema = z.object({
   freelanceOwnershipMonths: z.number().int().min(1).max(60).optional(),
   // Withholding tax deducted from freelance commission (percent; 0 = none)
   freelanceWhtRate: z.number().min(0).max(100).optional(),
+  freelancePremiumPct: z.number().min(0).max(100).optional(),
+  freelanceLowMarginPct: z.number().min(0).max(100).optional(),
   // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: z.number().min(0).max(20).optional(),
   targetMode: z.enum(TARGET_MODES).optional(),
@@ -61,6 +63,8 @@ commissionRouter.put('/settings', manage, async (req, res) => {
     ownershipMonths: d.ownershipMonths,
     ...(d.freelanceOwnershipMonths !== undefined ? { freelanceOwnershipMonths: d.freelanceOwnershipMonths } : {}),
     ...(d.freelanceWhtRate !== undefined ? { freelanceWhtRate: d.freelanceWhtRate } : {}),
+    ...(d.freelancePremiumPct !== undefined ? { freelancePremiumPct: d.freelancePremiumPct } : {}),
+    ...(d.freelanceLowMarginPct !== undefined ? { freelanceLowMarginPct: d.freelanceLowMarginPct } : {}),
     ...(d.targetMultiplier !== undefined ? { targetMultiplier: d.targetMultiplier } : {}),
     ...(d.targetMode !== undefined ? { targetMode: d.targetMode } : {}),
     updatedByName: req.user!.name,

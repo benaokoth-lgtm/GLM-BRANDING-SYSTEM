@@ -22,7 +22,9 @@ import {
   filmPremiumCommission,
   filmPremiumPerM,
   ownershipEnd,
-  qualifyingShare,
+  freelanceSplit,
+  DEFAULT_FREELANCE_PREMIUM_PCT,
+  DEFAULT_FREELANCE_LOW_MARGIN_PCT,
   round2,
   weekEnd,
   salesTarget,
@@ -30,7 +32,7 @@ import {
   systemJobCalc,
   todayStr,
 } from '@glm/shared';
-import type { Band, LineItemInput, SalesTarget, TargetMode } from '@glm/shared';
+import type { Band, FreelanceSplit, LineItemInput, SalesTarget, TargetMode } from '@glm/shared';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
 
@@ -74,6 +76,10 @@ export interface CommissionConfig {
   ownershipMonths: number;
   /** Freelance sales persons: marginal bands on their weekly net sales received at or above base prices. */
   freelanceBands: Band[];
+  /** % of what was charged above base prices that a freelancer keeps. */
+  freelancePremiumPct: number;
+  /** The weight (%) at which the base part of contracted-out and stock lines counts towards the bands. */
+  freelanceLowMarginPct: number;
   /** A freelancer keeps a client while an order comes in at least this often (months); every order restarts the count. */
   freelanceOwnershipMonths: number;
   /** The standard withholding tax rate (percent) deducted from freelance commission. */
@@ -102,6 +108,8 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
+    freelancePremiumPct: row?.freelancePremiumPct ?? DEFAULT_FREELANCE_PREMIUM_PCT,
+    freelanceLowMarginPct: row?.freelanceLowMarginPct ?? DEFAULT_FREELANCE_LOW_MARGIN_PCT,
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceWhtRate: row?.freelanceWhtRate ?? DEFAULT_FREELANCE_WHT_RATE,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
@@ -118,6 +126,9 @@ export interface Sourcing {
   /** Set only when the order is marked for a freelance sales person — and then sourcedByStaffId is always null. */
   freelanceAgentId: number | null;
   freelanceQualifyingShare: number;
+  freelanceBaseShare: number;
+  freelanceLowShare: number;
+  freelancePremiumShare: number;
 }
 
 export interface CreditLine {
@@ -138,15 +149,17 @@ export interface CreditLine {
  * The share of an order's value sold at or above base prices — only that share earns a freelance sales person commission. A line's base price is
  * the price-list price (a service's, a material's; for an artwork-sized line the area × the per-sqm rate), unless the caller gives its own.
  */
-export async function freelanceShare(db: Db, lines: CreditLine[], orderDiscountPct = 0, orderDiscountAmt = 0): Promise<number> {
+export async function freelanceShare(db: Db, lines: CreditLine[], orderDiscountPct = 0, orderDiscountAmt = 0): Promise<FreelanceSplit> {
   const serviceIds = [...new Set(lines.map((l) => l.serviceId).filter((v): v is number => !!v))];
   const materialIds = [...new Set(lines.map((l) => l.materialId).filter((v): v is number => !!v))];
-  const services = new Map((serviceIds.length ? await db.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, price: true } }) : []).map((s) => [s.id, s.price]));
+  const services = new Map((serviceIds.length ? await db.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, price: true, outsourced: true } }) : []).map((s) => [s.id, s]));
   const materials = new Map((materialIds.length ? await db.material.findMany({ where: { id: { in: materialIds } }, select: { id: true, price: true } }) : []).map((m) => [m.id, m.price]));
-  return qualifyingShare(
+  return freelanceSplit(
     lines.map((l) => {
-      const listed = l.serviceId ? (services.get(l.serviceId) ?? 0) * (l.artworkAreaSqm && l.artworkAreaSqm > 0 ? l.artworkAreaSqm : 1) : l.materialId ? (materials.get(l.materialId) ?? 0) : 0;
-      return { qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmt: l.discountAmt, heatPressFee: l.heatPressFee, baseUnit: l.baseUnit ?? listed };
+      const listed = l.serviceId ? (services.get(l.serviceId)?.price ?? 0) * (l.artworkAreaSqm && l.artworkAreaSqm > 0 ? l.artworkAreaSqm : 1) : l.materialId ? (materials.get(l.materialId) ?? 0) : 0;
+      // a contracted-out service and stock resale carry a thin mark-up
+      const lowMargin = l.serviceId ? !!services.get(l.serviceId)?.outsourced : !!l.materialId;
+      return { qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmt: l.discountAmt, heatPressFee: l.heatPressFee, baseUnit: l.baseUnit ?? listed, lowMargin };
     }),
     orderDiscountPct,
     orderDiscountAmt,
@@ -229,15 +242,15 @@ export async function resolveSourcing(
     orderDiscountAmt?: number;
   },
 ): Promise<Sourcing> {
-  const house = { salesSource: 'house' as const, sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1 };
+  const house = { salesSource: 'house' as const, sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1, freelanceBaseShare: 1, freelanceLowShare: 0, freelancePremiumShare: 0 };
   // Switched off: nobody is credited and no client is taken on.
   if (!(await commissionEnabled(db))) return house;
   const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
   const today = todayStr();
   const label = (o.name ?? '').trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey ?? '');
   const creditFreelancer = async (agentId: number): Promise<Sourcing> => {
-    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
-    return { salesSource: 'freelance', sourcedByStaffId: null, clientKey, freelanceAgentId: agentId, freelanceQualifyingShare: share };
+    const split = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : { qualifying: 1, base: 1, low: 0, premium: 0 };
+    return { salesSource: 'freelance', sourcedByStaffId: null, clientKey, freelanceAgentId: agentId, freelanceQualifyingShare: split.qualifying, freelanceBaseShare: split.base, freelanceLowShare: split.low, freelancePremiumShare: split.premium };
   };
 
   // Marked for a freelance account: credited to them alone, no staff member is credited, and the client becomes theirs.
@@ -565,8 +578,15 @@ export interface FreelanceStatement {
   weekEnd: string;
   /** Money received in the week on their orders (VAT included), less what was refunded. */
   received: number;
-  /** Net of VAT, at or above base prices: what the bands apply to. */
+  /** Net of VAT, at or above base prices (base part + premium). */
   qualifyingNet: number;
+  /** Net of VAT: the base-price part that the bands apply to, after the thin-margin weighting. */
+  baseNet: number;
+  /** Net of VAT charged above base prices on those lines: the premium. */
+  premiumNet: number;
+  /** The two parts of the commission. */
+  baseCommission: number;
+  premiumCommission: number;
   /** Net of VAT that did not qualify (sold below a base price): earns nothing. */
   belowBaseNet: number;
   commission: number;
@@ -575,7 +595,7 @@ export interface FreelanceStatement {
   withholdingTax: number;
   netPay: number;
   band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
-  orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number }[];
+  orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number; premiumNet: number }[];
 }
 
 /**
@@ -605,21 +625,32 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
     const id = o.freelanceAgentId!;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id)!;
     const net = f.received - f.refunded;
     const share = o.freelanceQualifyingShare;
     const qual = (net * share) / (1 + VAT_RATE);
+    // the order's qualifying part divides into the base price (banded; thin-margin lines at a reduced weight) and the premium above it (a share)
+    const premiumShare = Math.min(share, Math.max(0, o.freelancePremiumShare));
+    const baseShare = Math.min(share, Math.max(0, o.freelanceBaseShare));
+    const lowShare = Math.min(baseShare, Math.max(0, o.freelanceLowShare));
+    const weight = config.freelanceLowMarginPct / 100;
+    const baseWeighted = (net * (baseShare - lowShare * (1 - weight))) / (1 + VAT_RATE);
+    const prem = (net * premiumShare) / (1 + VAT_RATE);
     st.received = round2(st.received + net);
     st.qualifyingNet = round2(st.qualifyingNet + qual);
+    st.baseNet = round2(st.baseNet + baseWeighted);
+    st.premiumNet = round2(st.premiumNet + prem);
     st.belowBaseNet = round2(st.belowBaseNet + (net * (1 - share)) / (1 + VAT_RATE));
-    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net), qualifyingPct: Math.round(share * 1000) / 10, qualifyingNet: round2(qual) });
+    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net), qualifyingPct: Math.round(share * 1000) / 10, qualifyingNet: round2(qual), premiumNet: round2(prem) });
   }
   for (const st of people.values()) {
-    const basis = Math.max(0, st.qualifyingNet);
-    st.commission = bandedAmount(config.freelanceBands, basis);
+    const basis = Math.max(0, st.baseNet);
+    st.baseCommission = bandedAmount(config.freelanceBands, basis);
+    st.premiumCommission = round2((Math.max(0, st.premiumNet) * config.freelancePremiumPct) / 100);
+    st.commission = round2(st.baseCommission + st.premiumCommission);
     st.band = bandPosition(config.freelanceBands, basis);
   }
   const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });

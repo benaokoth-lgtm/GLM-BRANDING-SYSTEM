@@ -43922,10 +43922,12 @@ function withholdingOn(gross, ratePct) {
   return Math.round(gross * ratePct / 100 * 100 + Number.EPSILON) / 100;
 }
 var DEFAULT_FREELANCE_BANDS = [
-  { from: 0, rate: 3 },
-  { from: 5e4, rate: 5 },
-  { from: 15e4, rate: 7 }
+  { from: 0, rate: 2 },
+  { from: 5e4, rate: 3 },
+  { from: 15e4, rate: 4 }
 ];
+var DEFAULT_FREELANCE_PREMIUM_PCT = 30;
+var DEFAULT_FREELANCE_LOW_MARGIN_PCT = 50;
 var DAY_MS = 864e5;
 var parseDay = (s) => {
   const [y, m, d] = s.split("-").map(Number);
@@ -43943,19 +43945,29 @@ function weekEnd(start) {
 function addWeeks(start, n) {
   return fmtDay(parseDay(start) + n * 7 * DAY_MS);
 }
-function qualifyingShare(lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
+function freelanceSplit(lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
+  const zero = { qualifying: 0, base: 0, low: 0, premium: 0 };
   const total = (l) => Math.max(0, (Number(l.qty) || 0) * ((Number(l.unitPrice) || 0) + (Number(l.heatPressFee) || 0)) * (1 - (Number(l.discountPct) || 0) / 100) - (Number(l.discountAmt) || 0));
   const subtotal = lines.reduce((a2, l) => a2 + total(l), 0);
   const grand = Math.max(0, subtotal * (1 - (Number(orderDiscountPct) || 0) / 100) - (Number(orderDiscountAmt) || 0));
-  if (!(grand > 0) || !(subtotal > 0)) return 0;
+  if (!(grand > 0) || !(subtotal > 0)) return zero;
   const factor = grand / subtotal;
-  let ok = 0;
+  let base2 = 0;
+  let low = 0;
+  let premium = 0;
   for (const l of lines) {
     const got = total(l) * factor;
     const need = (Number(l.qty) || 0) * (l.baseUnit + (Number(l.heatPressFee) || 0));
-    if (got + 0.5 >= need) ok += got;
+    if (got + 0.5 >= need) {
+      const b = Math.min(got, need);
+      base2 += b;
+      if (l.lowMargin) low += b;
+      premium += Math.max(0, got - need);
+    }
   }
-  return r22(Math.min(1, ok / grand) * 1e6) / 1e6;
+  const share = (v) => r22(Math.min(1, v / grand) * 1e6) / 1e6;
+  const qualifying = share(base2 + premium);
+  return { qualifying, base: Math.min(qualifying, share(base2)), low: Math.min(share(low), share(base2)), premium: Math.min(qualifying, share(premium)) };
 }
 
 // packages/shared/src/purchasing.ts
@@ -44226,6 +44238,8 @@ async function getCommissionConfig(db = prisma) {
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
+    freelancePremiumPct: row?.freelancePremiumPct ?? DEFAULT_FREELANCE_PREMIUM_PCT,
+    freelanceLowMarginPct: row?.freelanceLowMarginPct ?? DEFAULT_FREELANCE_LOW_MARGIN_PCT,
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceWhtRate: row?.freelanceWhtRate ?? DEFAULT_FREELANCE_WHT_RATE,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
@@ -44235,12 +44249,13 @@ async function getCommissionConfig(db = prisma) {
 async function freelanceShare(db, lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
   const serviceIds = [...new Set(lines.map((l) => l.serviceId).filter((v) => !!v))];
   const materialIds = [...new Set(lines.map((l) => l.materialId).filter((v) => !!v))];
-  const services2 = new Map((serviceIds.length ? await db.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, price: true } }) : []).map((s) => [s.id, s.price]));
+  const services2 = new Map((serviceIds.length ? await db.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, price: true, outsourced: true } }) : []).map((s) => [s.id, s]));
   const materials = new Map((materialIds.length ? await db.material.findMany({ where: { id: { in: materialIds } }, select: { id: true, price: true } }) : []).map((m) => [m.id, m.price]));
-  return qualifyingShare(
+  return freelanceSplit(
     lines.map((l) => {
-      const listed = l.serviceId ? (services2.get(l.serviceId) ?? 0) * (l.artworkAreaSqm && l.artworkAreaSqm > 0 ? l.artworkAreaSqm : 1) : l.materialId ? materials.get(l.materialId) ?? 0 : 0;
-      return { qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmt: l.discountAmt, heatPressFee: l.heatPressFee, baseUnit: l.baseUnit ?? listed };
+      const listed = l.serviceId ? (services2.get(l.serviceId)?.price ?? 0) * (l.artworkAreaSqm && l.artworkAreaSqm > 0 ? l.artworkAreaSqm : 1) : l.materialId ? materials.get(l.materialId) ?? 0 : 0;
+      const lowMargin = l.serviceId ? !!services2.get(l.serviceId)?.outsourced : !!l.materialId;
+      return { qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmt: l.discountAmt, heatPressFee: l.heatPressFee, baseUnit: l.baseUnit ?? listed, lowMargin };
     }),
     orderDiscountPct,
     orderDiscountAmt
@@ -44274,14 +44289,14 @@ async function takeFreelanceClient(db, clientKey, agentId, label, today) {
   await db.freelanceClient.create({ data: { clientKey, clientName: label, agentId, startDate: today, lastOrderDate: today } });
 }
 async function resolveSourcing(db, o) {
-  const house = { salesSource: "house", sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1 };
+  const house = { salesSource: "house", sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1, freelanceBaseShare: 1, freelanceLowShare: 0, freelancePremiumShare: 0 };
   if (!await commissionEnabled(db)) return house;
   const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
   const today = todayStr();
   const label = (o.name ?? "").trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey ?? "");
   const creditFreelancer = async (agentId) => {
-    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
-    return { salesSource: "freelance", sourcedByStaffId: null, clientKey, freelanceAgentId: agentId, freelanceQualifyingShare: share };
+    const split = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : { qualifying: 1, base: 1, low: 0, premium: 0 };
+    return { salesSource: "freelance", sourcedByStaffId: null, clientKey, freelanceAgentId: agentId, freelanceQualifyingShare: split.qualifying, freelanceBaseShare: split.base, freelanceLowShare: split.low, freelancePremiumShare: split.premium };
   };
   if (o.freelanceAgentId) {
     await takeFreelanceClient(db, clientKey, o.freelanceAgentId, label, today);
@@ -44523,21 +44538,31 @@ async function buildFreelanceStatements(weekStartDate, only) {
     const id = o.freelanceAgentId;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: "", status: "", phone: "", mpesaNumber: "", payMethod: "M-Pesa", kraPin: "", weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: "", status: "", phone: "", mpesaNumber: "", payMethod: "M-Pesa", kraPin: "", weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id);
     const net8 = f.received - f.refunded;
     const share = o.freelanceQualifyingShare;
     const qual = net8 * share / (1 + VAT_RATE);
+    const premiumShare = Math.min(share, Math.max(0, o.freelancePremiumShare));
+    const baseShare = Math.min(share, Math.max(0, o.freelanceBaseShare));
+    const lowShare = Math.min(baseShare, Math.max(0, o.freelanceLowShare));
+    const weight = config.freelanceLowMarginPct / 100;
+    const baseWeighted = net8 * (baseShare - lowShare * (1 - weight)) / (1 + VAT_RATE);
+    const prem = net8 * premiumShare / (1 + VAT_RATE);
     st.received = round2(st.received + net8);
     st.qualifyingNet = round2(st.qualifyingNet + qual);
+    st.baseNet = round2(st.baseNet + baseWeighted);
+    st.premiumNet = round2(st.premiumNet + prem);
     st.belowBaseNet = round2(st.belowBaseNet + net8 * (1 - share) / (1 + VAT_RATE));
-    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net8), qualifyingPct: Math.round(share * 1e3) / 10, qualifyingNet: round2(qual) });
+    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net8), qualifyingPct: Math.round(share * 1e3) / 10, qualifyingNet: round2(qual), premiumNet: round2(prem) });
   }
   for (const st of people.values()) {
-    const basis = Math.max(0, st.qualifyingNet);
-    st.commission = bandedAmount(config.freelanceBands, basis);
+    const basis = Math.max(0, st.baseNet);
+    st.baseCommission = bandedAmount(config.freelanceBands, basis);
+    st.premiumCommission = round2(Math.max(0, st.premiumNet) * config.freelancePremiumPct / 100);
+    st.commission = round2(st.baseCommission + st.premiumCommission);
     st.band = bandPosition(config.freelanceBands, basis);
   }
   const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });
@@ -54655,6 +54680,8 @@ var settingsSchema4 = external_exports.object({
   freelanceOwnershipMonths: external_exports.number().int().min(1).max(60).optional(),
   // Withholding tax deducted from freelance commission (percent; 0 = none)
   freelanceWhtRate: external_exports.number().min(0).max(100).optional(),
+  freelancePremiumPct: external_exports.number().min(0).max(100).optional(),
+  freelanceLowMarginPct: external_exports.number().min(0).max(100).optional(),
   // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: external_exports.number().min(0).max(20).optional(),
   targetMode: external_exports.enum(TARGET_MODES).optional()
@@ -54674,6 +54701,8 @@ commissionRouter.put("/settings", manage, async (req, res) => {
     ownershipMonths: d.ownershipMonths,
     ...d.freelanceOwnershipMonths !== void 0 ? { freelanceOwnershipMonths: d.freelanceOwnershipMonths } : {},
     ...d.freelanceWhtRate !== void 0 ? { freelanceWhtRate: d.freelanceWhtRate } : {},
+    ...d.freelancePremiumPct !== void 0 ? { freelancePremiumPct: d.freelancePremiumPct } : {},
+    ...d.freelanceLowMarginPct !== void 0 ? { freelanceLowMarginPct: d.freelanceLowMarginPct } : {},
     ...d.targetMultiplier !== void 0 ? { targetMultiplier: d.targetMultiplier } : {},
     ...d.targetMode !== void 0 ? { targetMode: d.targetMode } : {},
     updatedByName: req.user.name
@@ -55904,6 +55933,8 @@ freelanceRouter.get("/statement", manage2, async (req, res) => {
     open: weekEnd(week) >= todayStr(),
     // the week is not over, so more money may still arrive
     bands: config.freelanceBands,
+    premiumPct: config.freelancePremiumPct,
+    lowMarginPct: config.freelanceLowMarginPct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
     b2cReady: isB2cReady(await loadMpesaConfig()),
     statements: statements.map((s) => {
@@ -55941,7 +55972,7 @@ freelanceRouter.post("/payouts/approve", manage2, async (req, res) => {
       amount: s.commission,
       withholdingRate: s.whtRate,
       withholdingTax: s.withholdingTax,
-      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, belowBaseNet: s.belowBaseNet, orders: s.orders }),
+      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, belowBaseNet: s.belowBaseNet, orders: s.orders }),
       status: "Approved",
       approvedByName: req.user.name,
       approvedAt: /* @__PURE__ */ new Date()
@@ -56077,7 +56108,8 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
       taxWithheld: round2(payouts.filter((p) => p.status === "Paid").reduce((a2, p) => a2 + p.withholdingTax, 0))
     },
     weeks,
-    bands: (await getCommissionConfig()).freelanceBands
+    bands: (await getCommissionConfig()).freelanceBands,
+    premiumPct: (await getCommissionConfig()).freelancePremiumPct
   });
 });
 

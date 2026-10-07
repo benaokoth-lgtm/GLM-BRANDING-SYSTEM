@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { EXPENSE_METHODS, addWeeks, fmtDate, fmtKsh, todayStr, weekStart } from '@glm/shared';
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from '../pages/accounting/shared';
@@ -19,7 +19,16 @@ interface Statement {
   commission: number;
   band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
   orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number }[];
-  payout: { id: number; status: string; amount: number; paidOn: string | null; paidMethod: string | null } | null;
+  payout: {
+    id: number;
+    status: string;
+    amount: number;
+    paidOn: string | null;
+    paidMethod: string | null;
+    receipt: string | null;
+    // the latest attempt to send it to their M-Pesa phone
+    mpesa: { id: number; status: string; resultDesc: string; receipt: string | null; phone: string; amount: number } | null;
+  } | null;
 }
 interface WeekData {
   weekStart: string;
@@ -76,11 +85,19 @@ function WeekTab() {
   const [week, setWeek] = useState(weekStart(todayStr()));
   const { data, error, loading, reload } = useLoad<WeekData>(`/freelance/statement?week=${week}`);
   const [open, setOpen] = useState<number | null>(null);
-  const [method, setMethod] = useState<(typeof EXPENSE_METHODS)[number]>('M-Pesa');
+  // 'phone' = send it to their M-Pesa number from here; anything else is recorded as paid by hand
+  const [method, setMethod] = useState<'phone' | (typeof EXPENSE_METHODS)[number]>('phone');
   const { msg, err, busy, run } = useRun(reload);
   const thisWeek = weekStart(todayStr());
 
-  const approvable = !!data && data.statements.some((s) => s.commission > 0 && s.payout?.status !== 'Paid');
+  const approvable = !!data && data.statements.some((s) => s.commission > 0 && s.payout?.status !== 'Paid' && s.payout?.status !== 'Sending');
+  // while M-Pesa has a payment on its way, look again every few seconds
+  const sending = !!data && data.statements.some((s) => s.payout?.status === 'Sending');
+  useEffect(() => {
+    if (!sending) return;
+    const t = setInterval(reload, 5000);
+    return () => clearInterval(t);
+  }, [sending, reload]);
   return (
     <>
       <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -151,22 +168,46 @@ function WeekTab() {
                           <td style={{ whiteSpace: 'nowrap' }}>
                             {!s.payout && s.commission > 0 && <Tag>{s.status === 'Active' ? 'not approved' : 'agent not approved'}</Tag>}
                             {s.payout?.status === 'Approved' && (
-                              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                                 <Tag tone="bad">approved</Tag>
-                                <select className="input" style={{ width: 130 }} value={method} onChange={(e) => setMethod(e.target.value as (typeof EXPENSE_METHODS)[number])}>
+                                <select className="input" style={{ width: 190 }} value={method} onChange={(e) => setMethod(e.target.value as 'phone' | (typeof EXPENSE_METHODS)[number])}>
+                                  <option value="phone">M-Pesa to their phone (automatic)</option>
                                   {EXPENSE_METHODS.map((m) => (
-                                    <option key={m}>{m}</option>
+                                    <option key={m} value={m}>
+                                      {m} (paid by hand)
+                                    </option>
                                   ))}
                                 </select>
-                                <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/payouts/${s.payout!.id}/pay`, { method }); return `${s.agentName} paid ${fmtKsh(s.payout!.amount)} by ${method}`; })}>
-                                  Mark paid
-                                </button>
+                                {method === 'phone' ? (
+                                  <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/payouts/${s.payout!.id}/send-mpesa`, {}); return `Sent to Safaricom for ${s.agentName} (${s.mpesaNumber}) — it is marked paid when M-Pesa confirms.`; })}>
+                                    Send to M-Pesa
+                                  </button>
+                                ) : (
+                                  <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/payouts/${s.payout!.id}/pay`, { method }); return `${s.agentName} paid ${fmtKsh(s.payout!.amount)} by ${method}`; })}>
+                                    Mark paid
+                                  </button>
+                                )}
+                                {s.payout.mpesa?.status === 'Failed' && <span className="note" style={{ color: '#a33', margin: 0, flexBasis: '100%' }}>Last M-Pesa attempt failed: {s.payout.mpesa.resultDesc}</span>}
                                 <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(async () => { await api.del(`/freelance/payouts/${s.payout!.id}`); return 'Approval withdrawn'; })}>
                                   Withdraw
                                 </button>
                               </span>
                             )}
-                            {s.payout?.status === 'Paid' && <Tag tone="good">paid {s.payout.paidOn ? fmtDate(s.payout.paidOn) : ''} · {s.payout.paidMethod}</Tag>}
+                            {s.payout?.status === 'Sending' && (
+                              <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                                <Tag tone="bad">on its way to {s.payout.mpesa?.phone ?? 'their phone'}…</Tag>
+                                <button type="button" className="btn btn-ghost btn-sm" title="Only if Safaricom's answer never came: check the Paybill's own statement first" disabled={busy} onClick={() => run(async () => {
+                                  const code = window.prompt('Safaricom has not answered. Check the Paybill statement. If the money WAS sent, enter its M-Pesa receipt code; if it was NOT sent, leave this empty.');
+                                  if (code === null) return 'Left as it was';
+                                  if (code.trim()) await api.post(`/freelance/disbursements/${s.payout!.mpesa!.id}/resolve`, { outcome: 'sent', receipt: code.trim() });
+                                  else await api.post(`/freelance/disbursements/${s.payout!.mpesa!.id}/resolve`, { outcome: 'failed' });
+                                  return code.trim() ? 'Recorded as sent' : 'Recorded as not sent — you can send it again';
+                                })}>
+                                  Safaricom didn’t answer…
+                                </button>
+                              </span>
+                            )}
+                            {s.payout?.status === 'Paid' && <Tag tone="good">paid {s.payout.paidOn ? fmtDate(s.payout.paidOn) : ''} · {s.payout.paidMethod}{s.payout.receipt ? ` ${s.payout.receipt}` : ''}</Tag>}
                           </td>
                         </tr>
                         {open === s.agentId && (
@@ -210,7 +251,7 @@ function WeekTab() {
                 </table>
               </div>
             )}
-            <p className="note">Paying records an expense under Freelance Commission, so it reaches the books (and the petty-cash float when paid from petty cash). Only an approved (Active) freelance sales person is paid.</p>
+            <p className="note">“Send to M-Pesa” asks Safaricom to pay the person’s own M-Pesa number from your Paybill — the payout is marked paid, and the expense booked, when Safaricom confirms it (set up under Master Data → M-Pesa). The other methods are for when you paid some other way. Either way the expense reaches the books under Freelance Commission. Only an approved (Active) freelance sales person is paid.</p>
           </Card>
         </>
       )}
@@ -221,14 +262,23 @@ function WeekTab() {
 // ── The people ──────────────────────────────────────────────────────────────
 const blank = { name: '', phone: '', mpesaNumber: '', nationalId: '', kraPin: '', bankName: '', bankAccount: '' };
 
+interface ClientsData {
+  months: number;
+  clients: { id: number; clientName: string; agentId: number; agentName: string; startDate: string; lastOrderDate: string; until: string; active: boolean; status: string }[];
+}
+
 function PeopleTab() {
   const { data, error, loading, reload } = useLoad<AgentRow[]>('/freelance/agents');
   const [account, setAccount] = useState<number | null>(null);
   const [form, setForm] = useState(blank);
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState(blank);
-  const { msg, err, busy, run } = useRun(reload);
+  const { msg, err, busy, run } = useRun(() => {
+    reload();
+    clients.reload();
+  });
   const acct = useLoad<Account>(account ? `/freelance/agents/${account}/account` : null);
+  const clients = useLoad<ClientsData>('/freelance/clients');
 
   if (!data) return <Loading loading={loading} error={error} />;
   const set = (setter: (f: typeof blank) => void, f: typeof blank, k: keyof typeof blank) => (e: React.ChangeEvent<HTMLInputElement>) => setter({ ...f, [k]: e.target.value });
@@ -372,6 +422,47 @@ function PeopleTab() {
           )}
         </Card>
       )}
+
+      <Card title="Clients they own" hint={`A client stays a freelance sales person's for as long as they keep bringing orders — each order restarts the count, and it lapses after ${clients.data?.months ?? 12} months with none. Every order from them is credited to the freelancer, whoever captures it; staff and other freelancers cannot take the client.`}>
+        {!clients.data ? (
+          <Loading loading={clients.loading} error={clients.error} />
+        ) : clients.data.clients.length === 0 ? (
+          <p className="note" style={{ margin: 0 }}>None yet. A client becomes theirs the first time an order is credited to them.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Freelance sales person</th>
+                  <th>Since</th>
+                  <th>Last order</th>
+                  <th>Theirs until (if no more orders)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {clients.data.clients.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.clientName}</td>
+                    <td>{c.agentName}</td>
+                    <td className="text-muted">{fmtDate(c.startDate)}</td>
+                    <td>{fmtDate(c.lastOrderDate)}</td>
+                    <td>{c.active ? fmtDate(c.until) : <Tag>{c.status}</Tag>}</td>
+                    <td>
+                      {c.active && (
+                        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/freelance/clients/${c.id}/release`, {}); return `${c.clientName} is released`; })}>
+                          Release
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       <Card title="Add a freelance sales person" hint="Added here, they are approved straight away. (When staff add one at order capture, you approve it above.)">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--space-2)' }}>

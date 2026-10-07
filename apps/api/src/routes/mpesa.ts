@@ -7,7 +7,8 @@ import { seal } from '../crypto';
 import { autoMatch, normaliseDate, storeReceipt } from '../accounting/mpesaMatching';
 import { todayStr } from '@glm/shared';
 import { canAccessOrder, canTakePayment, orderInclude, recordOrderPayments, serializeSummary } from './orders';
-import { DarajaError, callbackUrls, darajaBaseUrl, darajaTimestamp, getAccessToken, getSettingsRow, isReady, loadMpesaConfig, newCallbackSecret } from '../mpesaConfig';
+import { DarajaError, callbackUrls, darajaBaseUrl, darajaTimestamp, getAccessToken, getSettingsRow, isB2cReady, isReady, loadMpesaConfig, newCallbackSecret, parseCertificate, securityCredential } from '../mpesaConfig';
+import { handleB2cResult, handleB2cTimeout } from '../mpesaB2c';
 import type { MpesaConfig } from '../mpesaConfig';
 
 export const mpesaRouter = Router();
@@ -40,6 +41,13 @@ function publicSettings(c: MpesaConfig) {
     hasConsumerKey: !!c.consumerKey,
     hasConsumerSecret: !!c.consumerSecret,
     hasPasskey: !!c.passkey,
+    // Pay-outs to phones (B2C): the secret and certificate are never sent back — only whether they are set
+    b2cReady: isB2cReady(c),
+    b2cShortCode: c.b2cShortCode,
+    initiatorName: c.initiatorName,
+    hasInitiatorPassword: !!c.initiatorPassword,
+    hasSecurityCert: !!c.securityCert,
+    b2cCommand: c.b2cCommand,
     c2bRegisteredAt: c.c2bRegisteredAt,
     callbackUrls: callbackUrls(c),
   };
@@ -59,6 +67,12 @@ const settingsSchema = z.object({
   consumerSecret: z.string().trim().max(200).optional(),
   passkey: z.string().trim().max(300).optional(),
   enabled: z.boolean().optional(),
+  // Pay-outs to phones (B2C). Blank password / certificate = keep what is saved.
+  b2cShortCode: z.string().trim().max(20).optional(),
+  initiatorName: z.string().trim().max(100).optional(),
+  initiatorPassword: z.string().max(300).optional(),
+  securityCert: z.string().trim().max(10000).optional(),
+  b2cCommand: z.enum(['BusinessPayment', 'SalaryPayment', 'PromotionPayment']).optional(),
 });
 
 mpesaRouter.put('/settings', requireAuth, requireRole('Admin'), async (req, res) => {
@@ -81,7 +95,19 @@ mpesaRouter.put('/settings', requireAuth, requireRole('Admin'), async (req, res)
     publicBaseUrl: base.publicBaseUrl,
     callbackSecret: seal(base.callbackSecret || newCallbackSecret()),
     enabled: b.enabled ?? base.enabled,
+    b2cShortCode: b.b2cShortCode ?? base.b2cShortCode,
+    initiatorName: b.initiatorName ?? base.initiatorName,
+    initiatorPassword: seal(b.initiatorPassword ? b.initiatorPassword : base.initiatorPassword),
+    securityCert: b.securityCert ? b.securityCert : base.securityCert,
+    b2cCommand: b.b2cCommand ?? (base.b2cCommand || 'BusinessPayment'),
   };
+  if (b.securityCert) {
+    try {
+      parseCertificate(b.securityCert);
+    } catch {
+      return res.status(400).json({ error: "That does not look like Safaricom's certificate. Paste the whole of the .cer file from the Daraja portal (it starts with -----BEGIN CERTIFICATE-----)." });
+    }
+  }
   if (b.publicBaseUrl !== undefined) {
     const v = b.publicBaseUrl.replace(/\/+$/, '');
     if (v && !/^https:\/\//.test(v)) return res.status(400).json({ error: 'The public web address must start with https:// — Safaricom will not call back over plain http' });
@@ -98,8 +124,19 @@ mpesaRouter.put('/settings', requireAuth, requireRole('Admin'), async (req, res)
 // Proves the consumer key and secret work, without prompting anyone.
 mpesaRouter.post('/settings/test', requireAuth, requireRole('Admin'), async (_req, res) => {
   try {
-    await getAccessToken(await loadMpesaConfig());
-    res.json({ ok: true });
+    const c = await loadMpesaConfig();
+    await getAccessToken(c);
+    // If pay-outs are set up, prove the certificate and password can make a security credential too.
+    let b2c: string | null = null;
+    if (c.initiatorPassword && c.securityCert) {
+      try {
+        securityCredential(c);
+        b2c = 'ready';
+      } catch {
+        b2c = 'The certificate could not be used — paste the whole certificate again';
+      }
+    }
+    res.json({ ok: true, b2c });
   } catch (e) {
     if (e instanceof DarajaError) return res.status(400).json({ error: e.message });
     throw e;
@@ -318,6 +355,18 @@ mpesaRouter.post('/:checkoutRequestId/confirm-manually', requireAuth, async (req
 // payment is stored Unmatched (and booked to Unallocated M-Pesa Receipts), then matched to an order automatically when the
 // customer typed the order number as the account reference — see accounting/mpesaMatching.ts. (Safaricom hashes the customer's
 // phone number on production, so matching is by order number, not phone.)
+// Safaricom's answer to a payment SENT to a phone (B2C): the result, or a timeout when it was never processed. Same secret-in-the-address proof.
+mpesaRouter.post('/b2c/:secret/result', async (req, res) => {
+  const cfg = await loadMpesaConfig();
+  if (secretOk(req.params.secret, cfg.callbackSecret)) await handleB2cResult(req.body).catch((e) => console.error('B2C result failed', e));
+  res.json(ACK);
+});
+mpesaRouter.post('/b2c/:secret/timeout', async (req, res) => {
+  const cfg = await loadMpesaConfig();
+  if (secretOk(req.params.secret, cfg.callbackSecret)) await handleB2cTimeout(req.body).catch((e) => console.error('B2C timeout failed', e));
+  res.json(ACK);
+});
+
 mpesaRouter.post('/c2b/:secret/validation', (_req, res) => res.json(ACK));
 
 mpesaRouter.post('/c2b/:secret/confirmation', async (req, res) => {

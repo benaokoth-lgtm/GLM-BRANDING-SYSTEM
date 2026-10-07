@@ -72,6 +72,8 @@ export interface CommissionConfig {
   ownershipMonths: number;
   /** Freelance sales persons: marginal bands on their weekly net sales received at or above base prices. */
   freelanceBands: Band[];
+  /** A freelancer keeps a client while an order comes in at least this often (months); every order restarts the count. */
+  freelanceOwnershipMonths: number;
   /** Times their basic monthly salary a person must sell before commission starts; 0 = no target. */
   targetMultiplier: number;
   targetMode: TargetMode;
@@ -96,6 +98,7 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
+    freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
     targetMode: (TARGET_MODES as readonly string[]).includes(row?.targetMode ?? '') ? (row!.targetMode as TargetMode) : DEFAULT_TARGET_MODE,
   };
@@ -162,12 +165,49 @@ export async function activeOwner(db: Db, clientKey: string, today = todayStr())
   return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
 }
 
+export interface FreelanceOwnerInfo {
+  id: number;
+  agentId: number;
+  agentName: string;
+  startDate: string;
+  lastOrderDate: string;
+  /** The last day the client stays theirs if no further order comes in. */
+  until: string;
+}
+
+/** The freelance sales person who currently owns this client, if any: still within the window since their last order, and not suspended. */
+export async function activeFreelanceOwner(db: Db, clientKey: string, today = todayStr(), months?: number): Promise<FreelanceOwnerInfo | null> {
+  const window = months ?? (await getCommissionConfig(db)).freelanceOwnershipMonths;
+  const rows = await db.freelanceClient.findMany({ where: { clientKey, status: 'Active' }, include: { agent: { select: { name: true, status: true } } }, orderBy: { id: 'desc' } });
+  for (const r of rows) {
+    const until = ownershipEnd(r.lastOrderDate, window);
+    if (until >= today && r.agent.status !== 'Suspended') return { id: r.id, agentId: r.agentId, agentName: r.agent.name, startDate: r.startDate, lastOrderDate: r.lastOrderDate, until };
+  }
+  return null;
+}
+
+/** An order is being brought by this freelancer: the client becomes theirs (or, if it already is, the window restarts from today). */
+async function takeFreelanceClient(db: Db, clientKey: string | null, agentId: number, label: string, today: string): Promise<void> {
+  if (!clientKey) return;
+  const existing = await db.freelanceClient.findFirst({ where: { clientKey, status: 'Active' }, orderBy: { id: 'desc' } });
+  if (existing && existing.agentId === agentId) {
+    await db.freelanceClient.update({ where: { id: existing.id }, data: { lastOrderDate: today } });
+    return;
+  }
+  // (claimProblem has already refused a client that is still someone else's; what is left here has run out)
+  if (existing) await db.freelanceClient.updateMany({ where: { clientKey, status: 'Active' }, data: { status: 'Lapsed' } });
+  await db.freelanceClient.create({ data: { clientKey, clientName: label, agentId, startDate: today, lastOrderDate: today } });
+}
+
 /**
- * Decides who an order is credited to — called for every order as it is created.
- *   1. If the client is already credited to someone (their 12-month window is open), the order is credited to that person, whoever
+ * Decides who an order is credited to — called for every order as it is created. An order has exactly ONE credit holder:
+ *   1. If the order is marked for a freelance sales person, it is credited to them alone (never to staff) and the client becomes theirs — it stays
+ *      theirs for as long as they keep bringing orders (see activeFreelanceOwner).
+ *   2. Otherwise, if the client is already credited to a staff member (their 12-month window is open), the order is credited to that person, whoever
  *      captures it. Nobody shares a client, so a second staff member claiming them changes nothing.
- *   2. Otherwise, if the person capturing says they sourced this client, the client becomes theirs from today for the window.
- *   3. Otherwise it is a house order and earns no sourcing commission.
+ *   3. Otherwise, if a freelance sales person owns the client, the order is credited to THEM, whoever captures it, and their window restarts.
+ *   4. Otherwise, if the person capturing says they sourced this client, the client becomes theirs from today for the window.
+ *   5. Otherwise it is a house order and earns no sourcing commission.
  * A client with no phone, name or corporate account to recognise them by can never be owned.
  */
 export async function resolveSourcing(
@@ -187,23 +227,34 @@ export async function resolveSourcing(
   const house = { salesSource: 'house' as const, sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1 };
   // Switched off: nobody is credited and no client is taken on.
   if (!(await commissionEnabled(db))) return house;
-  // Marked for a freelance account: credited to them alone. No staff member is credited, and no client is taken on for anybody — so the order
-  // can never be owned twice (claimProblem has already refused a staff claim, or a client a staff member already owns).
-  if (o.freelanceAgentId) {
-    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
-    return { salesSource: 'freelance', sourcedByStaffId: null, clientKey: null, freelanceAgentId: o.freelanceAgentId, freelanceQualifyingShare: share };
-  }
   const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-  if (!clientKey) return { ...house };
   const today = todayStr();
+  const label = (o.name ?? '').trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey ?? '');
+  const creditFreelancer = async (agentId: number): Promise<Sourcing> => {
+    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
+    return { salesSource: 'freelance', sourcedByStaffId: null, clientKey, freelanceAgentId: agentId, freelanceQualifyingShare: share };
+  };
+
+  // Marked for a freelance account: credited to them alone, no staff member is credited, and the client becomes theirs.
+  if (o.freelanceAgentId) {
+    await takeFreelanceClient(db, clientKey, o.freelanceAgentId, label, today);
+    return creditFreelancer(o.freelanceAgentId);
+  }
+  if (!clientKey) return { ...house };
   const owner = await activeOwner(db, clientKey, today);
   if (owner) return { ...house, salesSource: 'sourced', sourcedByStaffId: owner.staffId, clientKey };
+  // A freelance sales person who keeps bringing this client owns them: every order from them is theirs, whoever captures it.
+  const fo = await activeFreelanceOwner(db, clientKey, today);
+  if (fo) {
+    await db.freelanceClient.update({ where: { id: fo.id }, data: { lastOrderDate: today } });
+    return creditFreelancer(fo.agentId);
+  }
   if (o.sourcedBy) {
     const cfg = await getCommissionConfig(db);
     await db.clientOwner.create({
       data: {
         clientKey,
-        clientName: (o.name ?? '').trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey),
+        clientName: label,
         staffId: o.sourcedBy,
         startDate: today,
         endDate: ownershipEnd(today, cfg.ownershipMonths),
@@ -231,12 +282,17 @@ export async function claimProblem(
     const agent = await prisma.freelanceAgent.findUnique({ where: { id: o.freelanceAgentId } });
     if (!agent) return 'That freelance sales person does not exist';
     if (agent.status === 'Suspended') return `${agent.name} is suspended, so orders cannot be credited to them`;
-    // A client a staff member already owns is theirs for the window: the order cannot also be given to a freelancer.
+    // The client must be recognisable next time — that is how they stay the freelancer's for as long as they keep bringing orders.
     const key = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-    if (key) {
-      const owner = await activeOwner(prisma, key);
-      if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;
+    if (!key || (!o.corporateClientId && (!key.startsWith('p:') || !isNamedClient(o.name)))) {
+      return "Enter the client's name and phone number — they are needed to credit the client to the freelance sales person and to recognise them on their next order";
     }
+    // A client a staff member already owns is theirs for the window: the order cannot also be given to a freelancer.
+    const owner = await activeOwner(prisma, key);
+    if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;
+    // …and nor can one that another freelancer keeps bringing orders for.
+    const fo = await activeFreelanceOwner(prisma, key);
+    if (fo && fo.agentId !== o.freelanceAgentId) return `This client belongs to freelance sales person ${fo.agentName} (they keep bringing orders), so the order cannot be credited to someone else`;
     return null;
   }
   if (!o.sourcedBy) return null;

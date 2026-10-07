@@ -20,6 +20,8 @@ interface Config {
   ownershipMonths: number;
   /** Freelance sales persons: weekly net sales received at or above base prices → rate. */
   freelanceBands: Band[];
+  /** A freelancer keeps a client while an order comes in at least this often (months). */
+  freelanceOwnershipMonths: number;
   /** Times their basic monthly salary a person must sell before commission starts (0 = no target). */
   targetMultiplier: number;
   targetMode: 'above' | 'all';
@@ -663,6 +665,7 @@ function RatesTab() {
   const [freelance, setFreelance] = useState<{ from: string; rate: string }[]>([]);
   const [artwork, setArtwork] = useState('');
   const [months, setMonths] = useState('');
+  const [flMonths, setFlMonths] = useState('');
   const [multiplier, setMultiplier] = useState('');
   const [mode, setMode] = useState<'above' | 'all'>('above');
   const [msg, setMsg] = useState('');
@@ -676,6 +679,7 @@ function RatesTab() {
     setFreelance((data.freelanceBands ?? []).map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setArtwork(String(data.artworkRatePct));
     setMonths(String(data.ownershipMonths));
+    setFlMonths(String(data.freelanceOwnershipMonths ?? 12));
     setMultiplier(String(data.targetMultiplier));
     setMode(data.targetMode);
   }, [data]);
@@ -689,7 +693,7 @@ function RatesTab() {
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), targetMultiplier: Number(multiplier), targetMode: mode });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), targetMultiplier: Number(multiplier), targetMode: mode });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -754,10 +758,15 @@ function RatesTab() {
             <input className="input" style={{ maxWidth: 120 }} inputMode="numeric" value={months} onChange={(e) => setMonths(e.target.value)} />
             <p className="note" style={{ margin: 0 }}>Applies to clients sourced from now on.</p>
           </div>
+          <div className="field" style={{ margin: 0 }}>
+            <label>A freelancer keeps a client while an order comes at least every (months)</label>
+            <input className="input" style={{ maxWidth: 120 }} inputMode="numeric" value={flMonths} onChange={(e) => setFlMonths(e.target.value)} />
+            <p className="note" style={{ margin: 0 }}>Every order they bring restarts the count.</p>
+          </div>
         </div>
         {problem && <p className="note" style={{ color: '#a33', margin: 0 }}>{problem}</p>}
         <div>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!problem || !(Number(artwork) >= 0 && Number(artwork) <= 100) || !(Number(months) >= 1) || !(Number(multiplier) >= 0 && Number(multiplier) <= 20)} onClick={save}>
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!problem || !(Number(artwork) >= 0 && Number(artwork) <= 100) || !(Number(months) >= 1) || !(Number(multiplier) >= 0 && Number(multiplier) <= 20) || !(Number(flMonths) >= 1)} onClick={save}>
             Save rates
           </button>
         </div>

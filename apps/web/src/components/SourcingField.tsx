@@ -8,6 +8,8 @@ interface Lookup {
   clientKey: string | null;
   months: number;
   owner: { staffId: number; staffName: string; endDate: string; mine: boolean } | null;
+  /** A freelance sales person who keeps bringing this client: the order is credited to them whoever captures it. */
+  freelanceOwner?: { agentId: number; agentName: string; until: string } | null;
 }
 
 interface SourcingFieldProps {
@@ -61,6 +63,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
     };
   }, [corporateClientId, phone, name]);
 
+  const freelanceOwner = lookup?.freelanceOwner ?? null;
   const owner = lookup?.owner ?? null;
   // A client who already belongs to someone cannot be claimed — drop any claim that was ticked before the lookup came back — and cannot be given
   // to a freelance sales person either.
@@ -68,11 +71,14 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
     if (owner && checked) onChange(false);
   }, [owner, checked, onChange]);
   useEffect(() => {
-    if (owner && viaFreelance) {
+    if ((owner || freelanceOwner) && viaFreelance) {
       setViaFreelance(false);
       onFreelanceChange?.(null);
     }
-  }, [owner, viaFreelance, onFreelanceChange]);
+  }, [owner, freelanceOwner, viaFreelance, onFreelanceChange]);
+  useEffect(() => {
+    if (freelanceOwner && checked) onChange(false);
+  }, [freelanceOwner, checked, onChange]);
 
   // Name and phone are optional on a walk-in sale; they are required here, to credit the client to someone.
   const needsDetails = checked && !corporateClientId && (!(phone ?? '').trim() || !isNamedClient(name));
@@ -80,7 +86,11 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
   return (
     <div className="field" style={{ margin: 0 }}>
       <label>Who brought this order?</label>
-      {owner ? (
+      {freelanceOwner ? (
+        <p className="note" style={{ margin: 0 }}>
+          This client belongs to freelance sales person <b>{freelanceOwner.agentName}</b> — they keep bringing orders for them (it stays theirs until {fmtDate(freelanceOwner.until)} if no further order comes in). The order is credited to them whoever captures it; no staff member earns commission on it.
+        </p>
+      ) : owner ? (
         <p className="note" style={{ margin: 0 }}>
           This client is credited to <b>{owner.staffName}{owner.mine ? ' (you)' : ''}</b> until {fmtDate(owner.endDate)}. Orders from them count towards that person’s commission, whoever
           captures them — clients are not shared, and the order cannot be credited to a freelance sales person.

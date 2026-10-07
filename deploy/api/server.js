@@ -44218,6 +44218,7 @@ async function getCommissionConfig(db = prisma) {
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
+    freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
     targetMode: TARGET_MODES.includes(row?.targetMode ?? "") ? row.targetMode : DEFAULT_TARGET_MODE
   };
@@ -44244,24 +44245,53 @@ async function activeOwner(db, clientKey, today = todayStr()) {
   });
   return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
 }
+async function activeFreelanceOwner(db, clientKey, today = todayStr(), months) {
+  const window2 = months ?? (await getCommissionConfig(db)).freelanceOwnershipMonths;
+  const rows = await db.freelanceClient.findMany({ where: { clientKey, status: "Active" }, include: { agent: { select: { name: true, status: true } } }, orderBy: { id: "desc" } });
+  for (const r of rows) {
+    const until = ownershipEnd(r.lastOrderDate, window2);
+    if (until >= today && r.agent.status !== "Suspended") return { id: r.id, agentId: r.agentId, agentName: r.agent.name, startDate: r.startDate, lastOrderDate: r.lastOrderDate, until };
+  }
+  return null;
+}
+async function takeFreelanceClient(db, clientKey, agentId, label, today) {
+  if (!clientKey) return;
+  const existing = await db.freelanceClient.findFirst({ where: { clientKey, status: "Active" }, orderBy: { id: "desc" } });
+  if (existing && existing.agentId === agentId) {
+    await db.freelanceClient.update({ where: { id: existing.id }, data: { lastOrderDate: today } });
+    return;
+  }
+  if (existing) await db.freelanceClient.updateMany({ where: { clientKey, status: "Active" }, data: { status: "Lapsed" } });
+  await db.freelanceClient.create({ data: { clientKey, clientName: label, agentId, startDate: today, lastOrderDate: today } });
+}
 async function resolveSourcing(db, o) {
   const house = { salesSource: "house", sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1 };
   if (!await commissionEnabled(db)) return house;
-  if (o.freelanceAgentId) {
-    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
-    return { salesSource: "freelance", sourcedByStaffId: null, clientKey: null, freelanceAgentId: o.freelanceAgentId, freelanceQualifyingShare: share };
-  }
   const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-  if (!clientKey) return { ...house };
   const today = todayStr();
+  const label = (o.name ?? "").trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey ?? "");
+  const creditFreelancer = async (agentId) => {
+    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
+    return { salesSource: "freelance", sourcedByStaffId: null, clientKey, freelanceAgentId: agentId, freelanceQualifyingShare: share };
+  };
+  if (o.freelanceAgentId) {
+    await takeFreelanceClient(db, clientKey, o.freelanceAgentId, label, today);
+    return creditFreelancer(o.freelanceAgentId);
+  }
+  if (!clientKey) return { ...house };
   const owner = await activeOwner(db, clientKey, today);
   if (owner) return { ...house, salesSource: "sourced", sourcedByStaffId: owner.staffId, clientKey };
+  const fo = await activeFreelanceOwner(db, clientKey, today);
+  if (fo) {
+    await db.freelanceClient.update({ where: { id: fo.id }, data: { lastOrderDate: today } });
+    return creditFreelancer(fo.agentId);
+  }
   if (o.sourcedBy) {
     const cfg = await getCommissionConfig(db);
     await db.clientOwner.create({
       data: {
         clientKey,
-        clientName: (o.name ?? "").trim() || (o.corporateClientId ? `Corporate client #${o.corporateClientId}` : clientKey),
+        clientName: label,
         staffId: o.sourcedBy,
         startDate: today,
         endDate: ownershipEnd(today, cfg.ownershipMonths),
@@ -44280,10 +44310,13 @@ async function claimProblem(user, o) {
     if (!agent) return "That freelance sales person does not exist";
     if (agent.status === "Suspended") return `${agent.name} is suspended, so orders cannot be credited to them`;
     const key3 = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-    if (key3) {
-      const owner = await activeOwner(prisma, key3);
-      if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;
+    if (!key3 || !o.corporateClientId && (!key3.startsWith("p:") || !isNamedClient(o.name))) {
+      return "Enter the client's name and phone number \u2014 they are needed to credit the client to the freelance sales person and to recognise them on their next order";
     }
+    const owner = await activeOwner(prisma, key3);
+    if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;
+    const fo = await activeFreelanceOwner(prisma, key3);
+    if (fo && fo.agentId !== o.freelanceAgentId) return `This client belongs to freelance sales person ${fo.agentName} (they keep bringing orders), so the order cannot be credited to someone else`;
     return null;
   }
   if (!o.sourcedBy) return null;
@@ -52303,7 +52336,12 @@ async function loadMpesaConfig() {
       passkey: open(row.passkey),
       publicBaseUrl: row.publicBaseUrl.replace(/\/+$/, ""),
       callbackSecret: open(row.callbackSecret),
-      c2bRegisteredAt: row.c2bRegisteredAt
+      c2bRegisteredAt: row.c2bRegisteredAt,
+      b2cShortCode: row.b2cShortCode,
+      initiatorName: row.initiatorName,
+      initiatorPassword: open(row.initiatorPassword),
+      securityCert: row.securityCert,
+      b2cCommand: row.b2cCommand || "BusinessPayment"
     };
   }
   const e = process.env;
@@ -52325,20 +52363,42 @@ async function loadMpesaConfig() {
     passkey: e.MPESA_PASSKEY || "",
     publicBaseUrl: origin,
     callbackSecret: e.MPESA_C2B_SECRET || "",
-    c2bRegisteredAt: null
+    c2bRegisteredAt: null,
+    b2cShortCode: "",
+    initiatorName: "",
+    initiatorPassword: "",
+    securityCert: "",
+    b2cCommand: "BusinessPayment"
   };
 }
 function isReady(c) {
   return c.enabled && !!(c.consumerKey && c.consumerSecret && c.shortCode && c.passkey);
 }
-var darajaBaseUrl = (c) => c.environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke";
+var darajaBaseUrl = (c) => (
+  // (the tests point this at a local stand-in for Safaricom; it is ignored everywhere else)
+  process.env.NODE_ENV === "test" && process.env.DARAJA_TEST_URL ? process.env.DARAJA_TEST_URL : c.environment === "production" ? "https://api.safaricom.co.ke" : "https://sandbox.safaricom.co.ke"
+);
+function isB2cReady(c) {
+  return c.enabled && !!(c.consumerKey && c.consumerSecret && (c.b2cShortCode || c.shortCode) && c.initiatorName && c.initiatorPassword && c.securityCert);
+}
+function parseCertificate(text) {
+  const t = text.trim();
+  if (!t) throw new Error("No certificate");
+  return new import_crypto4.X509Certificate(/BEGIN CERTIFICATE/.test(t) ? t : Buffer.from(t.replace(/\s+/g, ""), "base64"));
+}
+function securityCredential(c) {
+  const cert = parseCertificate(c.securityCert);
+  return (0, import_crypto4.publicEncrypt)({ key: cert.publicKey, padding: import_crypto4.constants.RSA_PKCS1_PADDING }, Buffer.from(c.initiatorPassword, "utf8")).toString("base64");
+}
 function callbackUrls(c) {
   if (!c.publicBaseUrl || !c.callbackSecret) return null;
   const base2 = `${c.publicBaseUrl}/api/mpesa`;
   return {
     stk: c.source === "env" && process.env.MPESA_CALLBACK_URL ? process.env.MPESA_CALLBACK_URL : `${base2}/callback/${c.callbackSecret}`,
     validation: `${base2}/c2b/${c.callbackSecret}/validation`,
-    confirmation: `${base2}/c2b/${c.callbackSecret}/confirmation`
+    confirmation: `${base2}/c2b/${c.callbackSecret}/confirmation`,
+    b2cResult: `${base2}/b2c/${c.callbackSecret}/result`,
+    b2cTimeout: `${base2}/b2c/${c.callbackSecret}/timeout`
   };
 }
 var DarajaError = class extends Error {
@@ -52361,6 +52421,122 @@ function darajaTimestamp() {
   const d = /* @__PURE__ */ new Date();
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+// apps/api/src/mpesaB2c.ts
+var import_node_crypto11 = require("node:crypto");
+
+// apps/api/src/freelancePay.ts
+async function settlePayout(tx, payoutId, o) {
+  const payout = await tx.freelancePayout.findUniqueOrThrow({ where: { id: payoutId }, include: { agent: true } });
+  if (payout.status === "Paid") return payout;
+  const date = o.date ?? todayStr();
+  const amount = o.amount ?? payout.amount;
+  const expense = await tx.expense.create({
+    data: {
+      date,
+      category: "Freelance Commission",
+      amount,
+      supplier: payout.agent.name,
+      note: `Freelance commission, week of ${payout.weekStart} \u2014 ${payout.agent.name}${o.receipt ? ` (M-Pesa ${o.receipt})` : ""}`,
+      capturedByName: o.byName,
+      paid: true,
+      method: o.method
+    }
+  });
+  return tx.freelancePayout.update({
+    where: { id: payout.id },
+    data: { status: "Paid", amount, paidOn: date, paidMethod: o.method, paidByName: o.byName, expenseId: expense.id, receipt: o.receipt ?? null }
+  });
+}
+
+// apps/api/src/mpesaB2c.ts
+var B2C_MIN = 10;
+var B2C_MAX = 15e4;
+async function sendPayoutToPhone(payoutId, requestedByName) {
+  const cfg = await loadMpesaConfig();
+  if (!isB2cReady(cfg)) return { ok: false, error: "Sending money to phones is not set up \u2014 an Admin can set it up under Master Data \u2192 M-Pesa (pay-outs)." };
+  const urls = callbackUrls(cfg);
+  if (!urls) return { ok: false, error: "M-Pesa needs this installation\u2019s public web address \u2014 add it under Master Data \u2192 M-Pesa." };
+  const payout = await prisma.freelancePayout.findUnique({ where: { id: payoutId }, include: { agent: true } });
+  if (!payout) return { ok: false, error: "Payout not found" };
+  if (payout.status === "Paid") return { ok: false, error: "Already paid" };
+  if (payout.status === "Sending") return { ok: false, error: "A payment to their phone is already on its way \u2014 wait for Safaricom\u2019s answer." };
+  if (payout.agent.status !== "Active") return { ok: false, error: `${payout.agent.name} is not an active freelance sales person, so this cannot be paid` };
+  const phone = payout.agent.mpesaNumber || payout.agent.phone;
+  if (!/^254[17]\d{8}$/.test(phone)) return { ok: false, error: `${payout.agent.name} has no valid M-Pesa number on file` };
+  const amount = Math.round(payout.amount);
+  if (amount < B2C_MIN) return { ok: false, error: `Ksh ${amount} is below the smallest M-Pesa payment (Ksh ${B2C_MIN}). Pay it another way, or let it build up to a later week.` };
+  if (amount > B2C_MAX) return { ok: false, error: `M-Pesa sends at most Ksh ${B2C_MAX.toLocaleString("en-KE")} at a time. Pay this one another way.` };
+  const locked = await prisma.freelancePayout.updateMany({ where: { id: payoutId, status: "Approved" }, data: { status: "Sending" } });
+  if (locked.count !== 1) return { ok: false, error: "This payout is not waiting to be paid (it may already be on its way)" };
+  const originatorConversationId = (0, import_node_crypto11.randomUUID)();
+  const d = await prisma.mpesaDisbursement.create({ data: { payoutId, phone, amount, originatorConversationId, requestedByName } });
+  const fail = async (error2) => {
+    await prisma.$transaction([
+      prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultDesc: error2, completedAt: /* @__PURE__ */ new Date() } }),
+      prisma.freelancePayout.update({ where: { id: payoutId }, data: { status: "Approved" } })
+    ]);
+    return { ok: false, error: error2, disbursementId: d.id };
+  };
+  try {
+    const token = await getAccessToken(cfg);
+    const res = await fetch(`${darajaBaseUrl(cfg)}/mpesa/b2c/v3/paymentrequest`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        OriginatorConversationID: originatorConversationId,
+        InitiatorName: cfg.initiatorName,
+        SecurityCredential: securityCredential(cfg),
+        CommandID: cfg.b2cCommand || "BusinessPayment",
+        Amount: amount,
+        PartyA: cfg.b2cShortCode || cfg.shortCode,
+        PartyB: phone,
+        Remarks: `Commission, week of ${payout.weekStart}`.slice(0, 100),
+        QueueTimeOutURL: urls.b2cTimeout,
+        ResultURL: urls.b2cResult,
+        Occasion: payout.agent.name.slice(0, 100)
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || String(data.ResponseCode ?? "") !== "0") return fail(data.errorMessage || data.ResponseDescription || `Safaricom refused the request (${res.status})`);
+    await prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { conversationId: data.ConversationID ?? "" } });
+    return { ok: true, disbursementId: d.id };
+  } catch (err) {
+    return fail(err instanceof DarajaError ? err.message : err instanceof Error ? err.message : "Could not reach Safaricom");
+  }
+}
+async function handleB2cResult(body) {
+  const r = body?.Result;
+  if (!r?.OriginatorConversationID) return;
+  const d = await prisma.mpesaDisbursement.findUnique({ where: { originatorConversationId: r.OriginatorConversationID } });
+  if (!d || d.status === "Success") return;
+  const raw = JSON.stringify(body).slice(0, 8e3);
+  if (Number(r.ResultCode) === 0) {
+    const list = r.ResultParameters?.ResultParameter;
+    const params = new Map((Array.isArray(list) ? list : list ? [list] : []).map((p) => [p.Key, p.Value]));
+    const receipt = String(params.get("TransactionReceipt") ?? r.TransactionID ?? "").toUpperCase() || null;
+    await ensureChartOnce();
+    await prisma.$transaction(async (tx) => {
+      await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Success", resultCode: 0, resultDesc: r.ResultDesc ?? "", receipt, conversationId: r.ConversationID ?? d.conversationId, completedAt: /* @__PURE__ */ new Date(), rawJson: raw } });
+      await settlePayout(tx, d.payoutId, { method: "M-Pesa", date: todayStr(), byName: `${d.requestedByName} (M-Pesa)`, receipt, amount: d.amount });
+    });
+  } else {
+    await prisma.$transaction([
+      prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultCode: Number(r.ResultCode), resultDesc: r.ResultDesc ?? "Safaricom could not send it", completedAt: /* @__PURE__ */ new Date(), rawJson: raw } }),
+      prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: "Sending" }, data: { status: "Approved" } })
+    ]);
+  }
+}
+async function handleB2cTimeout(body) {
+  const id = body?.Result?.OriginatorConversationID;
+  if (!id) return;
+  const d = await prisma.mpesaDisbursement.findUnique({ where: { originatorConversationId: id } });
+  if (!d || d.status !== "Pending") return;
+  await prisma.$transaction([
+    prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultDesc: "Safaricom did not process the request in time \u2014 nothing was sent", completedAt: /* @__PURE__ */ new Date(), rawJson: JSON.stringify(body).slice(0, 8e3) } }),
+    prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: "Sending" }, data: { status: "Approved" } })
+  ]);
 }
 
 // apps/api/src/routes/mpesa.ts
@@ -52387,6 +52563,13 @@ function publicSettings(c) {
     hasConsumerKey: !!c.consumerKey,
     hasConsumerSecret: !!c.consumerSecret,
     hasPasskey: !!c.passkey,
+    // Pay-outs to phones (B2C): the secret and certificate are never sent back — only whether they are set
+    b2cReady: isB2cReady(c),
+    b2cShortCode: c.b2cShortCode,
+    initiatorName: c.initiatorName,
+    hasInitiatorPassword: !!c.initiatorPassword,
+    hasSecurityCert: !!c.securityCert,
+    b2cCommand: c.b2cCommand,
     c2bRegisteredAt: c.c2bRegisteredAt,
     callbackUrls: callbackUrls(c)
   };
@@ -52403,7 +52586,13 @@ var settingsSchema2 = external_exports.object({
   consumerKey: external_exports.string().trim().max(200).optional(),
   consumerSecret: external_exports.string().trim().max(200).optional(),
   passkey: external_exports.string().trim().max(300).optional(),
-  enabled: external_exports.boolean().optional()
+  enabled: external_exports.boolean().optional(),
+  // Pay-outs to phones (B2C). Blank password / certificate = keep what is saved.
+  b2cShortCode: external_exports.string().trim().max(20).optional(),
+  initiatorName: external_exports.string().trim().max(100).optional(),
+  initiatorPassword: external_exports.string().max(300).optional(),
+  securityCert: external_exports.string().trim().max(1e4).optional(),
+  b2cCommand: external_exports.enum(["BusinessPayment", "SalaryPayment", "PromotionPayment"]).optional()
 });
 mpesaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res) => {
   const parsed = settingsSchema2.safeParse(req.body);
@@ -52421,8 +52610,20 @@ mpesaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res)
     passkey: seal(b.passkey ? b.passkey : base2.passkey),
     publicBaseUrl: base2.publicBaseUrl,
     callbackSecret: seal(base2.callbackSecret || newCallbackSecret()),
-    enabled: b.enabled ?? base2.enabled
+    enabled: b.enabled ?? base2.enabled,
+    b2cShortCode: b.b2cShortCode ?? base2.b2cShortCode,
+    initiatorName: b.initiatorName ?? base2.initiatorName,
+    initiatorPassword: seal(b.initiatorPassword ? b.initiatorPassword : base2.initiatorPassword),
+    securityCert: b.securityCert ? b.securityCert : base2.securityCert,
+    b2cCommand: b.b2cCommand ?? (base2.b2cCommand || "BusinessPayment")
   };
+  if (b.securityCert) {
+    try {
+      parseCertificate(b.securityCert);
+    } catch {
+      return res.status(400).json({ error: "That does not look like Safaricom's certificate. Paste the whole of the .cer file from the Daraja portal (it starts with -----BEGIN CERTIFICATE-----)." });
+    }
+  }
   if (b.publicBaseUrl !== void 0) {
     const v = b.publicBaseUrl.replace(/\/+$/, "");
     if (v && !/^https:\/\//.test(v)) return res.status(400).json({ error: "The public web address must start with https:// \u2014 Safaricom will not call back over plain http" });
@@ -52437,8 +52638,18 @@ mpesaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res)
 });
 mpesaRouter.post("/settings/test", requireAuth, requireRole("Admin"), async (_req, res) => {
   try {
-    await getAccessToken(await loadMpesaConfig());
-    res.json({ ok: true });
+    const c = await loadMpesaConfig();
+    await getAccessToken(c);
+    let b2c = null;
+    if (c.initiatorPassword && c.securityCert) {
+      try {
+        securityCredential(c);
+        b2c = "ready";
+      } catch {
+        b2c = "The certificate could not be used \u2014 paste the whole certificate again";
+      }
+    }
+    res.json({ ok: true, b2c });
   } catch (e) {
     if (e instanceof DarajaError) return res.status(400).json({ error: e.message });
     throw e;
@@ -52605,6 +52816,16 @@ mpesaRouter.post("/:checkoutRequestId/confirm-manually", requireAuth, async (req
   await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { confirmedManually: true, confirmedByName: req.user.name } });
   await markSuccess(tx, receipt);
   res.json({ ok: true });
+});
+mpesaRouter.post("/b2c/:secret/result", async (req, res) => {
+  const cfg = await loadMpesaConfig();
+  if (secretOk(req.params.secret, cfg.callbackSecret)) await handleB2cResult(req.body).catch((e) => console.error("B2C result failed", e));
+  res.json(ACK);
+});
+mpesaRouter.post("/b2c/:secret/timeout", async (req, res) => {
+  const cfg = await loadMpesaConfig();
+  if (secretOk(req.params.secret, cfg.callbackSecret)) await handleB2cTimeout(req.body).catch((e) => console.error("B2C timeout failed", e));
+  res.json(ACK);
 });
 mpesaRouter.post("/c2b/:secret/validation", (_req, res) => res.json(ACK));
 mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
@@ -54414,6 +54635,7 @@ var settingsSchema4 = external_exports.object({
   freelanceBands: external_exports.array(bandSchema).min(1).optional(),
   artworkRatePct: external_exports.number().min(0).max(100),
   ownershipMonths: external_exports.number().int().min(1).max(60),
+  freelanceOwnershipMonths: external_exports.number().int().min(1).max(60).optional(),
   // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: external_exports.number().min(0).max(20).optional(),
   targetMode: external_exports.enum(TARGET_MODES).optional()
@@ -54431,6 +54653,7 @@ commissionRouter.put("/settings", manage, async (req, res) => {
     ...d.freelanceBands ? { freelanceBandsJson: JSON.stringify(sort(d.freelanceBands)) } : {},
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
+    ...d.freelanceOwnershipMonths !== void 0 ? { freelanceOwnershipMonths: d.freelanceOwnershipMonths } : {},
     ...d.targetMultiplier !== void 0 ? { targetMultiplier: d.targetMultiplier } : {},
     ...d.targetMode !== void 0 ? { targetMode: d.targetMode } : {},
     updatedByName: req.user.name
@@ -54481,9 +54704,16 @@ commissionRouter.get("/owner-lookup", async (req, res) => {
   if (!q.success) return res.status(400).json({ error: "Invalid input" });
   const clientKey = clientKeyFor({ corporateClientId: q.data.corporateClientId, phone: q.data.phone, name: q.data.name });
   const months = (await getCommissionConfig()).ownershipMonths;
-  if (!clientKey) return res.json({ clientKey: null, months, owner: null });
+  if (!clientKey) return res.json({ clientKey: null, months, owner: null, freelanceOwner: null });
   const owner = await activeOwner(prisma, clientKey);
-  res.json({ clientKey, months, owner: owner ? { staffId: owner.staffId, staffName: owner.staffName, endDate: owner.endDate, mine: owner.staffId === req.user.id } : null });
+  const fo = owner ? null : await activeFreelanceOwner(prisma, clientKey);
+  res.json({
+    clientKey,
+    months,
+    owner: owner ? { staffId: owner.staffId, staffName: owner.staffName, endDate: owner.endDate, mine: owner.staffId === req.user.id } : null,
+    // a freelance sales person who keeps bringing this client: the order is credited to them whoever captures it
+    freelanceOwner: fo ? { agentId: fo.agentId, agentName: fo.agentName, until: fo.until } : null
+  });
 });
 commissionRouter.get("/clients", manage, async (req, res) => {
   const all = req.query.status === "all";
@@ -55003,7 +55233,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
 });
 
 // apps/api/src/routes/backup.ts
-var import_node_crypto11 = __toESM(require("node:crypto"));
+var import_node_crypto12 = __toESM(require("node:crypto"));
 var import_express16 = __toESM(require_express2());
 
 // apps/api/src/backup.ts
@@ -55388,14 +55618,14 @@ backupRouter.post("/google/connect", ...admin, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
   const s = await getBackupSettings();
   if (!s.driveClientId || !s.driveClientSecret) return res.status(400).json({ error: "Save the Google client ID and client secret first" });
-  const state = import_node_crypto11.default.randomBytes(24).toString("hex");
+  const state = import_node_crypto12.default.randomBytes(24).toString("hex");
   await prisma.backupSettings.update({ where: { id: 1 }, data: { oauthState: state, oauthRedirectUri: parsed.data.redirectUri, oauthReturnUrl: parsed.data.returnUrl, oauthExpires: new Date(Date.now() + 10 * 6e4) } });
   res.json({ url: googleAuthUrl(s, parsed.data.redirectUri, state) });
 });
 backupRouter.get("/google/callback", async (req, res) => {
   const s = await getBackupSettings();
   const state = typeof req.query.state === "string" ? req.query.state : "";
-  const valid = !!s.oauthState && state.length === s.oauthState.length && import_node_crypto11.default.timingSafeEqual(Buffer.from(state), Buffer.from(s.oauthState)) && !!s.oauthExpires && s.oauthExpires > /* @__PURE__ */ new Date();
+  const valid = !!s.oauthState && state.length === s.oauthState.length && import_node_crypto12.default.timingSafeEqual(Buffer.from(state), Buffer.from(s.oauthState)) && !!s.oauthExpires && s.oauthExpires > /* @__PURE__ */ new Date();
   if (!valid) return res.status(400).send("This Google sign-in link has expired or was not started from the system. Go back to Master Data \u2192 Backup & Restore and press Connect Google Drive again.");
   const back = (message) => {
     const url = new URL(s.oauthReturnUrl);
@@ -55615,11 +55845,32 @@ freelanceRouter.put("/agents/:id", manage2, async (req, res) => {
   }
   res.json(await prisma.freelanceAgent.update({ where: { id }, data }));
 });
+freelanceRouter.get("/clients", manage2, async (_req, res) => {
+  const months = (await getCommissionConfig()).freelanceOwnershipMonths;
+  const today = todayStr();
+  const rows = await prisma.freelanceClient.findMany({ include: { agent: { select: { name: true, status: true } } }, orderBy: { id: "desc" }, take: 500 });
+  res.json({
+    months,
+    clients: rows.map((r) => {
+      const until = ownershipEnd(r.lastOrderDate, months);
+      const active = r.status === "Active" && until >= today && r.agent.status !== "Suspended";
+      return { id: r.id, clientName: r.clientName, agentId: r.agentId, agentName: r.agent.name, startDate: r.startDate, lastOrderDate: r.lastOrderDate, until, active, status: r.status === "Active" && !active ? "Lapsed" : r.status };
+    })
+  });
+});
+freelanceRouter.post("/clients/:id/release", manage2, async (req, res) => {
+  const row = await prisma.freelanceClient.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row) return res.status(404).json({ error: "Not found" });
+  if (row.status !== "Active") return res.status(400).json({ error: "Already released" });
+  res.json(await prisma.freelanceClient.update({ where: { id: row.id }, data: { status: "Released", releasedOn: todayStr(), releasedBy: req.user.name } }));
+});
 freelanceRouter.get("/statement", manage2, async (req, res) => {
   const week = weekOf(req.query.week);
   const { config, statements } = await buildFreelanceStatements(week);
   const payouts = await prisma.freelancePayout.findMany({ where: { weekStart: week } });
   const byAgent = new Map(payouts.map((p) => [p.agentId, p]));
+  const attempts = payouts.length ? await prisma.mpesaDisbursement.findMany({ where: { payoutId: { in: payouts.map((p) => p.id) } }, orderBy: { id: "asc" } }) : [];
+  const latest = new Map(attempts.map((a2) => [a2.payoutId, a2]));
   res.json({
     weekStart: week,
     weekEnd: weekEnd(week),
@@ -55628,7 +55879,8 @@ freelanceRouter.get("/statement", manage2, async (req, res) => {
     bands: config.freelanceBands,
     statements: statements.map((s) => {
       const p = byAgent.get(s.agentId);
-      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
+      const a2 = p ? latest.get(p.id) : void 0;
+      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod, receipt: p.receipt, mpesa: a2 ? { id: a2.id, status: a2.status, resultDesc: a2.resultDesc, receipt: a2.receipt, phone: a2.phone, amount: a2.amount } : null } : null };
     }),
     totals: { commission: round2(statements.reduce((a2, s) => a2 + s.commission, 0)) }
   });
@@ -55647,8 +55899,8 @@ freelanceRouter.post("/payouts/approve", manage2, async (req, res) => {
       continue;
     }
     const existing = await prisma.freelancePayout.findUnique({ where: { weekStart_agentId: { weekStart: week, agentId: s.agentId } } });
-    if (existing?.status === "Paid") {
-      out.push({ agentId: s.agentId, agentName: s.agentName, amount: existing.amount, status: "Paid" });
+    if (existing?.status === "Paid" || existing?.status === "Sending") {
+      out.push({ agentId: s.agentId, agentName: s.agentName, amount: existing.amount, status: existing.status });
       continue;
     }
     const data = {
@@ -55678,6 +55930,7 @@ freelanceRouter.post("/payouts/:id/pay", manage2, async (req, res) => {
   const payout = await prisma.freelancePayout.findUnique({ where: { id: Number(req.params.id) }, include: { agent: true } });
   if (!payout) return res.status(404).json({ error: "Not found" });
   if (payout.status === "Paid") return res.status(400).json({ error: "Already paid" });
+  if (payout.status === "Sending") return res.status(400).json({ error: "A payment to their phone is on its way \u2014 wait for Safaricom\u2019s answer, or settle it from the M-Pesa attempt" });
   if (payout.agent.status !== "Active") return res.status(400).json({ error: `${payout.agent.name} is not an active freelance sales person, so this cannot be paid` });
   const date = parsed.data.date ?? todayStr();
   if (parsed.data.method === PETTY_CASH_METHOD) {
@@ -55685,20 +55938,48 @@ freelanceRouter.post("/payouts/:id/pay", manage2, async (req, res) => {
     if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString("en-KE")} available, Ksh ${Math.round(payout.amount).toLocaleString("en-KE")} needed)` });
   }
   await ensureChartOnce();
-  const updated = await prisma.$transaction(async (tx) => {
-    const expense = await tx.expense.create({
-      data: { date, category: "Freelance Commission", amount: payout.amount, supplier: payout.agent.name, note: `Freelance commission, week of ${payout.weekStart} \u2014 ${payout.agent.name}`, capturedByName: req.user.name, paid: true, method: parsed.data.method }
-    });
-    return tx.freelancePayout.update({ where: { id: payout.id }, data: { status: "Paid", paidOn: date, paidMethod: parsed.data.method, paidByName: req.user.name, expenseId: expense.id } });
-  });
+  const updated = await prisma.$transaction((tx) => settlePayout(tx, payout.id, { method: parsed.data.method, date, byName: req.user.name }));
   res.json(updated);
 });
 freelanceRouter.delete("/payouts/:id", manage2, async (req, res) => {
   const payout = await prisma.freelancePayout.findUnique({ where: { id: Number(req.params.id) } });
   if (!payout) return res.status(404).json({ error: "Not found" });
   if (payout.status === "Paid") return res.status(400).json({ error: "A paid commission cannot be withdrawn" });
+  if (payout.status === "Sending") return res.status(400).json({ error: "A payment to their phone is on its way, so this cannot be withdrawn yet" });
   await prisma.freelancePayout.delete({ where: { id: payout.id } });
   res.status(204).end();
+});
+freelanceRouter.post("/payouts/:id/send-mpesa", manage2, async (req, res) => {
+  const r = await sendPayoutToPhone(Number(req.params.id), req.user.name);
+  if (!r.ok) return res.status(400).json({ error: r.error, disbursementId: r.disbursementId });
+  res.status(202).json({ ok: true, disbursementId: r.disbursementId, message: "Sent to M-Pesa \u2014 it is marked paid when Safaricom confirms it." });
+});
+freelanceRouter.get("/payouts/:id/disbursements", manage2, async (req, res) => {
+  const rows = await prisma.mpesaDisbursement.findMany({ where: { payoutId: Number(req.params.id) }, orderBy: { id: "desc" } });
+  res.json(rows.map((d) => ({ id: d.id, status: d.status, amount: d.amount, phone: d.phone, resultDesc: d.resultDesc, receipt: d.receipt, requestedByName: d.requestedByName, createdAt: d.createdAt, completedAt: d.completedAt })));
+});
+freelanceRouter.post("/disbursements/:id/resolve", manage2, async (req, res) => {
+  const parsed = external_exports.object({ outcome: external_exports.enum(["failed", "sent"]), receipt: external_exports.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, "Enter the M-Pesa receipt code (10 letters and numbers)").optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = await prisma.mpesaDisbursement.findUnique({ where: { id: Number(req.params.id) } });
+  if (!d) return res.status(404).json({ error: "Not found" });
+  if (d.status !== "Pending") return res.status(400).json({ error: "This attempt has already been settled" });
+  if (parsed.data.outcome === "failed") {
+    await prisma.$transaction([
+      prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultDesc: `Marked as not sent by ${req.user.name}`, completedAt: /* @__PURE__ */ new Date() } }),
+      prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: "Sending" }, data: { status: "Approved" } })
+    ]);
+    return res.json({ ok: true });
+  }
+  const receipt = parsed.data.receipt;
+  if (!receipt) return res.status(400).json({ error: "Enter the M-Pesa receipt code from the Paybill statement" });
+  if (await prisma.mpesaDisbursement.findUnique({ where: { receipt } })) return res.status(400).json({ error: `${receipt} is already on record against another payment` });
+  await ensureChartOnce();
+  await prisma.$transaction(async (tx) => {
+    await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Success", receipt, resultDesc: `Confirmed by hand by ${req.user.name}`, completedAt: /* @__PURE__ */ new Date() } });
+    await settlePayout(tx, d.payoutId, { method: "M-Pesa", byName: req.user.name, receipt, amount: d.amount });
+  });
+  res.json({ ok: true });
 });
 freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
   const id = Number(req.params.id);

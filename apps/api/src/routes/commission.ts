@@ -5,7 +5,7 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
 import { pettyCashShortfall } from '../accounting/ledger';
-import { activeOwner, blankStatement, buildStatements, canManageCommission, commissionEnabled, ensureCommissionAccessOnce, getCommissionConfig, targetFor } from '../commission';
+import { activeFreelanceOwner, activeOwner, blankStatement, buildStatements, canManageCommission, commissionEnabled, ensureCommissionAccessOnce, getCommissionConfig, targetFor } from '../commission';
 
 // Staff sales commission. Everyone who captures orders can see their own statement and the scheme they are paid under;
 // managers (canManageCommission) see everyone's, set the rates, manage who owns which client, and approve and pay.
@@ -38,6 +38,7 @@ const settingsSchema = z.object({
   freelanceBands: z.array(bandSchema).min(1).optional(),
   artworkRatePct: z.number().min(0).max(100),
   ownershipMonths: z.number().int().min(1).max(60),
+  freelanceOwnershipMonths: z.number().int().min(1).max(60).optional(),
   // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: z.number().min(0).max(20).optional(),
   targetMode: z.enum(TARGET_MODES).optional(),
@@ -56,6 +57,7 @@ commissionRouter.put('/settings', manage, async (req, res) => {
     ...(d.freelanceBands ? { freelanceBandsJson: JSON.stringify(sort(d.freelanceBands)) } : {}),
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
+    ...(d.freelanceOwnershipMonths !== undefined ? { freelanceOwnershipMonths: d.freelanceOwnershipMonths } : {}),
     ...(d.targetMultiplier !== undefined ? { targetMultiplier: d.targetMultiplier } : {}),
     ...(d.targetMode !== undefined ? { targetMode: d.targetMode } : {}),
     updatedByName: req.user!.name,
@@ -112,9 +114,16 @@ commissionRouter.get('/owner-lookup', async (req, res) => {
   if (!q.success) return res.status(400).json({ error: 'Invalid input' });
   const clientKey = clientKeyFor({ corporateClientId: q.data.corporateClientId, phone: q.data.phone, name: q.data.name });
   const months = (await getCommissionConfig()).ownershipMonths;
-  if (!clientKey) return res.json({ clientKey: null, months, owner: null });
+  if (!clientKey) return res.json({ clientKey: null, months, owner: null, freelanceOwner: null });
   const owner = await activeOwner(prisma, clientKey);
-  res.json({ clientKey, months, owner: owner ? { staffId: owner.staffId, staffName: owner.staffName, endDate: owner.endDate, mine: owner.staffId === req.user!.id } : null });
+  const fo = owner ? null : await activeFreelanceOwner(prisma, clientKey);
+  res.json({
+    clientKey,
+    months,
+    owner: owner ? { staffId: owner.staffId, staffName: owner.staffName, endDate: owner.endDate, mine: owner.staffId === req.user!.id } : null,
+    // a freelance sales person who keeps bringing this client: the order is credited to them whoever captures it
+    freelanceOwner: fo ? { agentId: fo.agentId, agentName: fo.agentName, until: fo.until } : null,
+  });
 });
 
 commissionRouter.get('/clients', manage, async (req, res) => {

@@ -18,7 +18,14 @@ interface Settings {
   hasConsumerSecret: boolean;
   hasPasskey: boolean;
   c2bRegisteredAt: string | null;
-  callbackUrls: { stk: string; validation: string; confirmation: string } | null;
+  callbackUrls: { stk: string; validation: string; confirmation: string; b2cResult: string; b2cTimeout: string } | null;
+  // Paying money out to a phone (B2C)
+  b2cReady: boolean;
+  b2cShortCode: string;
+  initiatorName: string;
+  hasInitiatorPassword: boolean;
+  hasSecurityCert: boolean;
+  b2cCommand: string;
 }
 
 function CopyLine({ label, value }: { label: string; value: string }) {
@@ -47,13 +54,13 @@ function CopyLine({ label, value }: { label: string; value: string }) {
 
 export default function MpesaSettingsPanel() {
   const { data, error, loading, reload } = useLoad<Settings>('/mpesa/settings');
-  const [form, setForm] = useState({ environment: 'sandbox', shortCode: '', isTill: false, publicBaseUrl: '', consumerKey: '', consumerSecret: '', passkey: '' });
+  const [form, setForm] = useState({ environment: 'sandbox', shortCode: '', isTill: false, publicBaseUrl: '', consumerKey: '', consumerSecret: '', passkey: '', b2cShortCode: '', initiatorName: '', initiatorPassword: '', securityCert: '', b2cCommand: 'BusinessPayment' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    if (data) setForm((f) => ({ ...f, environment: data.environment, shortCode: data.shortCode, isTill: data.isTill, publicBaseUrl: data.publicBaseUrl, consumerKey: '', consumerSecret: '', passkey: '' }));
+    if (data) setForm((f) => ({ ...f, environment: data.environment, shortCode: data.shortCode, isTill: data.isTill, publicBaseUrl: data.publicBaseUrl, consumerKey: '', consumerSecret: '', passkey: '', b2cShortCode: data.b2cShortCode, initiatorName: data.initiatorName, initiatorPassword: '', securityCert: '', b2cCommand: data.b2cCommand }));
   }, [data]);
 
   async function run(fn: () => Promise<string>) {
@@ -167,6 +174,46 @@ export default function MpesaSettingsPanel() {
           )}
         </div>
         {data.environment === 'sandbox' && data.enabled && <p className="note">Sandbox is for testing — no real money moves. Switch to Production with your live Daraja keys when you are ready.</p>}
+      </Card>
+
+      <Card
+        title="Paying money out to a phone (B2C)"
+        hint="Sends a freelance sales person's weekly commission straight to their M-Pesa number from your Paybill. An STK push can only ask a customer to pay you, so paying someone needs this separate Safaricom service."
+        actions={<Tag tone={data.b2cReady ? 'good' : 'neutral'}>{data.b2cReady ? 'Ready' : 'Not set up'}</Tag>}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
+          <div className="field">
+            <label>Paybill that sends the money</label>
+            <input className="input" inputMode="numeric" placeholder={data.shortCode || 'same as above'} value={form.b2cShortCode} onChange={(e) => setForm((f) => ({ ...f, b2cShortCode: e.target.value }))} />
+          </div>
+          <div className="field">
+            <label>Initiator name</label>
+            <input className="input" autoComplete="off" value={form.initiatorName} onChange={(e) => setForm((f) => ({ ...f, initiatorName: e.target.value }))} />
+          </div>
+        </div>
+        <div className="field">
+          <label>Initiator password</label>
+          <input className="input" type="password" autoComplete="new-password" placeholder={needSecretHint(data.hasInitiatorPassword)} value={form.initiatorPassword} onChange={(e) => setForm((f) => ({ ...f, initiatorPassword: e.target.value }))} />
+        </div>
+        <div className="field">
+          <label>Safaricom certificate</label>
+          <textarea className="input" rows={4} style={{ fontFamily: 'monospace', fontSize: 11 }} placeholder={data.hasSecurityCert ? 'Saved — paste a new one only to replace it' : '-----BEGIN CERTIFICATE-----'} value={form.securityCert} onChange={(e) => setForm((f) => ({ ...f, securityCert: e.target.value }))} />
+          <div className="note">The .cer file for the Sandbox or Production environment from the Daraja portal (Going Live / API credentials). Open it in a text editor and paste all of it.</div>
+        </div>
+        <div className="field">
+          <label>Type of payment</label>
+          <select className="input" value={form.b2cCommand} onChange={(e) => setForm((f) => ({ ...f, b2cCommand: e.target.value }))}>
+            <option value="BusinessPayment">Business payment (default)</option>
+            <option value="PromotionPayment">Promotion payment</option>
+            <option value="SalaryPayment">Salary payment</option>
+          </select>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>
+          Save
+        </button>
+        <p className="note" style={{ marginTop: 'var(--space-3)' }}>
+          Needs: a Paybill that Safaricom has enabled for <b>B2C</b>, and an API <b>initiator</b> user (with its password) created in the M-Pesa organisation portal. The password is kept sealed and never shown again. Use the <b>Test the connection</b> button to check the certificate can be used; money moves only when a manager presses “Send to M-Pesa” on a freelance payout. Payments are whole shillings, from Ksh 10 to Ksh 150,000 each.
+        </p>
       </Card>
 
       <Card

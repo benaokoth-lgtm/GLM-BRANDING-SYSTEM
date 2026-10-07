@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { X509Certificate, constants as cryptoConstants, publicEncrypt, randomBytes } from 'crypto';
 import { prisma } from './db';
 import { open } from './crypto';
 
@@ -18,6 +18,12 @@ export interface MpesaConfig {
   publicBaseUrl: string;
   callbackSecret: string;
   c2bRegisteredAt: Date | null;
+  // Pay-outs to phones (B2C)
+  b2cShortCode: string;
+  initiatorName: string;
+  initiatorPassword: string;
+  securityCert: string;
+  b2cCommand: string;
 }
 
 export const newCallbackSecret = () => randomBytes(24).toString('hex');
@@ -42,6 +48,11 @@ export async function loadMpesaConfig(): Promise<MpesaConfig> {
       publicBaseUrl: row.publicBaseUrl.replace(/\/+$/, ''),
       callbackSecret: open(row.callbackSecret),
       c2bRegisteredAt: row.c2bRegisteredAt,
+      b2cShortCode: row.b2cShortCode,
+      initiatorName: row.initiatorName,
+      initiatorPassword: open(row.initiatorPassword),
+      securityCert: row.securityCert,
+      b2cCommand: row.b2cCommand || 'BusinessPayment',
     };
   }
   const e = process.env;
@@ -64,6 +75,11 @@ export async function loadMpesaConfig(): Promise<MpesaConfig> {
     publicBaseUrl: origin,
     callbackSecret: e.MPESA_C2B_SECRET || '',
     c2bRegisteredAt: null,
+    b2cShortCode: '',
+    initiatorName: '',
+    initiatorPassword: '',
+    securityCert: '',
+    b2cCommand: 'BusinessPayment',
   };
 }
 
@@ -72,16 +88,38 @@ export function isReady(c: MpesaConfig): boolean {
   return c.enabled && !!(c.consumerKey && c.consumerSecret && c.shortCode && c.passkey);
 }
 
-export const darajaBaseUrl = (c: Pick<MpesaConfig, 'environment'>) => (c.environment === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke');
+export const darajaBaseUrl = (c: Pick<MpesaConfig, 'environment'>) =>
+  // (the tests point this at a local stand-in for Safaricom; it is ignored everywhere else)
+  process.env.NODE_ENV === 'test' && process.env.DARAJA_TEST_URL ? process.env.DARAJA_TEST_URL : c.environment === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
+
+/** Can money be sent OUT to a phone? Needs the initiator, its password, Safaricom's certificate and a Paybill. */
+export function isB2cReady(c: MpesaConfig): boolean {
+  return c.enabled && !!(c.consumerKey && c.consumerSecret && (c.b2cShortCode || c.shortCode) && c.initiatorName && c.initiatorPassword && c.securityCert);
+}
+
+/** Reads Safaricom's certificate however it was pasted: the PEM text, or just the base64 body. Throws if it is not a certificate. */
+export function parseCertificate(text: string): X509Certificate {
+  const t = text.trim();
+  if (!t) throw new Error('No certificate');
+  return new X509Certificate(/BEGIN CERTIFICATE/.test(t) ? t : Buffer.from(t.replace(/\s+/g, ''), 'base64'));
+}
+
+/** The initiator's password encrypted with Safaricom's public certificate (RSA, PKCS#1 v1.5), base64 — what Daraja calls the SecurityCredential. */
+export function securityCredential(c: Pick<MpesaConfig, 'initiatorPassword' | 'securityCert'>): string {
+  const cert = parseCertificate(c.securityCert);
+  return publicEncrypt({ key: cert.publicKey, padding: cryptoConstants.RSA_PKCS1_PADDING }, Buffer.from(c.initiatorPassword, 'utf8')).toString('base64');
+}
 
 /** The addresses Safaricom is told to call. In env mode the STK callback is MPESA_CALLBACK_URL exactly as set. */
-export function callbackUrls(c: MpesaConfig): { stk: string; validation: string; confirmation: string } | null {
+export function callbackUrls(c: MpesaConfig): { stk: string; validation: string; confirmation: string; b2cResult: string; b2cTimeout: string } | null {
   if (!c.publicBaseUrl || !c.callbackSecret) return null;
   const base = `${c.publicBaseUrl}/api/mpesa`;
   return {
     stk: c.source === 'env' && process.env.MPESA_CALLBACK_URL ? process.env.MPESA_CALLBACK_URL : `${base}/callback/${c.callbackSecret}`,
     validation: `${base}/c2b/${c.callbackSecret}/validation`,
     confirmation: `${base}/c2b/${c.callbackSecret}/confirmation`,
+    b2cResult: `${base}/b2c/${c.callbackSecret}/result`,
+    b2cTimeout: `${base}/b2c/${c.callbackSecret}/timeout`,
   };
 }
 

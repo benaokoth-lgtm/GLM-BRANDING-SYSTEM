@@ -8,8 +8,11 @@ import { EXPENSE_METHODS, PETTY_CASH_METHOD, addWeeks, cleanKraPin, cleanNationa
 import { prisma } from '../db';
 import { requireAuth, requirePermission, userHasPermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
+import { settlePayout } from '../freelancePay';
+import { sendPayoutToPhone } from '../mpesaB2c';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { buildFreelanceStatements, commissionEnabled, getCommissionConfig } from '../commission';
+import { ownershipEnd } from '@glm/shared';
 
 export const freelanceRouter = Router();
 freelanceRouter.use(requireAuth, async (_req, res, next) => {
@@ -134,12 +137,38 @@ freelanceRouter.put('/agents/:id', manage, async (req, res) => {
   res.json(await prisma.freelanceAgent.update({ where: { id }, data }));
 });
 
+// ── The clients they own ────────────────────────────────────────────────────
+// A client stays a freelancer's for as long as they keep bringing orders (see FreelanceClient); a manager can also release one early.
+freelanceRouter.get('/clients', manage, async (_req, res) => {
+  const months = (await getCommissionConfig()).freelanceOwnershipMonths;
+  const today = todayStr();
+  const rows = await prisma.freelanceClient.findMany({ include: { agent: { select: { name: true, status: true } } }, orderBy: { id: 'desc' }, take: 500 });
+  res.json({
+    months,
+    clients: rows.map((r) => {
+      const until = ownershipEnd(r.lastOrderDate, months);
+      const active = r.status === 'Active' && until >= today && r.agent.status !== 'Suspended';
+      return { id: r.id, clientName: r.clientName, agentId: r.agentId, agentName: r.agent.name, startDate: r.startDate, lastOrderDate: r.lastOrderDate, until, active, status: r.status === 'Active' && !active ? 'Lapsed' : r.status };
+    }),
+  });
+});
+
+freelanceRouter.post('/clients/:id/release', manage, async (req, res) => {
+  const row = await prisma.freelanceClient.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row) return res.status(404).json({ error: 'Not found' });
+  if (row.status !== 'Active') return res.status(400).json({ error: 'Already released' });
+  res.json(await prisma.freelanceClient.update({ where: { id: row.id }, data: { status: 'Released', releasedOn: todayStr(), releasedBy: req.user!.name } }));
+});
+
 // ── The weekly statement and payouts ────────────────────────────────────────
 freelanceRouter.get('/statement', manage, async (req, res) => {
   const week = weekOf(req.query.week);
   const { config, statements } = await buildFreelanceStatements(week);
   const payouts = await prisma.freelancePayout.findMany({ where: { weekStart: week } });
   const byAgent = new Map(payouts.map((p) => [p.agentId, p]));
+  // the latest attempt to send each payout to the person's M-Pesa phone, if any
+  const attempts = payouts.length ? await prisma.mpesaDisbursement.findMany({ where: { payoutId: { in: payouts.map((p) => p.id) } }, orderBy: { id: 'asc' } }) : [];
+  const latest = new Map(attempts.map((a) => [a.payoutId, a]));
   res.json({
     weekStart: week,
     weekEnd: weekEnd(week),
@@ -147,7 +176,8 @@ freelanceRouter.get('/statement', manage, async (req, res) => {
     bands: config.freelanceBands,
     statements: statements.map((s) => {
       const p = byAgent.get(s.agentId);
-      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
+      const a = p ? latest.get(p.id) : undefined;
+      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod, receipt: p.receipt, mpesa: a ? { id: a.id, status: a.status, resultDesc: a.resultDesc, receipt: a.receipt, phone: a.phone, amount: a.amount } : null } : null };
     }),
     totals: { commission: round2(statements.reduce((a, s) => a + s.commission, 0)) },
   });
@@ -168,8 +198,8 @@ freelanceRouter.post('/payouts/approve', manage, async (req, res) => {
       continue;
     }
     const existing = await prisma.freelancePayout.findUnique({ where: { weekStart_agentId: { weekStart: week, agentId: s.agentId } } });
-    if (existing?.status === 'Paid') {
-      out.push({ agentId: s.agentId, agentName: s.agentName, amount: existing.amount, status: 'Paid' });
+    if (existing?.status === 'Paid' || existing?.status === 'Sending') {
+      out.push({ agentId: s.agentId, agentName: s.agentName, amount: existing.amount, status: existing.status });
       continue;
     }
     const data = {
@@ -203,6 +233,7 @@ freelanceRouter.post('/payouts/:id/pay', manage, async (req, res) => {
   const payout = await prisma.freelancePayout.findUnique({ where: { id: Number(req.params.id) }, include: { agent: true } });
   if (!payout) return res.status(404).json({ error: 'Not found' });
   if (payout.status === 'Paid') return res.status(400).json({ error: 'Already paid' });
+  if (payout.status === 'Sending') return res.status(400).json({ error: 'A payment to their phone is on its way — wait for Safaricom’s answer, or settle it from the M-Pesa attempt' });
   if (payout.agent.status !== 'Active') return res.status(400).json({ error: `${payout.agent.name} is not an active freelance sales person, so this cannot be paid` });
   const date = parsed.data.date ?? todayStr();
   if (parsed.data.method === PETTY_CASH_METHOD) {
@@ -210,12 +241,7 @@ freelanceRouter.post('/payouts/:id/pay', manage, async (req, res) => {
     if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString('en-KE')} available, Ksh ${Math.round(payout.amount).toLocaleString('en-KE')} needed)` });
   }
   await ensureChartOnce();
-  const updated = await prisma.$transaction(async (tx) => {
-    const expense = await tx.expense.create({
-      data: { date, category: 'Freelance Commission', amount: payout.amount, supplier: payout.agent.name, note: `Freelance commission, week of ${payout.weekStart} — ${payout.agent.name}`, capturedByName: req.user!.name, paid: true, method: parsed.data.method },
-    });
-    return tx.freelancePayout.update({ where: { id: payout.id }, data: { status: 'Paid', paidOn: date, paidMethod: parsed.data.method, paidByName: req.user!.name, expenseId: expense.id } });
-  });
+  const updated = await prisma.$transaction((tx) => settlePayout(tx, payout.id, { method: parsed.data.method, date, byName: req.user!.name }));
   res.json(updated);
 });
 
@@ -224,8 +250,50 @@ freelanceRouter.delete('/payouts/:id', manage, async (req, res) => {
   const payout = await prisma.freelancePayout.findUnique({ where: { id: Number(req.params.id) } });
   if (!payout) return res.status(404).json({ error: 'Not found' });
   if (payout.status === 'Paid') return res.status(400).json({ error: 'A paid commission cannot be withdrawn' });
+  if (payout.status === 'Sending') return res.status(400).json({ error: 'A payment to their phone is on its way, so this cannot be withdrawn yet' });
   await prisma.freelancePayout.delete({ where: { id: payout.id } });
   res.status(204).end();
+});
+
+// ── Sending the payout to their M-Pesa phone ────────────────────────────────
+// An STK push asks a customer to pay US; to pay someone we ask Safaricom (Daraja B2C) to send money from our Paybill to their number. Safaricom
+// accepts the request at once and reports the real outcome a moment later; only then is the payout marked Paid and the expense booked. A failed or
+// timed-out attempt leaves the payout approved, ready to be sent again.
+freelanceRouter.post('/payouts/:id/send-mpesa', manage, async (req, res) => {
+  const r = await sendPayoutToPhone(Number(req.params.id), req.user!.name);
+  if (!r.ok) return res.status(400).json({ error: r.error, disbursementId: r.disbursementId });
+  res.status(202).json({ ok: true, disbursementId: r.disbursementId, message: 'Sent to M-Pesa — it is marked paid when Safaricom confirms it.' });
+});
+
+freelanceRouter.get('/payouts/:id/disbursements', manage, async (req, res) => {
+  const rows = await prisma.mpesaDisbursement.findMany({ where: { payoutId: Number(req.params.id) }, orderBy: { id: 'desc' } });
+  res.json(rows.map((d) => ({ id: d.id, status: d.status, amount: d.amount, phone: d.phone, resultDesc: d.resultDesc, receipt: d.receipt, requestedByName: d.requestedByName, createdAt: d.createdAt, completedAt: d.completedAt })));
+});
+
+// If Safaricom's answer never arrives (a callback that could not reach this server) a manager settles the attempt by hand, after checking the Paybill's own
+// statement: it was NOT sent (so it can be tried again), or it WAS (with the M-Pesa receipt code, which must be new).
+freelanceRouter.post('/disbursements/:id/resolve', manage, async (req, res) => {
+  const parsed = z.object({ outcome: z.enum(['failed', 'sent']), receipt: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, 'Enter the M-Pesa receipt code (10 letters and numbers)').optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = await prisma.mpesaDisbursement.findUnique({ where: { id: Number(req.params.id) } });
+  if (!d) return res.status(404).json({ error: 'Not found' });
+  if (d.status !== 'Pending') return res.status(400).json({ error: 'This attempt has already been settled' });
+  if (parsed.data.outcome === 'failed') {
+    await prisma.$transaction([
+      prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Failed', resultDesc: `Marked as not sent by ${req.user!.name}`, completedAt: new Date() } }),
+      prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: 'Sending' }, data: { status: 'Approved' } }),
+    ]);
+    return res.json({ ok: true });
+  }
+  const receipt = parsed.data.receipt;
+  if (!receipt) return res.status(400).json({ error: 'Enter the M-Pesa receipt code from the Paybill statement' });
+  if (await prisma.mpesaDisbursement.findUnique({ where: { receipt } })) return res.status(400).json({ error: `${receipt} is already on record against another payment` });
+  await ensureChartOnce();
+  await prisma.$transaction(async (tx) => {
+    await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Success', receipt, resultDesc: `Confirmed by hand by ${req.user!.name}`, completedAt: new Date() } });
+    await settlePayout(tx, d.payoutId, { method: 'M-Pesa', byName: req.user!.name, receipt, amount: d.amount });
+  });
+  res.json({ ok: true });
 });
 
 // ── One person's account ────────────────────────────────────────────────────

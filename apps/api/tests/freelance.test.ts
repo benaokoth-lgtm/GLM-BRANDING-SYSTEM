@@ -104,13 +104,16 @@ describe('freelance sales persons', () => {
   });
 
   describe('one order, one owner', () => {
-    it('an order marked for a freelancer is credited to them alone: no staff credit, no client taken on', async () => {
+    it('an order marked for a freelancer is credited to them alone: no staff credit, and no staff ownership of the client', async () => {
       const r = await order('amina', [{ qty: 40, unitPrice: 1160 }], { freelanceAgentId: agents.otieno });
       assert.equal(r.status, 201);
       assert.deepEqual([r.body.salesSource, r.body.sourcedByStaffId], ['freelance', null]);
       const row = await prisma.order.findUniqueOrThrow({ where: { id: r.body.id } });
-      assert.deepEqual([row.freelanceAgentId, row.sourcedByStaffId, row.clientKey, row.freelanceQualifyingShare], [agents.otieno, null, null, 1]);
-      assert.equal(await prisma.clientOwner.count({ where: { clientName: { startsWith: 'Freelance Client' } } }), 0, 'nobody now owns that client');
+      assert.deepEqual([row.freelanceAgentId, row.sourcedByStaffId, row.freelanceQualifyingShare], [agents.otieno, null, 1]);
+      assert.equal(await prisma.clientOwner.count({ where: { clientName: { startsWith: 'Freelance Client' } } }), 0, 'no staff member owns that client');
+      // the client is the freelancer's now: they keep them while they keep bringing orders
+      const mine = await prisma.freelanceClient.findFirstOrThrow({ where: { clientKey: row.clientKey! } });
+      assert.deepEqual([mine.agentId, mine.status], [agents.otieno, 'Active']);
       assert.equal((await call('amina', 'GET', `/orders/${r.body.id}`)).body.freelanceAgentName, 'Otieno Agency');
     });
 
@@ -289,6 +292,91 @@ describe('freelance sales persons', () => {
       assert.deepEqual(put.body.freelanceBands, [{ from: 0, rate: 4 }]);
       assert.equal((await call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: [{ from: 10, rate: 4 }] })).status, 400); // must start at 0
       await call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: cfg.freelanceBands });
+    });
+  });
+
+  describe('a freelancer owns the client for as long as they keep bringing orders', () => {
+    const monthsAgo = (n: number) => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - n);
+      return d.toISOString().slice(0, 10);
+    };
+    const mk = async (name: string, phone: string) => (await call('boss', 'POST', '/freelance/agents', { name, phone })).body.id as number;
+    const sameClient = (who: string, extra: Record<string, unknown> = {}) => order(who, [{ qty: 10, unitPrice: 1160 }], { customerName: 'Loyal Client', phone: '0701 555 123', ...extra });
+    const owned = async () => prisma.freelanceClient.findFirst({ where: { clientKey: 'p:701555123' }, orderBy: { id: 'desc' } });
+
+    it('the order that brings a client makes them the freelancer\'s, and every later order from them is credited to the freelancer whoever captures it', async () => {
+      agents.owner1 = await mk('Owner One', '0702 000 001');
+      const first = await sameClient('amina', { freelanceAgentId: agents.owner1 });
+      assert.equal(first.status, 201);
+      const row = await owned();
+      assert.deepEqual([row!.agentId, row!.status, row!.startDate], [agents.owner1, 'Active', todayStr()]);
+
+      // another member of staff takes the next order with no mark at all: it is still the freelancer's
+      const next = await sameClient('brian');
+      assert.equal(next.status, 201);
+      assert.deepEqual([next.body.salesSource, next.body.sourcedByStaffId], ['freelance', null]);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: next.body.id } })).freelanceAgentId, agents.owner1);
+    });
+
+    it('a staff claim on that client changes nothing; another freelancer cannot take them', async () => {
+      const claim = await sameClient('brian', { sourcedBy: ids.brian });
+      assert.equal(claim.status, 201);
+      assert.equal(claim.body.salesSource, 'freelance'); // the claim is ignored, as when another staff member owns the client
+      assert.equal(await prisma.clientOwner.count({ where: { clientKey: 'p:701555123' } }), 0, 'no staff ownership was created');
+      agents.owner2 = await mk('Owner Two', '0702 000 002');
+      const rival = await sameClient('amina', { freelanceAgentId: agents.owner2 });
+      assert.equal(rival.status, 400);
+      assert.match(rival.body.error, /belongs to freelance sales person Owner One/);
+      const look = (await call('brian', 'GET', '/commission/owner-lookup?phone=0701555123')).body;
+      assert.deepEqual([look.owner, look.freelanceOwner.agentName], [null, 'Owner One']);
+    });
+
+    it('each order they bring restarts the window; it lapses only after a stretch with no order, and then the client is free', async () => {
+      const row = (await owned())!;
+      await prisma.freelanceClient.update({ where: { id: row.id }, data: { lastOrderDate: monthsAgo(11) } }); // nearly a year since the last order
+      const renewed = await sameClient('brian');
+      assert.equal(renewed.body.salesSource, 'freelance', 'still theirs');
+      assert.equal((await owned())!.lastOrderDate, todayStr(), 'and the count starts again from today');
+
+      await prisma.freelanceClient.update({ where: { id: row.id }, data: { lastOrderDate: monthsAgo(13) } }); // a year and a month with nothing
+      const free = await sameClient('brian');
+      assert.equal(free.body.salesSource, 'house', 'they stopped bringing orders, so the client is free');
+      // the other freelancer can now take the client — and the first record is marked as lapsed
+      const taken = await sameClient('amina', { freelanceAgentId: agents.owner2 });
+      assert.equal(taken.status, 201);
+      assert.deepEqual([(await owned())!.agentId, (await prisma.freelanceClient.findUniqueOrThrow({ where: { id: row.id } })).status], [agents.owner2, 'Lapsed']);
+    });
+
+    it('how long is a manager setting; a suspended freelancer\'s clients are not credited to them; a manager can release a client', async () => {
+      const cfg = (await call('boss', 'GET', '/commission/settings')).body;
+      assert.equal(cfg.freelanceOwnershipMonths, 12);
+      const save = (months: number) => call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceOwnershipMonths: months });
+      assert.equal((await save(3)).body.freelanceOwnershipMonths, 3);
+      const row = (await owned())!; // Owner Two's
+      await prisma.freelanceClient.update({ where: { id: row.id }, data: { lastOrderDate: monthsAgo(4) } });
+      assert.equal((await sameClient('brian')).body.salesSource, 'house', 'four months with no order is past a three-month window');
+      await save(12);
+      assert.equal((await sameClient('brian')).body.salesSource, 'freelance', 'a longer window keeps them');
+
+      await call('boss', 'PUT', `/freelance/agents/${agents.owner2}`, { status: 'Suspended' });
+      assert.equal((await sameClient('brian')).body.salesSource, 'house', 'a suspended freelancer earns nothing, so their clients are not credited to them');
+      await call('boss', 'PUT', `/freelance/agents/${agents.owner2}`, { status: 'Active' });
+      assert.equal((await sameClient('brian')).body.salesSource, 'freelance');
+
+      const list = (await call('boss', 'GET', '/freelance/clients')).body;
+      const mine = list.clients.find((c: any) => c.id === row.id);
+      assert.deepEqual([mine.agentName, mine.active, mine.status], ['Owner Two', true, 'Active']);
+      assert.equal((await call('brian', 'GET', '/freelance/clients')).status, 403);
+      assert.equal((await call('boss', 'POST', `/freelance/clients/${row.id}/release`)).status, 200);
+      assert.equal((await sameClient('brian')).body.salesSource, 'house', 'released: the client is free again');
+      assert.equal((await call('boss', 'POST', `/freelance/clients/${row.id}/release`)).status, 400);
+    });
+
+    it('a freelancer\'s mark needs a client who can be recognised next time', async () => {
+      const noPhone = await order('amina', [{ qty: 1, unitPrice: 1160 }], { freelanceAgentId: agents.owner1, customerName: 'No Phone Person', phone: '' });
+      assert.equal(noPhone.status, 400);
+      assert.match(noPhone.body.error, /name and phone/);
     });
   });
 });

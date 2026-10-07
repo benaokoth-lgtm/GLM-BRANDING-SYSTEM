@@ -680,6 +680,13 @@ model MpesaSettings {
   passkey         String    @default("")
   publicBaseUrl   String    @default("") // this server's own https address — Safaricom must be able to reach it
   callbackSecret  String    @default("") // random path segment only this install and Safaricom's callbacks know
+  // Paying money OUT to a phone (B2C) — weekly commission to freelance sales persons. Needs a Paybill with B2C switched on by Safaricom, and an API
+  // initiator user made in M-Pesa's organisation portal. The initiator password is kept sealed; the certificate is Safaricom's public one (not secret).
+  b2cShortCode      String    @default("") // blank = the Paybill above
+  initiatorName     String    @default("")
+  initiatorPassword String    @default("")
+  securityCert      String    @default("")
+  b2cCommand        String    @default("BusinessPayment") // BusinessPayment | SalaryPayment | PromotionPayment
   c2bRegisteredAt DateTime?
   updatedAt       DateTime  @updatedAt
 }
@@ -980,6 +987,8 @@ model CommissionSettings {
   artworkRatePct   Float    @default(50)
   ownershipMonths  Int      @default(12)
   // Freelance sales persons — marginal bands on the weekly net sales received on orders credited to them, at or above base prices.
+  // A client a freelance sales person brought stays theirs while an order comes in at least this often (months); each order restarts the count.
+  freelanceOwnershipMonths Int @default(12)
   freelanceBandsJson String @default("[{\"from\":0,\"rate\":3},{\"from\":50000,\"rate\":5},{\"from\":150000,\"rate\":7}]")
   // The sales target: a person must sell this many times their basic monthly salary (net of VAT, money received) in a month before any commission
   // is earned. 0 = no target. 'above' = the bands start at the target; 'all' = once met, the bands apply to all sales (see shared/commission.ts).
@@ -1009,6 +1018,25 @@ model FreelanceAgent {
   approvedAt    DateTime?
   orders        Order[]
   payouts       FreelancePayout[]
+  clients       FreelanceClient[]
+}
+
+// A client a freelance sales person brought in. Unlike a staff member's client (a fixed 12 months), it stays theirs for as long as they keep bringing
+// orders: every order they bring renews it, and it lapses only after `freelanceOwnershipMonths` with no order. While it is theirs, every order from that
+// client is credited to them whoever captures it, and nobody else (staff or another freelancer) can take the client. Recognised by clientKey, as for staff.
+model FreelanceClient {
+  id            Int      @id @default(autoincrement())
+  clientKey     String
+  clientName    String   @default("")
+  agentId       Int
+  agent         FreelanceAgent @relation(fields: [agentId], references: [id])
+  startDate     String // 'YYYY-MM-DD'
+  lastOrderDate String // the last order they brought: the window is counted from here
+  status        String   @default("Active") // Active | Released (by a manager) | Lapsed (taken over after it ran out)
+  releasedOn    String?
+  releasedBy    String?
+
+  @@index([clientKey])
 }
 
 // A week's commission for one freelance sales person (the week starts on the Monday in weekStart): approved by a manager, then paid. Paying
@@ -1028,8 +1056,30 @@ model FreelancePayout {
   paidMethod     String?
   paidByName     String?
   expenseId      Int?
+  receipt        String? // the M-Pesa receipt when it was paid to their phone from here
+  disbursements  MpesaDisbursement[]
 
   @@unique([weekStart, agentId])
+}
+
+// One attempt to send a freelance sales person's weekly commission to their M-Pesa phone (Daraja B2C). Pending until Safaricom's result arrives; only a
+// Success settles the payout (and books the expense). A failed or timed-out attempt leaves the payout approved, so it can be tried again.
+model MpesaDisbursement {
+  id                       Int      @id @default(autoincrement())
+  payoutId                 Int
+  payout                   FreelancePayout @relation(fields: [payoutId], references: [id])
+  phone                    String
+  amount                   Float // whole shillings — what was sent
+  status                   String   @default("Pending") // Pending | Success | Failed
+  originatorConversationId String   @unique
+  conversationId           String   @default("")
+  receipt                  String?  @unique
+  resultCode               Int?
+  resultDesc               String   @default("")
+  requestedByName          String   @default("")
+  createdAt                DateTime @default(now())
+  completedAt              DateTime?
+  rawJson                  String   @default("{}")
 }
 
 // A month's commission for one staff member, approved by a manager and later paid. Approving freezes the figures; paying records the

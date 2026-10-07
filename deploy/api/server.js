@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router20 = require_router();
+    var Router21 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router20({
+        this._router = new Router21({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router20 = require_router();
+    var Router21 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router20;
+    exports2.Router = Router21;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -27708,9 +27708,9 @@ var require_semver = __commonJS({
           // This probably shouldn't be used publicly.
           // 1.0.0 'pre' would become 1.0.0-0 which is the wrong direction.
           case "pre": {
-            const base2 = Number(identifierBase) ? 1 : 0;
+            const base3 = Number(identifierBase) ? 1 : 0;
             if (this.prerelease.length === 0) {
-              this.prerelease = [base2];
+              this.prerelease = [base3];
             } else {
               let i = this.prerelease.length;
               while (--i >= 0) {
@@ -27723,11 +27723,11 @@ var require_semver = __commonJS({
                 if (identifier === this.prerelease.join(".") && identifierBase === false) {
                   throw new Error("invalid increment argument: identifier already exists");
                 }
-                this.prerelease.push(base2);
+                this.prerelease.push(base3);
               }
             }
             if (identifier) {
-              let prerelease = [identifier, base2];
+              let prerelease = [identifier, base3];
               if (identifierBase === false) {
                 prerelease = [identifier];
               }
@@ -31345,7 +31345,7 @@ var require_trees = __commonJS({
       var stree = desc.stat_desc.static_tree;
       var has_stree = desc.stat_desc.has_stree;
       var extra = desc.stat_desc.extra_bits;
-      var base2 = desc.stat_desc.extra_base;
+      var base3 = desc.stat_desc.extra_base;
       var max_length = desc.stat_desc.max_length;
       var h;
       var n, m;
@@ -31370,8 +31370,8 @@ var require_trees = __commonJS({
         }
         s.bl_count[bits]++;
         xbits = 0;
-        if (n >= base2) {
-          xbits = extra[n - base2];
+        if (n >= base3) {
+          xbits = extra[n - base3];
         }
         f = tree[n * 2];
         s.opt_len += f * (bits + xbits);
@@ -33705,7 +33705,7 @@ var require_inftrees = __commonJS({
       var low;
       var mask;
       var next;
-      var base2 = null;
+      var base3 = null;
       var base_index = 0;
       var end;
       var count = new utils.Buf16(MAXBITS + 1);
@@ -33763,16 +33763,16 @@ var require_inftrees = __commonJS({
         }
       }
       if (type === CODES) {
-        base2 = extra = work;
+        base3 = extra = work;
         end = 19;
       } else if (type === LENS) {
-        base2 = lbase;
+        base3 = lbase;
         base_index -= 257;
         extra = lext;
         extra_index -= 257;
         end = 256;
       } else {
-        base2 = dbase;
+        base3 = dbase;
         extra = dext;
         end = -1;
       }
@@ -33795,7 +33795,7 @@ var require_inftrees = __commonJS({
           here_val = work[sym];
         } else if (work[sym] > end) {
           here_op = extra[extra_index + work[sym]];
-          here_val = base2[base_index + work[sym]];
+          here_val = base3[base_index + work[sym]];
         } else {
           here_op = 32 + 64;
           here_val = 0;
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express19 = __toESM(require_express2());
+var import_express20 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -65902,13 +65902,13 @@ function salesTarget(o) {
   const achieved = r22(Math.max(0, o.achieved));
   const applies = o.multiplier > 0;
   const salaryKnown = o.salary != null && o.salary > 0;
-  const base2 = { applies, multiplier: o.multiplier, mode: o.mode, salary: salaryKnown ? o.salary : null, salaryKnown, achieved };
-  if (!applies) return { ...base2, required: 0, met: true, remaining: 0, eligibleSales: achieved, held: false };
-  if (!salaryKnown) return { ...base2, required: 0, met: false, remaining: 0, eligibleSales: 0, held: true };
+  const base3 = { applies, multiplier: o.multiplier, mode: o.mode, salary: salaryKnown ? o.salary : null, salaryKnown, achieved };
+  if (!applies) return { ...base3, required: 0, met: true, remaining: 0, eligibleSales: achieved, held: false };
+  if (!salaryKnown) return { ...base3, required: 0, met: false, remaining: 0, eligibleSales: 0, held: true };
   const required = r22(o.salary * o.multiplier);
   const met = achieved >= required;
   return {
-    ...base2,
+    ...base3,
     required,
     met,
     remaining: r22(Math.max(0, required - achieved)),
@@ -65952,7 +65952,7 @@ function freelanceSplit(lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
   const grand = Math.max(0, subtotal * (1 - (Number(orderDiscountPct) || 0) / 100) - (Number(orderDiscountAmt) || 0));
   if (!(grand > 0) || !(subtotal > 0)) return zero;
   const factor = grand / subtotal;
-  let base2 = 0;
+  let base3 = 0;
   let low = 0;
   let premium = 0;
   for (const l of lines) {
@@ -65960,14 +65960,14 @@ function freelanceSplit(lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
     const need = (Number(l.qty) || 0) * (l.baseUnit + (Number(l.heatPressFee) || 0));
     if (got + 0.5 >= need) {
       const b = Math.min(got, need);
-      base2 += b;
+      base3 += b;
       if (l.lowMargin) low += b;
       premium += Math.max(0, got - need);
     }
   }
   const share = (v) => r22(Math.min(1, v / grand) * 1e6) / 1e6;
-  const qualifying = share(base2 + premium);
-  return { qualifying, base: Math.min(qualifying, share(base2)), low: Math.min(share(low), share(base2)), premium: Math.min(qualifying, share(premium)) };
+  const qualifying = share(base3 + premium);
+  return { qualifying, base: Math.min(qualifying, share(base3)), low: Math.min(share(low), share(base3)), premium: Math.min(qualifying, share(premium)) };
 }
 
 // packages/shared/src/purchasing.ts
@@ -66458,7 +66458,7 @@ async function buildStatements(period, only) {
       st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
     }
   }
-  const base2 = /* @__PURE__ */ new Map();
+  const base3 = /* @__PURE__ */ new Map();
   for (const o of raised) {
     if (o.freelanceAgentId) continue;
     const cap = who(o.staffId).productivity;
@@ -66467,10 +66467,10 @@ async function buildStatements(period, only) {
       const s = o.dtfFilmSale;
       cap.filmSales++;
       cap.filmMetres = round2(cap.filmMetres + s.metres);
-      const b = base2.get(o.staffId) ?? { filmRevenue: 0, filmPremium: 0 };
+      const b = base3.get(o.staffId) ?? { filmRevenue: 0, filmPremium: 0 };
       b.filmRevenue += s.metres * s.pricePerM;
       b.filmPremium += s.metres * filmPremiumPerM(s.pricePerM, s.minPriceAtSale);
-      base2.set(o.staffId, b);
+      base3.set(o.staffId, b);
     } else if (o.dtfArtworkJob) {
       const j = o.dtfArtworkJob;
       const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
@@ -66484,7 +66484,7 @@ async function buildStatements(period, only) {
       src.sourcedValue = round2(src.sourcedValue + orderTotal(o));
     }
   }
-  for (const [id, b] of base2) {
+  for (const [id, b] of base3) {
     const p = people.get(id).productivity;
     p.filmAvgPricePerM = p.filmMetres > 0 ? round2(b.filmRevenue / p.filmMetres) : null;
     p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
@@ -70438,23 +70438,23 @@ var ZodEffects = class extends ZodType {
     }
     if (effect.type === "transform") {
       if (ctx.common.async === false) {
-        const base2 = this._def.schema._parseSync({
+        const base3 = this._def.schema._parseSync({
           data: ctx.data,
           path: ctx.path,
           parent: ctx
         });
-        if (!isValid(base2))
+        if (!isValid(base3))
           return INVALID;
-        const result = effect.transform(base2.value, checkCtx);
+        const result = effect.transform(base3.value, checkCtx);
         if (result instanceof Promise) {
           throw new Error(`Asynchronous transform encountered during synchronous parse operation. Use .parseAsync instead.`);
         }
         return { status: status.value, value: result };
       } else {
-        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base2) => {
-          if (!isValid(base2))
+        return this._def.schema._parseAsync({ data: ctx.data, path: ctx.path, parent: ctx }).then((base3) => {
+          if (!isValid(base3))
             return INVALID;
-          return Promise.resolve(effect.transform(base2.value, checkCtx)).then((result) => ({
+          return Promise.resolve(effect.transform(base3.value, checkCtx)).then((result) => ({
             status: status.value,
             value: result
           }));
@@ -74186,10 +74186,10 @@ emailRouter.post("/send", sendLimiter, async (req, res) => {
     return res.status(500).json({ error: "Could not prepare the PDF to attach" });
   }
   const owes = detail.totals.balanceDue > 9e-3 && kind.isInvoice;
-  const money2 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money3 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const who = detail.corporateClient?.name || (detail.customerName && detail.customerName.trim().toLowerCase() !== "walk-in" ? detail.customerName : "");
   const reach = [company.companyPhone, company.companyPhone2].filter((p) => p && p.trim()).join(" / ");
-  const summary = `Total ${money2(detail.totals.grandTotal)}${kind.isInvoice ? owes ? `. Balance due ${money2(detail.totals.balanceDue)}${detail.dueDate ? ` by ${detail.dueDate}` : ""}.` : ". Paid in full, thank you." : "."}`;
+  const summary = `Total ${money3(detail.totals.grandTotal)}${kind.isInvoice ? owes ? `. Balance due ${money3(detail.totals.balanceDue)}${detail.dueDate ? ` by ${detail.dueDate}` : ""}.` : ". Paid in full, thank you." : "."}`;
   const lines = [
     `Dear ${who || "customer"},`,
     ...parsed.data.message?.trim() ? ["", parsed.data.message.trim()] : [],
@@ -74720,13 +74720,13 @@ function securityCredential(c) {
 }
 function callbackUrls(c) {
   if (!c.publicBaseUrl || !c.callbackSecret) return null;
-  const base2 = `${c.publicBaseUrl}/api/mpesa`;
+  const base3 = `${c.publicBaseUrl}/api/mpesa`;
   return {
-    stk: c.source === "env" && process.env.MPESA_CALLBACK_URL ? process.env.MPESA_CALLBACK_URL : `${base2}/callback/${c.callbackSecret}`,
-    validation: `${base2}/c2b/${c.callbackSecret}/validation`,
-    confirmation: `${base2}/c2b/${c.callbackSecret}/confirmation`,
-    b2cResult: `${base2}/b2c/${c.callbackSecret}/result`,
-    b2cTimeout: `${base2}/b2c/${c.callbackSecret}/timeout`
+    stk: c.source === "env" && process.env.MPESA_CALLBACK_URL ? process.env.MPESA_CALLBACK_URL : `${base3}/callback/${c.callbackSecret}`,
+    validation: `${base3}/c2b/${c.callbackSecret}/validation`,
+    confirmation: `${base3}/c2b/${c.callbackSecret}/confirmation`,
+    b2cResult: `${base3}/b2c/${c.callbackSecret}/result`,
+    b2cTimeout: `${base3}/b2c/${c.callbackSecret}/timeout`
   };
 }
 var DarajaError = class extends Error {
@@ -74930,22 +74930,22 @@ mpesaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res)
   const b = parsed.data;
   const current = await loadMpesaConfig();
   const row = await getSettingsRow();
-  const base2 = row.consumerKey || row.shortCode ? row : { ...row, consumerKey: current.consumerKey, consumerSecret: current.consumerSecret, passkey: current.passkey, shortCode: current.shortCode, publicBaseUrl: current.publicBaseUrl, environment: current.environment, callbackSecret: current.callbackSecret, enabled: current.enabled };
+  const base3 = row.consumerKey || row.shortCode ? row : { ...row, consumerKey: current.consumerKey, consumerSecret: current.consumerSecret, passkey: current.passkey, shortCode: current.shortCode, publicBaseUrl: current.publicBaseUrl, environment: current.environment, callbackSecret: current.callbackSecret, enabled: current.enabled };
   const data = {
-    environment: b.environment ?? base2.environment,
-    shortCode: b.shortCode ?? base2.shortCode,
-    isTill: b.isTill ?? base2.isTill,
-    consumerKey: seal(b.consumerKey ? b.consumerKey : base2.consumerKey),
-    consumerSecret: seal(b.consumerSecret ? b.consumerSecret : base2.consumerSecret),
-    passkey: seal(b.passkey ? b.passkey : base2.passkey),
-    publicBaseUrl: base2.publicBaseUrl,
-    callbackSecret: seal(base2.callbackSecret || newCallbackSecret()),
-    enabled: b.enabled ?? base2.enabled,
-    b2cShortCode: b.b2cShortCode ?? base2.b2cShortCode,
-    initiatorName: b.initiatorName ?? base2.initiatorName,
-    initiatorPassword: seal(b.initiatorPassword ? b.initiatorPassword : base2.initiatorPassword),
-    securityCert: b.securityCert ? b.securityCert : base2.securityCert,
-    b2cCommand: b.b2cCommand ?? (base2.b2cCommand || "BusinessPayment")
+    environment: b.environment ?? base3.environment,
+    shortCode: b.shortCode ?? base3.shortCode,
+    isTill: b.isTill ?? base3.isTill,
+    consumerKey: seal(b.consumerKey ? b.consumerKey : base3.consumerKey),
+    consumerSecret: seal(b.consumerSecret ? b.consumerSecret : base3.consumerSecret),
+    passkey: seal(b.passkey ? b.passkey : base3.passkey),
+    publicBaseUrl: base3.publicBaseUrl,
+    callbackSecret: seal(base3.callbackSecret || newCallbackSecret()),
+    enabled: b.enabled ?? base3.enabled,
+    b2cShortCode: b.b2cShortCode ?? base3.b2cShortCode,
+    initiatorName: b.initiatorName ?? base3.initiatorName,
+    initiatorPassword: seal(b.initiatorPassword ? b.initiatorPassword : base3.initiatorPassword),
+    securityCert: b.securityCert ? b.securityCert : base3.securityCert,
+    b2cCommand: b.b2cCommand ?? (base3.b2cCommand || "BusinessPayment")
   };
   if (b.securityCert) {
     try {
@@ -75720,8 +75720,8 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
     for (const s of sales) byDay2.set(s.soldOn, [...byDay2.get(s.soldOn) ?? [], s]);
     const days2 = [...byDay2.entries()].map(([date, list]) => {
       const orders = list.map((s) => {
-        const money2 = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
-        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money2 };
+        const money3 = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
+        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money3 };
       });
       const metres = round2(list.reduce((a2, s) => a2 + s.metres, 0));
       return {
@@ -75745,8 +75745,8 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
       const calc = { id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece };
       const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
       const final = jobTotals(calc).finalPerPiece;
-      const money2 = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
-      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money2 };
+      const money3 = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
+      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money3 };
     });
     const counted = orders.filter((o) => o.approval !== "Pending");
     const pieces = counted.reduce((a2, o) => a2 + o.pieces, 0);
@@ -78005,6 +78005,8 @@ async function secretStatus() {
   if (b) {
     for (const k of ["driveClientSecret", "driveRefreshToken"]) if (plain(b[k])) unsealed.push(`Google Drive ${k}`);
   }
+  const wa = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
+  if (plain(wa?.accessToken)) unsealed.push("WhatsApp access token");
   return { unsealed };
 }
 async function sealStoredSecrets() {
@@ -78015,6 +78017,8 @@ async function sealStoredSecrets() {
   }
   const mail = await prisma.mailSettings.findUnique({ where: { id: 1 } });
   if (mail && plain(mail.password)) await prisma.mailSettings.update({ where: { id: 1 }, data: { password: seal(mail.password) } });
+  const wa = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
+  if (wa && plain(wa.accessToken)) await prisma.whatsappSettings.update({ where: { id: 1 }, data: { accessToken: seal(wa.accessToken) } });
   const b = await prisma.backupSettings.findUnique({ where: { id: 1 } });
   if (b && (plain(b.driveClientSecret) || plain(b.driveRefreshToken))) {
     await prisma.backupSettings.update({ where: { id: 1 }, data: { driveClientSecret: seal(b.driveClientSecret), driveRefreshToken: seal(b.driveRefreshToken) } });
@@ -78414,13 +78418,239 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
   });
 });
 
+// apps/api/src/routes/whatsapp.ts
+var import_express19 = __toESM(require_express2());
+
+// apps/api/src/whatsapp.ts
+var base2 = () => process.env.NODE_ENV === "test" && process.env.WHATSAPP_TEST_URL ? process.env.WHATSAPP_TEST_URL : "https://graph.facebook.com";
+async function loadWhatsappConfig(opts = {}) {
+  const row = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
+  if (!row || !row.enabled && !opts.ignoreSwitch || !row.phoneNumberId || !row.accessToken) return null;
+  return {
+    phoneNumberId: row.phoneNumberId.trim(),
+    token: open(row.accessToken),
+    businessAccountId: row.businessAccountId,
+    templateName: row.templateName.trim(),
+    templateLanguage: row.templateLanguage.trim() || "en",
+    apiVersion: row.apiVersion.trim() || "v21.0"
+  };
+}
+var TEMPLATE_BODY = "Hello {{1}}, please find attached your {{2}} {{3}} from GLM Branding. Total: {{4}}. {{5}}";
+var WhatsappError = class extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+  }
+};
+function explainWhatsappError(code, message, detail) {
+  const raw = detail ? `${message} (${detail})` : message;
+  switch (code) {
+    case 190:
+    case 102:
+      return "WhatsApp refused the access token: it is wrong, has expired or was revoked. Create a new permanent token (a System User token) and save it under Master Data \u2192 WhatsApp.";
+    case 131030:
+      return "That number is not on the list of numbers allowed to receive messages yet. While the WhatsApp number is in test mode, add the recipient under WhatsApp \u2192 API Setup in Meta, or finish going live.";
+    case 131047:
+      return "The customer has not written to us in the last 24 hours, so only an approved template message can be sent to them. Set the template name under Master Data \u2192 WhatsApp.";
+    case 131026:
+      return "The message could not be delivered: that number may not be on WhatsApp.";
+    case 132e3:
+    case 132005:
+    case 132012:
+      return "The template does not match what was sent. Check that it has a Document header and five body variables, as shown under Master Data \u2192 WhatsApp.";
+    case 132001:
+      return "WhatsApp cannot find that template in that language. Check the template name and language code under Master Data \u2192 WhatsApp, and that Meta has approved it.";
+    case 132015:
+    case 132016:
+      return "That template is paused or disabled by WhatsApp. Check it in Meta\u2019s template manager.";
+    case 130429:
+    case 131048:
+    case 131056:
+      return "WhatsApp is limiting how fast messages can be sent. Try again in a minute.";
+    case 131042:
+    case 131045:
+      return "The WhatsApp Business account has a payment or registration problem. Check the account in Meta Business Settings.";
+    case 100:
+      return `WhatsApp rejected the request: ${raw}`;
+    default:
+      return `WhatsApp could not send it: ${raw}`;
+  }
+}
+async function graph(cfg, path4, init = {}) {
+  let res;
+  try {
+    res = await fetch(`${base2()}/${cfg.apiVersion}/${path4}`, { ...init, headers: { Authorization: `Bearer ${cfg.token}`, ...init.headers ?? {} }, signal: AbortSignal.timeout(3e4) });
+  } catch {
+    throw new WhatsappError("Could not reach WhatsApp (graph.facebook.com). Check the server\u2019s internet connection and try again.");
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.error) {
+    const e = body?.error ?? {};
+    throw new WhatsappError(explainWhatsappError(e.code, e.message ?? `HTTP ${res.status}`, e.error_data?.details), e.code);
+  }
+  return body;
+}
+async function checkConnection(cfg) {
+  const r = await graph(cfg, `${cfg.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`);
+  return { displayPhoneNumber: r.display_phone_number ?? "", verifiedName: r.verified_name ?? "", quality: r.quality_rating ?? "" };
+}
+async function uploadPdf(cfg, pdf, filename) {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", "application/pdf");
+  form.append("file", new Blob([new Uint8Array(pdf)], { type: "application/pdf" }), filename);
+  const r = await graph(cfg, `${cfg.phoneNumberId}/media`, { method: "POST", body: form });
+  if (!r?.id) throw new WhatsappError("WhatsApp did not accept the PDF upload.");
+  return String(r.id);
+}
+async function sendInvoiceDocument(cfg, m) {
+  const mediaId = await uploadPdf(cfg, m.pdf, m.filename);
+  const clean3 = (s) => s.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 900) || "-";
+  const payload = cfg.templateName ? {
+    messaging_product: "whatsapp",
+    to: m.to,
+    type: "template",
+    template: {
+      name: cfg.templateName,
+      language: { code: cfg.templateLanguage },
+      components: [
+        { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename: m.filename } }] },
+        { type: "body", parameters: m.params.map((t) => ({ type: "text", text: clean3(t) })) }
+      ]
+    }
+  } : { messaging_product: "whatsapp", to: m.to, type: "document", document: { id: mediaId, filename: m.filename, caption: m.caption.slice(0, 1e3) } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return { messageId: String(id), mode: cfg.templateName ? "template" : "document" };
+}
+
+// apps/api/src/routes/whatsapp.ts
+var whatsappRouter = (0, import_express19.Router)();
+whatsappRouter.use(requireAuth);
+var sendLimiter2 = lib_default({
+  windowMs: 60 * 60 * 1e3,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `wa-${req.user?.id ?? "anon"}`,
+  validate: false,
+  message: { error: "You have sent a lot of WhatsApp messages this hour. Try again later, or ask a manager." }
+});
+var publicView = (row) => ({
+  enabled: !!row?.enabled,
+  configured: !!(row?.phoneNumberId && row?.accessToken),
+  phoneNumberId: row?.phoneNumberId ?? "",
+  businessAccountId: row?.businessAccountId ?? "",
+  hasToken: !!row?.accessToken,
+  templateName: row?.templateName ?? "",
+  templateLanguage: row?.templateLanguage ?? "en",
+  apiVersion: row?.apiVersion ?? "v21.0",
+  templateBody: TEMPLATE_BODY
+});
+whatsappRouter.get("/settings", requireRole("Admin"), async (_req, res) => {
+  res.json(publicView(await prisma.whatsappSettings.findUnique({ where: { id: 1 } })));
+});
+var settingsSchema6 = external_exports.object({
+  enabled: external_exports.boolean().optional(),
+  phoneNumberId: external_exports.string().trim().regex(/^\d{5,25}$/, "The Phone number ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
+  businessAccountId: external_exports.string().trim().regex(/^\d{5,25}$/, "The WhatsApp Business Account ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
+  accessToken: external_exports.string().trim().max(1e3).optional(),
+  // blank = keep what is saved
+  templateName: external_exports.string().trim().regex(/^[a-z0-9_]{0,512}$/, "A template name has only lowercase letters, numbers and underscores").optional(),
+  templateLanguage: external_exports.string().trim().regex(/^[a-z]{2,3}(_[A-Z]{2})?$/, "The language code looks like en or en_US").optional(),
+  apiVersion: external_exports.string().trim().regex(/^v\d{1,2}\.\d$/, "The API version looks like v21.0").optional()
+});
+whatsappRouter.put("/settings", requireRole("Admin"), async (req, res) => {
+  const parsed = settingsSchema6.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const b = parsed.data;
+  const row = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
+  const data = {
+    enabled: b.enabled ?? row?.enabled ?? false,
+    phoneNumberId: b.phoneNumberId ?? row?.phoneNumberId ?? "",
+    businessAccountId: b.businessAccountId ?? row?.businessAccountId ?? "",
+    accessToken: b.accessToken ? seal(b.accessToken) : row?.accessToken ?? "",
+    templateName: b.templateName ?? row?.templateName ?? "",
+    templateLanguage: b.templateLanguage || row?.templateLanguage || "en",
+    apiVersion: b.apiVersion || row?.apiVersion || "v21.0"
+  };
+  if (data.enabled && !(data.phoneNumberId && data.accessToken)) return res.status(400).json({ error: "Enter the Phone number ID and the access token before switching it on" });
+  const saved = await prisma.whatsappSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  res.json(publicView(saved));
+});
+whatsappRouter.post("/settings/test", requireRole("Admin"), async (_req, res) => {
+  const cfg = await loadWhatsappConfig({ ignoreSwitch: true });
+  if (!cfg) return res.status(400).json({ error: "Save the Phone number ID and the access token first" });
+  try {
+    res.json({ ok: true, ...await checkConnection(cfg) });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof WhatsappError ? e.message : "Could not check the connection" });
+  }
+});
+whatsappRouter.get("/status", async (_req, res) => {
+  const cfg = await loadWhatsappConfig();
+  res.json({ ready: !!cfg, template: !!cfg?.templateName });
+});
+var money2 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+var sendSchema2 = external_exports.object({
+  orderId: external_exports.number().int().positive(),
+  // Where to send it; left out, the number on the order is used.
+  to: external_exports.string().trim().max(40).optional()
+});
+whatsappRouter.post("/send", sendLimiter2, async (req, res) => {
+  const cfg = await loadWhatsappConfig();
+  if (!cfg) return res.status(501).json({ error: "WhatsApp isn't set up yet \u2014 an Admin can set it up under Master Data \u2192 WhatsApp" });
+  const parsed = sendSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  const detail = serializeDetail(order);
+  const to = whatsappNumber(parsed.data.to || detail.corporateClient?.phone || detail.phone);
+  if (!to) return res.status(400).json({ error: "Enter the customer's WhatsApp number, like 0797 785 033" });
+  const company = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  const kind = documentKind(detail);
+  const owes = kind.isInvoice && detail.totals.balanceDue > 9e-3;
+  const who = detail.corporateClient?.name || (detail.customerName && detail.customerName.trim().toLowerCase() !== "walk-in" ? detail.customerName : "") || "customer";
+  const closing = kind.isInvoice ? owes ? `Balance due ${money2(detail.totals.balanceDue)}${detail.dueDate ? ` by ${fmtDate(detail.dueDate)}` : ""}.` : "Paid in full, thank you." : "Please contact us to confirm.";
+  const filename = `${kind.label}-${detail.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, "-") + ".pdf";
+  const log = (status, extra) => prisma.whatsappMessage.create({ data: { orderId: order.id, toNumber: to, status, mode: extra.mode ?? "", waMessageId: extra.waMessageId ?? null, error: extra.error ?? "", sentByName: req.user.name } });
+  try {
+    const pdf = await buildOrderPdf(detail, company);
+    const sent = await sendInvoiceDocument(cfg, {
+      to,
+      pdf,
+      filename,
+      params: [who, kind.label.toLowerCase(), detail.orderNo, money2(detail.totals.grandTotal), closing],
+      caption: `${kind.label} ${detail.orderNo} from ${company.companyName}. Total ${money2(detail.totals.grandTotal)}. ${closing}`
+    });
+    await log("Sent", { waMessageId: sent.messageId, mode: sent.mode });
+    res.json({ ok: true, to, messageId: sent.messageId, mode: sent.mode, attachment: filename });
+  } catch (e) {
+    const message = e instanceof WhatsappError ? e.message : "Could not prepare or send the message";
+    if (!(e instanceof WhatsappError)) console.error("WhatsApp send failed", e);
+    await log("Failed", { error: message });
+    res.status(502).json({ error: message });
+  }
+});
+whatsappRouter.get("/log", async (req, res) => {
+  const orderId = Number(req.query.orderId);
+  if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ error: "Choose the order" });
+  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { staffId: true } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  const rows = await prisma.whatsappMessage.findMany({ where: { orderId }, orderBy: { id: "desc" }, take: 10 });
+  res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express19.default)();
+var app = (0, import_express20.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express19.default.json({ limit: "5mb" }));
+app.use(import_express20.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -78450,6 +78680,7 @@ app.use("/api/pricelists", pricelistsRouter);
 app.use("/api/backup", backupRouter);
 app.use("/api/security", securityRouter);
 app.use("/api/freelance", freelanceRouter);
+app.use("/api/whatsapp", whatsappRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });

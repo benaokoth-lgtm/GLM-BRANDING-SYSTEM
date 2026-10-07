@@ -680,6 +680,35 @@ model MailSettings {
   updatedAt    DateTime @updatedAt
 }
 
+// WhatsApp Business (Cloud API) setup, edited by the Admin under Master Data → WhatsApp: lets an invoice or quotation be sent straight to a customer's
+// WhatsApp as a PDF. One row (id = 1). The access token is sealed with the DATA_KEY and never sent back to the browser.
+model WhatsappSettings {
+  id                Int      @id @default(1)
+  enabled           Boolean  @default(false)
+  phoneNumberId     String   @default("") // from WhatsApp → API Setup in Meta (a long number, not the phone number)
+  businessAccountId String   @default("") // the WhatsApp Business Account ID, for reference
+  accessToken       String   @default("") // a permanent System User token — sealed
+  templateName      String   @default("") // the approved template (Utility, with a Document header and five body variables); blank = free-form, only inside the 24-hour window
+  templateLanguage  String   @default("en")
+  apiVersion        String   @default("v21.0")
+  updatedAt         DateTime @updatedAt
+}
+
+// Every WhatsApp message sent from an order, and whether WhatsApp accepted it.
+model WhatsappMessage {
+  id          Int      @id @default(autoincrement())
+  orderId     Int
+  toNumber    String
+  status      String // Sent | Failed
+  mode        String   @default("") // template | document
+  waMessageId String?
+  error       String   @default("")
+  sentByName  String
+  createdAt   DateTime @default(now())
+
+  @@index([orderId])
+}
+
 // M-Pesa (Daraja) setup, edited by the Admin under Master Data → M-Pesa. One row (id = 1). The consumer secret and passkey are
 // never sent back to the browser once saved — the screen only confirms they are set. When no row has been saved yet, the app
 // still honours the old MPESA_* environment variables (see mpesaConfig.ts), so existing installs keep working.

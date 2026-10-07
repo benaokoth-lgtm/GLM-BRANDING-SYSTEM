@@ -23,6 +23,7 @@ import { pricelistsRouter } from './routes/pricelists';
 import { backupRouter } from './routes/backup';
 import { securityRouter } from './routes/security';
 import { freelanceRouter } from './routes/freelance';
+import { whatsappRouter } from './routes/whatsapp';
 import { auditMiddleware } from './audit';
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5174').split(',').map((o) => o.trim());
@@ -71,6 +72,7 @@ app.use('/api/pricelists', pricelistsRouter);
 app.use('/api/backup', backupRouter);
 app.use('/api/security', securityRouter);
 app.use('/api/freelance', freelanceRouter);
+app.use('/api/whatsapp', whatsappRouter);
 
 // Catch-all — any error forwarded here (including async rejections, thanks
 // to express-async-errors above) gets a clean JSON 500 instead of Express's

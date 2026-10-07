@@ -34,6 +34,11 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
   const [emailTo, setEmailTo] = useState('');
   const [waTo, setWaTo] = useState('');
   const [waFile, setWaFile] = useState<File | null>(null);
+  // Straight to the customer through the WhatsApp Business API, when the Admin has set it up (Master Data → WhatsApp).
+  const [waReady, setWaReady] = useState(false);
+  const [waBusy, setWaBusy] = useState(false);
+  const [waNote, setWaNote] = useState<string | null>(null);
+  const [waLog, setWaLog] = useState<{ id: number; to: string; status: string; error: string; sentByName: string; at: string }[]>([]);
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
 
@@ -147,6 +152,30 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sharePanel, detail?.id]);
+
+  useEffect(() => {
+    if (sharePanel !== 'whatsapp' || !detail) return;
+    api.get<{ ready: boolean }>('/whatsapp/status').then((r) => setWaReady(r.ready)).catch(() => setWaReady(false));
+    api.get<typeof waLog>(`/whatsapp/log?orderId=${detail.id}`).then(setWaLog).catch(() => setWaLog([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharePanel, detail?.id]);
+
+  /** Sends the PDF straight to the customer's WhatsApp number from the system (no one has to pick a chat). */
+  async function sendWhatsappDirect() {
+    if (!detail) return;
+    setError(null);
+    setWaNote(null);
+    setWaBusy(true);
+    try {
+      const r = await api.post<{ to: string }>('/whatsapp/send', { orderId: detail.id, to: waTo.trim() || undefined });
+      setWaNote(`Sent to +${r.to} as a PDF.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send it on WhatsApp');
+    } finally {
+      setWaBusy(false);
+      api.get<typeof waLog>(`/whatsapp/log?orderId=${detail.id}`).then(setWaLog).catch(() => undefined);
+    }
+  }
 
   /**
    * Sends the document on WhatsApp as a PDF. WhatsApp's own link (wa.me) can only carry text, so the file goes through the device's share sheet where it
@@ -485,8 +514,13 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             ) : (
               <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
                 <input className="input" type="tel" style={{ flex: '1 1 200px', maxWidth: 240 }} value={waTo} onChange={(e) => setWaTo(e.target.value)} placeholder="0797 785 033" autoFocus />
-                <button type="button" className="btn btn-primary" onClick={sendWhatsapp} disabled={!waFile}>
-                  {waFile ? 'Send the PDF on WhatsApp' : 'Preparing the PDF…'}
+                {waReady && (
+                  <button type="button" className="btn btn-primary" onClick={sendWhatsappDirect} disabled={waBusy || !waTo.trim()}>
+                    {waBusy ? 'Sending…' : 'Send to the customer now'}
+                  </button>
+                )}
+                <button type="button" className={'btn ' + (waReady ? 'btn-secondary' : 'btn-primary')} onClick={sendWhatsapp} disabled={!waFile}>
+                  {waFile ? 'Share the PDF from this device' : 'Preparing the PDF…'}
                 </button>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={saveAndOpenChat} disabled={!waFile || !waTo.trim()}>
                   Save the PDF and open the chat
@@ -494,8 +528,15 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <button type="button" className="btn btn-ghost btn-sm" onClick={sendWhatsappText} disabled={!waTo.trim()}>
                   Message only
                 </button>
+                {waNote && <span className="tag tag-accent">{waNote}</span>}
+                {waLog.length > 0 && (
+                  <span className="note" style={{ margin: 0, flexBasis: '100%' }}>
+                    WhatsApp history: {waLog.slice(0, 3).map((l) => `${l.status === 'Sent' ? 'sent' : 'failed'} to +${l.to} by ${l.sentByName} (${new Date(l.at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' })})`).join(' · ')}
+                  </span>
+                )}
                 <span className="note" style={{ margin: 0 }}>
-                  <b>Send the PDF</b> opens your device's share list with the PDF and the message: choose WhatsApp, then the customer. WhatsApp's own link cannot attach a file, so where the device has no share list, <b>Save the PDF and open the chat</b> saves it and opens the customer's chat (the number above) for you to attach it with the paperclip.
+                  {waReady && <><b>Send to the customer now</b> sends the PDF from the system straight to the number above: nobody has to pick a chat. </>}
+                  <b>Share the PDF from this device</b> opens your device's share list with the PDF and the message: choose WhatsApp, then the customer. WhatsApp's own link cannot attach a file, so where the device has no share list, <b>Save the PDF and open the chat</b> saves it and opens the customer's chat (the number above) for you to attach it with the paperclip.
                 </span>
               </div>
             )}

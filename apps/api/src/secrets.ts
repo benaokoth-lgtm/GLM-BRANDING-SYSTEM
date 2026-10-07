@@ -17,6 +17,8 @@ export async function secretStatus(): Promise<SecretStatus> {
   if (plain(mail?.password)) unsealed.push('Email password');
   const b = await prisma.backupSettings.findUnique({ where: { id: 1 } });
   if (b) for (const k of ['driveClientSecret', 'driveRefreshToken'] as const) if (plain(b[k])) unsealed.push(`Google Drive ${k}`);
+  const wa = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
+  if (plain(wa?.accessToken)) unsealed.push('WhatsApp access token');
   return { unsealed };
 }
 
@@ -28,6 +30,8 @@ export async function sealStoredSecrets(): Promise<void> {
   }
   const mail = await prisma.mailSettings.findUnique({ where: { id: 1 } });
   if (mail && plain(mail.password)) await prisma.mailSettings.update({ where: { id: 1 }, data: { password: seal(mail.password) } });
+  const wa = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
+  if (wa && plain(wa.accessToken)) await prisma.whatsappSettings.update({ where: { id: 1 }, data: { accessToken: seal(wa.accessToken) } });
   const b = await prisma.backupSettings.findUnique({ where: { id: 1 } });
   if (b && (plain(b.driveClientSecret) || plain(b.driveRefreshToken))) {
     await prisma.backupSettings.update({ where: { id: 1 }, data: { driveClientSecret: seal(b.driveClientSecret), driveRefreshToken: seal(b.driveRefreshToken) } });

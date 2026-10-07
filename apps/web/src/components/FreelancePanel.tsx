@@ -58,6 +58,8 @@ interface WeekData {
 }
 interface AgentRow {
   id: number;
+  /** Register number: FL-001 … */
+  code: string;
   name: string;
   phone: string;
   email: string;
@@ -315,7 +317,8 @@ interface ClientsData {
   clients: { id: number; clientName: string; agentId: number; agentName: string; startDate: string; lastOrderDate: string; until: string; active: boolean; status: string }[];
 }
 
-function PeopleTab() {
+/** The register of freelance sales persons: add, edit, approve, suspend, and see each one's account. Also shown under Master Data. */
+export function PeopleTab() {
   const { data, error, loading, reload } = useLoad<AgentRow[]>('/freelance/agents');
   const [account, setAccount] = useState<number | null>(null);
   const [form, setForm] = useState(blank);
@@ -337,11 +340,12 @@ function PeopleTab() {
     <>
       <Notice error={err} message={msg} />
       {pending > 0 && <p className="note">{pending} new freelance sales person{pending === 1 ? ' is' : 's are'} waiting for your approval. Orders can be credited to them already, but they are not paid until you approve them.</p>}
-      <Card title="Freelance sales persons" hint="People outside the staff who bring us work. Their phone number is their account.">
+      <Card title="Freelance sales persons" hint="The register of people outside the staff who bring us work. Staff pick from this list at order capture, by name, phone or FL number. Their phone number is their account.">
         <div style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead>
               <tr>
+                <th>No.</th>
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Usually paid by</th>
@@ -353,7 +357,7 @@ function PeopleTab() {
             <tbody>
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="text-muted">
+                  <td colSpan={7} className="text-muted">
                     None yet. They are added when an order is credited to one, or below.
                   </td>
                 </tr>
@@ -361,6 +365,7 @@ function PeopleTab() {
               {data.map((a) => (
                 <Fragment key={a.id}>
                   <tr>
+                    <td className="text-muted">{a.code}</td>
                     <td>
                       <b>{a.name}</b>
                       {a.createdByName && <div className="text-muted" style={{ fontSize: 11 }}>added by {a.createdByName}</div>}
@@ -396,7 +401,7 @@ function PeopleTab() {
                   </tr>
                   {editing === a.id && (
                     <tr>
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-2)', padding: 'var(--space-2) 0' }}>
                           {(['name', 'phone', 'mpesaNumber', 'nationalId', 'kraPin', 'bankName', 'bankAccount'] as const).map((k) => (
                             <div className="field" style={{ margin: 0 }} key={k}>

@@ -55799,10 +55799,18 @@ var kePhone = (raw) => {
   return n && /^254[17]\d{8}$/.test(n) ? n : null;
 };
 var weekOf = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? weekStart(v) : weekStart(todayStr());
-var pickable = (a2) => ({ id: a2.id, name: a2.name, phoneTail: a2.phone.slice(-3), status: a2.status });
-freelanceRouter.get("/pickable", capture, async (_req, res) => {
-  const agents = await prisma.freelanceAgent.findMany({ where: { status: { not: "Suspended" } }, orderBy: { name: "asc" } });
-  res.json(agents.map(pickable));
+var codeFor = (id) => `FL-${String(id).padStart(3, "0")}`;
+var pickable = (a2) => ({ id: a2.id, code: codeFor(a2.id), name: a2.name, phoneTail: a2.phone.slice(-3), status: a2.status });
+freelanceRouter.get("/pickable", capture, async (req, res) => {
+  const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+  const only = typeof req.query.id === "string" ? Number(req.query.id) : 0;
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 50));
+  let agents = await prisma.freelanceAgent.findMany({ where: { status: { not: "Suspended" }, ...only ? { id: only } : {} }, orderBy: { name: "asc" } });
+  if (q) {
+    const tail = q.replace(/\D/g, "").replace(/^0+/, "");
+    agents = agents.filter((a2) => a2.name.toLowerCase().includes(q) || codeFor(a2.id).toLowerCase().includes(q) || tail.length >= 3 && a2.phone.includes(tail));
+  }
+  res.json(agents.slice(0, limit).map(pickable));
 });
 var agentFields = {
   name: external_exports.string().trim().min(2, "Enter their name").max(120),
@@ -55865,7 +55873,7 @@ freelanceRouter.post("/agents", capture, async (req, res) => {
 });
 freelanceRouter.get("/agents", manage2, async (_req, res) => {
   const agents = await prisma.freelanceAgent.findMany({ orderBy: [{ status: "asc" }, { name: "asc" }], include: { _count: { select: { orders: true } } } });
-  res.json(agents.map((a2) => ({ ...a2, orders: a2._count.orders, _count: void 0 })));
+  res.json(agents.map((a2) => ({ ...a2, code: codeFor(a2.id), orders: a2._count.orders, _count: void 0 })));
 });
 freelanceRouter.put("/agents/:id", manage2, async (req, res) => {
   const parsed = external_exports.object({ ...agentFields, status: external_exports.enum(STATUSES) }).partial().safeParse(req.body);

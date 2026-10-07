@@ -102,6 +102,21 @@ describe('freelance sales persons', () => {
       assert.equal((await call('brian', 'GET', `/freelance/statement?week=${week}`)).status, 403);
       assert.ok(((await call('boss', 'GET', '/freelance/agents')).body as any[]).some((a) => a.bankAccount === '0123456789'));
     });
+
+    it('the register gives each person an FL number, and the order desk can find them by name, FL number or phone number', async () => {
+      const find = async (q: string) => (await call('brian', 'GET', `/freelance/pickable?q=${encodeURIComponent(q)}`)).body as any[];
+      const code = `FL-${String(agents.otieno).padStart(3, '0')}`;
+      const all = (await call('brian', 'GET', '/freelance/pickable')).body as any[];
+      assert.equal(all.find((a) => a.id === agents.otieno).code, code);
+      assert.deepEqual((await find('otieno')).map((a) => a.id), [agents.otieno]); // by name, any case
+      assert.deepEqual((await find(code.toLowerCase())).map((a) => a.id), [agents.otieno]); // by FL number
+      assert.deepEqual((await find('0722 000 111')).map((a) => a.id), [agents.otieno]); // by phone, as written on the form
+      assert.deepEqual((await find('722000')).map((a) => a.id), [agents.otieno]); // or part of it
+      assert.deepEqual(await find('nobody here'), []);
+      assert.deepEqual(((await call('brian', 'GET', `/freelance/pickable?id=${agents.wanjiku}`)).body as any[]).map((a) => a.id), [agents.wanjiku]); // one person, to show who is chosen
+      assert.ok(!JSON.stringify(await find('0722 000 111')).includes('254722000111'), 'the full number is never sent back');
+      assert.equal(((await call('boss', 'GET', '/freelance/agents')).body as any[]).find((a) => a.id === agents.otieno).code, code);
+    });
   });
 
   describe('one order, one owner', () => {

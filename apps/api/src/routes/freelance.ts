@@ -31,12 +31,24 @@ const kePhone = (raw: string): string | null => {
 };
 const weekOf = (v: unknown): string => (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? weekStart(v) : weekStart(todayStr()));
 
-/** What someone capturing an order may see of an agent: enough to pick them, not their pay details. */
-const pickable = (a: { id: number; name: string; phone: string; status: string }) => ({ id: a.id, name: a.name, phoneTail: a.phone.slice(-3), status: a.status });
+/** A freelance sales person's register number, from their record number: FL-001, FL-002 … */
+const codeFor = (id: number): string => `FL-${String(id).padStart(3, '0')}`;
 
-freelanceRouter.get('/pickable', capture, async (_req, res) => {
-  const agents = await prisma.freelanceAgent.findMany({ where: { status: { not: 'Suspended' } }, orderBy: { name: 'asc' } });
-  res.json(agents.map(pickable));
+/** What someone capturing an order may see of an agent: enough to pick them, not their pay details. */
+const pickable = (a: { id: number; name: string; phone: string; status: string }) => ({ id: a.id, code: codeFor(a.id), name: a.name, phoneTail: a.phone.slice(-3), status: a.status });
+
+// The register, for picking at order capture. ?q= finds people by name, register number or phone number; ?id= returns one person (to show who is
+// already chosen). Suspended people cannot be picked.
+freelanceRouter.get('/pickable', capture, async (req, res) => {
+  const q = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+  const only = typeof req.query.id === 'string' ? Number(req.query.id) : 0;
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 50));
+  let agents = await prisma.freelanceAgent.findMany({ where: { status: { not: 'Suspended' }, ...(only ? { id: only } : {}) }, orderBy: { name: 'asc' } });
+  if (q) {
+    const tail = q.replace(/\D/g, '').replace(/^0+/, ''); // 0712 345 678 → 712345678, matched inside 254712345678
+    agents = agents.filter((a) => a.name.toLowerCase().includes(q) || codeFor(a.id).toLowerCase().includes(q) || (tail.length >= 3 && a.phone.includes(tail)));
+  }
+  res.json(agents.slice(0, limit).map(pickable));
 });
 
 // ── Agents ──────────────────────────────────────────────────────────────────
@@ -108,7 +120,7 @@ freelanceRouter.post('/agents', capture, async (req, res) => {
 
 freelanceRouter.get('/agents', manage, async (_req, res) => {
   const agents = await prisma.freelanceAgent.findMany({ orderBy: [{ status: 'asc' }, { name: 'asc' }], include: { _count: { select: { orders: true } } } });
-  res.json(agents.map((a) => ({ ...a, orders: a._count.orders, _count: undefined })));
+  res.json(agents.map((a) => ({ ...a, code: codeFor(a.id), orders: a._count.orders, _count: undefined })));
 });
 
 freelanceRouter.put('/agents/:id', manage, async (req, res) => {

@@ -7,6 +7,8 @@ import { api } from '../api/client';
 
 interface Agent {
   id: number;
+  /** Register number, FL-001 … */
+  code: string;
   name: string;
   phoneTail: string;
   status: string;
@@ -16,16 +18,31 @@ const blank = { name: '', phone: '', mpesaNumber: '', nationalId: '', kraPin: ''
 
 export default function FreelancePicker({ value, onChange }: { value: number | null; onChange: (id: number | null) => void }) {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [chosen, setChosen] = useState<Agent | null>(null);
+  const [query, setQuery] = useState('');
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState(blank);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const load = () => api.get<Agent[]>('/freelance/pickable').then(setAgents).catch(() => setAgents([]));
+  // The register, filtered as they type (by name, register number or phone number); the first few when nothing is typed.
+  const load = (q = query) => api.get<Agent[]>(`/freelance/pickable?limit=8&q=${encodeURIComponent(q)}`).then(setAgents).catch(() => setAgents([]));
   useEffect(() => {
-    load();
-  }, []);
+    const t = setTimeout(() => void load(query), 200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+  // Who is already chosen (set by the parent, or just added): show them by name instead of the search box.
+  useEffect(() => {
+    if (!value) {
+      setChosen(null);
+      return;
+    }
+    if (chosen?.id === value) return;
+    api.get<Agent[]>(`/freelance/pickable?id=${value}`).then((r) => setChosen(r[0] ?? null)).catch(() => setChosen(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   async function save() {
     setBusy(true);
@@ -42,7 +59,7 @@ export default function FreelancePicker({ value, onChange }: { value: number | n
         ...(form.bankName.trim() ? { bankName: form.bankName } : {}),
         ...(form.bankAccount.trim() ? { bankAccount: form.bankAccount } : {}),
       });
-      await load();
+      setChosen(r);
       onChange(r.id);
       setAdding(false);
       setForm(blank);
@@ -58,29 +75,47 @@ export default function FreelancePicker({ value, onChange }: { value: number | n
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-2)' }}>
-      <select
-        className="input"
-        value={adding ? 'new' : value ?? ''}
-        onChange={(e) => {
-          if (e.target.value === 'new') {
-            setAdding(true);
-            onChange(null);
-          } else {
-            setAdding(false);
-            setNote('');
-            onChange(e.target.value ? Number(e.target.value) : null);
-          }
-        }}
-      >
-        <option value="">Choose the freelance sales person…</option>
-        {agents.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.name} · …{a.phoneTail}
-            {a.status === 'Pending' ? ' (awaiting approval)' : ''}
-          </option>
-        ))}
-        <option value="new">+ A new freelance sales person…</option>
-      </select>
+      {value && chosen && !adding ? (
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', border: '1px solid var(--color-divider)', padding: 'var(--space-2) var(--space-3)' }}>
+          <b>{chosen.name}</b>
+          <span className="text-muted">
+            {chosen.code} · …{chosen.phoneTail}
+            {chosen.status === 'Pending' ? ' · awaiting approval' : ''}
+          </span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setChosen(null); setQuery(''); setNote(''); onChange(null); }}>
+            Change
+          </button>
+        </div>
+      ) : (
+        !adding && (
+          <div style={{ display: 'grid', gap: 'var(--space-1)' }}>
+            <input className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search the freelancers by name, phone or FL number…" aria-label="Search freelance sales persons" />
+            <div style={{ border: '1px solid var(--color-divider)', maxHeight: 240, overflowY: 'auto' }}>
+              {agents.length === 0 && <p className="note" style={{ margin: 'var(--space-2) var(--space-3)' }}>{query ? 'No one matches. Add them below.' : 'No freelance sales persons on the register yet. Add the first one below.'}</p>}
+              {agents.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 'var(--space-2)', textAlign: 'left', borderBottom: '1px solid var(--color-divider)' }}
+                  onClick={() => { setChosen(a); setNote(''); onChange(a.id); }}
+                >
+                  <span>
+                    <b>{a.name}</b>
+                    {a.status === 'Pending' ? <span className="text-muted"> · awaiting approval</span> : null}
+                  </span>
+                  <span className="text-muted">{a.code} · …{a.phoneTail}</span>
+                </button>
+              ))}
+            </div>
+            <div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAdding(true); onChange(null); }}>
+                + A new freelance sales person…
+              </button>
+            </div>
+          </div>
+        )
+      )}
       {note && <p className="note" style={{ margin: 0 }}>{note}</p>}
       {adding && (
         <div className="card" style={{ padding: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>

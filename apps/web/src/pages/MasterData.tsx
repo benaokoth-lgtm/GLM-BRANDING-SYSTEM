@@ -11,7 +11,7 @@ import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email' | 'backup' | 'security';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email' | 'backup' | 'security' | 'freelancers';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -20,6 +20,7 @@ const TABS: [MasterTab, string][] = [
   ['heads', 'Business Heads'],
   ['materials', 'Stock Price List'],
   ['clients', 'Corporate Clients'],
+  ['freelancers', 'Freelancers'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
   ['mpesa', 'M-Pesa'],
@@ -51,6 +52,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
 import { useSubTab } from '../state/SubNavContext';
 import { notifyBrandingChanged } from '../hooks/useBranding';
 import CommissionSwitch from '../components/CommissionSwitch';
+import { PeopleTab } from '../components/FreelancePanel';
 import BusinessHeadsPanel from '../components/BusinessHeadsPanel';
 import type { BusinessHeadRow } from '../api/models';
 
@@ -546,6 +548,8 @@ export default function MasterData() {
           {error}
         </p>
       )}
+
+      {tab === 'freelancers' && <PeopleTab />}
 
       {tab === 'staff' && (
         <>

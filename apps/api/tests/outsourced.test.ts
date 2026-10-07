@@ -33,6 +33,15 @@ const bal = async (code: string) => {
   return naturalBalance(a.type, sumByAccount(l.postings).get(a.id));
 };
 
+
+// A supplier's bill tied to an order, as Finance's expense records it: the whole bill is the cost, a deposit is a payment against it.
+async function bill(orderId: number, supplier: string, amount: number, paidNow: number, method: string, invoiceNumber?: string) {
+  const fullyPaid = paidNow >= amount - 0.005;
+  const e = await prisma.expense.create({ data: { date: new Date().toISOString().slice(0, 10), category: 'Outsourced Services', amount, supplier, invoiceNumber: invoiceNumber ?? null, note: 'test bill', orderId, capturedByName: 'test', paid: fullyPaid, method: fullyPaid ? method : 'Petty Cash', dueDate: null } });
+  if (!fullyPaid && paidNow > 0) await prisma.expensePayment.create({ data: { expenseId: e.id, date: new Date().toISOString().slice(0, 10), amount: paidNow, method, note: 'Deposit', capturedByName: 'test' } });
+  return e;
+}
+
 describe('outsourced services', () => {
   before(async () => {
     await prisma.role.create({ data: { name: 'Counter', canCaptureOrders: true } });
@@ -118,13 +127,13 @@ describe('outsourced services', () => {
 
   it('a supplier bill with a deposit: cost of sales in full, the balance owed to the supplier', async () => {
     const order = await prisma.order.findFirstOrThrow({ where: { customerName: 'Mourning family' }, orderBy: { id: 'asc' } });
-    assert.equal((await call('counter', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000 })).status, 403);
-    assert.equal((await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000, paidNow: 9000 })).status, 400); // more than the bill
+    // an order's window cannot add a bill any more, for anyone: Finance records it under Expenses
+    assert.equal((await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000 })).status, 404);
 
     const cosBefore = await bal('5000');
     const bankBefore = await bal('1050');
-    const r = await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 8000, paidNow: 3000, method: 'Bank Transfer', invoiceNumber: 'PH-114' });
-    assert.equal(r.status, 201);
+    await bill(order.id, 'Print House', 8000, 3000, 'Bank Transfer', 'PH-114');
+    const r = { body: await (await call('boss', 'GET', `/orders/${order.id}/costing`)).body };
     assert.equal(r.body.billed, 8000);
     assert.equal(r.body.paid, 3000);
     assert.equal(r.body.owing, 5000);
@@ -137,23 +146,11 @@ describe('outsourced services', () => {
     assert.equal(Math.round(((await bal('1050')) - bankBefore) * 100) / 100, -3000); // the deposit left the bank (rounded: other test files share this database)
 
     // a second bill paid in full is a plain paid expense
-    const full = await call('boss', 'POST', `/orders/${order.id}/supplier-bills`, { supplierName: 'Print House', amount: 1000, paidNow: 1000, method: 'M-Pesa' });
+    await bill(order.id, 'Print House', 1000, 1000, 'M-Pesa');
+    const full = { body: (await call('boss', 'GET', `/orders/${order.id}/costing`)).body };
     assert.equal(full.body.billed, 9000);
     assert.equal(full.body.owing, 5000);
     assert.equal((await buildTrialBalance('9999-12-31')).balanced, true);
-  });
-
-  it('a supplier bill can be added from any invoice, not only a contracted-out job — but not to a quotation', async () => {
-    const inv = await prisma.order.create({ data: { orderNo: 'W-BILL-ANY', kind: 'walkin', staffId: ids.boss!, createdDate: '2031-04-02', status: 'Invoice', stage: 'Order Received', lineItems: { create: [{ itemType: 'service', serviceId: inhouse, qty: 10, unitPrice: 100 }] } } });
-    assert.equal((await call('counter', 'POST', `/orders/${inv.id}/supplier-bills`, { supplierName: 'Paper Co', amount: 300 })).status, 403);
-    const r = await call('boss', 'POST', `/orders/${inv.id}/supplier-bills`, { supplierName: 'Paper Co', amount: 300, paidNow: 100, method: 'M-Pesa' });
-    assert.equal(r.status, 201);
-    assert.deepEqual([r.body.lines.length, r.body.billed, r.body.paid, r.body.owing, r.body.sale], [0, 300, 100, 200, 1000]);
-    const exp = await prisma.expense.findFirstOrThrow({ where: { orderId: inv.id } });
-    assert.match(exp.note, /supplier bill/);
-    assert.equal((await call('boss', 'POST', `/orders/${inv.id}/supplier-bills`, { supplierName: 'Paper Co', amount: 150 })).body.billed, 450); // a new bill total adds to it
-    const quote = await prisma.order.create({ data: { orderNo: 'W-BILL-QUOTE', kind: 'walkin', staffId: ids.boss!, createdDate: '2031-04-02', status: 'Quote', stage: 'Order Received', lineItems: { create: [{ itemType: 'service', serviceId: inhouse, qty: 1, unitPrice: 100 }] } } });
-    assert.equal((await call('boss', 'POST', `/orders/${quote.id}/supplier-bills`, { supplierName: 'Paper Co', amount: 50 })).status, 400);
   });
 
   it('the outsourced jobs list shows each job’s sale, bills and what is still owing', async () => {

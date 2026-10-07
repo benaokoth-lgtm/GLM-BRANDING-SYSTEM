@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { EXPENSE_METHODS, fmtDate, fmtKsh, priceFromCost } from '@glm/shared';
+import { fmtDate, fmtKsh, priceFromCost } from '@glm/shared';
 import { api } from '../api/client';
 import { Notice, Tag, useLoad } from '../pages/accounting/shared';
 
 // The costing of a contracted-out job — only ever shown to people who can see costs (the server refuses everyone else). It holds the
-// supplier's quote and mark-up per line, the supplier's bills (paid in full, or with a deposit and the balance owing), and the profit.
+// supplier's quote and mark-up per line, the supplier's bills tied to the order (listed, not entered here), and the profit.
 
 interface Costing {
   orderId: number;
@@ -24,7 +24,6 @@ interface Costing {
 export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId: number; onChanged: () => void }) {
   const { data, error, reload } = useLoad<Costing>(`/orders/${orderId}/costing`);
   const [edits, setEdits] = useState<Record<number, { cost: string; type: 'percent' | 'amount'; value: string; supplier: string }>>({});
-  const [bill, setBill] = useState({ supplierName: '', amount: '', paidNow: '', method: 'Bank Transfer', invoiceNumber: '', dueDate: '' });
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -36,7 +35,6 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
         data.lines.map((l) => [l.lineId, { cost: l.supplierCost != null ? String(l.supplierCost) : '', type: (l.markupType === 'amount' ? 'amount' : 'percent') as 'percent' | 'amount', value: l.markupValue != null ? String(l.markupValue) : '', supplier: l.supplierName }]),
       ),
     );
-    setBill((b) => ({ ...b, supplierName: b.supplierName || data.lines[0]?.supplierName || '', amount: b.amount || (data.unbilledQuote > 0 ? String(data.unbilledQuote) : '') }));
   }, [data]);
 
   async function run(fn: () => Promise<string>) {
@@ -68,34 +66,16 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
       return 'Supplier quote saved';
     });
 
-  const recordBill = () =>
-    run(async () => {
-      await api.post(`/orders/${orderId}/supplier-bills`, {
-        supplierName: bill.supplierName,
-        amount: Number(bill.amount),
-        paidNow: Number(bill.paidNow) || 0,
-        method: bill.method,
-        invoiceNumber: bill.invoiceNumber || undefined,
-        dueDate: bill.dueDate || undefined,
-      });
-      setBill((b) => ({ ...b, amount: '', paidNow: '', invoiceNumber: '', dueDate: '' }));
-      return 'Supplier bill recorded';
-    });
-
   const m = data.margin;
   const anyNeeds = data.lines.some((l) => l.needsCosting);
-  // Only a contracted-out service has a supplier quote to capture; any other order can still take supplier bills.
-  const hasQuoteLines = data.lines.length > 0;
 
   return (
     <div style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
       <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
-        {hasQuoteLines ? 'Contracted-out costing' : 'Supplier costs'} — visible only to people who can see costs {anyNeeds && <Tag tone="bad">needs the supplier's quote</Tag>}
+        Contracted-out costing — visible only to people who can see costs {anyNeeds && <Tag tone="bad">needs the supplier's quote</Tag>}
       </div>
       <Notice error={err} message={msg} />
 
-      {hasQuoteLines && (
-      <>
       <table className="table">
         <thead>
           <tr>
@@ -144,8 +124,6 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
         Save supplier quote
       </button>
       <span className="note"> Saving the quote records the cost and mark-up; it does not change what the customer is charged.</span>
-      </>
-      )}
 
       <div className="card-kicker" style={{ margin: 'var(--space-4) 0 var(--space-2)' }}>
         Supplier bills &amp; payments
@@ -181,36 +159,7 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
           ))}
         </tbody>
       </table>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr auto', gap: 'var(--space-2)', alignItems: 'end', marginTop: 'var(--space-2)' }}>
-        <div className="field" style={{ margin: 0 }}>
-          <label>Supplier</label>
-          <input className="input" value={bill.supplierName} onChange={(e) => setBill((b) => ({ ...b, supplierName: e.target.value }))} />
-        </div>
-        <div className="field" style={{ margin: 0 }}>
-          <label>Bill total (VAT incl.)</label>
-          <input className="input" inputMode="decimal" value={bill.amount} onChange={(e) => setBill((b) => ({ ...b, amount: e.target.value }))} />
-        </div>
-        <div className="field" style={{ margin: 0 }}>
-          <label>Paid now (deposit or full)</label>
-          <input className="input" inputMode="decimal" value={bill.paidNow} onChange={(e) => setBill((b) => ({ ...b, paidNow: e.target.value }))} placeholder="0" />
-        </div>
-        <div className="field" style={{ margin: 0 }}>
-          <label>Paid by</label>
-          <select className="input" value={bill.method} onChange={(e) => setBill((b) => ({ ...b, method: e.target.value }))}>
-            {EXPENSE_METHODS.map((x) => (
-              <option key={x}>{x}</option>
-            ))}
-          </select>
-        </div>
-        <div className="field" style={{ margin: 0 }}>
-          <label>Invoice / receipt #</label>
-          <input className="input" value={bill.invoiceNumber} onChange={(e) => setBill((b) => ({ ...b, invoiceNumber: e.target.value }))} />
-        </div>
-        <button type="button" className="btn btn-primary btn-sm" onClick={recordBill} disabled={busy || !bill.supplierName.trim() || !(Number(bill.amount) > 0)}>
-          Record bill
-        </button>
-      </div>
-      <p className="note">Add a new bill total here whenever a supplier bills for this order. A deposit is paid now; whatever is left stays owing to the supplier (Accounting → Payables) and is paid later from Finance → Expenses. The whole bill counts as the order's cost of sales.</p>
+      <p className="note">Supplier bills are not entered from here. Finance records them under Finance → Expenses (category Outsourced Services); whatever is left owing to the supplier is under Accounting → Payables. The bills tied to this order are listed above.</p>
 
       <div className="card-kicker" style={{ margin: 'var(--space-4) 0 var(--space-2)' }}>
         Profit on this job

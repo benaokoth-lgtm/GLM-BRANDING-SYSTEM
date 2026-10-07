@@ -4,13 +4,11 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
-import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
 import { defaultExpenseVatApplicable } from '@glm/shared';
-import { pettyCashShortfall } from '../accounting/ledger';
-import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
+import { MARKUP_TYPES, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord, PermissionKey } from '@glm/shared';
 
 export const ordersRouter = Router();
@@ -560,8 +558,7 @@ async function jobCosting(orderId: number) {
     const paid = e.paid ? e.amount : round2(e.payments.reduce((a, p) => a + p.amount, 0));
     return { id: e.id, date: e.date, supplier: e.supplier, invoiceNumber: e.invoiceNumber, note: e.note, amount: e.amount, paid, owing: round2(e.amount - paid), dueDate: e.dueDate };
   });
-  // An order with no contracted-out line (a supplier bill recorded against an ordinary order) is measured against the whole order.
-  const sale = lines.length ? round2(lines.reduce((a, l) => a + l.sale, 0)) : round2(totals.grandTotal);
+  const sale = round2(lines.reduce((a, l) => a + l.sale, 0));
   const estimated = round2(lines.reduce((a, l) => a + (l.estimatedCost ?? 0), 0));
   const billed = round2(bills.reduce((a, b) => a + b.amount, 0));
   const paid = round2(bills.reduce((a, b) => a + b.paid, 0));
@@ -652,63 +649,8 @@ ordersRouter.put('/:id/costing', async (req, res) => {
   res.json(await jobCosting(order.id));
 });
 
-// Record a supplier's bill for the job. Suppliers are paid upfront or with a deposit, so a bill can be paid in full now, part now
-// (a deposit — the balance stays owing in Accounts Payable until it is paid under Finance → Expenses), or not at all yet.
-const supplierBillSchema = z.object({
-  supplierName: z.string().trim().min(1, 'Who is the supplier?').max(120),
-  amount: z.number().positive('Enter the amount the supplier is charging (VAT included)'),
-  paidNow: z.number().min(0).default(0),
-  method: z.enum(EXPENSE_METHODS).default('Bank Transfer'),
-  invoiceNumber: z.string().trim().max(100).optional(),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  note: z.string().max(200).optional(),
-});
-
-ordersRouter.post('/:id/supplier-bills', async (req, res) => {
-  if (!(await requireCosts(req, res))) return;
-  const parsed = supplierBillSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const d = parsed.data;
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { lineItems: { include: { service: true } } } });
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-  // A supplier's bill can be recorded against any order or invoice (a contracted-out job, or any other third-party cost on it) — only an
-  // unaccepted quotation has no cost yet.
-  const hasOutsourced = order.lineItems.some((l) => l.service?.outsourced);
-  if (!hasOutsourced && order.status === 'Quote') return res.status(400).json({ error: 'A supplier bill can be recorded once the quotation becomes an invoice' });
-  if (d.paidNow > d.amount + 0.005) return res.status(400).json({ error: 'The amount paid now is more than the bill' });
-
-  // Paying from petty cash needs the float to cover it.
-  if (d.paidNow > 0 && d.method === PETTY_CASH_METHOD) {
-    const check = await pettyCashShortfall(d.paidNow, todayStr());
-    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString('en-KE')} available, Ksh ${Math.round(d.paidNow).toLocaleString('en-KE')} needed)` });
-  }
-
-  await ensureChartOnce();
-  const today = todayStr();
-  const fullyPaid = d.paidNow >= d.amount - 0.005;
-  const expense = await prisma.expense.create({
-    data: {
-      date: today,
-      category: BILL_CATEGORY,
-      amount: d.amount,
-      supplier: d.supplierName,
-      invoiceNumber: d.invoiceNumber || null,
-      note: d.note ? d.note : `${order.orderNo} — ${hasOutsourced ? 'outsourced job' : 'supplier bill'}${d.paidNow > 0 && !fullyPaid ? ' (deposit paid, balance owing)' : ''}`,
-      orderId: order.id,
-      // The supplier's bill is a cost of the line of business the contracted-out service (or, failing that, the order's first service) belongs to.
-      businessHeadId: (order.lineItems.find((l) => l.service?.outsourced) ?? order.lineItems.find((l) => l.service))?.service?.businessHeadId ?? null,
-      capturedByName: req.user!.name,
-      // Paid in full: a plain paid expense. Otherwise it is a bill on credit, with the deposit (if any) recorded as a payment against it.
-      paid: fullyPaid,
-      method: fullyPaid ? d.method : PETTY_CASH_METHOD,
-      dueDate: fullyPaid ? null : d.dueDate ?? null,
-    },
-  });
-  if (!fullyPaid && d.paidNow > 0) {
-    await prisma.expensePayment.create({ data: { expenseId: expense.id, date: today, amount: d.paidNow, method: d.method, note: 'Deposit', capturedByName: req.user!.name } });
-  }
-  res.status(201).json(await jobCosting(order.id));
-});
+// Supplier bills are NOT taken from an order's window any more: they are recorded by Finance (Finance → Expenses). The bills shown on a job's
+// costing are the expenses tied to that order.
 
 // ── Hand an order over to the customer — the ONLY way an order becomes Completed ──
 // The production stage is no longer set by hand. It moves only through Production (assign → in production → finish) and

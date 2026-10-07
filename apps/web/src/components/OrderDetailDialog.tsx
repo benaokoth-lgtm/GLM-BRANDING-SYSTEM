@@ -250,7 +250,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             <div>Grand total: {fmtKsh(detail.totals.grandTotal)}</div>
           </div>
 
-          {seeCosts && (detail.lineItems.some((l) => l.outsourced) || detail.status !== 'Quote') && <OutsourcedCostingPanel orderId={orderId} onChanged={onChanged} />}
+          {seeCosts && detail.lineItems.some((l) => l.outsourced) && <OutsourcedCostingPanel orderId={orderId} onChanged={onChanged} />}
 
           <div
             style={{

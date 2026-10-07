@@ -50517,7 +50517,7 @@ var employeeSchema = external_exports.object({
   nationalId: external_exports.string().max(40).optional().default(""),
   kraPin: external_exports.string().max(40).optional().default(""),
   shifNumber: external_exports.string().max(60).optional().default(""),
-  // Their basic monthly salary (Ksh): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
+  // Their gross monthly salary (Ksh; the column is still called basicSalary): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
   basicSalary: external_exports.number().min(0).max(1e8).nullable().optional()
 });
 financeRouter.put("/employees/:id", async (req, res) => {
@@ -54682,7 +54682,7 @@ var settingsSchema4 = external_exports.object({
   freelanceWhtRate: external_exports.number().min(0).max(100).optional(),
   freelancePremiumPct: external_exports.number().min(0).max(100).optional(),
   freelanceLowMarginPct: external_exports.number().min(0).max(100).optional(),
-  // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
+  // The sales target: times their gross monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: external_exports.number().min(0).max(20).optional(),
   targetMode: external_exports.enum(TARGET_MODES).optional()
 });

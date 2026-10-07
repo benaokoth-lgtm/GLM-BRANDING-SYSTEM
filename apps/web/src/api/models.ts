@@ -231,7 +231,7 @@ export interface EmployeeRow {
   nationalId: string | null;
   kraPin: string | null;
   shifNumber: string | null;
-  /** Basic monthly salary (Ksh) — the sales target for commission is a multiple of it. */
+  /** Gross monthly salary (Ksh): basic plus fixed allowances, before deductions. The sales target for commission is a multiple of it. */
   basicSalary: number | null;
 }
 

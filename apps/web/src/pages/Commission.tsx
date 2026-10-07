@@ -28,7 +28,7 @@ interface Config {
   freelancePremiumPct: number;
   /** The weight (%) at which the base part of contracted-out and stock lines counts towards the freelance bands. */
   freelanceLowMarginPct: number;
-  /** Times their basic monthly salary a person must sell before commission starts (0 = no target). */
+  /** Times their gross monthly salary a person must sell before commission starts (0 = no target). */
   targetMultiplier: number;
   targetMode: 'above' | 'all';
 }
@@ -121,7 +121,7 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
-/** Where the person stands against the sales target (3 × basic salary), with a bar. */
+/** Where the person stands against the sales target (3 × gross salary), with a bar. */
 function TargetCard({ s, you }: { s: Statement; you?: boolean }) {
   const t = s.target;
   if (!t.applies) return null;
@@ -132,13 +132,13 @@ function TargetCard({ s, you }: { s: Statement; you?: boolean }) {
       <div className="card-kicker">Sales target — {!t.salaryKnown ? 'salary needed' : t.met ? 'met' : `${done}% there`}</div>
       {!t.salaryKnown ? (
         <p className="note" style={{ marginTop: 0, color: '#a33' }}>
-          {you ? 'Your' : 'Their'} basic salary has not been recorded, so there is no target to measure and commission is <b>on hold</b>. Finance adds it under Compliance → Employees.
+          {you ? 'Your' : 'Their'} gross salary has not been recorded, so there is no target to measure and commission is <b>on hold</b>. Finance adds it under Compliance → Employees.
           {s.heldCommission > 0 && <> {fmtKsh(s.heldCommission)} is waiting.</>}
         </p>
       ) : (
         <>
           <p className="note" style={{ marginTop: 0 }}>
-            Commission starts once {you ? 'you have' : 'they have'} sold {t.multiplier}× {you ? 'your' : 'their'} basic salary of {fmtKsh(t.salary!)} — <b>{fmtKsh(t.required)}</b> in net sales (VAT out) received in the month. {who} {you ? 'have' : 'has'} sold <b>{fmtKsh(t.achieved)}</b>
+            Commission starts once {you ? 'you have' : 'they have'} sold {t.multiplier}× {you ? 'your' : 'their'} gross salary of {fmtKsh(t.salary!)} — <b>{fmtKsh(t.required)}</b> in net sales (VAT out) received in the month. {who} {you ? 'have' : 'has'} sold <b>{fmtKsh(t.achieved)}</b>
             {t.met ? (
               <>
                 {' '}
@@ -295,7 +295,7 @@ function SchemeNote({ config }: { config: Config }) {
     <ul className="note" style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>
       {config.targetMultiplier > 0 && (
         <li>
-          <b>Sales target first:</b> no commission is earned in a month until your net sales received reach <b>{config.targetMultiplier}× your basic monthly salary</b>.{' '}
+          <b>Sales target first:</b> no commission is earned in a month until your net sales received reach <b>{config.targetMultiplier}× your gross monthly salary</b>.{' '}
           {config.targetMode === 'above' ? 'The bands below then start at the target — only what you sell above it earns.' : 'Once it is met, the bands below apply to all of your sales.'} Film extras are paid in full once the target is met. If the target is missed, there is no commission on that month’s sales and nothing rolls over to the next month. The exception is artwork: the extra you charge above the recommended price is paid whether or not the target is met. Prices are never relaxed to help reach it: the minimum prices at order taking stay as they are.
         </li>
       )}
@@ -722,11 +722,11 @@ function RatesTab() {
         <div>
           <div className="card-kicker">Sales target before commission</div>
           <p className="note" style={{ marginTop: 0 }}>
-            A person must sell this many times their basic monthly salary — net of VAT, money received in the month — before they earn any commission. Their salary is kept on their staff record (Compliance → Employees); with no salary recorded, commission is held. For example 3 × a salary of 40,000 = a target of 120,000. Set 0 for no target. A month that misses its target earns no commission on its sales and nothing rolls over to the next month; the one exception is artwork, whose extra above the recommended price is always paid. Prices at order taking are not affected, so the minimum price rules still stop sales being under-priced to reach a target.
+            A person must sell this many times their gross monthly salary (basic plus fixed allowances, before deductions) — net of VAT, money received in the month — before they earn any commission. Their salary is kept on their staff record (Compliance → Employees); with no salary recorded, commission is held. For example 3 × a salary of 40,000 = a target of 120,000. Set 0 for no target. A month that misses its target earns no commission on its sales and nothing rolls over to the next month; the one exception is artwork, whose extra above the recommended price is always paid. Prices at order taking are not affected, so the minimum price rules still stop sales being under-priced to reach a target.
           </p>
           <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <div className="field" style={{ margin: 0 }}>
-              <label>Target = this many × basic salary</label>
+              <label>Target = this many × gross salary</label>
               <input className="input" style={{ maxWidth: 120 }} inputMode="decimal" value={multiplier} onChange={(e) => setMultiplier(e.target.value)} />
             </div>
             <div className="field" style={{ margin: 0 }}>

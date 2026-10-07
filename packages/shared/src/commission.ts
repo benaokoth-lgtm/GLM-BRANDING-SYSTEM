@@ -163,7 +163,7 @@ export function clientKeyFor(c: { corporateClientId?: number | null; phone?: str
 }
 
 // ── The sales target ────────────────────────────────────────────────────────
-// Before any commission is earned in a month, a person must sell at least `multiplier` × their basic monthly salary (3 × 40,000 = 120,000).
+// Before any commission is earned in a month, a person must sell at least `multiplier` × their gross monthly salary (3 × 40,000 = 120,000).
 // "Sold" means NET sales (VAT out) whose money was received in the month, on everything credited to them: clients they sourced, and the film
 // and artwork orders they captured. Prices are not touched by this — the minimum-price rules at order taking stay exactly as they are, so a
 // target can never be met by under-pricing.
@@ -184,7 +184,7 @@ export interface SalesTarget {
   applies: boolean;
   multiplier: number;
   mode: TargetMode;
-  /** Their basic monthly salary, or null when it has not been recorded. */
+  /** Their gross monthly salary, or null when it has not been recorded. */
   salary: number | null;
   salaryKnown: boolean;
   /** multiplier × salary. */

@@ -110,7 +110,7 @@ const employeeSchema = z.object({
   nationalId: z.string().max(40).optional().default(''),
   kraPin: z.string().max(40).optional().default(''),
   shifNumber: z.string().max(60).optional().default(''),
-  // Their basic monthly salary (Ksh): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
+  // Their gross monthly salary (Ksh; the column is still called basicSalary): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
   basicSalary: z.number().min(0).max(100_000_000).nullable().optional(),
 });
 

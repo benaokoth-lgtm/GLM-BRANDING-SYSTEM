@@ -140,7 +140,7 @@ export default function Compliance() {
     setBusy(true);
     try {
       const salary = d.basicSalary.replace(/[,\s]/g, '');
-      if (salary && !(Number(salary) >= 0)) throw new Error('The basic salary must be a number');
+      if (salary && !(Number(salary) >= 0)) throw new Error('The gross salary must be a number');
       await api.put(`/finance/employees/${id}`, { nationalId: d.nationalId, kraPin: d.kraPin, shifNumber: d.shifNumber, basicSalary: salary ? Number(salary) : null });
       setEmpDrafts((x) => {
         const { [id]: _drop, ...rest } = x;
@@ -662,7 +662,7 @@ export default function Compliance() {
                 <th>National ID</th>
                 <th>KRA PIN</th>
                 <th>SHIF No.</th>
-                <th title="Sets the sales target for commission: 3 × this, by default">Basic salary (Ksh / month)</th>
+                <th title="Gross monthly salary before deductions (basic plus fixed allowances). Sets the sales target for commission: 3 × this, by default">Gross salary (Ksh / month)</th>
                 <th style={{ width: 150 }}></th>
               </tr>
             </thead>

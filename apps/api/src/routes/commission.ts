@@ -43,7 +43,7 @@ const settingsSchema = z.object({
   freelanceWhtRate: z.number().min(0).max(100).optional(),
   freelancePremiumPct: z.number().min(0).max(100).optional(),
   freelanceLowMarginPct: z.number().min(0).max(100).optional(),
-  // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
+  // The sales target: times their gross monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: z.number().min(0).max(20).optional(),
   targetMode: z.enum(TARGET_MODES).optional(),
 });

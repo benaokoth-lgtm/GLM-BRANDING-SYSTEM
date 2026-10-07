@@ -84,7 +84,7 @@ export interface CommissionConfig {
   freelanceOwnershipMonths: number;
   /** The standard withholding tax rate (percent) deducted from freelance commission. */
   freelanceWhtRate: number;
-  /** Times their basic monthly salary a person must sell before commission starts; 0 = no target. */
+  /** Times their gross monthly salary a person must sell before commission starts; 0 = no target. */
   targetMultiplier: number;
   targetMode: TargetMode;
 }
@@ -355,7 +355,7 @@ export interface StaffStatement {
   staffId: number;
   staffName: string;
   total: number;
-  /** This month's sales measured against the sales target (3 × basic salary). Commission below is what is payable AFTER the target. */
+  /** This month's sales measured against the sales target (3 × gross salary). Commission below is what is payable AFTER the target. */
   target: SalesTarget;
   /** What would have been paid on the month's sales had the target been met (shown, never paid, and not carried into the next month). Artwork is never held: it is earned whether or not the target is met. */
   heldCommission: number;
@@ -408,7 +408,7 @@ export function periodRange(period: string): { start: string; end: string } {
 }
 
 /**
- * Each person's basic monthly salary: the one recorded on their staff record (Compliance → Employees) or, failing that, their latest payroll
+ * Each person's gross monthly salary (stored as User.basicSalary): the one recorded on their staff record (Compliance → Employees) or, failing that, their latest payroll
  * pay-run amount up to the end of the month. People with neither are left out — their commission is held until a salary is recorded.
  */
 export async function salariesFor(staffIds: number[], endDate: string): Promise<Map<number, number>> {

@@ -84,14 +84,18 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
 
   const m = data.margin;
   const anyNeeds = data.lines.some((l) => l.needsCosting);
+  // Only a contracted-out service has a supplier quote to capture; any other order can still take supplier bills.
+  const hasQuoteLines = data.lines.length > 0;
 
   return (
     <div style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
       <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
-        Contracted-out costing — visible only to people who can see costs {anyNeeds && <Tag tone="bad">needs the supplier's quote</Tag>}
+        {hasQuoteLines ? 'Contracted-out costing' : 'Supplier costs'} — visible only to people who can see costs {anyNeeds && <Tag tone="bad">needs the supplier's quote</Tag>}
       </div>
       <Notice error={err} message={msg} />
 
+      {hasQuoteLines && (
+      <>
       <table className="table">
         <thead>
           <tr>
@@ -140,6 +144,8 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
         Save supplier quote
       </button>
       <span className="note"> Saving the quote records the cost and mark-up; it does not change what the customer is charged.</span>
+      </>
+      )}
 
       <div className="card-kicker" style={{ margin: 'var(--space-4) 0 var(--space-2)' }}>
         Supplier bills &amp; payments
@@ -204,7 +210,7 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
           Record bill
         </button>
       </div>
-      <p className="note">A deposit is paid now; whatever is left stays owing to the supplier (Accounting → Payables) and is paid later from Finance → Expenses. The whole bill counts as the job's cost of sales.</p>
+      <p className="note">Add a new bill total here whenever a supplier bills for this order. A deposit is paid now; whatever is left stays owing to the supplier (Accounting → Payables) and is paid later from Finance → Expenses. The whole bill counts as the order's cost of sales.</p>
 
       <div className="card-kicker" style={{ margin: 'var(--space-4) 0 var(--space-2)' }}>
         Profit on this job

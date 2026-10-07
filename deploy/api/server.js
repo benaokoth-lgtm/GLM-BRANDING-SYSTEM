@@ -50276,7 +50276,7 @@ async function jobCosting(orderId) {
     const paid2 = e.paid ? e.amount : round2(e.payments.reduce((a2, p) => a2 + p.amount, 0));
     return { id: e.id, date: e.date, supplier: e.supplier, invoiceNumber: e.invoiceNumber, note: e.note, amount: e.amount, paid: paid2, owing: round2(e.amount - paid2), dueDate: e.dueDate };
   });
-  const sale = round2(lines.reduce((a2, l) => a2 + l.sale, 0));
+  const sale = lines.length ? round2(lines.reduce((a2, l) => a2 + l.sale, 0)) : round2(totals.grandTotal);
   const estimated = round2(lines.reduce((a2, l) => a2 + (l.estimatedCost ?? 0), 0));
   const billed = round2(bills.reduce((a2, b) => a2 + b.amount, 0));
   const paid = round2(bills.reduce((a2, b) => a2 + b.paid, 0));
@@ -50374,7 +50374,8 @@ ordersRouter.post("/:id/supplier-bills", async (req, res) => {
   const d = parsed.data;
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { lineItems: { include: { service: true } } } });
   if (!order) return res.status(404).json({ error: "Order not found" });
-  if (!order.lineItems.some((l) => l.service?.outsourced)) return res.status(400).json({ error: "This order has no outsourced service on it" });
+  const hasOutsourced = order.lineItems.some((l) => l.service?.outsourced);
+  if (!hasOutsourced && order.status === "Quote") return res.status(400).json({ error: "A supplier bill can be recorded once the quotation becomes an invoice" });
   if (d.paidNow > d.amount + 5e-3) return res.status(400).json({ error: "The amount paid now is more than the bill" });
   if (d.paidNow > 0 && d.method === PETTY_CASH_METHOD) {
     const check = await pettyCashShortfall(d.paidNow, todayStr());
@@ -50390,10 +50391,10 @@ ordersRouter.post("/:id/supplier-bills", async (req, res) => {
       amount: d.amount,
       supplier: d.supplierName,
       invoiceNumber: d.invoiceNumber || null,
-      note: d.note ? d.note : `${order.orderNo} \u2014 outsourced job${d.paidNow > 0 && !fullyPaid ? " (deposit paid, balance owing)" : ""}`,
+      note: d.note ? d.note : `${order.orderNo} \u2014 ${hasOutsourced ? "outsourced job" : "supplier bill"}${d.paidNow > 0 && !fullyPaid ? " (deposit paid, balance owing)" : ""}`,
       orderId: order.id,
-      // The supplier's bill is a cost of the line of business the contracted-out service belongs to.
-      businessHeadId: order.lineItems.find((l) => l.service?.outsourced)?.service?.businessHeadId ?? null,
+      // The supplier's bill is a cost of the line of business the contracted-out service (or, failing that, the order's first service) belongs to.
+      businessHeadId: (order.lineItems.find((l) => l.service?.outsourced) ?? order.lineItems.find((l) => l.service))?.service?.businessHeadId ?? null,
       capturedByName: req.user.name,
       // Paid in full: a plain paid expense. Otherwise it is a bill on credit, with the deposit (if any) recorded as a payment against it.
       paid: fullyPaid,

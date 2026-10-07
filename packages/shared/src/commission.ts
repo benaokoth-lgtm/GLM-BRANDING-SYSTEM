@@ -216,3 +216,74 @@ export function salesTarget(o: { multiplier: number; mode: TargetMode; salary: n
     held: !met,
   };
 }
+
+// ── Freelance sales persons ─────────────────────────────────────────────────
+// People outside the staff who bring us work. An order is credited to EITHER a staff member OR a freelance sales person, never both: once an
+// order is marked for a freelance account it can be neither sourced by nor credited to any staff member (no client ownership, no general,
+// film or artwork commission, nothing towards a sales target).
+//
+// A freelance sales person is paid weekly (Monday to Sunday) on the sales they bring, in marginal bands — but only on sales at or above our
+// base prices. A line sold below its base price (a discount, or a price typed in under the list price) earns them nothing. Like staff
+// commission it is earned on money RECEIVED in the week, net of VAT.
+
+/** Placeholders — weekly net sales received, Ksh. Editable in Commission → Rates. */
+export const DEFAULT_FREELANCE_BANDS: Band[] = [
+  { from: 0, rate: 3 },
+  { from: 50000, rate: 5 },
+  { from: 150000, rate: 7 },
+];
+
+const DAY_MS = 86_400_000;
+const parseDay = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number) as [number, number, number];
+  return Date.UTC(y, m - 1, d);
+};
+const fmtDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** The Monday of the week this date ('YYYY-MM-DD') falls in. */
+export function weekStart(date: string): string {
+  const ms = parseDay(date);
+  const dow = new Date(ms).getUTCDay(); // 0 = Sunday
+  return fmtDay(ms - ((dow + 6) % 7) * DAY_MS);
+}
+
+/** The Sunday that ends the week starting on this Monday. */
+export function weekEnd(start: string): string {
+  return fmtDay(parseDay(start) + 6 * DAY_MS);
+}
+
+export const isWeekStart = (date: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(date) && weekStart(date) === date;
+
+/** Monday a number of weeks before (negative) or after this one. */
+export function addWeeks(start: string, n: number): string {
+  return fmtDay(parseDay(start) + n * 7 * DAY_MS);
+}
+
+export interface BaseCheckLine {
+  qty: number;
+  unitPrice: number;
+  discountPct?: number;
+  discountAmt?: number;
+  heatPressFee?: number | null;
+  /** The base price of one unit (VAT included, before any heat press fee): the list price, or the floor for film / artwork. */
+  baseUnit: number;
+}
+
+/**
+ * The share (0..1) of an order's value that was sold at or above base prices, after the line's own discount AND its share of any order-level
+ * discount. A line that falls short of its base price is left out whole. Paid commission is worked out on this share of the money received.
+ */
+export function qualifyingShare(lines: BaseCheckLine[], orderDiscountPct = 0, orderDiscountAmt = 0): number {
+  const total = (l: BaseCheckLine) => Math.max(0, (Number(l.qty) || 0) * ((Number(l.unitPrice) || 0) + (Number(l.heatPressFee) || 0)) * (1 - (Number(l.discountPct) || 0) / 100) - (Number(l.discountAmt) || 0));
+  const subtotal = lines.reduce((a, l) => a + total(l), 0);
+  const grand = Math.max(0, subtotal * (1 - (Number(orderDiscountPct) || 0) / 100) - (Number(orderDiscountAmt) || 0));
+  if (!(grand > 0) || !(subtotal > 0)) return 0;
+  const factor = grand / subtotal;
+  let ok = 0;
+  for (const l of lines) {
+    const got = total(l) * factor;
+    const need = (Number(l.qty) || 0) * (l.baseUnit + (Number(l.heatPressFee) || 0));
+    if (got + 0.5 >= need) ok += got;
+  }
+  return r2(Math.min(1, ok / grand) * 1e6) / 1e6;
+}

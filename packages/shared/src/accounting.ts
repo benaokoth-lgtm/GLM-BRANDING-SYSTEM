@@ -102,6 +102,7 @@ export const DEFAULT_CHART: ChartAccountDef[] = [
   a('5010', 'Salaries & Wages', 'Expense', 'Payroll'),
   a('5100', 'Production Supplies & Overheads', 'Expense'),
   a('5020', 'Sales Commission', 'Expense', '', 'Commission paid to staff on sales they sourced and on film/artwork sold above the recommended price.'),
+  a('5025', 'Freelance Commission', 'Expense', '', 'Weekly commission paid to freelance sales persons on the sales they bring, at or above our base prices.'),
   a('5110', 'Casual Labour', 'Expense', 'Payroll'),
   a('5120', 'Transport', 'Expense'),
   a('5130', 'Utilities', 'Expense'),
@@ -125,6 +126,7 @@ export const EXPENSE_HEAD_ACCOUNT_CODES: Record<string, string> = {
   'Printing Materials & Consumables': '5000', // purchases of materials = cost of sales
   'Outsourced Services': '5000', // contracted-out jobs: the supplier's bill is cost of sales too
   'Sales Commission': '5020',
+  'Freelance Commission': '5025',
   'Casual Labour': '5110',
   Transport: '5120',
   Utilities: '5130',

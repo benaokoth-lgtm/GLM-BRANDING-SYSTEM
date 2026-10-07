@@ -6,6 +6,7 @@ import { useSubTab } from '../state/SubNavContext';
 import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from './accounting/shared';
+import FreelancePanel from '../components/FreelancePanel';
 
 // Sales commission. Everyone who captures orders sees their own month: what they earned, how, and what they have sold. Managers also
 // see the whole team, approve and pay the month, manage which client belongs to whom, and set the rates.
@@ -17,6 +18,8 @@ interface Config {
   filmBands: Band[];
   artworkRatePct: number;
   ownershipMonths: number;
+  /** Freelance sales persons: weekly net sales received at or above base prices → rate. */
+  freelanceBands: Band[];
   /** Times their basic monthly salary a person must sell before commission starts (0 = no target). */
   targetMultiplier: number;
   targetMode: 'above' | 'all';
@@ -96,7 +99,7 @@ interface ClientRow {
   note: string;
 }
 
-type Tab = 'mine' | 'team' | 'clients' | 'rates';
+type Tab = 'mine' | 'team' | 'clients' | 'freelance' | 'rates';
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const pct = (n: number) => `${fmtNum(n, 2).replace(/\.?0+$/, '')}%`;
 
@@ -657,6 +660,7 @@ function RatesTab() {
   const { data, error, loading, reload } = useLoad<Config>('/commission/settings');
   const [general, setGeneral] = useState<{ from: string; rate: string }[]>([]);
   const [film, setFilm] = useState<{ from: string; rate: string }[]>([]);
+  const [freelance, setFreelance] = useState<{ from: string; rate: string }[]>([]);
   const [artwork, setArtwork] = useState('');
   const [months, setMonths] = useState('');
   const [multiplier, setMultiplier] = useState('');
@@ -669,6 +673,7 @@ function RatesTab() {
     if (!data) return;
     setGeneral(data.generalBands.map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setFilm(data.filmBands.map((b) => ({ from: String(b.from), rate: String(b.rate) })));
+    setFreelance((data.freelanceBands ?? []).map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setArtwork(String(data.artworkRatePct));
     setMonths(String(data.ownershipMonths));
     setMultiplier(String(data.targetMultiplier));
@@ -677,14 +682,14 @@ function RatesTab() {
 
   if (!data) return <Loading loading={loading} error={error} />;
   const toBands = (rows: { from: string; rate: string }[]): Band[] => rows.map((r) => ({ from: Number(r.from), rate: Number(r.rate) }));
-  const problem = bandsProblem(toBands(general), 'Sales bands') ?? bandsProblem(toBands(film), 'Film bands');
+  const problem = bandsProblem(toBands(general), 'Sales bands') ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands');
 
   async function save() {
     setBusy(true);
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), artworkRatePct: Number(artwork), ownershipMonths: Number(months), targetMultiplier: Number(multiplier), targetMode: mode });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), targetMultiplier: Number(multiplier), targetMode: mode });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -732,6 +737,13 @@ function RatesTab() {
           bands={film}
           onChange={setFilm}
         />
+        <BandEditor
+          title="Freelance sales persons — weekly"
+          hint="Marginal bands on a freelance sales person's WEEKLY net sales received (Monday to Sunday) on orders credited to them, counting only lines sold at or above our base prices. Each rate applies only to the slice of the week inside its band. Staff do not earn this, and a freelancer's order earns no staff commission."
+          unit="Ksh net per week"
+          bands={freelance}
+          onChange={setFreelance}
+        />
         <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
           <div className="field" style={{ margin: 0 }}>
             <label>Artwork: % of the amount above the recommended price</label>
@@ -761,7 +773,7 @@ export default function Commission() {
   const [period, setPeriod] = useState(thisMonth());
 
   const tabs: [Tab, string][] = [['mine', 'My commission']];
-  if (manager) tabs.push(['team', 'Team & payouts'], ['clients', 'Clients'], ['rates', 'Rates']);
+  if (manager) tabs.push(['team', 'Team & payouts'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
 
   return (
     <>
@@ -788,6 +800,7 @@ export default function Commission() {
       {tab === 'mine' && <MyTab period={period} />}
       {tab === 'team' && manager && <TeamTab period={period} />}
       {tab === 'clients' && manager && <ClientsTab />}
+      {tab === 'freelance' && manager && <FreelancePanel />}
       {tab === 'rates' && manager && <RatesTab />}
     </>
   );

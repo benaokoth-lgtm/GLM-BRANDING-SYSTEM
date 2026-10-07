@@ -42,6 +42,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   const { user } = useAuth();
   const [phone, setPhone] = useState('');
   const [sourced, setSourced] = useState(false);
+  const [freelanceId, setFreelanceId] = useState<number | null>(null);
   const [materialLines, setMaterialLines] = useState<MaterialLine[]>([]);
   const [heatPressFee, setHeatPressFee] = useState('');
   // Any mix of methods can pay now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
@@ -88,6 +89,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
         ...basePayload,
         phone,
         sourcedBy: sourced && user ? user.id : null,
+        freelanceAgentId: freelanceId,
         payments: needsApproval ? [] : toApiPayments(paymentRows),
         materialLines: materialLines
           .filter((l) => Number(l.qty) > 0)
@@ -148,7 +150,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
             <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" />
           </Field>
 
-          <SourcingField phone={phone} name={client} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} />
+          <SourcingField phone={phone} name={client} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} />
 
           {mode === 'job' && (
             <Field label="Heat press fee (Ksh/pc) — required">

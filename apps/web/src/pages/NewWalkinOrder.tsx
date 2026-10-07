@@ -27,6 +27,7 @@ export default function NewWalkinOrder() {
   const staffId = user?.id ?? null;
   // Ticked when the staff member brought this client in through their own network (credited to them for 12 months).
   const [sourced, setSourced] = useState(false);
+  const [freelanceId, setFreelanceId] = useState<number | null>(null);
   const [paymentTiming, setPaymentTiming] = useState<'onAcceptance' | 'onCompletion'>('onAcceptance');
   // Any mix of methods can pay the order now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
   const [paymentRows, setPaymentRows] = useState<PaymentRow[]>(() => [newPaymentRow()]);
@@ -76,6 +77,7 @@ export default function NewWalkinOrder() {
           phone,
           staffId,
           sourcedBy: sourced ? staffId : null,
+          freelanceAgentId: freelanceId,
           paymentTiming,
           payments: paymentTiming === 'onAcceptance' ? toApiPayments(paymentRows) : undefined,
           lineItems: normalized,
@@ -130,7 +132,7 @@ export default function NewWalkinOrder() {
       </div>
 
       <div style={{ marginTop: 'var(--space-3)' }}>
-        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} />
+        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} />
       </div>
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />

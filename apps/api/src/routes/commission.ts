@@ -34,6 +34,8 @@ const bandSchema = z.object({ from: z.number().min(0), rate: z.number().min(0).m
 const settingsSchema = z.object({
   generalBands: z.array(bandSchema).min(1),
   filmBands: z.array(bandSchema).min(1),
+  // Freelance sales persons — weekly net sales received at or above base prices → rate
+  freelanceBands: z.array(bandSchema).min(1).optional(),
   artworkRatePct: z.number().min(0).max(100),
   ownershipMonths: z.number().int().min(1).max(60),
   // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
@@ -45,12 +47,13 @@ commissionRouter.put('/settings', manage, async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands');
+  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands') ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, 'Freelance bands') : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b: { from: number; rate: number }[]) => [...b].sort((x, y) => x.from - y.from);
   const data = {
     generalBandsJson: JSON.stringify(sort(d.generalBands)),
     filmBandsJson: JSON.stringify(sort(d.filmBands)),
+    ...(d.freelanceBands ? { freelanceBandsJson: JSON.stringify(sort(d.freelanceBands)) } : {}),
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
     ...(d.targetMultiplier !== undefined ? { targetMultiplier: d.targetMultiplier } : {}),

@@ -18986,7 +18986,7 @@ var require_path_to_regexp = __commonJS({
       }
       path4 = path4.replace(
         /\\.|(\/)?(\.)?:(\w+)(\(.*?\))?(\*)?(\?)?|[.*]|\/\(/g,
-        function(match, slash, format, key2, capture, star, optional, offset) {
+        function(match, slash, format, key2, capture2, star, optional, offset) {
           if (match[0] === "\\") {
             backtrack += match;
             pos += 2;
@@ -19017,7 +19017,7 @@ var require_path_to_regexp = __commonJS({
           slash = slash || "";
           format = format ? "\\." : "";
           optional = optional || "";
-          capture = capture ? capture.replace(/\\.|\*/, function(m2) {
+          capture2 = capture2 ? capture2.replace(/\\.|\*/, function(m2) {
             return m2 === "*" ? "(.*)" : m2;
           }) : backtrack ? "((?:(?!/|" + backtrack + ").)+?)" : "([^/" + format + "]+?)";
           keys.push({
@@ -19025,7 +19025,7 @@ var require_path_to_regexp = __commonJS({
             optional: !!optional,
             offset: offset + extraOffset
           });
-          var result = "(?:" + format + slash + capture + (star ? "((?:[/" + format + "].+?)?)" : "") + ")" + optional;
+          var result = "(?:" + format + slash + capture2 + (star ? "((?:[/" + format + "].+?)?)" : "") + ")" + optional;
           backtrack = "";
           extraOffset += result.length - match.length;
           return result;
@@ -22380,7 +22380,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router19 = require_router();
+    var Router20 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22445,7 +22445,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router19({
+        this._router = new Router20({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24309,7 +24309,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router19 = require_router();
+    var Router20 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24332,7 +24332,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router19;
+    exports2.Router = Router20;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -30240,7 +30240,7 @@ var require_jsonwebtoken = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express18 = __toESM(require_express2());
+var import_express19 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -43347,7 +43347,9 @@ var EXPENSE_CATEGORIES = [
   // Contracted-out jobs (eulogies, banners, screen printing…): the supplier's bill is the job's cost of sales.
   "Outsourced Services",
   // Staff sales commission paid out from Sales Commission → Payouts.
-  "Sales Commission"
+  "Sales Commission",
+  // Weekly pay to freelance sales persons who bring us work, from Commission → Freelancers.
+  "Freelance Commission"
 ];
 var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation", "Owner Injection"];
 var WALKIN_INVOICE_DUE_DAYS = 7;
@@ -43567,6 +43569,7 @@ var DEFAULT_CHART = [
   a("5010", "Salaries & Wages", "Expense", "Payroll"),
   a("5100", "Production Supplies & Overheads", "Expense"),
   a("5020", "Sales Commission", "Expense", "", "Commission paid to staff on sales they sourced and on film/artwork sold above the recommended price."),
+  a("5025", "Freelance Commission", "Expense", "", "Weekly commission paid to freelance sales persons on the sales they bring, at or above our base prices."),
   a("5110", "Casual Labour", "Expense", "Payroll"),
   a("5120", "Transport", "Expense"),
   a("5130", "Utilities", "Expense"),
@@ -43588,6 +43591,7 @@ var EXPENSE_HEAD_ACCOUNT_CODES = {
   "Outsourced Services": "5000",
   // contracted-out jobs: the supplier's bill is cost of sales too
   "Sales Commission": "5020",
+  "Freelance Commission": "5025",
   "Casual Labour": "5110",
   Transport: "5120",
   Utilities: "5130",
@@ -43909,6 +43913,42 @@ function salesTarget(o) {
     held: !met
   };
 }
+var DEFAULT_FREELANCE_BANDS = [
+  { from: 0, rate: 3 },
+  { from: 5e4, rate: 5 },
+  { from: 15e4, rate: 7 }
+];
+var DAY_MS = 864e5;
+var parseDay = (s) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+};
+var fmtDay = (ms2) => new Date(ms2).toISOString().slice(0, 10);
+function weekStart(date) {
+  const ms2 = parseDay(date);
+  const dow = new Date(ms2).getUTCDay();
+  return fmtDay(ms2 - (dow + 6) % 7 * DAY_MS);
+}
+function weekEnd(start) {
+  return fmtDay(parseDay(start) + 6 * DAY_MS);
+}
+function addWeeks(start, n) {
+  return fmtDay(parseDay(start) + n * 7 * DAY_MS);
+}
+function qualifyingShare(lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
+  const total = (l) => Math.max(0, (Number(l.qty) || 0) * ((Number(l.unitPrice) || 0) + (Number(l.heatPressFee) || 0)) * (1 - (Number(l.discountPct) || 0) / 100) - (Number(l.discountAmt) || 0));
+  const subtotal = lines.reduce((a2, l) => a2 + total(l), 0);
+  const grand = Math.max(0, subtotal * (1 - (Number(orderDiscountPct) || 0) / 100) - (Number(orderDiscountAmt) || 0));
+  if (!(grand > 0) || !(subtotal > 0)) return 0;
+  const factor = grand / subtotal;
+  let ok = 0;
+  for (const l of lines) {
+    const got = total(l) * factor;
+    const need = (Number(l.qty) || 0) * (l.baseUnit + (Number(l.heatPressFee) || 0));
+    if (got + 0.5 >= need) ok += got;
+  }
+  return r22(Math.min(1, ok / grand) * 1e6) / 1e6;
+}
 
 // packages/shared/src/purchasing.ts
 var r23 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -44043,6 +44083,16 @@ function cleanShifNumber(input) {
   return { value: v };
 }
 
+// packages/shared/src/phone.ts
+function whatsappNumber(raw, countryCode = "254") {
+  let d = (raw ?? "").replace(/[^\d]/g, "");
+  if (!d) return null;
+  if (d.startsWith("00")) d = d.slice(2);
+  else if (d.startsWith("0") && d.length === 10) d = countryCode + d.slice(1);
+  else if (d.length === 9 && /^[17]/.test(d)) d = countryCode + d;
+  return d.length >= 11 && d.length <= 15 ? d : null;
+}
+
 // packages/shared/src/materials.ts
 function materialName(item, size) {
   const i = item.trim().replace(/\s+/g, " ");
@@ -44167,9 +44217,24 @@ async function getCommissionConfig(db = prisma) {
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
+    freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
     targetMode: TARGET_MODES.includes(row?.targetMode ?? "") ? row.targetMode : DEFAULT_TARGET_MODE
   };
+}
+async function freelanceShare(db, lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
+  const serviceIds = [...new Set(lines.map((l) => l.serviceId).filter((v) => !!v))];
+  const materialIds = [...new Set(lines.map((l) => l.materialId).filter((v) => !!v))];
+  const services2 = new Map((serviceIds.length ? await db.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, price: true } }) : []).map((s) => [s.id, s.price]));
+  const materials = new Map((materialIds.length ? await db.material.findMany({ where: { id: { in: materialIds } }, select: { id: true, price: true } }) : []).map((m) => [m.id, m.price]));
+  return qualifyingShare(
+    lines.map((l) => {
+      const listed = l.serviceId ? (services2.get(l.serviceId) ?? 0) * (l.artworkAreaSqm && l.artworkAreaSqm > 0 ? l.artworkAreaSqm : 1) : l.materialId ? materials.get(l.materialId) ?? 0 : 0;
+      return { qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmt: l.discountAmt, heatPressFee: l.heatPressFee, baseUnit: l.baseUnit ?? listed };
+    }),
+    orderDiscountPct,
+    orderDiscountAmt
+  );
 }
 async function activeOwner(db, clientKey, today = todayStr()) {
   const row = await db.clientOwner.findFirst({
@@ -44180,12 +44245,17 @@ async function activeOwner(db, clientKey, today = todayStr()) {
   return row ? { id: row.id, staffId: row.staffId, staffName: row.staff.name, startDate: row.startDate, endDate: row.endDate } : null;
 }
 async function resolveSourcing(db, o) {
-  if (!await commissionEnabled(db)) return { salesSource: "house", sourcedByStaffId: null, clientKey: null };
+  const house = { salesSource: "house", sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1 };
+  if (!await commissionEnabled(db)) return house;
+  if (o.freelanceAgentId) {
+    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
+    return { salesSource: "freelance", sourcedByStaffId: null, clientKey: null, freelanceAgentId: o.freelanceAgentId, freelanceQualifyingShare: share };
+  }
   const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-  if (!clientKey) return { salesSource: "house", sourcedByStaffId: null, clientKey: null };
+  if (!clientKey) return { ...house };
   const today = todayStr();
   const owner = await activeOwner(db, clientKey, today);
-  if (owner) return { salesSource: "sourced", sourcedByStaffId: owner.staffId, clientKey };
+  if (owner) return { ...house, salesSource: "sourced", sourcedByStaffId: owner.staffId, clientKey };
   if (o.sourcedBy) {
     const cfg = await getCommissionConfig(db);
     await db.clientOwner.create({
@@ -44198,11 +44268,24 @@ async function resolveSourcing(db, o) {
         createdByName: "Sourced at order capture"
       }
     });
-    return { salesSource: "sourced", sourcedByStaffId: o.sourcedBy, clientKey };
+    return { ...house, salesSource: "sourced", sourcedByStaffId: o.sourcedBy, clientKey };
   }
-  return { salesSource: "house", sourcedByStaffId: null, clientKey };
+  return { ...house, clientKey };
 }
 async function claimProblem(user, o) {
+  if (o.freelanceAgentId) {
+    if (!await commissionEnabled()) return null;
+    if (o.sourcedBy) return "An order is credited either to a staff member or to a freelance sales person \u2014 not both";
+    const agent = await prisma.freelanceAgent.findUnique({ where: { id: o.freelanceAgentId } });
+    if (!agent) return "That freelance sales person does not exist";
+    if (agent.status === "Suspended") return `${agent.name} is suspended, so orders cannot be credited to them`;
+    const key3 = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
+    if (key3) {
+      const owner = await activeOwner(prisma, key3);
+      if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;
+    }
+    return null;
+  }
   if (!o.sourcedBy) return null;
   if (!await commissionEnabled()) return null;
   if (o.sourcedBy !== user.id && !await canManageCommission(user.role)) return "You can only claim a client for yourself";
@@ -44282,6 +44365,7 @@ async function buildStatements(period, only) {
     return s;
   };
   for (const o of flowOrders) {
+    if (o.freelanceAgentId) continue;
     const f = flows.get(o.id);
     const net8 = f.received - f.refunded;
     const total = orderTotal(o);
@@ -44318,6 +44402,7 @@ async function buildStatements(period, only) {
   }
   const base2 = /* @__PURE__ */ new Map();
   for (const o of raised) {
+    if (o.freelanceAgentId) continue;
     const cap = who(o.staffId).productivity;
     cap.ordersCaptured++;
     if (o.dtfFilmSale) {
@@ -44372,6 +44457,53 @@ async function buildStatements(period, only) {
   const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
   const names = new Map(users.map((u) => [u.id, u.name]));
   const statements = [...people.values()].map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` })).filter((s) => only === void 0 || s.staffId === only).sort((a2, b) => b.total - a2.total || a2.staffName.localeCompare(b.staffName));
+  return { config, statements };
+}
+async function buildFreelanceStatements(weekStartDate, only) {
+  const start = weekStartDate;
+  const end = weekEnd(weekStartDate);
+  const config = await getCommissionConfig();
+  const [payments, notes] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: start, lte: end }, order: { freelanceAgentId: { not: null } } }, select: { orderId: true, amount: true } }),
+    prisma.adjustmentNote.findMany({ where: { type: "Credit", date: { gte: start, lte: end }, orderId: { not: null } }, select: { orderId: true, creditAmt: true } })
+  ]);
+  const flows = /* @__PURE__ */ new Map();
+  const flow = (id) => {
+    let f = flows.get(id);
+    if (!f) flows.set(id, f = { received: 0, refunded: 0 });
+    return f;
+  };
+  for (const p of payments) flow(p.orderId).received += p.amount;
+  for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
+  const orders = flows.size ? await prisma.order.findMany({ where: { id: { in: [...flows.keys()] }, freelanceAgentId: only ?? { not: null } }, include: orderInc }) : [];
+  const people = /* @__PURE__ */ new Map();
+  for (const o of orders) {
+    const id = o.freelanceAgentId;
+    let st = people.get(id);
+    if (!st) {
+      st = { agentId: id, agentName: "", status: "", phone: "", mpesaNumber: "", weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, belowBaseNet: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      people.set(id, st);
+    }
+    const f = flows.get(o.id);
+    const net8 = f.received - f.refunded;
+    const share = o.freelanceQualifyingShare;
+    const qual = net8 * share / (1 + VAT_RATE);
+    st.received = round2(st.received + net8);
+    st.qualifyingNet = round2(st.qualifyingNet + qual);
+    st.belowBaseNet = round2(st.belowBaseNet + net8 * (1 - share) / (1 + VAT_RATE));
+    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net8), qualifyingPct: Math.round(share * 1e3) / 10, qualifyingNet: round2(qual) });
+  }
+  for (const st of people.values()) {
+    const basis = Math.max(0, st.qualifyingNet);
+    st.commission = bandedAmount(config.freelanceBands, basis);
+    st.band = bandPosition(config.freelanceBands, basis);
+  }
+  const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });
+  const byId = new Map(agents.map((a2) => [a2.id, a2]));
+  const statements = [...people.values()].map((s) => {
+    const a2 = byId.get(s.agentId);
+    return { ...s, agentName: a2?.name ?? `Agent #${s.agentId}`, status: a2?.status ?? "", phone: a2?.phone ?? "", mpesaNumber: a2?.mpesaNumber || a2?.phone || "" };
+  }).sort((a2, b) => b.commission - a2.commission || a2.agentName.localeCompare(b.agentName));
   return { config, statements };
 }
 
@@ -49840,7 +49972,8 @@ ordersRouter.get("/:id", async (req, res) => {
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
   const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
-  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user.role) }), sourcedByName: sourcer?.name ?? null, canTakePayment: await canTakePayment(req.user, order) });
+  const freelancer = order.freelanceAgentId ? await prisma.freelanceAgent.findUnique({ where: { id: order.freelanceAgentId }, select: { name: true } }) : null;
+  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user.role) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user, order) });
 });
 var lineItemSchema = external_exports.object({
   itemType: external_exports.enum(["material", "service", "per-metre"]),
@@ -49870,6 +50003,8 @@ var walkinSchema = external_exports.object({
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
   // Set to your own id when this is a client you sourced through your own network: they are then credited to you for 12 months.
   sourcedBy: external_exports.number().int().nullable().optional(),
+  // Brought by a freelance sales person (their account is credited, weekly): then no staff member is credited — never both.
+  freelanceAgentId: external_exports.number().int().nullable().optional(),
   // Preferred: any number of payment lines, e.g. part cash and part M-Pesa.
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
   lineItems: external_exports.array(lineItemSchema).min(1),
@@ -49890,10 +50025,10 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
     return res.status(400).json({ error: "The payments add up to more than the order total" });
   }
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
-  const claim = await claimProblem(req.user, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy });
+  const claim = await claimProblem(req.user, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   const order = await prisma.$transaction(async (tx) => {
-    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy });
+    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = "W-" + settings.nextWalkinNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
@@ -49929,6 +50064,8 @@ var quoteSchema = external_exports.object({
   staffId: external_exports.number().int(),
   // The staff member who sourced this corporate client, if it is new to them (credited for 12 months).
   sourcedBy: external_exports.number().int().nullable().optional(),
+  // Or brought by a freelance sales person — then no staff member is credited.
+  freelanceAgentId: external_exports.number().int().nullable().optional(),
   lineItems: external_exports.array(lineItemSchema).min(1),
   orderDiscountPct: external_exports.number().min(0).max(100).default(0),
   orderDiscountAmt: external_exports.number().min(0).default(0)
@@ -49938,10 +50075,10 @@ ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, r
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const form = parsed.data;
   const costs = await canSeeCosts(req.user.role);
-  const claim = await claimProblem(req.user, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+  const claim = await claimProblem(req.user, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   const order = await prisma.$transaction(async (tx) => {
-    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = "C-" + settings.nextCorpNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
@@ -49972,10 +50109,10 @@ ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req,
   const client = await prisma.corporateClient.findUnique({ where: { id: form.corporateClientId } });
   if (!client) return res.status(400).json({ error: "Corporate client not found" });
   const dueDate = addDays(todayStr(), client.creditDays);
-  const claim = await claimProblem(req.user, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+  const claim = await claimProblem(req.user, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   const order = await prisma.$transaction(async (tx) => {
-    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy });
+    const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     const orderNo = "C-" + settings.nextCorpNo;
     await tx.setting.update({ where: { id: 1 }, data: { nextCorpNo: settings.nextCorpNo + 1 } });
@@ -52654,12 +52791,18 @@ function resolvePaymentLines(d) {
 async function createDtfOrder(tx, opts) {
   const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
   if (!staffExists) throw new Error("Your session is out of date (the underlying user record no longer exists) \u2014 please log out and log back in, then try again.");
-  const sourcing = await resolveSourcing(tx, { phone: opts.phone, name: opts.customerName, sourcedBy: opts.sourcedBy });
   const materialItems = await materialLineItems(tx, opts.materialLines);
   const lineItemInputs = [
     { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
     ...materialItems.map((li) => ({ itemType: li.itemType, serviceId: null, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: 0, discountAmt: 0 }))
   ];
+  const sourcing = await resolveSourcing(tx, {
+    phone: opts.phone,
+    name: opts.customerName,
+    sourcedBy: opts.sourcedBy,
+    freelanceAgentId: opts.freelanceAgentId,
+    lines: lineItemInputs.map((li, i) => ({ ...li, baseUnit: i === 0 ? opts.serviceBase : void 0 }))
+  });
   const totals = computeOrderTotals(
     { lineItems: lineItemInputs, orderDiscountPct: 0, orderDiscountAmt: 0 },
     opts.payments.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method }))
@@ -52829,7 +52972,8 @@ var saleSchema = external_exports.object({
   // Preferred: any mix of methods, e.g. part cash and part M-Pesa. Overrides amountPaid/paymentMethod.
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
   materialLines: external_exports.array(materialLineSchema).default([]),
-  sourcedBy: external_exports.number().int().nullable().optional()
+  sourcedBy: external_exports.number().int().nullable().optional(),
+  freelanceAgentId: external_exports.number().int().nullable().optional()
 });
 dtfRouter.post("/sales", async (req, res) => {
   const parsed = saleSchema.safeParse(req.body);
@@ -52843,7 +52987,7 @@ dtfRouter.post("/sales", async (req, res) => {
   if (!c.valid) {
     return res.status(400).json({ error: `Price cannot be below ${settings.minPricePerM} KES/m` });
   }
-  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
+  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   if (paid > c.total) return res.status(400).json({ error: "Amount paid cannot exceed the sale total" });
   try {
@@ -52857,7 +53001,10 @@ dtfRouter.post("/sales", async (req, res) => {
         serviceLine: { itemType: "per-metre", serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
         payments: paymentLines,
-        sourcedBy: d.sourcedBy
+        sourcedBy: d.sourcedBy,
+        freelanceAgentId: d.freelanceAgentId,
+        serviceBase: settings.minPricePerM
+        // film is sold above its floor price, which is enforced above
       });
       const sale2 = await tx.dtfFilmSale.create({
         data: {
@@ -52919,6 +53066,7 @@ var jobSchema = external_exports.object({
   // no other discount applies on top of it.
   pricePerPiece: external_exports.number().positive().nullable().optional(),
   sourcedBy: external_exports.number().int().nullable().optional(),
+  freelanceAgentId: external_exports.number().int().nullable().optional(),
   amountPaid: external_exports.number().min(0).default(0),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
@@ -52939,7 +53087,7 @@ dtfRouter.post("/jobs", async (req, res) => {
   const needsApproval = chargedPerPiece != null && chargedPerPiece < sys.finalPerPiece - 5e-3;
   const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
-  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy });
+  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   if (paid > jobTotal) return res.status(400).json({ error: "Amount paid cannot exceed the job total" });
@@ -52955,7 +53103,10 @@ dtfRouter.post("/jobs", async (req, res) => {
         serviceLine: { itemType: "service", serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
         materialLines: d.materialLines,
         payments: paymentLines,
-        sourcedBy: d.sourcedBy
+        sourcedBy: d.sourcedBy,
+        freelanceAgentId: d.freelanceAgentId,
+        serviceBase: sys.finalPerPiece
+        // an artwork job counts only when charged at least the recommended price
       });
       const job2 = await tx.dtfArtworkJob.create({
         data: {
@@ -54259,6 +54410,8 @@ var bandSchema = external_exports.object({ from: external_exports.number().min(0
 var settingsSchema4 = external_exports.object({
   generalBands: external_exports.array(bandSchema).min(1),
   filmBands: external_exports.array(bandSchema).min(1),
+  // Freelance sales persons — weekly net sales received at or above base prices → rate
+  freelanceBands: external_exports.array(bandSchema).min(1).optional(),
   artworkRatePct: external_exports.number().min(0).max(100),
   ownershipMonths: external_exports.number().int().min(1).max(60),
   // The sales target: times their basic monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
@@ -54269,12 +54422,13 @@ commissionRouter.put("/settings", manage, async (req, res) => {
   const parsed = settingsSchema4.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands");
+  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b) => [...b].sort((x, y) => x.from - y.from);
   const data = {
     generalBandsJson: JSON.stringify(sort(d.generalBands)),
     filmBandsJson: JSON.stringify(sort(d.filmBands)),
+    ...d.freelanceBands ? { freelanceBandsJson: JSON.stringify(sort(d.freelanceBands)) } : {},
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
     ...d.targetMultiplier !== void 0 ? { targetMultiplier: d.targetMultiplier } : {},
@@ -55352,13 +55506,237 @@ securityRouter.get("/audit", async (req, res) => {
   res.json({ total: matched.length, rows: matched.slice(0, limit) });
 });
 
+// apps/api/src/routes/freelance.ts
+var import_express18 = __toESM(require_express2());
+var freelanceRouter = (0, import_express18.Router)();
+freelanceRouter.use(requireAuth, async (_req, res, next) => {
+  if (!await commissionEnabled()) return res.status(403).json({ error: "Commission is switched off. An Admin can switch it on in Master Data \u2192 Company Info.", commissionOff: true });
+  next();
+});
+var capture = requirePermission("canCaptureOrders", "canAccessDtf", "canManageCommission");
+var manage2 = requirePermission("canManageCommission");
+var STATUSES = ["Pending", "Active", "Suspended"];
+var kePhone = (raw) => {
+  const n = whatsappNumber(raw);
+  return n && /^254[17]\d{8}$/.test(n) ? n : null;
+};
+var weekOf = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? weekStart(v) : weekStart(todayStr());
+var pickable = (a2) => ({ id: a2.id, name: a2.name, phoneTail: a2.phone.slice(-3), status: a2.status });
+freelanceRouter.get("/pickable", capture, async (_req, res) => {
+  const agents = await prisma.freelanceAgent.findMany({ where: { status: { not: "Suspended" } }, orderBy: { name: "asc" } });
+  res.json(agents.map(pickable));
+});
+var agentFields = {
+  name: external_exports.string().trim().min(2, "Enter their name").max(120),
+  phone: external_exports.string().trim().min(1, "Enter their phone number"),
+  email: external_exports.string().trim().toLowerCase().email().optional().or(external_exports.literal("")),
+  nationalId: external_exports.string().trim().max(40).optional(),
+  kraPin: external_exports.string().trim().max(40).optional(),
+  mpesaNumber: external_exports.string().trim().max(40).optional(),
+  bankName: external_exports.string().trim().max(120).optional(),
+  bankAccount: external_exports.string().trim().max(60).optional(),
+  note: external_exports.string().trim().max(300).optional()
+};
+function tidy2(d) {
+  const nid = cleanNationalId(d.nationalId ?? "");
+  const kra = cleanKraPin(d.kraPin ?? "");
+  const problem = nid.error ?? kra.error;
+  if (problem) return { error: problem };
+  const mpesa = d.mpesaNumber ? kePhone(d.mpesaNumber) : null;
+  if (d.mpesaNumber && !mpesa) return { error: "The M-Pesa number is not a valid Kenyan phone number" };
+  return { nationalId: nid.value ?? "", kraPin: kra.value ?? "", mpesa };
+}
+freelanceRouter.post("/agents", capture, async (req, res) => {
+  const parsed = external_exports.object(agentFields).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const phone = kePhone(d.phone);
+  if (!phone) return res.status(400).json({ error: "Enter a valid Kenyan phone number (e.g. 0712 345 678)" });
+  const t = tidy2(d);
+  if ("error" in t) return res.status(400).json({ error: t.error });
+  const existing = await prisma.freelanceAgent.findUnique({ where: { phone } });
+  if (existing) {
+    if (existing.status === "Suspended") return res.status(400).json({ error: `${existing.name} is suspended, so orders cannot be credited to them` });
+    return res.json({ ...pickable(existing), existing: true });
+  }
+  const isManager = await userHasPermission(req.user.role, "canManageCommission");
+  const agent = await prisma.freelanceAgent.create({
+    data: {
+      name: d.name,
+      phone,
+      email: d.email ?? "",
+      nationalId: t.nationalId,
+      kraPin: t.kraPin,
+      mpesaNumber: t.mpesa ?? phone,
+      bankName: d.bankName ?? "",
+      bankAccount: d.bankAccount ?? "",
+      note: d.note ?? "",
+      status: isManager ? "Active" : "Pending",
+      createdByName: req.user.name,
+      ...isManager ? { approvedByName: req.user.name, approvedAt: /* @__PURE__ */ new Date() } : {}
+    }
+  });
+  res.status(201).json({ ...pickable(agent), existing: false });
+});
+freelanceRouter.get("/agents", manage2, async (_req, res) => {
+  const agents = await prisma.freelanceAgent.findMany({ orderBy: [{ status: "asc" }, { name: "asc" }], include: { _count: { select: { orders: true } } } });
+  res.json(agents.map((a2) => ({ ...a2, orders: a2._count.orders, _count: void 0 })));
+});
+freelanceRouter.put("/agents/:id", manage2, async (req, res) => {
+  const parsed = external_exports.object({ ...agentFields, status: external_exports.enum(STATUSES) }).partial().safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const id = Number(req.params.id);
+  const current = await prisma.freelanceAgent.findUnique({ where: { id } });
+  if (!current) return res.status(404).json({ error: "Freelance sales person not found" });
+  const d = parsed.data;
+  const data = {};
+  if (d.name !== void 0) data.name = d.name;
+  if (d.phone !== void 0) {
+    const phone = kePhone(d.phone);
+    if (!phone) return res.status(400).json({ error: "Enter a valid Kenyan phone number (e.g. 0712 345 678)" });
+    const other = await prisma.freelanceAgent.findUnique({ where: { phone } });
+    if (other && other.id !== id) return res.status(400).json({ error: `That number already belongs to ${other.name}` });
+    data.phone = phone;
+  }
+  if (d.nationalId !== void 0 || d.kraPin !== void 0 || d.mpesaNumber !== void 0) {
+    const t = tidy2({ nationalId: d.nationalId ?? current.nationalId, kraPin: d.kraPin ?? current.kraPin, mpesaNumber: d.mpesaNumber });
+    if ("error" in t) return res.status(400).json({ error: t.error });
+    if (d.nationalId !== void 0) data.nationalId = t.nationalId;
+    if (d.kraPin !== void 0) data.kraPin = t.kraPin;
+    if (d.mpesaNumber !== void 0) data.mpesaNumber = t.mpesa ?? data.phone ?? current.phone;
+  }
+  for (const k of ["email", "bankName", "bankAccount", "note"]) if (d[k] !== void 0) data[k] = d[k];
+  if (d.status !== void 0 && d.status !== current.status) {
+    data.status = d.status;
+    if (d.status === "Active") {
+      data.approvedByName = req.user.name;
+      data.approvedAt = /* @__PURE__ */ new Date();
+    }
+  }
+  res.json(await prisma.freelanceAgent.update({ where: { id }, data }));
+});
+freelanceRouter.get("/statement", manage2, async (req, res) => {
+  const week = weekOf(req.query.week);
+  const { config, statements } = await buildFreelanceStatements(week);
+  const payouts = await prisma.freelancePayout.findMany({ where: { weekStart: week } });
+  const byAgent = new Map(payouts.map((p) => [p.agentId, p]));
+  res.json({
+    weekStart: week,
+    weekEnd: weekEnd(week),
+    open: weekEnd(week) >= todayStr(),
+    // the week is not over, so more money may still arrive
+    bands: config.freelanceBands,
+    statements: statements.map((s) => {
+      const p = byAgent.get(s.agentId);
+      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
+    }),
+    totals: { commission: round2(statements.reduce((a2, s) => a2 + s.commission, 0)) }
+  });
+});
+freelanceRouter.post("/payouts/approve", manage2, async (req, res) => {
+  const body = external_exports.object({ weekStart: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "Choose the week" });
+  const week = weekStart(body.data.weekStart);
+  const { statements } = await buildFreelanceStatements(week);
+  const out = [];
+  const skipped = [];
+  for (const s of statements) {
+    if (s.commission <= 0) continue;
+    if (s.status !== "Active") {
+      skipped.push({ agentName: s.agentName, amount: s.commission, reason: s.status === "Pending" ? "not approved yet \u2014 approve them under Freelancers first" : "suspended" });
+      continue;
+    }
+    const existing = await prisma.freelancePayout.findUnique({ where: { weekStart_agentId: { weekStart: week, agentId: s.agentId } } });
+    if (existing?.status === "Paid") {
+      out.push({ agentId: s.agentId, agentName: s.agentName, amount: existing.amount, status: "Paid" });
+      continue;
+    }
+    const data = {
+      qualifyingNet: s.qualifyingNet,
+      amount: s.commission,
+      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, belowBaseNet: s.belowBaseNet, orders: s.orders }),
+      status: "Approved",
+      approvedByName: req.user.name,
+      approvedAt: /* @__PURE__ */ new Date()
+    };
+    await prisma.freelancePayout.upsert({ where: { weekStart_agentId: { weekStart: week, agentId: s.agentId } }, update: data, create: { weekStart: week, agentId: s.agentId, ...data } });
+    out.push({ agentId: s.agentId, agentName: s.agentName, amount: s.commission, status: "Approved" });
+  }
+  res.json({ weekStart: week, payouts: out, skipped });
+});
+freelanceRouter.get("/payouts", manage2, async (req, res) => {
+  const where = {};
+  if (typeof req.query.week === "string") where.weekStart = weekOf(req.query.week);
+  if (typeof req.query.agentId === "string") where.agentId = Number(req.query.agentId);
+  const rows = await prisma.freelancePayout.findMany({ where, include: { agent: { select: { name: true, mpesaNumber: true, phone: true } } }, orderBy: [{ weekStart: "desc" }, { id: "asc" }], take: 300 });
+  res.json(rows.map((r) => ({ id: r.id, weekStart: r.weekStart, agentId: r.agentId, agentName: r.agent.name, payTo: r.agent.mpesaNumber || r.agent.phone, amount: r.amount, status: r.status, approvedByName: r.approvedByName, paidOn: r.paidOn, paidMethod: r.paidMethod })));
+});
+var paySchema2 = external_exports.object({ method: external_exports.enum(EXPENSE_METHODS), date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+freelanceRouter.post("/payouts/:id/pay", manage2, async (req, res) => {
+  const parsed = paySchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const payout = await prisma.freelancePayout.findUnique({ where: { id: Number(req.params.id) }, include: { agent: true } });
+  if (!payout) return res.status(404).json({ error: "Not found" });
+  if (payout.status === "Paid") return res.status(400).json({ error: "Already paid" });
+  if (payout.agent.status !== "Active") return res.status(400).json({ error: `${payout.agent.name} is not an active freelance sales person, so this cannot be paid` });
+  const date = parsed.data.date ?? todayStr();
+  if (parsed.data.method === PETTY_CASH_METHOD) {
+    const check = await pettyCashShortfall(payout.amount, date);
+    if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString("en-KE")} available, Ksh ${Math.round(payout.amount).toLocaleString("en-KE")} needed)` });
+  }
+  await ensureChartOnce();
+  const updated = await prisma.$transaction(async (tx) => {
+    const expense = await tx.expense.create({
+      data: { date, category: "Freelance Commission", amount: payout.amount, supplier: payout.agent.name, note: `Freelance commission, week of ${payout.weekStart} \u2014 ${payout.agent.name}`, capturedByName: req.user.name, paid: true, method: parsed.data.method }
+    });
+    return tx.freelancePayout.update({ where: { id: payout.id }, data: { status: "Paid", paidOn: date, paidMethod: parsed.data.method, paidByName: req.user.name, expenseId: expense.id } });
+  });
+  res.json(updated);
+});
+freelanceRouter.delete("/payouts/:id", manage2, async (req, res) => {
+  const payout = await prisma.freelancePayout.findUnique({ where: { id: Number(req.params.id) } });
+  if (!payout) return res.status(404).json({ error: "Not found" });
+  if (payout.status === "Paid") return res.status(400).json({ error: "A paid commission cannot be withdrawn" });
+  await prisma.freelancePayout.delete({ where: { id: payout.id } });
+  res.status(204).end();
+});
+freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
+  const id = Number(req.params.id);
+  const agent = await prisma.freelanceAgent.findUnique({ where: { id } });
+  if (!agent) return res.status(404).json({ error: "Freelance sales person not found" });
+  const payouts = await prisma.freelancePayout.findMany({ where: { agentId: id }, orderBy: { weekStart: "desc" }, take: 104 });
+  const have = new Map(payouts.map((p) => [p.weekStart, p]));
+  const thisWeek = weekStart(todayStr());
+  const weeks = [];
+  let notApproved = 0;
+  for (let i = 0; i < 12; i++) {
+    const ws = addWeeks(thisWeek, -i);
+    const p = have.get(ws);
+    if (p) continue;
+    const st = (await buildFreelanceStatements(ws, id)).statements[0];
+    if (st && st.commission > 0) {
+      notApproved = round2(notApproved + st.commission);
+      weeks.push({ weekStart: ws, weekEnd: weekEnd(ws), amount: st.commission, status: i === 0 ? "This week so far" : "Not yet approved", paidOn: null, paidMethod: null });
+    }
+  }
+  for (const p of payouts) weeks.push({ weekStart: p.weekStart, weekEnd: weekEnd(p.weekStart), amount: p.amount, status: p.status, paidOn: p.paidOn, paidMethod: p.paidMethod });
+  weeks.sort((a2, b) => b.weekStart.localeCompare(a2.weekStart));
+  const sum = (status) => round2(payouts.filter((p) => p.status === status).reduce((a2, p) => a2 + p.amount, 0));
+  res.json({
+    agent,
+    summary: { paid: sum("Paid"), approvedToPay: sum("Approved"), notYetApproved: notApproved, owed: round2(sum("Approved") + notApproved) },
+    weeks,
+    bands: (await getCommissionConfig()).freelanceBands
+  });
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express18.default)();
+var app = (0, import_express19.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express18.default.json({ limit: "5mb" }));
+app.use(import_express19.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -55387,6 +55765,7 @@ app.use("/api/commission", commissionRouter);
 app.use("/api/pricelists", pricelistsRouter);
 app.use("/api/backup", backupRouter);
 app.use("/api/security", securityRouter);
+app.use("/api/freelance", freelanceRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });

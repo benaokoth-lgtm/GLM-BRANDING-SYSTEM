@@ -3,6 +3,7 @@ import {
   DEFAULT_ARTWORK_RATE_PCT,
   DEFAULT_FILM_BANDS,
   DEFAULT_GENERAL_BANDS,
+  DEFAULT_FREELANCE_BANDS,
   DEFAULT_OWNERSHIP_MONTHS,
   DEFAULT_TARGET_MODE,
   DEFAULT_TARGET_MULTIPLIER,
@@ -20,7 +21,9 @@ import {
   filmPremiumCommission,
   filmPremiumPerM,
   ownershipEnd,
+  qualifyingShare,
   round2,
+  weekEnd,
   salesTarget,
   systemJobCalc,
   todayStr,
@@ -67,6 +70,8 @@ export interface CommissionConfig {
   filmBands: Band[];
   artworkRatePct: number;
   ownershipMonths: number;
+  /** Freelance sales persons: marginal bands on their weekly net sales received at or above base prices. */
+  freelanceBands: Band[];
   /** Times their basic monthly salary a person must sell before commission starts; 0 = no target. */
   targetMultiplier: number;
   targetMode: TargetMode;
@@ -90,6 +95,7 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
+    freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
     targetMode: (TARGET_MODES as readonly string[]).includes(row?.targetMode ?? '') ? (row!.targetMode as TargetMode) : DEFAULT_TARGET_MODE,
   };
@@ -98,9 +104,45 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
 // ── Who an order is credited to ─────────────────────────────────────────────
 
 export interface Sourcing {
-  salesSource: 'sourced' | 'house';
+  salesSource: 'sourced' | 'house' | 'freelance';
   sourcedByStaffId: number | null;
   clientKey: string | null;
+  /** Set only when the order is marked for a freelance sales person — and then sourcedByStaffId is always null. */
+  freelanceAgentId: number | null;
+  freelanceQualifyingShare: number;
+}
+
+export interface CreditLine {
+  itemType: string;
+  serviceId?: number | null;
+  materialId?: number | null;
+  qty: number;
+  unitPrice: number;
+  discountPct?: number;
+  discountAmt?: number;
+  heatPressFee?: number | null;
+  artworkAreaSqm?: number | null;
+  /** The base price of one unit when it is not simply the list price (film's floor, artwork's recommended price). */
+  baseUnit?: number;
+}
+
+/**
+ * The share of an order's value sold at or above base prices — only that share earns a freelance sales person commission. A line's base price is
+ * the price-list price (a service's, a material's; for an artwork-sized line the area × the per-sqm rate), unless the caller gives its own.
+ */
+export async function freelanceShare(db: Db, lines: CreditLine[], orderDiscountPct = 0, orderDiscountAmt = 0): Promise<number> {
+  const serviceIds = [...new Set(lines.map((l) => l.serviceId).filter((v): v is number => !!v))];
+  const materialIds = [...new Set(lines.map((l) => l.materialId).filter((v): v is number => !!v))];
+  const services = new Map((serviceIds.length ? await db.service.findMany({ where: { id: { in: serviceIds } }, select: { id: true, price: true } }) : []).map((s) => [s.id, s.price]));
+  const materials = new Map((materialIds.length ? await db.material.findMany({ where: { id: { in: materialIds } }, select: { id: true, price: true } }) : []).map((m) => [m.id, m.price]));
+  return qualifyingShare(
+    lines.map((l) => {
+      const listed = l.serviceId ? (services.get(l.serviceId) ?? 0) * (l.artworkAreaSqm && l.artworkAreaSqm > 0 ? l.artworkAreaSqm : 1) : l.materialId ? (materials.get(l.materialId) ?? 0) : 0;
+      return { qty: l.qty, unitPrice: l.unitPrice, discountPct: l.discountPct, discountAmt: l.discountAmt, heatPressFee: l.heatPressFee, baseUnit: l.baseUnit ?? listed };
+    }),
+    orderDiscountPct,
+    orderDiscountAmt,
+  );
 }
 
 export interface OwnerInfo {
@@ -130,15 +172,32 @@ export async function activeOwner(db: Db, clientKey: string, today = todayStr())
  */
 export async function resolveSourcing(
   db: Db,
-  o: { corporateClientId?: number | null; phone?: string | null; name?: string | null; sourcedBy?: number | null },
+  o: {
+    corporateClientId?: number | null;
+    phone?: string | null;
+    name?: string | null;
+    sourcedBy?: number | null;
+    /** The order is brought by this freelance sales person: it is credited to them and to NO staff member. */
+    freelanceAgentId?: number | null;
+    lines?: CreditLine[];
+    orderDiscountPct?: number;
+    orderDiscountAmt?: number;
+  },
 ): Promise<Sourcing> {
+  const house = { salesSource: 'house' as const, sourcedByStaffId: null, clientKey: null, freelanceAgentId: null, freelanceQualifyingShare: 1 };
   // Switched off: nobody is credited and no client is taken on.
-  if (!(await commissionEnabled(db))) return { salesSource: 'house', sourcedByStaffId: null, clientKey: null };
+  if (!(await commissionEnabled(db))) return house;
+  // Marked for a freelance account: credited to them alone. No staff member is credited, and no client is taken on for anybody — so the order
+  // can never be owned twice (claimProblem has already refused a staff claim, or a client a staff member already owns).
+  if (o.freelanceAgentId) {
+    const share = o.lines && o.lines.length ? await freelanceShare(db, o.lines, o.orderDiscountPct ?? 0, o.orderDiscountAmt ?? 0) : 1;
+    return { salesSource: 'freelance', sourcedByStaffId: null, clientKey: null, freelanceAgentId: o.freelanceAgentId, freelanceQualifyingShare: share };
+  }
   const clientKey = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
-  if (!clientKey) return { salesSource: 'house', sourcedByStaffId: null, clientKey: null };
+  if (!clientKey) return { ...house };
   const today = todayStr();
   const owner = await activeOwner(db, clientKey, today);
-  if (owner) return { salesSource: 'sourced', sourcedByStaffId: owner.staffId, clientKey };
+  if (owner) return { ...house, salesSource: 'sourced', sourcedByStaffId: owner.staffId, clientKey };
   if (o.sourcedBy) {
     const cfg = await getCommissionConfig(db);
     await db.clientOwner.create({
@@ -151,9 +210,9 @@ export async function resolveSourcing(
         createdByName: 'Sourced at order capture',
       },
     });
-    return { salesSource: 'sourced', sourcedByStaffId: o.sourcedBy, clientKey };
+    return { ...house, salesSource: 'sourced', sourcedByStaffId: o.sourcedBy, clientKey };
   }
-  return { salesSource: 'house', sourcedByStaffId: null, clientKey };
+  return { ...house, clientKey };
 }
 
 /**
@@ -163,8 +222,23 @@ export async function resolveSourcing(
  */
 export async function claimProblem(
   user: { id: number; role: string },
-  o: { corporateClientId?: number | null; phone?: string | null; name?: string | null; sourcedBy?: number | null },
+  o: { corporateClientId?: number | null; phone?: string | null; name?: string | null; sourcedBy?: number | null; freelanceAgentId?: number | null },
 ): Promise<string | null> {
+  if (o.freelanceAgentId) {
+    if (!(await commissionEnabled())) return null; // switched off: ignored, like a staff claim
+    // One order, one owner: a staff claim and a freelance account cannot both be on the same order.
+    if (o.sourcedBy) return 'An order is credited either to a staff member or to a freelance sales person — not both';
+    const agent = await prisma.freelanceAgent.findUnique({ where: { id: o.freelanceAgentId } });
+    if (!agent) return 'That freelance sales person does not exist';
+    if (agent.status === 'Suspended') return `${agent.name} is suspended, so orders cannot be credited to them`;
+    // A client a staff member already owns is theirs for the window: the order cannot also be given to a freelancer.
+    const key = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.name });
+    if (key) {
+      const owner = await activeOwner(prisma, key);
+      if (owner) return `This client is credited to ${owner.staffName} until ${owner.endDate}, so the order cannot also be credited to a freelance sales person`;
+    }
+    return null;
+  }
   if (!o.sourcedBy) return null;
   if (!(await commissionEnabled())) return null; // switched off: a claim is simply ignored
   if (o.sourcedBy !== user.id && !(await canManageCommission(user.role))) return 'You can only claim a client for yourself';
@@ -309,6 +383,8 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
 
   // Commission on money received
   for (const o of flowOrders) {
+    // An order credited to a freelance sales person is theirs alone: it earns no staff commission and counts towards no staff target.
+    if (o.freelanceAgentId) continue;
     const f = flows.get(o.id)!;
     const net = f.received - f.refunded;
     const total = orderTotal(o);
@@ -347,6 +423,7 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
   // What each person sold this month, paid or not
   const base = new Map<number, { filmRevenue: number; filmPremium: number }>();
   for (const o of raised) {
+    if (o.freelanceAgentId) continue;
     const cap = who(o.staffId).productivity;
     cap.ordersCaptured++;
     if (o.dtfFilmSale) {
@@ -409,5 +486,81 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     .map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` }))
     .filter((s) => only === undefined || s.staffId === only)
     .sort((a, b) => b.total - a.total || a.staffName.localeCompare(b.staffName));
+  return { config, statements };
+}
+
+// ── Freelance sales persons: the weekly statement ───────────────────────────
+
+export interface FreelanceStatement {
+  agentId: number;
+  agentName: string;
+  status: string;
+  phone: string;
+  mpesaNumber: string;
+  weekStart: string;
+  weekEnd: string;
+  /** Money received in the week on their orders (VAT included), less what was refunded. */
+  received: number;
+  /** Net of VAT, at or above base prices: what the bands apply to. */
+  qualifyingNet: number;
+  /** Net of VAT that did not qualify (sold below a base price): earns nothing. */
+  belowBaseNet: number;
+  commission: number;
+  band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
+  orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number }[];
+}
+
+/**
+ * Commission for each freelance sales person for one week (Monday to Sunday), on money RECEIVED that week on the orders credited to them,
+ * net of VAT, and only the share of each order that was sold at or above base prices. Bands are marginal, on the week's total.
+ */
+export async function buildFreelanceStatements(weekStartDate: string, only?: number): Promise<{ config: CommissionConfig; statements: FreelanceStatement[] }> {
+  const start = weekStartDate;
+  const end = weekEnd(weekStartDate);
+  const config = await getCommissionConfig();
+  const [payments, notes] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: start, lte: end }, order: { freelanceAgentId: { not: null } } }, select: { orderId: true, amount: true } }),
+    prisma.adjustmentNote.findMany({ where: { type: 'Credit', date: { gte: start, lte: end }, orderId: { not: null } }, select: { orderId: true, creditAmt: true } }),
+  ]);
+  const flows = new Map<number, { received: number; refunded: number }>();
+  const flow = (id: number) => {
+    let f = flows.get(id);
+    if (!f) flows.set(id, (f = { received: 0, refunded: 0 }));
+    return f;
+  };
+  for (const p of payments) flow(p.orderId).received += p.amount;
+  for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
+  const orders = flows.size ? await prisma.order.findMany({ where: { id: { in: [...flows.keys()] }, freelanceAgentId: only ?? { not: null } }, include: orderInc }) : [];
+
+  const people = new Map<number, FreelanceStatement>();
+  for (const o of orders) {
+    const id = o.freelanceAgentId!;
+    let st = people.get(id);
+    if (!st) {
+      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, belowBaseNet: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      people.set(id, st);
+    }
+    const f = flows.get(o.id)!;
+    const net = f.received - f.refunded;
+    const share = o.freelanceQualifyingShare;
+    const qual = (net * share) / (1 + VAT_RATE);
+    st.received = round2(st.received + net);
+    st.qualifyingNet = round2(st.qualifyingNet + qual);
+    st.belowBaseNet = round2(st.belowBaseNet + (net * (1 - share)) / (1 + VAT_RATE));
+    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net), qualifyingPct: Math.round(share * 1000) / 10, qualifyingNet: round2(qual) });
+  }
+  for (const st of people.values()) {
+    const basis = Math.max(0, st.qualifyingNet);
+    st.commission = bandedAmount(config.freelanceBands, basis);
+    st.band = bandPosition(config.freelanceBands, basis);
+  }
+  const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });
+  const byId = new Map(agents.map((a) => [a.id, a]));
+  const statements = [...people.values()]
+    .map((s) => {
+      const a = byId.get(s.agentId);
+      return { ...s, agentName: a?.name ?? `Agent #${s.agentId}`, status: a?.status ?? '', phone: a?.phone ?? '', mpesaNumber: a?.mpesaNumber || a?.phone || '' };
+    })
+    .sort((a, b) => b.commission - a.commission || a.agentName.localeCompare(b.agentName));
   return { config, statements };
 }

@@ -542,8 +542,14 @@ model Order {
   // Sales commission. A client sourced by a staff member is credited to them for 12 months (see ClientOwner), so every order from
   // that client carries the owner's id here — whoever captured it. 'sourced' = credited to sourcedByStaffId, 'house' = nobody.
   // Nobody shares a client or an order. (A plain id rather than a relation: it is a credit, not a link that must always resolve.)
-  salesSource       String   @default("house")
+  salesSource       String   @default("house") // 'sourced' | 'house' | 'freelance'
   sourcedByStaffId  Int?
+  // An order is credited to a staff member (sourcedByStaffId) OR a freelance sales person (freelanceAgentId), never both — enforced when the
+  // order is captured (see resolveSourcing in commission.ts). Marked for a freelance account, it can be neither owned by nor credited to staff.
+  freelanceAgentId  Int?
+  freelanceAgent    FreelanceAgent? @relation(fields: [freelanceAgentId], references: [id])
+  // The share (0..1) of the order's value that was sold at or above base prices when it was captured — only that share earns the freelancer commission.
+  freelanceQualifyingShare Float @default(1)
   clientKey         String? // how this client is recognised across orders — see clientKeyFor in shared/commission.ts
 
   lineItems         OrderLineItem[]
@@ -980,12 +986,57 @@ model CommissionSettings {
   // Artwork — % of the amount charged above the system-recommended price
   artworkRatePct   Float    @default(50)
   ownershipMonths  Int      @default(12)
+  // Freelance sales persons — marginal bands on the weekly net sales received on orders credited to them, at or above base prices.
+  freelanceBandsJson String @default("[{\"from\":0,\"rate\":3},{\"from\":50000,\"rate\":5},{\"from\":150000,\"rate\":7}]")
   // The sales target: a person must sell this many times their basic monthly salary (net of VAT, money received) in a month before any commission
   // is earned. 0 = no target. 'above' = the bands start at the target; 'all' = once met, the bands apply to all sales (see shared/commission.ts).
   targetMultiplier Float    @default(3)
   targetMode       String   @default("above")
   updatedByName    String   @default("")
   updatedAt        DateTime @updatedAt
+}
+
+// People outside the staff who bring us work. Created at order capture (Pending until a manager approves them; payouts go only to Active ones) or
+// by a manager under Commission → Freelancers. They have an account: weekly commission earned on the sales they bring, and what has been paid.
+model FreelanceAgent {
+  id            Int      @id @default(autoincrement())
+  name          String
+  phone         String   @unique // 2547XXXXXXXX — one account per phone number
+  email         String   @default("")
+  nationalId    String   @default("")
+  kraPin        String   @default("")
+  mpesaNumber   String   @default("") // where the weekly pay is sent (defaults to the phone)
+  bankName      String   @default("")
+  bankAccount   String   @default("")
+  status        String   @default("Pending") // Pending | Active | Suspended
+  note          String   @default("")
+  createdByName String   @default("")
+  createdAt     DateTime @default(now())
+  approvedByName String  @default("")
+  approvedAt    DateTime?
+  orders        Order[]
+  payouts       FreelancePayout[]
+}
+
+// A week's commission for one freelance sales person (the week starts on the Monday in weekStart): approved by a manager, then paid. Paying
+// records an expense under 'Freelance Commission' so it reaches the books.
+model FreelancePayout {
+  id             Int      @id @default(autoincrement())
+  weekStart      String // 'YYYY-MM-DD' — the Monday of the week the money was received
+  agentId        Int
+  agent          FreelanceAgent @relation(fields: [agentId], references: [id])
+  qualifyingNet  Float    @default(0) // net sales received at or above base prices — what the bands applied to
+  amount         Float
+  detailJson     String   @default("{}")
+  status         String   @default("Approved") // Approved | Paid
+  approvedByName String   @default("")
+  approvedAt     DateTime @default(now())
+  paidOn         String?
+  paidMethod     String?
+  paidByName     String?
+  expenseId      Int?
+
+  @@unique([weekStart, agentId])
 }
 
 // A month's commission for one staff member, approved by a manager and later paid. Approving freezes the figures; paying records the

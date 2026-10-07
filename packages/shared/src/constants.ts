@@ -107,6 +107,8 @@ export const EXPENSE_CATEGORIES = [
   'Outsourced Services',
   // Staff sales commission paid out from Sales Commission → Payouts.
   'Sales Commission',
+  // Weekly pay to freelance sales persons who bring us work, from Commission → Freelancers.
+  'Freelance Commission',
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];

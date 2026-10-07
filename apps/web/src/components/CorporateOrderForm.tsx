@@ -26,6 +26,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
   const [corporateClientId, setCorporateClientId] = useState<number | null>(null);
   const [staffId, setStaffId] = useState<number | null>(user?.id ?? null);
   const [sourced, setSourced] = useState(false);
+  const [freelanceId, setFreelanceId] = useState<number | null>(null);
   const [lineItems, setLineItems] = useState<DraftLineItem[] | null>(null);
   const [orderDiscountPct, setOrderDiscountPct] = useState('0');
   const [orderDiscountAmt, setOrderDiscountAmt] = useState('0');
@@ -65,12 +66,14 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
         corporateClientId: effectiveClientId,
         staffId,
         sourcedBy: sourced ? staffId : null,
+        freelanceAgentId: freelanceId,
         lineItems: normalized,
         orderDiscountPct: Number(orderDiscountPct) || 0,
         orderDiscountAmt: Number(orderDiscountAmt) || 0,
       });
       setLineItems(null);
       setSourced(false);
+      setFreelanceId(null);
       setShowOrderDiscount(false);
       setOrderDiscountPct('0');
       setOrderDiscountAmt('0');
@@ -123,7 +126,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
       </div>
 
       <div style={{ marginTop: 'var(--space-3)' }}>
-        <SourcingField corporateClientId={effectiveClientId} staffName={staff.find((s) => s.id === staffId)?.name ?? user?.name ?? ''} checked={sourced} onChange={setSourced} />
+        <SourcingField corporateClientId={effectiveClientId} staffName={staff.find((s) => s.id === staffId)?.name ?? user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} />
       </div>
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />

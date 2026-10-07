@@ -129,7 +129,9 @@ export interface OrderDetail extends OrderSummary {
   canTakePayment?: boolean;
   paymentTiming: PaymentTiming | null;
   // Sales commission: who the order is credited to (a staff member's own client), or the house
-  salesSource?: 'sourced' | 'house';
+  salesSource?: 'sourced' | 'house' | 'freelance';
+  /** The freelance sales person it is credited to (then no staff member is). */
+  freelanceAgentName?: string | null;
   sourcedByStaffId?: number | null;
   sourcedByName?: string | null;
   orderDiscountPct: number;

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Permissions, Role } from '@glm/shared';
 import { api, clearToken, getToken, setToken } from '../api/client';
 import { resetFeatures } from '../hooks/useFeatures';
+import { resetCatalogCache } from '../hooks/useCatalog';
 
 export interface CurrentUser {
   id: number;
@@ -106,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     clearToken();
     resetFeatures();
+    resetCatalogCache();
     localStorage.removeItem(USER_KEY);
     setUser(null);
   }, []);

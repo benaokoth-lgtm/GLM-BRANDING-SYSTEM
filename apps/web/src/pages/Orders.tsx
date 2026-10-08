@@ -15,6 +15,7 @@ export default function Orders() {
   const viewAll = user?.role === 'Admin' || !!user?.permissions.canViewAllOrders;
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [staffFilter, setStaffFilter] = useState('all');
   // One category row: All orders, then each line of business (DTF Printing, UV Printing, Embroidery, Large Format Printing, General Order). Every
   // order is counted once, under the head that carries most of its value, so the heads add up to All orders. DTF Printing opens into its film
@@ -42,7 +43,11 @@ export default function Orders() {
     if (viewAll && staffFilter !== 'all') params.set('staffId', staffFilter);
     api
       .get<OrderSummary[]>(`/orders?${params.toString()}`)
-      .then(setOrders)
+      .then((r) => {
+        setOrders(r);
+        setLoadError(null);
+      })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : 'Could not load the orders'))
       .finally(() => setLoading(false));
   }
 
@@ -365,7 +370,16 @@ export default function Orders() {
           })}
         </tbody>
       </table>
-      {!loading && found.length === 0 && (
+      {loading && orders.length === 0 && <p className="note">Loading orders…</p>}
+      {loadError && (
+        <p className="note" style={{ color: 'var(--color-error)' }}>
+          The orders could not be loaded ({loadError}).{' '}
+          <button type="button" className="btn btn-secondary btn-sm" onClick={load}>
+            Try again
+          </button>
+        </p>
+      )}
+      {!loading && !loadError && found.length === 0 && (
         <p className="note">{searching ? 'No orders match that search.' : `No ${kind === 'all' ? 'orders' : kind === 'Invoice' ? 'invoices' : 'quotations'} here yet.`}</p>
       )}
       {found.length > 0 && (

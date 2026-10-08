@@ -50,6 +50,18 @@ app.use((req, res, next) => {
   next();
 });
 
+// Slow requests (over a second) are logged with how long they took, so "it takes long to load" can be traced to the exact screen's request:
+// on the VPS, journalctl -u glm-pos-api | grep "\[slow\]". Only the path is logged, never the query string or body.
+const SLOW_MS = Number(process.env.SLOW_REQUEST_MS) || 1000;
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - started;
+    if (ms >= SLOW_MS && process.env.NODE_ENV !== 'test') console.warn(`[slow] ${req.method} ${req.originalUrl.split('?')[0]} ${ms}ms (${res.statusCode})`);
+  });
+  next();
+});
+
 // Who did what: every change, refused request and sensitive read is written to the audit log.
 app.use(auditMiddleware);
 

@@ -527,20 +527,21 @@ financeRouter.patch('/expenses/:id/business-head', async (req, res) => {
 
 // Move an already-posted expense to the right expense head (and so the right account). The amount, date and how it was paid do not change, so this
 // needs no amendment request; the ledger is derived, so the books and P&L follow at once (and the VAT treatment follows the new head). Expenses the
-// system itself ties to something — a stock purchase, an outsourced job's bill, freelance commission with tax withheld — are refused, because their
-// category is what links them. The previous head is added to the request so the audit trail (Master Data → Security) shows "from → to".
+// system itself ties to something — a stock purchase, freelance commission with tax withheld — are refused, because their category is what links them.
+// A supplier bill recorded against an outsourced job can be moved only with detachFromJob: it stops being that job's cost (the job's margin is worked out
+// without it), which is what is wanted when something that is not a contracted-out job — legal fees, say — was captured there by mistake. The previous head is added to the request so the audit trail (Master Data → Security) shows "from → to".
 financeRouter.patch('/expenses/:id/category', async (req, res) => {
-  const parsed = z.object({ category: z.string().min(1).max(100) }).safeParse(req.body);
+  const parsed = z.object({ category: z.string().min(1).max(100), detachFromJob: z.boolean().optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Choose an expense head' });
   if (!(await expenseHeadNames()).includes(parsed.data.category)) return res.status(400).json({ error: 'Choose one of the expense heads (add new ones under Accounting → Chart of Accounts)' });
-  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) }, include: { purchase: { select: { id: true } } } });
+  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) }, include: { purchase: { select: { id: true } }, order: { select: { orderNo: true } } } });
   if (!expense) return res.status(404).json({ error: 'Expense not found' });
   if (expense.category === parsed.data.category) return res.json(expense);
   if (expense.purchase) return res.status(400).json({ error: 'This expense is linked to a stock purchase, so its head cannot be changed here' });
-  if (expense.orderId != null) return res.status(400).json({ error: "This is an outsourced job's supplier bill, so its head cannot be changed here" });
+  if (expense.orderId != null && !parsed.data.detachFromJob) return res.status(400).json({ error: `This is recorded as the supplier bill for order ${expense.order?.orderNo ?? expense.orderId}. Moving it takes it off that job.` });
   if (expense.withholdingTax > 0) return res.status(400).json({ error: 'This is freelance commission with tax withheld, so its head cannot be changed here' });
   (req.body as Record<string, unknown>).was = expense.category;
-  const updated = await prisma.expense.update({ where: { id: expense.id }, data: { category: parsed.data.category } });
+  const updated = await prisma.expense.update({ where: { id: expense.id }, data: { category: parsed.data.category, ...(expense.orderId != null ? { orderId: null } : {}) } });
   res.json(updated);
 });
 

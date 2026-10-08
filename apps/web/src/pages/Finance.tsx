@@ -278,12 +278,15 @@ export default function Finance() {
   }
 
   // Move a posted expense to the right account category. Amount and date stay as they were, so no amendment request is needed; the books follow at once.
-  async function reassignExpense(expenseId: number, from: string, to: string) {
+  async function reassignExpense(expenseId: number, from: string, to: string, onJob = false) {
     if (to === from) return;
-    if (!window.confirm(`Move this expense from "${from}" to "${to}"? The amount and date stay the same; the accounts and reports are updated.`)) return;
+    const question = onJob
+      ? `This is recorded as the supplier bill for an outsourced job. Move it from "${from}" to "${to}" and take it off that job? The job's cost and margin are worked out without it. The amount and date stay the same; the accounts and reports are updated.`
+      : `Move this expense from "${from}" to "${to}"? The amount and date stay the same; the accounts and reports are updated.`;
+    if (!window.confirm(question)) return;
     setError(null);
     try {
-      await api.patch(`/finance/expenses/${expenseId}/category`, { category: to });
+      await api.patch(`/finance/expenses/${expenseId}/category`, { category: to, detachFromJob: onJob || undefined });
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to move the expense');
@@ -556,7 +559,7 @@ export default function Finance() {
                     <tr>
                       <td className="text-muted">{fmtDate(e.date)}</td>
                       <td>
-                        <select className="input" style={{ width: 170 }} title="Move this expense to the right account category" value={e.category} onChange={(ev) => reassignExpense(e.id, e.category, ev.target.value)} disabled={busy}>
+                        <select className="input" style={{ width: 170 }} title="Move this expense to the right account category" value={e.category} onChange={(ev) => reassignExpense(e.id, e.category, ev.target.value, e.orderId != null)} disabled={busy}>
                           {Array.from(new Set([e.category, ...(expenses.expenseCategories ?? EXPENSE_CATEGORIES)])).map((cat) => (
                             <option key={cat} value={cat}>
                               {cat}

@@ -63,6 +63,23 @@ describe('reassigning an expense after posting', () => {
     assert.ok(audit?.detail.includes(a), 'the audit entry names the previous head');
   });
 
+  it('moves a supplier bill off an outsourced job only when told to, so wrongly captured costs can be corrected', async () => {
+    const heads: string[] = (await call('fin', 'GET', `/finance/expenses?from=${today}&to=${today}`)).body.expenseCategories;
+    const legal = heads.find((h) => h !== 'Outsourced Services')!;
+    const f = await prisma.user.findFirstOrThrow({ where: { name: 'fin (reassign test)' } });
+    const order = await prisma.order.create({ data: { orderNo: 'REASSIGN-1', kind: 'walkin', staffId: f.id, createdDate: today, status: 'Order', stage: 'Design' } });
+    const bill = await prisma.expense.create({ data: { date: today, category: 'Outsourced Services', amount: 1000, orderId: order.id, supplier: 'Law firm', method: 'Bank Transfer' } });
+    const url = `/finance/expenses/${bill.id}/category`;
+    const refused = await call('fin', 'PATCH', url, { category: legal });
+    assert.equal(refused.status, 400);
+    assert.match(refused.body.error, /REASSIGN-1/);
+    assert.equal((await prisma.expense.findUniqueOrThrow({ where: { id: bill.id } })).category, 'Outsourced Services');
+    assert.equal((await call('fin', 'PATCH', url, { category: legal, detachFromJob: true })).status, 200);
+    const after = await prisma.expense.findUniqueOrThrow({ where: { id: bill.id } });
+    assert.equal(after.category, legal);
+    assert.equal(after.orderId, null);
+  });
+
   it('refuses expenses the system ties to something', async () => {
     const heads: string[] = (await call('fin', 'GET', `/finance/expenses?from=${today}&to=${today}`)).body.expenseCategories;
     const target = heads[1]!;

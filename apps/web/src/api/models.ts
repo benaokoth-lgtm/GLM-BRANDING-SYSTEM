@@ -151,6 +151,7 @@ export interface ExpenseRow {
   invoiceNumber: string | null;
   capturedByName: string;
   businessHeadId?: number | null;
+  orderId?: number | null; // set when this is the supplier bill for an outsourced job
   method: string; // 'Petty Cash' | 'Cash' | 'M-Pesa' | 'Bank Transfer' | 'Card'
   paid: boolean; // false = bought on credit (sits in Accounts Payable)
   supplier: string;

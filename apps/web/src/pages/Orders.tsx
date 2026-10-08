@@ -28,6 +28,13 @@ export default function Orders() {
   const [kind, setKind] = useSubTab<'all' | 'Invoice' | 'Quote'>('all');
   // An invoice stays an invoice once it is paid in full: it is tracked through production to completion.
   const [invoiceView, setInvoiceView] = useSubTab<'all' | 'open' | 'done'>('all');
+  // Finding an order: by its number (any part of it, with or without the dash: "1020", "w-1020"), and/or by the day it was raised. One date is that
+  // day; with a second date it is the range from one to the other. The list is shown 10 orders to a page.
+  const PAGE_SIZE = 10;
+  const [orderQ, setOrderQ] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [page, setPage] = useState(1);
 
   function load() {
     setLoading(true);
@@ -62,6 +69,25 @@ export default function Orders() {
   const invoiceOpen = invoices.filter((o) => o.stage !== 'Completed').length;
   const shown = ofHead.filter((o) => (kind === 'all' || o.status === kind) && (kind !== 'Invoice' || invoiceView === 'all' || (invoiceView === 'open' ? o.stage !== 'Completed' : o.stage === 'Completed')));
   const showDue = kind === 'Invoice';
+
+  const squash = (v: string) => v.toLowerCase().replace(/[\s-]+/g, '');
+  const q = squash(orderQ);
+  const from = dateFrom && dateTo && dateFrom > dateTo ? dateTo : dateFrom;
+  const to = dateFrom && dateTo && dateFrom > dateTo ? dateFrom : dateTo;
+  const searching = !!q || !!dateFrom || !!dateTo;
+  const found = shown.filter((o) => {
+    if (q && !squash(o.orderNo).includes(q)) return false;
+    if (from && !to) return o.createdDate === from; // one date: that day
+    if (from && o.createdDate < from) return false;
+    if (to && o.createdDate > to) return false;
+    return true;
+  });
+  const when = from && to ? (from === to ? ` on ${fmtDate(from)}` : ` between ${fmtDate(from)} and ${fmtDate(to)}`) : from ? ` on ${fmtDate(from)}` : to ? ` up to ${fmtDate(to)}` : '';
+  const pageCount = Math.max(1, Math.ceil(found.length / PAGE_SIZE));
+  const thisPage = Math.min(page, pageCount);
+  const pageRows = found.slice((thisPage - 1) * PAGE_SIZE, thisPage * PAGE_SIZE);
+  // back to the first page whenever what is being looked at changes
+  useEffect(() => setPage(1), [orderQ, dateFrom, dateTo, category, dtfPart, kind, invoiceView, staffFilter]);
 
   // The summary figures, each with the orders behind it (click one to open them). A quotation is an offer, not an order in hand or money owed,
   // so it is left out of "in production" and "pending balance".
@@ -269,7 +295,32 @@ export default function Orders() {
         </>
       )}
 
-      <table className="table" style={{ marginTop: 'var(--space-4)' }}>
+      <div style={{ display: 'flex', gap: 'var(--space-3)', marginTop: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <div className="field" style={{ margin: 0 }}>
+          <label htmlFor="ord-q">Order number</label>
+          <input id="ord-q" className="input" style={{ width: 190 }} value={orderQ} onChange={(e) => setOrderQ(e.target.value)} placeholder="e.g. W-1020 or 1020" autoComplete="off" />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label htmlFor="ord-from">Date</label>
+          <input id="ord-from" className="input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label htmlFor="ord-to">to (optional)</label>
+          <input id="ord-to" className="input" type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} />
+        </div>
+        {searching && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setOrderQ(''); setDateFrom(''); setDateTo(''); }}>
+            Clear search
+          </button>
+        )}
+        <span className="note" style={{ margin: 0 }}>
+          {searching
+            ? `${found.length} found${when}`
+            : 'Search by order number, by date, or both. One date is that day; add a second date for a range.'}
+        </span>
+      </div>
+
+      <table className="table" style={{ marginTop: 'var(--space-3)' }}>
         <thead>
           <tr>
             <th>Order</th>
@@ -286,7 +337,7 @@ export default function Orders() {
           </tr>
         </thead>
         <tbody>
-          {shown.map((row) => {
+          {pageRows.map((row) => {
             const overdueTag = row.overdue ? 'Overdue' : row.totals.balanceDue > 0 ? 'Pending' : 'Settled';
             const overdueClass = row.overdue ? 'tag tag-accent' : row.totals.balanceDue > 0 ? 'tag tag-outline' : 'tag tag-neutral';
             return (
@@ -314,8 +365,34 @@ export default function Orders() {
           })}
         </tbody>
       </table>
-      {!loading && shown.length === 0 && (
-        <p className="note">No {kind === 'all' ? 'orders' : kind === 'Invoice' ? 'invoices' : 'quotations'} here yet.</p>
+      {!loading && found.length === 0 && (
+        <p className="note">{searching ? 'No orders match that search.' : `No ${kind === 'all' ? 'orders' : kind === 'Invoice' ? 'invoices' : 'quotations'} here yet.`}</p>
+      )}
+      {found.length > 0 && (
+        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 'var(--space-3)' }}>
+          <span className="note" style={{ margin: 0 }}>
+            Showing {(thisPage - 1) * PAGE_SIZE + 1}–{Math.min(thisPage * PAGE_SIZE, found.length)} of {found.length}
+          </span>
+          {pageCount > 1 && (
+            <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(1)} disabled={thisPage === 1} aria-label="First page">
+                «
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(thisPage - 1)} disabled={thisPage === 1}>
+                ‹ Previous
+              </button>
+              <span style={{ minWidth: 96, textAlign: 'center' }}>
+                Page {thisPage} of {pageCount}
+              </span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(thisPage + 1)} disabled={thisPage === pageCount}>
+                Next ›
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPage(pageCount)} disabled={thisPage === pageCount} aria-label="Last page">
+                »
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {detailId && (

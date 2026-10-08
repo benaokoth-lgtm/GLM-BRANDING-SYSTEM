@@ -118,6 +118,10 @@ export default function MasterData() {
   const [newServiceUnit, setNewServiceUnit] = useState<'piece' | 'metre' | 'sqm'>('piece');
   const [newServicePrice, setNewServicePrice] = useState('');
   const [svcEdit, setSvcEdit] = useState<Record<number, { item: string; description: string; size: string; unit: 'piece' | 'metre' | 'sqm'; price: string }>>({});
+  // "Edit prices": every unit and price in the service price list opens for editing at once, and one Save applies what was changed.
+  const [bulkPrices, setBulkPrices] = useState<Record<number, { unit: 'piece' | 'metre' | 'sqm'; price: string }> | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [priceNotice, setPriceNotice] = useState<string | null>(null);
 
   // The stock price list: a new item with its sizes (each size its own price), and a line being edited in place.
   const [newMaterial, setNewMaterial] = useState({ item: '', description: '', unit: 'piece', businessHeadId: '' });
@@ -418,6 +422,32 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update service');
+    }
+  }
+
+  function startBulkPrices() {
+    setSvcEdit({});
+    setBulkPrices(Object.fromEntries(serviceRows.map((sv) => [sv.id, { unit: sv.unit, price: String(sv.price) }])));
+  }
+
+  const bulkChanges = bulkPrices ? serviceRows.filter((sv) => bulkPrices[sv.id] && (bulkPrices[sv.id]!.unit !== sv.unit || Number(bulkPrices[sv.id]!.price) !== sv.price)) : [];
+
+  async function saveBulkPrices() {
+    if (!bulkPrices) return;
+    const bad = bulkChanges.find((sv) => !(Number(bulkPrices[sv.id]!.price) > 0));
+    if (bad) return setError(`The price of ${bad.item || bad.name} must be greater than 0`);
+    setError(null);
+    setBulkBusy(true);
+    try {
+      for (const sv of bulkChanges) await api.put(`/master-data/services/${sv.id}`, { unit: bulkPrices[sv.id]!.unit, price: Number(bulkPrices[sv.id]!.price) });
+      setPriceNotice(`${bulkChanges.length} price${bulkChanges.length === 1 ? '' : 's'} saved`);
+      setBulkPrices(null);
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save the prices');
+      catalog.reload();
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -887,6 +917,26 @@ export default function MasterData() {
       {tab === 'services' && (
         <>
           <PriceListExcel kind="services" onApplied={catalog.reload} />
+          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', margin: 'var(--space-3) 0' }}>
+            {!bulkPrices ? (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setPriceNotice(null); startBulkPrices(); }}>
+                Edit prices &amp; units
+              </button>
+            ) : (
+              <>
+                <button type="button" className="btn btn-primary btn-sm" onClick={saveBulkPrices} disabled={bulkBusy || bulkChanges.length === 0}>
+                  {bulkBusy ? 'Saving…' : `Save ${bulkChanges.length} change${bulkChanges.length === 1 ? '' : 's'}`}
+                </button>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setBulkPrices(null)} disabled={bulkBusy}>
+                  Cancel
+                </button>
+              </>
+            )}
+            {priceNotice && <span className="tag tag-accent">{priceNotice}</span>}
+            <span className="note" style={{ margin: 0 }}>
+              {bulkPrices ? 'Change any price or unit below, then save them all together. Changed lines are outlined.' : 'Change many prices at once, or use Edit at the end of a line to change one line (name, description, size, unit and price).'}
+            </span>
+          </div>
           <table className="table">
             <thead>
               <tr>
@@ -899,6 +949,7 @@ export default function MasterData() {
                 <th>Artwork pricing</th>
                 <th>Charges pressing fee</th>
                 <th>Contracted out</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -907,23 +958,10 @@ export default function MasterData() {
                 <tr>
                   <td>
                     {svcEdit[sv.id] ? (
-                      <>
-                        <input className="input" style={{ width: 160 }} value={svcEdit[sv.id]!.item} title="Renames every size of this service" onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, item: e.target.value } }))} />
-                        <div style={{ display: 'flex', gap: 'var(--space-1)', marginTop: 'var(--space-1)' }}>
-                          <button type="button" className="btn btn-primary btn-sm" onClick={() => saveServiceEdit(sv.id)}>
-                            Save
-                          </button>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSvcEdit((x) => { const { [sv.id]: _d, ...rest } = x; return rest; })}>
-                            Cancel
-                          </button>
-                        </div>
-                      </>
+                      <input className="input" style={{ width: 160 }} value={svcEdit[sv.id]!.item} title="Renames every size of this service" onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, item: e.target.value } }))} />
                     ) : (
                       <>
                         {sv.item || sv.name}{' '}
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSvcEdit((x) => ({ ...x, [sv.id]: { item: sv.item || sv.name, description: sv.description ?? '', size: sv.size ?? '', unit: sv.unit, price: String(sv.price) } }))}>
-                          Edit
-                        </button>{' '}
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
@@ -969,6 +1007,12 @@ export default function MasterData() {
                         <option value="metre">metre</option>
                         <option value="sqm">sqm</option>
                       </select>
+                    ) : bulkPrices?.[sv.id] ? (
+                      <select className="input" style={{ width: 90, ...(bulkPrices[sv.id]!.unit !== sv.unit ? { borderColor: 'var(--color-accent)', borderWidth: 2 } : {}) }} value={bulkPrices[sv.id]!.unit} onChange={(e) => setBulkPrices((x) => ({ ...x!, [sv.id]: { ...x![sv.id]!, unit: e.target.value as 'piece' | 'metre' | 'sqm' } }))}>
+                        <option value="piece">piece</option>
+                        <option value="metre">metre</option>
+                        <option value="sqm">sqm</option>
+                      </select>
                     ) : (
                       sv.unit
                     )}
@@ -976,6 +1020,8 @@ export default function MasterData() {
                   <td>
                     {svcEdit[sv.id] ? (
                       <input className="input" style={{ width: 100 }} inputMode="decimal" value={svcEdit[sv.id]!.price} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, price: e.target.value } }))} />
+                    ) : bulkPrices?.[sv.id] ? (
+                      <input className="input" style={{ width: 100, ...(Number(bulkPrices[sv.id]!.price) !== sv.price ? { borderColor: 'var(--color-accent)', borderWidth: 2 } : {}) }} inputMode="decimal" value={bulkPrices[sv.id]!.price} onChange={(e) => setBulkPrices((x) => ({ ...x!, [sv.id]: { ...x![sv.id]!, price: e.target.value } }))} aria-label={`Price of ${sv.item || sv.name}`} />
                     ) : (
                       <>
                         {fmtKsh(sv.price)}
@@ -1004,10 +1050,26 @@ export default function MasterData() {
                       {sv.outsourced && <span className="tag tag-accent">Outsourced</span>}
                     </label>
                   </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {svcEdit[sv.id] ? (
+                      <>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => saveServiceEdit(sv.id)}>
+                          Save
+                        </button>{' '}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSvcEdit((x) => { const { [sv.id]: _d, ...rest } = x; return rest; })}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={!!bulkPrices} title="Change this line's name, description, size, unit and price" onClick={() => setSvcEdit((x) => ({ ...x, [sv.id]: { item: sv.item || sv.name, description: sv.description ?? '', size: sv.size ?? '', unit: sv.unit, price: String(sv.price) } }))}>
+                        Edit
+                      </button>
+                    )}
+                  </td>
                 </tr>
                 {sv.outsourced && (
                   <tr>
-                    <td colSpan={9} style={{ background: 'var(--color-surface)' }}>
+                    <td colSpan={10} style={{ background: 'var(--color-surface)' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr auto', gap: 'var(--space-3)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                         <div className="field" style={{ margin: 0 }}>
                           <label>Supplier</label>

@@ -7,6 +7,7 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
 import { claimProblem, resolveSourcing } from '../commission';
+import { resolveCapture } from '../frontOffice';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { paymentLineSchema, recordOrderPayments, PaymentError, orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
 import type { PaymentLine } from './orders';
@@ -79,7 +80,11 @@ async function createDtfOrder(
   opts: {
     customerName: string;
     phone: string;
+    /** The sales person the order is credited to. */
     staffId: number;
+    /** Who keyed it (the cashier): the same person when a sales person captures their own. */
+    capturedById: number;
+    capturedByName: string;
     serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null };
     materialLines: { materialId: number; qty: number; unitPrice?: number }[];
     payments: PaymentLine[];
@@ -130,6 +135,8 @@ async function createDtfOrder(
       customerName: opts.customerName || null,
       phone: opts.phone || null,
       staffId: opts.staffId,
+      capturedById: opts.capturedById,
+      capturedByName: opts.capturedByName,
       ...sourcing,
       createdDate: todayStr(),
       status,
@@ -145,7 +152,7 @@ async function createDtfOrder(
     include: orderInclude,
   });
   if (opts.payments.length) {
-    await recordOrderPayments(tx, { id: order.id, kind: 'walkin', status, corporateClient: null }, opts.payments, opts.staffId);
+    await recordOrderPayments(tx, { id: order.id, kind: 'walkin', status, corporateClient: null }, opts.payments, opts.capturedById); // the money is the cashier's
     return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
   }
 
@@ -309,6 +316,8 @@ const saleSchema = z.object({
   materialLines: z.array(materialLineSchema).default([]),
   sourcedBy: z.number().int().nullable().optional(),
   freelanceAgentId: z.number().int().nullable().optional(),
+  // The sales person the sale is credited to, when the front office captures it for them (see frontOffice.ts).
+  staffId: z.number().int().nullable().optional(),
 });
 
 // "Record sale" — the popup's Print button. Builds the DtfFilmSale (roll
@@ -329,6 +338,8 @@ dtfRouter.post('/sales', async (req, res) => {
   if (!c.valid) {
     return res.status(400).json({ error: `Price cannot be below ${settings.minPricePerM} KES/m` });
   }
+  const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   if (paid > c.total) return res.status(400).json({ error: 'Amount paid cannot exceed the sale total' });
@@ -340,7 +351,9 @@ dtfRouter.post('/sales', async (req, res) => {
       const order = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
-        staffId: req.user!.id,
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
         serviceLine: { itemType: 'per-metre', serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
         payments: paymentLines,
@@ -428,6 +441,8 @@ const jobSchema = z.object({
   pricePerPiece: z.number().positive().nullable().optional(),
   sourcedBy: z.number().int().nullable().optional(),
   freelanceAgentId: z.number().int().nullable().optional(),
+  // The sales person the job is credited to, when the front office captures it for them (see frontOffice.ts).
+  staffId: z.number().int().nullable().optional(),
   amountPaid: z.number().min(0).default(0),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
   payments: z.array(paymentLineSchema).max(6).optional(),
@@ -453,6 +468,8 @@ dtfRouter.post('/jobs', async (req, res) => {
   const needsApproval = chargedPerPiece != null && chargedPerPiece < sys.finalPerPiece - 0.005;
   const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
+  const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
@@ -466,7 +483,9 @@ dtfRouter.post('/jobs', async (req, res) => {
       const order = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
-        staffId: req.user!.id,
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
         serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
         materialLines: d.materialLines,
         payments: paymentLines,

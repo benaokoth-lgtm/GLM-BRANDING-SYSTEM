@@ -23,6 +23,10 @@ interface SourcingFieldProps {
   /** The freelance sales person this order is credited to (instead of a staff member), if any. */
   freelanceId?: number | null;
   onFreelanceChange?: (id: number | null) => void;
+  /** Front office only: the sales persons the order can be given to, and who it is for. The client is credited to that person instead of to whoever is typing. */
+  salesPeople?: { id: number; name: string; orderTakingOff?: boolean }[];
+  salesPersonId?: number | null;
+  onSalesPersonChange?: (id: number | null) => void;
 }
 
 // "Who brought this order?" — on every order. Either a staff member brought the client in through their own network — then the client is credited
@@ -37,7 +41,8 @@ export default function SourcingField(props: SourcingFieldProps) {
   return <SourcingFieldInner {...props} />;
 }
 
-function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked, onChange, freelanceId, onFreelanceChange }: SourcingFieldProps) {
+function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked, onChange, freelanceId, onFreelanceChange, salesPeople, salesPersonId, onSalesPersonChange }: SourcingFieldProps) {
+  const frontOffice = !!salesPeople;
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [viaFreelance, setViaFreelance] = useState((freelanceId ?? null) !== null);
 
@@ -79,6 +84,16 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
   useEffect(() => {
     if (freelanceOwner && checked) onChange(false);
   }, [freelanceOwner, checked, onChange]);
+  // Front office: a client who already belongs to a sales person decides who the order is for; a freelancer's order is for no sales person.
+  useEffect(() => {
+    if (frontOffice && owner && salesPersonId !== owner.staffId) onSalesPersonChange?.(owner.staffId);
+  }, [frontOffice, owner, salesPersonId, onSalesPersonChange]);
+  useEffect(() => {
+    if (frontOffice && viaFreelance && salesPersonId) {
+      onSalesPersonChange?.(null);
+      onChange(false);
+    }
+  }, [frontOffice, viaFreelance, salesPersonId, onSalesPersonChange, onChange]);
 
   // Name and phone are optional on a walk-in sale; they are required here, to credit the client to someone.
   const needsDetails = checked && !corporateClientId && (!(phone ?? '').trim() || !isNamedClient(name));
@@ -131,6 +146,30 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
               </p>
             </>
           ) : (
+            frontOffice ? (
+              <>
+                <select className="input" value={salesPersonId ?? ''} aria-label="Sales person" onChange={(e) => { const id = e.target.value ? Number(e.target.value) : null; onSalesPersonChange?.(id); onChange(!!id); }}>
+                  <option value="">The shop: no sales person (a house sale)</option>
+                  {salesPeople!.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.orderTakingOff ? ' (front office takes their orders)' : ''}
+                    </option>
+                  ))}
+                </select>
+                {salesPersonId ? (
+                  <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', fontWeight: 400, marginTop: 'var(--space-2)' }}>
+                    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ marginTop: 3 }} />
+                    <span>
+                      Credit this client to <b>{salesPeople!.find((p) => p.id === salesPersonId)?.name}</b> for {lookup?.months ?? 12} months — their orders count for that person, whoever captures them
+                    </span>
+                  </label>
+                ) : (
+                  <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Choose the sales person this order is for. It is theirs — film and artwork extras, sales target, and (when ticked) the client.</p>
+                )}
+                {needsDetails && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client and to recognise them on their next order.</p>}
+              </>
+            ) : (
             <>
               <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', fontWeight: 400 }}>
                 <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} style={{ marginTop: 3 }} />
@@ -141,6 +180,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
               {needsDetails && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client to you and to recognise them on their next order.</p>}
               {!checked && <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Leave unticked for walk-ins and clients the shop already had — no name or phone is needed, and a house order earns no sourcing commission.</p>}
             </>
+            )
           )}
         </>
       )}

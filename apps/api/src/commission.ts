@@ -35,6 +35,7 @@ import {
 import type { Band, FreelanceSplit, LineItemInput, SalesTarget, TargetMode } from '@glm/shared';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
+import { canCaptureForOthers } from './frontOffice';
 
 // Staff sales commission — the database side. The rules themselves (bands, premiums, the 12-month window) are in
 // packages/shared/src/commission.ts; this file looks things up, credits orders to staff and builds each month's statement.
@@ -322,7 +323,7 @@ export async function claimProblem(
   }
   if (!o.sourcedBy) return null;
   if (!(await commissionEnabled())) return null; // switched off: a claim is simply ignored
-  if (o.sourcedBy !== user.id && !(await canManageCommission(user.role))) return 'You can only claim a client for yourself';
+  if (o.sourcedBy !== user.id && !(await canManageCommission(user.role)) && !(await canCaptureForOthers(user.role))) return 'You can only claim a client for yourself';
   // Name and phone are optional on a walk-in sale — they become mandatory only here, when a client is being credited to someone.
   if (o.corporateClientId) return null;
   const key = clientKeyFor({ phone: o.phone, name: o.name });

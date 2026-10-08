@@ -65227,7 +65227,11 @@ var PERMISSION_KEYS = [
   "canManageProduction",
   "canAccessQuality",
   "canReceiveStock",
-  "canManageCommission"
+  "canManageCommission",
+  "canCaptureForOthers",
+  // Front office: capture General / Film / Artwork orders in a sales person's name, and for freelancers
+  "canBeAssignedOrders"
+  // Sales person: orders can be captured for (and credited to) this role by the front office
 ];
 
 // packages/shared/src/calc.ts
@@ -65279,7 +65283,9 @@ var DEFAULT_ROLE_PERMISSIONS = {
   // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
   // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true },
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
+  // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
+  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -66204,6 +66210,60 @@ async function permissionsForRole(roleName) {
   return Object.fromEntries(PERMISSION_KEYS.map((k) => [k, role[k]]));
 }
 
+// apps/api/src/frontOffice.ts
+async function canCaptureForOthers(role) {
+  return role === "Admin" || (await permissionsForRole(role)).canCaptureForOthers;
+}
+async function resolveCapture(user, requested, sourcedBy) {
+  const mine = { capturedById: user.id, capturedByName: user.name };
+  if (!await canCaptureForOthers(user.role)) {
+    const me = await prisma.user.findUnique({ where: { id: user.id }, select: { orderTakingOff: true } });
+    if (me?.orderTakingOff) return { ok: false, status: 403, error: "Order taking is switched off for you. The front office captures orders for you." };
+    if (requested && requested !== user.id) return { ok: false, status: 403, error: "You can only capture orders in your own name" };
+    return { ok: true, staffId: user.id, ...mine };
+  }
+  let staffId = user.id;
+  if (requested && requested !== user.id) {
+    const target = await prisma.user.findUnique({ where: { id: requested } });
+    if (!target || !target.active) return { ok: false, status: 400, error: "That sales person cannot be found" };
+    if (!(await permissionsForRole(target.role)).canBeAssignedOrders) {
+      return { ok: false, status: 400, error: `${target.name} is not set up to be given orders (tick \u201Ccan be assigned orders\u201D for their role under Master Data \u2192 Roles & Access)` };
+    }
+    staffId = requested;
+  }
+  if (sourcedBy && sourcedBy !== staffId && user.role !== "Admin" && !(await permissionsForRole(user.role)).canManageCommission) {
+    return { ok: false, status: 400, error: "The client can only be credited to the sales person the order is for" };
+  }
+  return { ok: true, staffId, ...mine };
+}
+async function salesPeople() {
+  const roles = await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } });
+  if (roles.length === 0) return [];
+  const users = await prisma.user.findMany({ where: { active: true, role: { in: roles.map((r) => r.name) } }, orderBy: { name: "asc" } });
+  return users.map((u) => ({ id: u.id, name: u.name, role: u.role, orderTakingOff: u.orderTakingOff }));
+}
+async function permissionsForUser(user) {
+  const p = await permissionsForRole(user.role);
+  if (user.orderTakingOff && user.role !== "Admin" && !p.canCaptureForOthers) return { ...p, canCaptureOrders: false, canAccessDtf: false };
+  return p;
+}
+async function ensureFrontOfficeAccess() {
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  if (settings.frontOfficeSeeded) return;
+  if (await prisma.role.count({ where: { canBeAssignedOrders: true } }) === 0) {
+    await prisma.role.updateMany({ where: { canCaptureOrders: true, canCaptureForOthers: false }, data: { canBeAssignedOrders: true } });
+  }
+  if (await prisma.role.count({ where: { canCaptureForOthers: true } }) === 0 && !await prisma.role.findUnique({ where: { name: "Front Office" } })) {
+    await prisma.role.create({ data: { name: "Front Office", ...DEFAULT_ROLE_PERMISSIONS["Front Office"] } });
+  }
+  await prisma.setting.update({ where: { id: 1 }, data: { frontOfficeSeeded: true } });
+}
+var seeding = null;
+function ensureFrontOfficeOnce() {
+  if (!seeding) seeding = ensureFrontOfficeAccess().catch((e) => console.error("Front office set-up failed", e)).finally(() => seeding = null);
+  return seeding;
+}
+
 // apps/api/src/commission.ts
 async function canManageCommission(role) {
   return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
@@ -66346,7 +66406,7 @@ async function claimProblem(user, o) {
   }
   if (!o.sourcedBy) return null;
   if (!await commissionEnabled()) return null;
-  if (o.sourcedBy !== user.id && !await canManageCommission(user.role)) return "You can only claim a client for yourself";
+  if (o.sourcedBy !== user.id && !await canManageCommission(user.role) && !await canCaptureForOthers(user.role)) return "You can only claim a client for yourself";
   if (o.corporateClientId) return null;
   const key2 = clientKeyFor({ phone: o.phone, name: o.name });
   if (!key2 || !key2.startsWith("p:") || !isNamedClient(o.name)) return "Enter the client's name and phone number so they can be credited to you and recognised on their next order";
@@ -66617,7 +66677,7 @@ async function completeLogin(req, res, user) {
   }
   const authedUser = { id: user.id, name: user.name, role: user.role };
   const token = signToken({ ...authedUser, tv: user.tokenVersion });
-  const permissions = await permissionsForRole(user.role);
+  const permissions = await permissionsForUser(user);
   await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: "AUTH", action: "LOGIN OK", ip: ipOf(req) });
   res.json({ token, user: { ...authedUser, permissions, mustChangePin, pinLength: user.pinLength, pinNeeds: need } });
 }
@@ -71007,7 +71067,7 @@ If you were not expecting this message, tell your manager.`
 masterDataRouter.get("/staff-details", requireRole("Admin"), async (_req, res) => {
   await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin, active: u.active })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin, active: u.active, orderTakingOff: u.orderTakingOff })));
 });
 masterDataRouter.put("/staff/:id/active", requireRole("Admin"), async (req, res) => {
   const parsed = external_exports.object({ active: external_exports.boolean() }).safeParse(req.body);
@@ -71023,6 +71083,29 @@ masterDataRouter.put("/staff/:id/active", requireRole("Admin"), async (req, res)
   }
   await prisma.user.update({ where: { id }, data: { active: parsed.data.active, failedLoginCount: 0, lockedUntil: null, ...parsed.data.active ? {} : { tokenVersion: { increment: 1 } } } });
   res.json({ id, active: parsed.data.active });
+});
+masterDataRouter.get("/sales-people", async (req, res) => {
+  if (!await canCaptureForOthers(req.user.role)) return res.status(403).json({ error: "Not permitted for your role" });
+  res.json(await salesPeople());
+});
+masterDataRouter.put("/staff/:id/order-taking", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ on: external_exports.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: "Staff member not found" });
+  if (await canCaptureForOthers(user.role)) return res.status(400).json({ error: `${user.name} is front office and always takes orders` });
+  if (!(await permissionsForRole(user.role)).canBeAssignedOrders) return res.status(400).json({ error: `${user.name} is not a sales person (their role is not marked "can be assigned orders" under Roles & Access)` });
+  await prisma.user.update({ where: { id }, data: { orderTakingOff: !parsed.data.on, ...id === req.user.id ? {} : { tokenVersion: { increment: 1 } } } });
+  res.json({ id, orderTaking: parsed.data.on });
+});
+masterDataRouter.put("/staff-order-taking", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ on: external_exports.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
+  const people = (await salesPeople()).filter((p) => p.id !== req.user.id);
+  const others = (await Promise.all(people.map(async (p) => await canCaptureForOthers(p.role) ? null : p))).filter((p) => !!p);
+  await prisma.user.updateMany({ where: { id: { in: others.map((p) => p.id) } }, data: { orderTakingOff: !parsed.data.on, tokenVersion: { increment: 1 } } });
+  res.json({ changed: others.length, orderTaking: parsed.data.on });
 });
 masterDataRouter.put("/staff/:id/role", requireRole("Admin"), async (req, res) => {
   const parsed = external_exports.object({ role: external_exports.string().trim().min(1, "Choose a role") }).safeParse(req.body);
@@ -72164,6 +72247,8 @@ function serializeSummary(order) {
     phone: order.phone,
     corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone } : null,
     staff: { id: order.staff.id, name: order.staff.name },
+    // Set when someone other than the sales person keyed the order (the front office capturing on their behalf).
+    capturedByName: order.capturedByName && order.capturedByName !== order.staff.name ? order.capturedByName : null,
     createdDate: order.createdDate,
     status: order.status,
     stage: order.stage,
@@ -72343,7 +72428,8 @@ var walkinSchema = external_exports.object({
   // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
   customerName: external_exports.string().optional(),
   phone: external_exports.string().optional(),
-  staffId: external_exports.number().int(),
+  // The sales person the order is credited to. Left out (or null), it is in the capturing person's own name; only the front office may name someone else.
+  staffId: external_exports.number().int().nullable().optional(),
   paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
   paymentAmount: external_exports.number().min(0).optional(),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
@@ -72361,6 +72447,8 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
   const parsed = walkinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const form = parsed.data;
+  const cap = await resolveCapture(req.user, form.staffId, form.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const costs = await canSeeCosts(req.user.role);
   const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
   const totals = computeOrderTotals(
@@ -72384,7 +72472,9 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
         kind: "walkin",
         customerName: form.customerName?.trim() || WALK_IN_CLIENT,
         phone: form.phone?.trim() || null,
-        staffId: form.staffId,
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
         ...sourcing,
         createdDate: todayStr(),
         status,
@@ -72398,7 +72488,7 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
       include: orderInclude
     });
     if (paymentLines.length) {
-      await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, form.staffId);
+      await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, cap.capturedById);
       return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
     }
     return created;
@@ -75384,6 +75474,8 @@ async function createDtfOrder(tx, opts) {
       customerName: opts.customerName || null,
       phone: opts.phone || null,
       staffId: opts.staffId,
+      capturedById: opts.capturedById,
+      capturedByName: opts.capturedByName,
       ...sourcing,
       createdDate: todayStr(),
       status,
@@ -75399,7 +75491,7 @@ async function createDtfOrder(tx, opts) {
     include: orderInclude
   });
   if (opts.payments.length) {
-    await recordOrderPayments(tx, { id: order.id, kind: "walkin", status, corporateClient: null }, opts.payments, opts.staffId);
+    await recordOrderPayments(tx, { id: order.id, kind: "walkin", status, corporateClient: null }, opts.payments, opts.capturedById);
     return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
   }
   return order;
@@ -75538,7 +75630,9 @@ var saleSchema = external_exports.object({
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
   materialLines: external_exports.array(materialLineSchema).default([]),
   sourcedBy: external_exports.number().int().nullable().optional(),
-  freelanceAgentId: external_exports.number().int().nullable().optional()
+  freelanceAgentId: external_exports.number().int().nullable().optional(),
+  // The sales person the sale is credited to, when the front office captures it for them (see frontOffice.ts).
+  staffId: external_exports.number().int().nullable().optional()
 });
 dtfRouter.post("/sales", async (req, res) => {
   const parsed = saleSchema.safeParse(req.body);
@@ -75552,6 +75646,8 @@ dtfRouter.post("/sales", async (req, res) => {
   if (!c.valid) {
     return res.status(400).json({ error: `Price cannot be below ${settings.minPricePerM} KES/m` });
   }
+  const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   if (paid > c.total) return res.status(400).json({ error: "Amount paid cannot exceed the sale total" });
@@ -75562,7 +75658,9 @@ dtfRouter.post("/sales", async (req, res) => {
       const order2 = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
-        staffId: req.user.id,
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
         serviceLine: { itemType: "per-metre", serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
         payments: paymentLines,
@@ -75632,6 +75730,8 @@ var jobSchema = external_exports.object({
   pricePerPiece: external_exports.number().positive().nullable().optional(),
   sourcedBy: external_exports.number().int().nullable().optional(),
   freelanceAgentId: external_exports.number().int().nullable().optional(),
+  // The sales person the job is credited to, when the front office captures it for them (see frontOffice.ts).
+  staffId: external_exports.number().int().nullable().optional(),
   amountPaid: external_exports.number().min(0).default(0),
   paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
   payments: external_exports.array(paymentLineSchema).max(6).optional(),
@@ -75652,6 +75752,8 @@ dtfRouter.post("/jobs", async (req, res) => {
   const needsApproval = chargedPerPiece != null && chargedPerPiece < sys.finalPerPiece - 5e-3;
   const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
   const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
+  const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
@@ -75664,7 +75766,9 @@ dtfRouter.post("/jobs", async (req, res) => {
       const order2 = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
-        staffId: req.user.id,
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
         serviceLine: { itemType: "service", serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
         materialLines: d.materialLines,
         payments: paymentLines,
@@ -78709,5 +78813,5 @@ app.listen(port, () => {
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

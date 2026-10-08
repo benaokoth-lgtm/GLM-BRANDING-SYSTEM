@@ -81,6 +81,8 @@ export interface OrderSummary {
   phone: string | null;
   corporateClient: { id: number; name: string; email: string; phone: string } | null;
   staff: { id: number; name: string };
+  /** Set when the front office keyed the order for the sales person (staff). */
+  capturedByName?: string | null;
   createdDate: string;
   status: OrderStatus;
   stage: OrderStage;

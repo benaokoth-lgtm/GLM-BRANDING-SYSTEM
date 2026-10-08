@@ -1870,7 +1870,11 @@ var PERMISSION_KEYS = [
   "canManageProduction",
   "canAccessQuality",
   "canReceiveStock",
-  "canManageCommission"
+  "canManageCommission",
+  "canCaptureForOthers",
+  // Front office: capture General / Film / Artwork orders in a sales person's name, and for freelancers
+  "canBeAssignedOrders"
+  // Sales person: orders can be captured for (and credited to) this role by the front office
 ];
 
 // packages/shared/src/constants.ts
@@ -1881,7 +1885,9 @@ var DEFAULT_ROLE_PERMISSIONS = {
   // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
   // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true },
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
+  // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
+  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,

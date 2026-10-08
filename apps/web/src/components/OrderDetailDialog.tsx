@@ -259,7 +259,10 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             </div>
             <div>
               <div className="card-kicker">Staff</div>
-              <div>{detail.staff.name}</div>
+              <div>
+                {detail.staff.name}
+                {detail.capturedByName && <div className="note" style={{ margin: 0 }}>captured by {detail.capturedByName}</div>}
+              </div>
             </div>
             <div>
               <div className="card-kicker">Created</div>

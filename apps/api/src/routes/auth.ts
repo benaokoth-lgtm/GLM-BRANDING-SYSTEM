@@ -8,7 +8,7 @@ import { requireAuth, signChallenge, signToken, verifyChallenge } from '../middl
 import { ipOf, writeAudit } from '../audit';
 import { PIN_ROUNDS, clearPinFailures, minutesLeft, pinProblemFor, registerFailedPin, requiredLengthFor } from '../pins';
 import type { User } from '@prisma/client';
-import { permissionsForRole } from '../permissions';
+import { permissionsForUser } from '../frontOffice';
 import { commissionEnabled } from '../commission';
 import { systemName } from '../company';
 
@@ -61,7 +61,7 @@ async function completeLogin(req: import('express').Request, res: import('expres
   }
   const authedUser = { id: user.id, name: user.name, role: user.role };
   const token = signToken({ ...authedUser, tv: user.tokenVersion });
-  const permissions = await permissionsForRole(user.role);
+  const permissions = await permissionsForUser(user);
   await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: 'AUTH', action: 'LOGIN OK', ip: ipOf(req) });
   res.json({ token, user: { ...authedUser, permissions, mustChangePin, pinLength: user.pinLength, pinNeeds: need } });
 }

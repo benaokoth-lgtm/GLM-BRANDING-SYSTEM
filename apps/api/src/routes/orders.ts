@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from '../middleware/auth';
 import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
 import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
+import { resolveCapture } from '../frontOffice';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
 import { buildOrderPdf, documentKind } from '../orderPdf';
@@ -69,6 +70,8 @@ export function serializeSummary(order: FullOrder) {
       ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone }
       : null,
     staff: { id: order.staff.id, name: order.staff.name },
+    // Set when someone other than the sales person keyed the order (the front office capturing on their behalf).
+    capturedByName: order.capturedByName && order.capturedByName !== order.staff.name ? order.capturedByName : null,
     createdDate: order.createdDate,
     status: order.status,
     stage: order.stage,
@@ -314,7 +317,8 @@ const walkinSchema = z.object({
   // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
   customerName: z.string().optional(),
   phone: z.string().optional(),
-  staffId: z.number().int(),
+  // The sales person the order is credited to. Left out (or null), it is in the capturing person's own name; only the front office may name someone else.
+  staffId: z.number().int().nullable().optional(),
   paymentTiming: z.enum(['onAcceptance', 'onCompletion']),
   paymentAmount: z.number().min(0).optional(),
   paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).optional(),
@@ -334,6 +338,9 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
   const parsed = walkinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const form = parsed.data;
+  // Who the order is credited to (the sales person) and who keys it (the cashier): decided here, from the person's role and whether their order taking is on.
+  const cap = await resolveCapture(req.user!, form.staffId, form.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const costs = await canSeeCosts(req.user!.role);
 
   // Payments taken at capture: the new list form, or the older single amount + method.
@@ -368,7 +375,9 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
         kind: 'walkin',
         customerName: form.customerName?.trim() || WALK_IN_CLIENT,
         phone: form.phone?.trim() || null,
-        staffId: form.staffId,
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
         ...sourcing,
         createdDate: todayStr(),
         status,
@@ -382,7 +391,7 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
       include: orderInclude,
     });
     if (paymentLines.length) {
-      await recordOrderPayments(tx, { id: created.id, kind: 'walkin', status, corporateClient: null }, paymentLines, form.staffId);
+      await recordOrderPayments(tx, { id: created.id, kind: 'walkin', status, corporateClient: null }, paymentLines, cap.capturedById); // the money is the cashier's
       return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
     }
     return created;

@@ -6,6 +6,7 @@ import { ensureRequisitionsOnce } from './requisitions';
 import { ensureProductionOnce } from './production';
 import { ensureCostAccessOnce } from './costs';
 import { ensureCommissionAccessOnce } from './commission';
+import { ensureFrontOfficeOnce } from './frontOffice';
 import { ensureBusinessHeadsOnce, ensurePurchasesOnce, ensureStoresAccess } from './purchases';
 import { ensureStaffNamesOnce } from './staffNames';
 import { ensureMaterialItemsOnce } from './materials';
@@ -26,5 +27,5 @@ app.listen(port, () => {
   sealStoredSecrets().catch((e) => console.error('Sealing saved secrets failed', e));
   if (!dataKeyConfigured()) console.warn('DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data → Security.');
   // Give older requisitions a reference and a line; grant the production/quality permissions on databases that pre-date them.
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error('Start-up checks failed', e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error('Start-up checks failed', e));
 });

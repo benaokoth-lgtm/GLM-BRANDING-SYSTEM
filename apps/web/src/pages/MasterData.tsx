@@ -49,6 +49,8 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canManageProduction: 'Production: assign staff & productivity',
   canAccessQuality: 'Quality control: inspect orders',
   canReceiveStock: 'Stores: receive purchased goods',
+  canCaptureForOthers: 'Front office: capture orders for sales persons and freelancers, and take the money',
+  canBeAssignedOrders: 'Sales person: the front office can give orders to this role',
   canManageCommission: 'Commission: rates, team statements & payouts',
 };
 
@@ -101,7 +103,7 @@ export default function MasterData() {
   const [newStaffEmail, setNewStaffEmail] = useState('');
   const [newStaffEmailPin, setNewStaffEmailPin] = useState(false);
   // Staff with their email, for emailing login PINs (Admin only).
-  const [staffDetails, setStaffDetails] = useState<{ id: number; name: string; firstName: string; middleName: string; lastName: string; role: string; email: string | null; mustChangePin: boolean; active: boolean }[]>([]);
+  const [staffDetails, setStaffDetails] = useState<{ id: number; name: string; firstName: string; middleName: string; lastName: string; role: string; email: string | null; mustChangePin: boolean; active: boolean; orderTakingOff: boolean }[]>([]);
   const [emailDrafts, setEmailDrafts] = useState<Record<number, string>>({});
   // Someone's name being corrected: the three parts as typed so far.
   const [nameDrafts, setNameDrafts] = useState<Record<number, { first: string; middle: string; last: string }>>({});
@@ -227,6 +229,34 @@ export default function MasterData() {
       loadStaffDetails();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not change the role');
+    }
+  }
+
+  // Order taking on or off for one sales person (they keep their other duties; the front office captures for them while it is off).
+  async function setOrderTaking(id: number, name: string, on: boolean) {
+    const question = on ? `Let ${name} take orders again? They sign in again to see the order screens.` : `Switch off order taking for ${name}? They are signed out, and sign in again without the order screens. The front office captures orders for them. Production, quality control and their other duties are unaffected.`;
+    if (!window.confirm(question)) return;
+    setError(null);
+    setStaffNotice(null);
+    try {
+      await api.put(`/master-data/staff/${id}/order-taking`, { on });
+      setStaffNotice(on ? `${name} can take orders again.` : `${name} no longer takes orders; the front office captures for them.`);
+      loadStaffDetails();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change order taking');
+    }
+  }
+
+  async function setAllOrderTaking(on: boolean) {
+    if (!window.confirm(on ? 'Let every sales person take orders again? They are signed out and sign in again.' : 'Switch off order taking for every sales person? They are signed out, and the front office captures all orders for them. Their other duties are unaffected.')) return;
+    setError(null);
+    setStaffNotice(null);
+    try {
+      const r = await api.put<{ changed: number }>('/master-data/staff-order-taking', { on });
+      setStaffNotice(on ? `${r.changed} sales persons can take orders again.` : `Order taking is off for ${r.changed} sales persons; the front office captures for them.`);
+      loadStaffDetails();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not change order taking');
     }
   }
 
@@ -595,6 +625,7 @@ export default function MasterData() {
               <tr>
                 <th>Name</th>
                 <th>Role</th>
+                <th>Order taking</th>
                 <th>Email</th>
                 <th></th>
               </tr>
@@ -662,6 +693,24 @@ export default function MasterData() {
                       )}
                     </td>
                     <td>
+                      {(() => {
+                        const rp = s.role === 'Admin' ? null : roles.find((r) => r.name === s.role)?.permissions;
+                        if (rp?.canCaptureForOthers) return <span className="tag tag-accent" title="The front office always takes orders">Front office</span>;
+                        // only sales persons (roles marked "can be assigned orders") have order taking to switch on or off
+                        if (!rp || !rp.canBeAssignedOrders) return <span className="text-muted">—</span>;
+                        return (
+                          <>
+                            <span className={'tag ' + (d?.orderTakingOff ? 'tag-outline' : 'tag-neutral')} style={d?.orderTakingOff ? { borderColor: '#a33', color: '#a33' } : undefined}>{d?.orderTakingOff ? 'Off' : 'On'}</span>{' '}
+                            {d && (
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOrderTaking(s.id, s.name, !!d.orderTakingOff)}>
+                                {d.orderTakingOff ? 'Switch on' : 'Switch off'}
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </td>
+                    <td>
                       {editing ? (
                         <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                           <input className="input" type="email" style={{ minWidth: 220 }} value={emailDrafts[s.id]} onChange={(e) => setEmailDrafts((x) => ({ ...x, [s.id]: e.target.value }))} placeholder="name@example.com" autoFocus />
@@ -696,6 +745,17 @@ export default function MasterData() {
               })}
             </tbody>
           </table>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center', marginTop: 'var(--space-3)' }}>
+            <span className="note" style={{ margin: 0 }}>
+              <b>Order taking</b> decides who may capture General, Film and Artwork orders. Switched off, a sales person keeps every other duty their role allows and the <b>front office</b> captures for them.
+            </span>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAllOrderTaking(false)}>
+              Switch off for all sales persons
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setAllOrderTaking(true)}>
+              Switch on for all
+            </button>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end' }}>
             <div className="field">
               <label>First name *</label>

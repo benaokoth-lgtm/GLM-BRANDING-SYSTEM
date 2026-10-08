@@ -8,6 +8,8 @@ import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, cleanKraPin, composeName, ma
 import { ensureMaterialItemsOnce } from '../materials';
 import { seal } from '../crypto';
 import { PIN_ROUNDS, pinProblemFor, randomPin, requiredLengthFor } from '../pins';
+import { canCaptureForOthers, salesPeople } from '../frontOffice';
+import { permissionsForRole } from '../permissions';
 import { ensureStaffNamesOnce } from '../staffNames';
 import { canSeeCosts } from '../costs';
 import { defaultBusinessHeadName } from '@glm/shared';
@@ -94,7 +96,7 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
 masterDataRouter.get('/staff-details', requireRole('Admin'), async (_req, res) => {
   await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin, active: u.active })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, email: u.email, mustChangePin: u.mustChangePin, active: u.active, orderTakingOff: u.orderTakingOff })));
 });
 
 // Switch someone's sign-in off (they have left, or must no longer use the system) or back on. Everything they did stays on record. Switching off
@@ -113,6 +115,37 @@ masterDataRouter.put('/staff/:id/active', requireRole('Admin'), async (req, res)
   }
   await prisma.user.update({ where: { id }, data: { active: parsed.data.active, failedLoginCount: 0, lockedUntil: null, ...(parsed.data.active ? {} : { tokenVersion: { increment: 1 } }) } });
   res.json({ id, active: parsed.data.active });
+});
+
+// ── Front office ────────────────────────────────────────────────────────
+// The sales persons the front office can give orders to (active people whose role is marked "can be assigned orders").
+masterDataRouter.get('/sales-people', async (req, res) => {
+  if (!(await canCaptureForOthers(req.user!.role))) return res.status(403).json({ error: 'Not permitted for your role' });
+  res.json(await salesPeople());
+});
+
+// Order taking on or off for one person. Off: they cannot capture General / Film / Artwork orders and the front office captures for them; their other
+// duties (production, quality control …) are untouched. Their open sessions end so the screens follow at once. Front-office roles always take orders.
+masterDataRouter.put('/staff/:id/order-taking', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ on: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid request' });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  if (await canCaptureForOthers(user.role)) return res.status(400).json({ error: `${user.name} is front office and always takes orders` });
+  if (!(await permissionsForRole(user.role)).canBeAssignedOrders) return res.status(400).json({ error: `${user.name} is not a sales person (their role is not marked "can be assigned orders" under Roles & Access)` });
+  await prisma.user.update({ where: { id }, data: { orderTakingOff: !parsed.data.on, ...(id === req.user!.id ? {} : { tokenVersion: { increment: 1 } }) } });
+  res.json({ id, orderTaking: parsed.data.on });
+});
+
+// The same for every sales person at once (people whose role is marked "can be assigned orders").
+masterDataRouter.put('/staff-order-taking', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ on: z.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Invalid request' });
+  const people = (await salesPeople()).filter((p) => p.id !== req.user!.id);
+  const others = (await Promise.all(people.map(async (p) => ((await canCaptureForOthers(p.role)) ? null : p)))).filter((p): p is NonNullable<typeof p> => !!p);
+  await prisma.user.updateMany({ where: { id: { in: others.map((p) => p.id) } }, data: { orderTakingOff: !parsed.data.on, tokenVersion: { increment: 1 } } });
+  res.json({ changed: others.length, orderTaking: parsed.data.on });
 });
 
 // Change someone's role (what they may do in the system). Applies at once: the role is read from the database on every request, so their open sessions are

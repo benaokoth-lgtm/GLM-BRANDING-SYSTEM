@@ -26,6 +26,8 @@ export const PERMISSION_KEYS = [
   'canAccessQuality',
   'canReceiveStock',
   'canManageCommission',
+  'canCaptureForOthers', // Front office: capture General / Film / Artwork orders in a sales person's name, and for freelancers
+  'canBeAssignedOrders', // Sales person: orders can be captured for (and credited to) this role by the front office
 ] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 export type Permissions = Record<PermissionKey, boolean>;

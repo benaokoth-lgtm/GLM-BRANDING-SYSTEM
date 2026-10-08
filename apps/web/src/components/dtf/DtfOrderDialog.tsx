@@ -7,6 +7,7 @@ import { printOrderDocument } from '../../utils/printInvoice';
 import type { CompanySettings, OrderDetail } from '../../api/models';
 import { Corners, Field } from './shared';
 import SourcingField from '../SourcingField';
+import { useSalesPeople } from '../../hooks/useSalesPeople';
 import { useAuth } from '../../state/AuthContext';
 import SplitPayments, { newPaymentRow, paymentProblem, paymentsTotal, toApiPayments } from '../SplitPayments';
 import type { PaymentRow } from '../SplitPayments';
@@ -46,6 +47,9 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   const [phone, setPhone] = useState('');
   const [sourced, setSourced] = useState(false);
   const [freelanceId, setFreelanceId] = useState<number | null>(null);
+  const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
+  const salesPeople = useSalesPeople(forOthers);
+  const [salesPersonId, setSalesPersonId] = useState<number | null>(null);
   const [materialLines, setMaterialLines] = useState<MaterialLine[]>([]);
   const [heatPressFee, setHeatPressFee] = useState('');
   // Any mix of methods can pay now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
@@ -92,7 +96,9 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
         ...basePayload,
         client: clientName,
         phone,
-        sourcedBy: sourced && user ? user.id : null,
+        // Front office: credited to the chosen sales person (their client when ticked); everyone else captures in their own name.
+        ...(forOthers && salesPersonId ? { staffId: salesPersonId } : {}),
+        sourcedBy: sourced ? (forOthers ? salesPersonId : user?.id ?? null) : null,
         freelanceAgentId: freelanceId,
         payments: needsApproval ? [] : toApiPayments(paymentRows),
         materialLines: materialLines
@@ -158,7 +164,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
             <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: '#a33' } : undefined} />
           </Field>
 
-          <SourcingField phone={phone} name={clientName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} />
+          <SourcingField phone={phone} name={clientName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} />
 
           {mode === 'job' && (
             <Field label="Heat press fee (Ksh/pc) — required">

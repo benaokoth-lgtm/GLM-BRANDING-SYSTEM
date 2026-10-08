@@ -46,6 +46,9 @@ model User {
   resetAttempts    Int       @default(0)
   // Set when the Admin emails someone a PIN: they must choose their own at first login.
   mustChangePin    Boolean   @default(false)
+  // Order taking switched off for this person (Master Data → Staff & Users): they cannot capture General / Film / Artwork orders and the front office
+  // captures for them. Everything else their role allows (production, quality control …) is unaffected.
+  orderTakingOff   Boolean   @default(false)
   // Switched off = cannot sign in and every open session ends at once, but their history (orders, payments, payroll) stays.
   active           Boolean   @default(true)
   // Raised to end every session already issued to this person (when they are switched off or their PIN is reset).
@@ -101,6 +104,8 @@ model Role {
   canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
   canReceiveStock     Boolean @default(false) // Stores: receive purchased goods into the store (enter the quantities that physically arrived)
   canManageCommission Boolean @default(false) // Sales Commission: settings, every staff member's statement, client ownership, approving and paying commission
+  canCaptureForOthers Boolean @default(false) // Front office: capture General / Film / Artwork orders in a sales person's name (or for a freelancer), and take the money
+  canBeAssignedOrders Boolean @default(false) // Sales person: the front office can capture orders for this role and credit them to the person
 }
 
 // The lines of business income is reported under: DTF Printing, UV Printing, Laser Engraving, Large Format Printing, Embroidery and
@@ -233,6 +238,7 @@ model Setting {
   // Film/Artwork orders are visually distinct in order lists even though
   // they're still kind: 'walkin' under the hood.
   nextDtfNo      Int     @default(3001)
+  frontOfficeSeeded Boolean @default(false) // the Front Office role has been offered once (it can then be edited or deleted freely)
 
   // Company profile — used on printed invoices, quotations, and receipts.
   companyName    String  @default("GLM Branding")
@@ -546,6 +552,9 @@ model Order {
   freelanceAgent    FreelanceAgent? @relation(fields: [freelanceAgentId], references: [id])
   // The share (0..1) of the order's value that was sold at or above base prices when it was captured — only that share earns the freelancer commission.
   freelanceQualifyingShare Float @default(1)
+  // Who keyed the order. staffId is the SALES PERSON it is credited to; when the front office captures for a sales person the two differ. Null on older orders.
+  capturedById   Int?
+  capturedByName String @default("")
   // How that qualifying share divides (each a share 0..1 of the order's value): the base-price part, the thin-margin (contracted-out / stock) part of the base, and the premium above base.
   freelanceBaseShare       Float @default(1)
   freelanceLowShare        Float @default(0)

@@ -7,6 +7,7 @@ import LineItemsEditor, { isBlankLine, makeDefaultLine } from '../components/Lin
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printOrderDocument } from '../utils/printInvoice';
+import { useSalesPeople } from '../hooks/useSalesPeople';
 import { costPayload } from '../utils/lineCosts';
 import SourcingField from '../components/SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../components/SplitPayments';
@@ -25,6 +26,9 @@ export default function NewWalkinOrder() {
   const [phone, setPhone] = useState('');
   // The order belongs to whoever is capturing it.
   const staffId = user?.id ?? null;
+  const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
+  const salesPeople = useSalesPeople(forOthers);
+  const [salesPersonId, setSalesPersonId] = useState<number | null>(null);
   // Ticked when the staff member brought this client in through their own network (credited to them for 12 months).
   const [sourced, setSourced] = useState(false);
   const [freelanceId, setFreelanceId] = useState<number | null>(null);
@@ -75,8 +79,9 @@ export default function NewWalkinOrder() {
         api.post<OrderDetail>('/orders/walkin', {
           customerName: customerName.trim() || WALK_IN_CLIENT,
           phone,
-          staffId,
-          sourcedBy: sourced ? staffId : null,
+          // Front office: the order is for the chosen sales person (or the shop); everyone else captures in their own name.
+          staffId: forOthers ? salesPersonId ?? staffId : staffId,
+          sourcedBy: sourced ? (forOthers ? salesPersonId : staffId) : null,
           freelanceAgentId: freelanceId,
           paymentTiming,
           payments: paymentTiming === 'onAcceptance' ? toApiPayments(paymentRows) : undefined,
@@ -132,7 +137,7 @@ export default function NewWalkinOrder() {
       </div>
 
       <div style={{ marginTop: 'var(--space-3)' }}>
-        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} />
+        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} />
       </div>
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />

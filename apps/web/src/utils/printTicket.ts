@@ -87,6 +87,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   <div class="row"><span>CUSTOMER</span><span>${esc(order.customerName || '—')}</span></div>
   ${order.phone ? `<div class="row"><span>PHONE</span><span>${esc(order.phone)}</span></div>` : ''}
   <div class="row"><span>SERVED BY</span><span>${esc(order.staff.name)}</span></div>
+  ${order.capturedByName ? `<div class="row"><span>CASHIER</span><span>${esc(order.capturedByName)}</span></div>` : ''}
   <hr />
   ${ticketItemsHtml(order)}
   <hr />

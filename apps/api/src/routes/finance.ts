@@ -525,6 +525,25 @@ financeRouter.patch('/expenses/:id/business-head', async (req, res) => {
   res.json(updated);
 });
 
+// Move an already-posted expense to the right expense head (and so the right account). The amount, date and how it was paid do not change, so this
+// needs no amendment request; the ledger is derived, so the books and P&L follow at once (and the VAT treatment follows the new head). Expenses the
+// system itself ties to something — a stock purchase, an outsourced job's bill, freelance commission with tax withheld — are refused, because their
+// category is what links them. The previous head is added to the request so the audit trail (Master Data → Security) shows "from → to".
+financeRouter.patch('/expenses/:id/category', async (req, res) => {
+  const parsed = z.object({ category: z.string().min(1).max(100) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose an expense head' });
+  if (!(await expenseHeadNames()).includes(parsed.data.category)) return res.status(400).json({ error: 'Choose one of the expense heads (add new ones under Accounting → Chart of Accounts)' });
+  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) }, include: { purchase: { select: { id: true } } } });
+  if (!expense) return res.status(404).json({ error: 'Expense not found' });
+  if (expense.category === parsed.data.category) return res.json(expense);
+  if (expense.purchase) return res.status(400).json({ error: 'This expense is linked to a stock purchase, so its head cannot be changed here' });
+  if (expense.orderId != null) return res.status(400).json({ error: "This is an outsourced job's supplier bill, so its head cannot be changed here" });
+  if (expense.withholdingTax > 0) return res.status(400).json({ error: 'This is freelance commission with tax withheld, so its head cannot be changed here' });
+  (req.body as Record<string, unknown>).was = expense.category;
+  const updated = await prisma.expense.update({ where: { id: expense.id }, data: { category: parsed.data.category } });
+  res.json(updated);
+});
+
 // Pay down an expense bought on credit — in full or in part, by any method (petty cash included, if the float covers it).
 const expensePaymentSchema = z.object({ date: dateStr, amount: z.number().positive(), method: z.enum(EXPENSE_METHODS), note: z.string().max(200).optional() });
 

@@ -14,7 +14,7 @@ import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'clients' | 'discount' | 'company' | 'mpesa' | 'email' | 'whatsapp' | 'backup' | 'security' | 'freelancers';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'discount' | 'company' | 'mpesa' | 'email' | 'whatsapp' | 'backup' | 'security' | 'freelancers';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -22,7 +22,6 @@ const TABS: [MasterTab, string][] = [
   ['services', 'Service Price List'],
   ['heads', 'Business Heads'],
   ['materials', 'Stock Price List'],
-  ['clients', 'Corporate Clients'],
   ['freelancers', 'Freelancers'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
@@ -133,11 +132,6 @@ export default function MasterData() {
   const [reorderDrafts, setReorderDrafts] = useState<Record<number, string>>({});
 
 
-  const [newClientName, setNewClientName] = useState('');
-  const [newClientCreditDays, setNewClientCreditDays] = useState('');
-  const [newClientEmail, setNewClientEmail] = useState('');
-  const [newClientPhone, setNewClientPhone] = useState('');
-  const [clientDrafts, setClientDrafts] = useState<Record<number, { email?: string; phone?: string }>>({});
 
   const [maxDiscountPct, setMaxDiscountPct] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -558,33 +552,6 @@ export default function MasterData() {
       catalog.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update reorder level');
-    }
-  }
-
-  async function addClient() {
-    const days = Number(newClientCreditDays) || 30;
-    if (!newClientName.trim()) return setError('Client name is required');
-    setError(null);
-    try {
-      await api.post('/master-data/corporate-clients', { name: newClientName, creditDays: days, email: newClientEmail, phone: newClientPhone });
-      setNewClientName('');
-      setNewClientCreditDays('');
-      setNewClientEmail('');
-      setNewClientPhone('');
-      catalog.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add corporate client');
-    }
-  }
-
-  async function saveClientField(clientId: number, field: 'email' | 'phone', value: string) {
-    setError(null);
-    try {
-      await api.put(`/master-data/corporate-clients/${clientId}`, { [field]: value });
-      setClientDrafts((d) => ({ ...d, [clientId]: { ...d[clientId], [field]: undefined } }));
-      catalog.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update client');
     }
   }
 
@@ -1384,78 +1351,6 @@ export default function MasterData() {
                 </button>
               </div>
             </div>
-          </div>
-        </>
-      )}
-
-      {tab === 'clients' && (
-        <>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Corporate client</th>
-                <th>Credit terms</th>
-                <th>Email</th>
-                <th>Phone</th>
-              </tr>
-            </thead>
-            <tbody>
-              {catalog.corporateClients.map((c) => (
-                <tr key={c.id}>
-                  <td>{c.name}</td>
-                  <td className="text-muted">{c.creditDays} days</td>
-                  <td>
-                    <input
-                      className="input"
-                      style={{ minWidth: 160 }}
-                      value={clientDrafts[c.id]?.email ?? c.email}
-                      onChange={(e) => setClientDrafts((d) => ({ ...d, [c.id]: { ...d[c.id], email: e.target.value } }))}
-                      onBlur={(e) => saveClientField(c.id, 'email', e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="input"
-                      style={{ minWidth: 140 }}
-                      value={clientDrafts[c.id]?.phone ?? c.phone}
-                      onChange={(e) => setClientDrafts((d) => ({ ...d, [c.id]: { ...d[c.id], phone: e.target.value } }))}
-                      onBlur={(e) => saveClientField(c.id, 'phone', e.target.value)}
-                      placeholder="Optional"
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Email and phone prefill the "Send email"/"Send WhatsApp" targets on that client's invoices and
-            quotations.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 960 }}>
-            <div className="field">
-              <label>New corporate client</label>
-              <input className="input" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Credit terms (days)</label>
-              <input className="input" value={newClientCreditDays} onChange={(e) => setNewClientCreditDays(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Email</label>
-              <input className="input" value={newClientEmail} onChange={(e) => setNewClientEmail(e.target.value)} placeholder="Optional" />
-            </div>
-            <div className="field">
-              <label>Phone</label>
-              <input className="input" value={newClientPhone} onChange={(e) => setNewClientPhone(e.target.value)} placeholder="Optional" />
-            </div>
-            <button type="button" className="btn btn-primary blueprint" onClick={addClient}>
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              Add
-            </button>
           </div>
         </>
       )}

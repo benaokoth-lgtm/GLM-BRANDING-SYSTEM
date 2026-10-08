@@ -703,7 +703,7 @@ const clientSchema = z.object({
   phone: z.string().max(50).optional(),
 });
 
-masterDataRouter.post('/corporate-clients', requireRole('Admin'), async (req, res) => {
+masterDataRouter.post('/corporate-clients', requirePermission('canAccessFinance'), async (req, res) => {
   const parsed = clientSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? '', phone: parsed.data.phone ?? '' } }));
@@ -717,7 +717,7 @@ const clientUpdateSchema = z
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
-masterDataRouter.put('/corporate-clients/:id', requireRole('Admin'), async (req, res) => {
+masterDataRouter.put('/corporate-clients/:id', requirePermission('canAccessFinance'), async (req, res) => {
   const parsed = clientUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const client = await prisma.corporateClient.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);

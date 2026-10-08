@@ -9,6 +9,7 @@ import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
 import CorporateOrderForm from '../components/CorporateOrderForm';
 import AssetRegister from '../components/AssetRegister';
+import CorporateClientsPanel from '../components/CorporateClientsPanel';
 import Payments from './Payments';
 
 // Quotation, Invoice and Payments moved in here from their own top-level
@@ -17,7 +18,7 @@ import Payments from './Payments';
 // payment oversight but not Finance access, still reaches Payments as its
 // own top-level entry. All Orders is not part of Finance: it is its own
 // module, for anyone allowed to see every order.
-type FinanceTab = 'quotation' | 'invoice' | 'payments' | 'expenses' | 'pettycash' | 'assets';
+type FinanceTab = 'quotation' | 'invoice' | 'payments' | 'expenses' | 'pettycash' | 'assets' | 'clients';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [FinanceTab, string][] = [
@@ -27,12 +28,13 @@ const TABS: [FinanceTab, string][] = [
   ['expenses', 'Expenses'],
   ['pettycash', 'Petty Cash'],
   ['assets', 'Asset Register'],
+  ['clients', 'Corporate Clients'],
 ];
 
 // Tabs that manage their own data/date-range internally — the shared
 // preset/from-to filter bar below (and the Expenses/Petty Cash data load)
 // isn't relevant to them.
-const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'payments', 'assets'];
+const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'payments', 'assets', 'clients'];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
   const y = today.slice(0, 4);
@@ -275,6 +277,19 @@ export default function Finance() {
     }
   }
 
+  // Move a posted expense to the right account category. Amount and date stay as they were, so no amendment request is needed; the books follow at once.
+  async function reassignExpense(expenseId: number, from: string, to: string) {
+    if (to === from) return;
+    if (!window.confirm(`Move this expense from "${from}" to "${to}"? The amount and date stay the same; the accounts and reports are updated.`)) return;
+    setError(null);
+    try {
+      await api.patch(`/finance/expenses/${expenseId}/category`, { category: to });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to move the expense');
+    }
+  }
+
   async function submitExpense(draft: ExpenseDraft, reset: () => void) {
     const amount = Number(draft.amount);
     if (!amount || amount <= 0) return setError('Amount must be greater than 0');
@@ -500,6 +515,7 @@ export default function Finance() {
       {tab === 'invoice' && <CorporateOrderForm kind="invoice" onCreated={(orderNo) => handleOrderCreated('invoice', orderNo)} />}
       {tab === 'payments' && <Payments />}
       {tab === 'assets' && <AssetRegister />}
+      {tab === 'clients' && <CorporateClientsPanel />}
 
       {error && (
         <p className="note" style={{ color: '#a33' }}>
@@ -539,7 +555,15 @@ export default function Finance() {
                   <Fragment key={e.id}>
                     <tr>
                       <td className="text-muted">{fmtDate(e.date)}</td>
-                      <td>{e.category}</td>
+                      <td>
+                        <select className="input" style={{ width: 170 }} title="Move this expense to the right account category" value={e.category} onChange={(ev) => reassignExpense(e.id, e.category, ev.target.value)} disabled={busy}>
+                          {Array.from(new Set([e.category, ...(expenses.expenseCategories ?? EXPENSE_CATEGORIES)])).map((cat) => (
+                            <option key={cat} value={cat}>
+                              {cat}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td>
                         <select className="input" style={{ width: 150 }} value={e.businessHeadId ?? ''} onChange={(ev) => retagExpense(e.id, ev.target.value)} disabled={busy}>
                           <option value="">—</option>

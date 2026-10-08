@@ -82,7 +82,8 @@ masterDataRouter.post('/staff', requireRole('Admin'), async (req, res) => {
 // ── Emailing login details ──────────────────────────────────────────────
 // Sends someone their login PIN from the mail account set up under Master Data → Email. A PIN sent this way is a one-off: the person
 // is made to choose their own the first time they sign in (mustChangePin).
-async function emailPin(name: string, to: string, pin: string): Promise<{ ok: boolean; error?: string }> {
+async function emailPin(name: string, to: string, pin: string, opts: { reset?: boolean; mustChange?: boolean } = {}): Promise<{ ok: boolean; error?: string }> {
+  const mustChange = opts.mustChange ?? true;
   const mailer = await getMailer();
   if (!mailer) return { ok: false, error: "Email isn't set up yet — set it up under Master Data → Email first" };
   const url = mailer.config.loginUrl ? `\nSign in at: ${mailer.config.loginUrl}\n` : '';
@@ -90,8 +91,8 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
   try {
     const info = await mailer.sendMail({
       to,
-      subject: `Your ${company} login`,
-      text: `Hello ${name},\n\nYou can now sign in to the ${company} system.\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nYou will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.\n\nIf you were not expecting this message, tell your manager.`,
+      subject: opts.reset ? `Your ${company} PIN was reset` : `Your ${company} login`,
+      text: `Hello ${name},\n\n${opts.reset ? `Your PIN for the ${company} system has been reset.` : `You can now sign in to the ${company} system.`}\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\n${mustChange ? 'You will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.' : 'Please delete this email once you have signed in.'}\n\nIf you were not expecting this message, tell your manager.`,
     });
     const refused = refusal(info, to);
     if (refused) return { ok: false, error: refused };
@@ -210,7 +211,7 @@ masterDataRouter.post('/staff/:id/send-pin', requireRole('Admin'), async (req, r
   if (!(await loadMailConfig())) return res.status(400).json({ error: "Email isn't set up yet — set it up under Master Data → Email first" });
 
   const pin = randomPin(await requiredLengthFor(user.role));
-  const previous = { pinHash: user.pinHash, mustChangePin: user.mustChangePin };
+  const previous = { pinHash: user.pinHash, pinLength: user.pinLength, mustChangePin: user.mustChangePin };
   await prisma.user.update({ where: { id: user.id }, data: { pinHash: await bcrypt.hash(pin, PIN_ROUNDS), pinLength: pin.length, mustChangePin: true, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   const sent = await emailPin(user.name, user.email, pin);
   if (!sent.ok) {
@@ -219,6 +220,42 @@ masterDataRouter.post('/staff/:id/send-pin', requireRole('Admin'), async (req, r
     return res.status(502).json({ error: `The email could not be sent, so their PIN was left unchanged. ${sent.error}` });
   }
   res.json({ ok: true, sentTo: user.email });
+});
+
+// Reset someone's PIN. The Admin may type the new PIN (checked against the rules for the person's role) or leave it blank to have one made. It can be emailed
+// to them, and they can be made to choose their own at next sign-in. Their open sessions end and any lockout is cleared. A PIN that was made and not emailed is
+// returned once so the Admin can hand it over; one the Admin typed is never echoed. You cannot reset your own here (use Change PIN in the header).
+masterDataRouter.post('/staff/:id/reset-pin', requireRole('Admin'), async (req, res) => {
+  const parsed = z
+    .object({ pin: z.string().regex(/^\d{4,6}$/, 'A PIN is 4 to 6 digits').optional().or(z.literal('')), email: z.boolean().optional(), mustChange: z.boolean().optional() })
+    .safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  if (id === req.user!.id) return res.status(400).json({ error: 'To change your own PIN use Change PIN at the top of the screen.' });
+  const typed = parsed.data.pin || '';
+  const sendIt = !!parsed.data.email;
+  const mustChange = parsed.data.mustChange ?? true;
+  if (sendIt) {
+    if (!user.email) return res.status(400).json({ error: `${user.name} has no email address yet — add one first, or untick the email box` });
+    if (!(await loadMailConfig())) return res.status(400).json({ error: "Email isn't set up yet — set it up under Master Data → Email first, or untick the email box" });
+  }
+  if (typed) {
+    const weak = await pinProblemFor(typed, user.role);
+    if (weak) return res.status(400).json({ error: weak });
+  }
+  const pin = typed || randomPin(await requiredLengthFor(user.role));
+  const previous = { pinHash: user.pinHash, pinLength: user.pinLength, mustChangePin: user.mustChangePin, failedLoginCount: user.failedLoginCount, lockCount: user.lockCount, lockedUntil: user.lockedUntil };
+  await prisma.user.update({ where: { id }, data: { pinHash: await bcrypt.hash(pin, PIN_ROUNDS), pinLength: pin.length, mustChangePin: mustChange, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
+  if (sendIt) {
+    const sent = await emailPin(user.name, user.email!, pin, { reset: true, mustChange });
+    if (!sent.ok) {
+      await prisma.user.update({ where: { id }, data: previous }); // do not leave them on a PIN nobody received
+      return res.status(502).json({ error: `The email could not be sent, so their PIN was left unchanged. ${sent.error}` });
+    }
+  }
+  res.json({ ok: true, emailed: sendIt, sentTo: sendIt ? user.email : undefined, mustChange, ...(!typed && !sendIt ? { pin } : {}) });
 });
 
 // ── Email settings (Master Data → Email) ───────────────────────────────

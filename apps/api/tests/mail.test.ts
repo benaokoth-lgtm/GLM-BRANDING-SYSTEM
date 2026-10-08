@@ -245,6 +245,62 @@ describe('email settings and emailing login PINs', () => {
     await call(admin, 'PUT', '/master-data/mail', { outgoingHost: '127.0.0.1', username: USER, smtpPort });
   });
 
+  it('Admin can reset a PIN: typed or made, emailed or handed over, and old sessions and lockouts end', async () => {
+    await call(admin, 'PUT', '/master-data/mail', { password: PASS, outgoingHost: '127.0.0.1', username: USER, smtpPort });
+    const target = await prisma.user.create({ data: { name: 'Reset Target (mail test)', role: 'Staff', pinHash: 'x', email: 'resettarget@test.local', failedLoginCount: 3, lockCount: 1, lockedUntil: new Date(Date.now() + 3600_000) } });
+    const url = `/master-data/staff/${target.id}/reset-pin`;
+
+    const old = signToken({ id: target.id, name: target.name, role: 'Staff' });
+    assert.equal((await call(old, 'POST', url, {})).status, 403); // Admin only
+    assert.equal((await call(admin, 'POST', `/master-data/staff/${adminId}/reset-pin`, {})).status, 400); // not your own
+    assert.equal((await call(admin, 'POST', '/master-data/staff/999999/reset-pin', {})).status, 404);
+    assert.equal((await call(admin, 'POST', url, { pin: '12' })).status, 400); // not a PIN
+    assert.equal((await call(admin, 'POST', url, { pin: '1234' })).status, 400); // too easy to guess
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).pinHash, 'x'); // nothing changed
+
+    // a typed PIN, not emailed: it works, is not echoed, lockout and old sessions are cleared
+    const typed = await call(admin, 'POST', url, { pin: '4827', mustChange: false });
+    assert.equal(typed.status, 200, JSON.stringify(typed.body));
+    assert.equal(typed.body.pin, undefined);
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    assert.equal(row.failedLoginCount, 0);
+    assert.equal(row.lockedUntil, null);
+    assert.equal(row.mustChangePin, false);
+    const login = await call(null, 'POST', '/auth/login', { userId: target.id, pin: '4827' });
+    assert.equal(login.status, 200);
+    assert.equal(login.body.user.mustChangePin, false);
+    assert.equal((await call(old, 'GET', '/auth/features')).status, 401); // the old session ended
+
+    // blank PIN, not emailed: one is made and shown once, and they must choose their own
+    const made = await call(admin, 'POST', url, {});
+    assert.equal(made.status, 200);
+    assert.match(made.body.pin, /^\d{4,6}$/);
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).mustChangePin, true);
+    assert.equal((await call(null, 'POST', '/auth/login', { userId: target.id, pin: made.body.pin })).status, 200);
+
+    // emailed: the PIN goes to their inbox and is not returned
+    const before = inbox.length;
+    const mailed = await call(admin, 'POST', url, { pin: '5938', email: true });
+    assert.equal(mailed.status, 200);
+    assert.equal(mailed.body.pin, undefined);
+    assert.equal(mailed.body.sentTo, 'resettarget@test.local');
+    const mail = inbox.slice(before).find((m) => m.to.includes('resettarget@test.local'))!;
+    assert.ok(mail, 'the email arrived');
+    assert.match(mail.data, /PIN was reset/);
+    assert.ok(mail.data.includes('5938'));
+
+    // emailing without an address, or when the email fails, leaves the PIN as it was
+    const nomail = await prisma.user.create({ data: { name: 'No Address (mail test)', role: 'Staff', pinHash: 'x' } });
+    assert.equal((await call(admin, 'POST', `/master-data/staff/${nomail.id}/reset-pin`, { email: true })).status, 400);
+    await call(admin, 'PUT', '/master-data/mail', { smtpPort: 1 });
+    const keep = await prisma.user.findUniqueOrThrow({ where: { id: target.id } });
+    const failed = await call(admin, 'POST', url, { pin: '6071', email: true });
+    assert.equal(failed.status, 502);
+    assert.match(failed.body.error, /left unchanged/);
+    assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).pinHash, keep.pinHash);
+    await call(admin, 'PUT', '/master-data/mail', { smtpPort });
+  });
+
   it('a recipient the mail server refuses is reported, not shown as sent', async () => {
     const { refusal } = await import('../src/mailer');
     assert.equal(refusal({ accepted: ['a@x.com'], rejected: [], response: '250 OK' }, 'a@x.com'), null);

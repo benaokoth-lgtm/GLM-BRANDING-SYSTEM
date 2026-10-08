@@ -9,6 +9,7 @@ import { useAuth } from '../state/AuthContext';
 import MpesaSettingsPanel from '../components/MpesaSettingsPanel';
 import MailSettingsPanel from '../components/MailSettingsPanel';
 import WhatsappSettingsPanel from '../components/WhatsappSettingsPanel';
+import ResetPinDialog from '../components/ResetPinDialog';
 import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
@@ -110,6 +111,8 @@ export default function MasterData() {
   // Someone's role being changed: the role chosen so far.
   const [roleDrafts, setRoleDrafts] = useState<Record<number, string>>({});
   const [staffNotice, setStaffNotice] = useState<string | null>(null);
+  // The person whose PIN is being reset (the dialog sets a new one: typed here, or made, and optionally emailed).
+  const [resetting, setResetting] = useState<{ id: number; name: string; email: string | null; role: string } | null>(null);
   const [staffBusy, setStaffBusy] = useState(false);
 
   const [newServiceName, setNewServiceName] = useState('');
@@ -765,7 +768,14 @@ export default function MasterData() {
                       )}
                     </td>
                     <td>
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={staffBusy || !d?.email} title={d?.email ? 'Give them a new random PIN and email it' : 'Add an email address first'} onClick={() => sendPin(s.id, s.name)}>
+                      {s.id !== user?.id && (
+                        <>
+                          <button type="button" className="btn btn-secondary btn-sm" title="Set a new PIN for them (type one, or have one made)" onClick={() => setResetting({ id: s.id, name: s.name, email: d?.email ?? null, role: s.role })}>
+                            Reset PIN
+                          </button>{' '}
+                        </>
+                      )}
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={staffBusy || !d?.email} title={d?.email ? 'Give them a new random PIN and email it' : 'Add an email address first'} onClick={() => sendPin(s.id, s.name)}>
                         Email login PIN
                       </button>{' '}
                       {d && (
@@ -779,6 +789,18 @@ export default function MasterData() {
               })}
             </tbody>
           </table>
+          {resetting && (
+            <ResetPinDialog
+              person={resetting}
+              needs={requiredPinLength(resetting.role, roles.find((r) => r.name === resetting.role)?.permissions)}
+              onClose={() => setResetting(null)}
+              onDone={(message) => {
+                setStaffNotice(message);
+                setResetting(null);
+                loadStaffDetails();
+              }}
+            />
+          )}
           <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center', marginTop: 'var(--space-3)' }}>
             <span className="note" style={{ margin: 0 }}>
               <b>Order taking</b> decides who may capture General, Film and Artwork orders. Switched off, a sales person keeps every other duty their role allows and the <b>front office</b> captures for them.

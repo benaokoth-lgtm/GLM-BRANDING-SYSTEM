@@ -157,18 +157,18 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
           <Field label={sourced ? 'Client name *' : 'Client name (optional)'}>
-            <input className="input" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Walk-in (optional)" style={sourced && !isNamedClient(clientName) ? { borderColor: '#a33' } : undefined} />
+            <input className="input" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Walk-in (optional)" style={sourced && !isNamedClient(clientName) ? { borderColor: 'var(--color-error)' } : undefined} />
           </Field>
 
           <Field label={sourced ? 'Phone *' : 'Phone (optional)'}>
-            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: '#a33' } : undefined} />
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: 'var(--color-error)' } : undefined} />
           </Field>
 
           <SourcingField phone={phone} name={clientName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} />
 
           {mode === 'job' && (
             <Field label="Heat press fee (Ksh/pc) — required">
-              <select className="input" value={heatPressFee} onChange={(e) => setHeatPressFee(e.target.value)} style={heatPressMissing ? { borderColor: '#a33' } : undefined}>
+              <select className="input" value={heatPressFee} onChange={(e) => setHeatPressFee(e.target.value)} style={heatPressMissing ? { borderColor: 'var(--color-error)' } : undefined}>
                 <option value="">Select a fee…</option>
                 {HEAT_PRESS_FEE_OPTIONS.map((fee) => (
                   <option key={fee} value={fee}>
@@ -209,7 +209,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
               <span>{fmtKsh(grandTotal)}</span>
             </div>
             {needsApproval && (
-              <p className="note" style={{ borderLeft: '2px solid #a33', paddingLeft: 'var(--space-2)' }}>
+              <p className="note" style={{ borderLeft: '2px solid var(--color-error)', paddingLeft: 'var(--space-2)' }}>
                 This price is below the recommended price, so it goes to a manager for approval. <b>No payment is taken now</b> and no receipt is printed — payment and production follow once it is approved.
               </p>
             )}
@@ -222,11 +222,11 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
               </button>
             </div>
             {!needsApproval && <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={clientName || 'DTF order'} />}
-            {payProblem && <p className="note" style={{ color: '#a33' }}>{payProblem}</p>}
+            {payProblem && <p className="note" style={{ color: 'var(--color-error)' }}>{payProblem}</p>}
           </div>
 
           {error && (
-            <p className="note" style={{ color: '#a33' }}>
+            <p className="note" style={{ color: 'var(--color-error)' }}>
               {error}
             </p>
           )}

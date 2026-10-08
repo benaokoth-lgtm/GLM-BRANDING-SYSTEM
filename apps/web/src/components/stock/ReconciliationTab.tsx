@@ -12,8 +12,8 @@ const qty = (n: number) => (Math.round(n * 100) / 100).toLocaleString('en-KE');
 const signedQty = (n: number | null) => (n == null ? '—' : n === 0 ? '0' : `${n > 0 ? '+' : ''}${qty(n)}`);
 const signedKsh = (n: number | null) => (n == null ? '—' : Math.abs(n) < 0.005 ? '0' : `${n > 0 ? '+' : '−'}${fmtKsh(Math.abs(n)).replace('Ksh ', '')}`);
 // Spending more, or receiving less than was asked for, is the adverse direction.
-const adverseMoney = (n: number | null) => (n != null && n > 0.005 ? { color: '#a33', fontWeight: 700 } : undefined);
-const adverseQty = (n: number | null) => (n != null && n < 0 ? { color: '#a33', fontWeight: 700 } : undefined);
+const adverseMoney = (n: number | null) => (n != null && n > 0.005 ? { color: 'var(--color-error)', fontWeight: 700 } : undefined);
+const adverseQty = (n: number | null) => (n != null && n < 0 ? { color: 'var(--color-error)', fontWeight: 700 } : undefined);
 
 function stateTone(state: string): 'good' | 'bad' | 'neutral' {
   return state === 'Received' ? 'good' : state === 'Not purchased' ? 'bad' : 'neutral';

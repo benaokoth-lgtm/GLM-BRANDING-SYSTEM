@@ -90,13 +90,13 @@ export default function DtfDashboard({ data, go }: { data: DtfData; go: (tab: 's
                     {r.roll.id} {r.pendingJobs > 0 && <span className="tag tag-outline">{r.pendingJobs} pending</span>}
                   </td>
                   <td style={right}>{fmtKsh(r.revenueBeforeDiscounts)}</td>
-                  <td style={{ ...right, color: r.discountGiven > 0 ? '#a33' : undefined, fontWeight: r.discountGiven > 0 ? 700 : undefined }}>{r.discountGiven > 0 ? fmtKsh(r.discountGiven) : '—'}</td>
+                  <td style={{ ...right, color: r.discountGiven > 0 ? 'var(--color-error)' : undefined, fontWeight: r.discountGiven > 0 ? 700 : undefined }}>{r.discountGiven > 0 ? fmtKsh(r.discountGiven) : '—'}</td>
                   <td style={right}>{r.discountPctOfRevenue == null || r.discountGiven === 0 ? '—' : `${fmtNum(r.discountPctOfRevenue, 1)}%`}</td>
                   <td style={right}>{fmtKsh(r.revenue)}</td>
                   <td style={right}>{fmtKsh(r.rollCost)}</td>
                   <td style={right}>{fmtKsh(r.profitBeforeDiscounts)}</td>
                   <td style={{ ...right, fontWeight: 700 }}>{fmtKsh(r.profit)}</td>
-                  <td style={{ ...right, color: (r.profitLostPct ?? 0) > 0 ? '#a33' : undefined }}>{r.profitLostPct == null || r.discountGiven === 0 ? '—' : `${fmtNum(r.profitLostPct, 1)}%`}</td>
+                  <td style={{ ...right, color: (r.profitLostPct ?? 0) > 0 ? 'var(--color-error)' : undefined }}>{r.profitLostPct == null || r.discountGiven === 0 ? '—' : `${fmtNum(r.profitLostPct, 1)}%`}</td>
                 </tr>
               ))}
             </tbody>

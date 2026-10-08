@@ -79,11 +79,11 @@ export default function ChangePinDialog({ onClose, forced = false, onChanged }: 
                 <label>Confirm new PIN</label>
                 <input className="input" type="password" inputMode="numeric" autoComplete="new-password" value={confirmPin} onChange={(e) => setConfirmPin(digits(e.target.value))} placeholder="same again" />
               </div>
-              {mismatch && <p className="note" style={{ color: '#a33' }}>The new PINs don't match.</p>}
-              {weak && <p className="note" style={{ color: '#a33' }}>That PIN is too easy to guess (like 1234 or 0000). Choose a less obvious one.</p>}
+              {mismatch && <p className="note" style={{ color: 'var(--color-error)' }}>The new PINs don't match.</p>}
+              {weak && <p className="note" style={{ color: 'var(--color-error)' }}>That PIN is too easy to guess (like 1234 or 0000). Choose a less obvious one.</p>}
               {newPin.length > 0 && newPin.length < need && <p className="note">Your PIN needs {need} digits{need > 4 ? ' for your role' : ' at least'}.</p>}
-              {newPin.length >= need && newPin === currentPin && <p className="note" style={{ color: '#a33' }}>The new PIN must differ from the current one.</p>}
-              {error && <p className="note" style={{ color: '#a33' }}>{error}</p>}
+              {newPin.length >= need && newPin === currentPin && <p className="note" style={{ color: 'var(--color-error)' }}>The new PIN must differ from the current one.</p>}
+              {error && <p className="note" style={{ color: 'var(--color-error)' }}>{error}</p>}
             </div>
             <div className="dialog-actions">
               {!forced && (

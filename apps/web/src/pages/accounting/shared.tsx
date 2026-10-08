@@ -124,14 +124,14 @@ export function useLoad<T>(path: string | null) {
 export function Notice({ error, message }: { error?: string; message?: string }) {
   if (!error && !message) return null;
   return (
-    <p className="note" role={error ? 'alert' : 'status'} style={{ color: error ? '#a33' : 'var(--color-text)', fontWeight: 700, borderLeft: `3px solid ${error ? '#a33' : 'var(--color-accent)'}`, paddingLeft: 'var(--space-2)' }}>
+    <p className="note" role={error ? 'alert' : 'status'} style={{ color: error ? 'var(--color-error)' : 'var(--color-text)', fontWeight: 700, borderLeft: `3px solid ${error ? 'var(--color-error)' : 'var(--color-accent)'}`, paddingLeft: 'var(--space-2)' }}>
       {error || message}
     </p>
   );
 }
 
 export function Tag({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'good' | 'bad' | 'neutral' }) {
-  return <span className={tone === 'good' ? 'tag tag-accent' : tone === 'bad' ? 'tag tag-outline' : 'tag tag-neutral'} style={tone === 'bad' ? { borderColor: '#a33', color: '#a33' } : undefined}>{children}</span>;
+  return <span className={tone === 'good' ? 'tag tag-accent' : tone === 'bad' ? 'tag tag-outline' : 'tag tag-neutral'} style={tone === 'bad' ? { borderColor: 'var(--color-error)', color: 'var(--color-error)' } : undefined}>{children}</span>;
 }
 
 /** The blueprint-framed card every report sits in. */

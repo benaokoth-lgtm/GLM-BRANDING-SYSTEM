@@ -32,7 +32,7 @@ export default function BusinessHeadDetail({ head, from, to, onOpenOrder }: { he
     };
   }, [head, from, to]);
 
-  if (error) return <p className="note" style={{ color: '#a33', padding: 'var(--space-3)' }}>{error}</p>;
+  if (error) return <p className="note" style={{ color: 'var(--color-error)', padding: 'var(--space-3)' }}>{error}</p>;
   if (!data) return <p className="note" style={{ padding: 'var(--space-3)' }}>Loading…</p>;
   const shared = head === '__shared__';
 

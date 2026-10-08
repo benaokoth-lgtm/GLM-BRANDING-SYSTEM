@@ -112,7 +112,7 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div className="card-kicker">Discount</div>
-                      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 24, color: '#a33' }}>{fmtKsh(a.shortfall)}</div>
+                      <div style={{ fontFamily: 'var(--font-heading)', fontSize: 24, color: 'var(--color-error)' }}>{fmtKsh(a.shortfall)}</div>
                       <div className="note" style={{ margin: 0 }}>{fmtNum(a.pctBelow, 1)}% below recommended</div>
                     </div>
                   </div>
@@ -123,7 +123,7 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
                     </div>
                     <div>
                       <div className="card-kicker">Charged / piece</div>
-                      <b style={{ color: '#a33' }}>{fmtKsh(a.chargedPerPiece)}</b>
+                      <b style={{ color: 'var(--color-error)' }}>{fmtKsh(a.chargedPerPiece)}</b>
                     </div>
                     <div>
                       <div className="card-kicker">Job at recommended</div>

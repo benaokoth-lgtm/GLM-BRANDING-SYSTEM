@@ -210,7 +210,7 @@ export default function BackupPanel() {
             {data.lastError && (
               <tr>
                 <td className="text-muted">Problem</td>
-                <td style={{ color: '#a33' }}>{data.lastError}</td>
+                <td style={{ color: 'var(--color-error)' }}>{data.lastError}</td>
               </tr>
             )}
             <tr>
@@ -376,9 +376,9 @@ export default function BackupPanel() {
         </div>
 
         {restoreCheck && (
-          <div className="card" style={{ padding: 'var(--space-3)', marginTop: 'var(--space-3)', borderColor: '#a33' }}>
+          <div className="card" style={{ padding: 'var(--space-3)', marginTop: 'var(--space-3)', borderColor: 'var(--color-error)' }}>
             <strong>{restoreFile?.name ?? restoreName}</strong> — made {when(restoreCheck.createdAt)}, {restoreCheck.rows.toLocaleString()} records ({restoreCheck.counts.Order ?? 0} orders, {restoreCheck.counts.User ?? 0} users, {restoreCheck.counts.Service ?? 0} services, {restoreCheck.counts.Material ?? 0} stock items).
-            <p style={{ color: '#a33', fontWeight: 700, margin: 'var(--space-2) 0' }}>
+            <p style={{ color: 'var(--color-error)', fontWeight: 700, margin: 'var(--space-2) 0' }}>
               Restoring replaces everything in the system right now with this backup. Anything entered since it was made is lost. A copy of the system as it is now is saved on the server first. Everyone will be signed out.
             </p>
             <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-end', flexWrap: 'wrap' }}>

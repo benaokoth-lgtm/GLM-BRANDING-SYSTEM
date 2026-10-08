@@ -270,7 +270,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             </div>
           </div>
           {detail.priceApproval === 'Pending' && (
-            <p className="note" style={{ borderLeft: '2px solid #a33', paddingLeft: 'var(--space-2)' }}>
+            <p className="note" style={{ borderLeft: '2px solid var(--color-error)', paddingLeft: 'var(--space-2)' }}>
               <span className="tag tag-outline">Awaiting price approval</span> This artwork job is priced below the recommended price. A manager has to approve it before it can be paid for or produced.
             </p>
           )}
@@ -302,7 +302,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                     {[li.serviceName, li.materialName].filter(Boolean).join(' + ')}
                     {li.outsourced && (
                       <div style={{ fontSize: 11 }}>
-                        <span className="tag tag-outline">Contracted out</span> {seeCosts && li.needsCosting && <span className="tag tag-outline" style={{ borderColor: '#a33', color: '#a33' }}>needs supplier quote</span>}
+                        <span className="tag tag-outline">Contracted out</span> {seeCosts && li.needsCosting && <span className="tag tag-outline" style={{ borderColor: 'var(--color-error)', color: 'var(--color-error)' }}>needs supplier quote</span>}
                       </div>
                     )}
                     {li.artworkAreaSqm != null && (
@@ -445,7 +445,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
           </div>
 
           {error && (
-            <p className="note" style={{ color: '#a33' }}>
+            <p className="note" style={{ color: 'var(--color-error)' }}>
               {error}
             </p>
           )}
@@ -463,7 +463,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 accountReference={detail.orderNo}
               />
               {paymentProblem(paymentRows, detail.totals.balanceDue) && (
-                <p className="note" style={{ color: '#a33' }}>
+                <p className="note" style={{ color: 'var(--color-error)' }}>
                   {paymentProblem(paymentRows, detail.totals.balanceDue)}
                 </p>
               )}

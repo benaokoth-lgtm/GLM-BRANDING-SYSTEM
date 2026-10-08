@@ -164,7 +164,7 @@ export default function FreelancePicker({ value, onChange }: { value: number | n
               <input className="input" value={form.bankAccount} onChange={set('bankAccount')} />
             </div>
           </div>
-          {error && <p className="note" style={{ color: '#a33', margin: 0 }}>{error}</p>}
+          {error && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{error}</p>}
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
             <button type="button" className="btn btn-primary btn-sm" disabled={busy || !form.name.trim() || !form.phone.trim()} onClick={save}>
               Add and credit this order to them

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
 import ChangePinDialog from '../components/ChangePinDialog';
+import { THEMES, useTheme, type Theme } from '../hooks/useTheme';
 import type { CurrentUser } from '../state/AuthContext';
 
 // Built from the logged-in user's permissions rather than a hardcoded map
@@ -59,6 +60,7 @@ function AppLayoutInner() {
   const { user, logout, clearMustChangePin } = useAuth();
   const [changingPin, setChangingPin] = useState(false);
   const features = useFeatures();
+  const { theme, choose } = useTheme();
   const tabs = user ? buildTabs(user, !!features?.commission) : [];
 
   return (
@@ -74,6 +76,13 @@ function AppLayoutInner() {
               {user.name} · {user.role}
             </span>
           )}
+          <select className="input" style={{ width: 'auto', minHeight: 32 }} aria-label="Colour scheme" title="Colour scheme" value={theme} onChange={(e) => choose(e.target.value as Theme)}>
+            {THEMES.map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
           <button type="button" className="btn btn-secondary" onClick={() => setChangingPin(true)}>
             Change PIN
           </button>

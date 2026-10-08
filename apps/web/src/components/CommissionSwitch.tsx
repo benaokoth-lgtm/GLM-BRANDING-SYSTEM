@@ -54,7 +54,7 @@ export default function CommissionSwitch() {
           : 'Nothing is credited to anyone, nobody can claim a client, and the Commission module is hidden. Switch it on when you want commission to start — clients are only credited, and orders only counted, from then on. Film and artwork commission is worked out from the payments received in each month, so the cleanest time to start is the 1st.'}
       </p>
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}

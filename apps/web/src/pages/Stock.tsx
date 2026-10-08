@@ -163,7 +163,7 @@ export default function Stock() {
       </div>
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}

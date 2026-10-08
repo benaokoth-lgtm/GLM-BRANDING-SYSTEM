@@ -625,7 +625,7 @@ export default function MasterData() {
       </div>
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}
@@ -672,7 +672,7 @@ export default function MasterData() {
                         <>
                           {s.name} {d && !d.lastName && <span className="tag tag-accent" title="Staff need a first name and a surname — add the surname">Surname needed</span>}{' '}
                           {d?.mustChangePin && <span className="tag tag-outline" title="They were emailed a PIN and have not chosen their own yet">PIN not changed yet</span>}{' '}
-                          {d && !d.active && <span className="tag tag-outline" style={{ borderColor: '#a33', color: '#a33' }} title="Cannot sign in; their history stays on record">Switched off</span>}{' '}
+                          {d && !d.active && <span className="tag tag-outline" style={{ borderColor: 'var(--color-error)', color: 'var(--color-error)' }} title="Cannot sign in; their history stays on record">Switched off</span>}{' '}
                           {d && (
                             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setNameDrafts((x) => ({ ...x, [s.id]: { first: d.firstName, middle: d.middleName, last: d.lastName } }))}>
                               Edit name
@@ -719,7 +719,7 @@ export default function MasterData() {
                         if (!rp || !rp.canBeAssignedOrders) return <span className="text-muted">—</span>;
                         return (
                           <>
-                            <span className={'tag ' + (d?.orderTakingOff ? 'tag-outline' : 'tag-neutral')} style={d?.orderTakingOff ? { borderColor: '#a33', color: '#a33' } : undefined}>{d?.orderTakingOff ? 'Off' : 'On'}</span>{' '}
+                            <span className={'tag ' + (d?.orderTakingOff ? 'tag-outline' : 'tag-neutral')} style={d?.orderTakingOff ? { borderColor: 'var(--color-error)', color: 'var(--color-error)' } : undefined}>{d?.orderTakingOff ? 'Off' : 'On'}</span>{' '}
                             {d && (
                               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOrderTaking(s.id, s.name, !!d.orderTakingOff)}>
                                 {d.orderTakingOff ? 'Switch on' : 'Switch off'}
@@ -768,7 +768,7 @@ export default function MasterData() {
                       {d && s.id !== user?.id && (
                         <>
                           {' '}
-                          <button type="button" className="btn btn-ghost btn-sm" disabled={staffBusy} style={{ color: '#a33' }} title="Delete for good (only if they have no history)" onClick={() => deleteStaff(s.id, s.name)}>
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={staffBusy} style={{ color: 'var(--color-error)' }} title="Delete for good (only if they have no history)" onClick={() => deleteStaff(s.id, s.name)}>
                             Delete
                           </button>
                         </>

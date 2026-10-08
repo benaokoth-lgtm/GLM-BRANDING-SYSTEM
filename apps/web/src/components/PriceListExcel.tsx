@@ -86,7 +86,7 @@ export default function PriceListExcel({ kind, onApplied }: { kind: 'services' |
       </div>
 
       {error && (
-        <p className="note" role="alert" style={{ color: '#a33', fontWeight: 700 }}>
+        <p className="note" role="alert" style={{ color: 'var(--color-error)', fontWeight: 700 }}>
           {error}
         </p>
       )}
@@ -96,7 +96,7 @@ export default function PriceListExcel({ kind, onApplied }: { kind: 'services' |
           <strong>{file?.name}</strong> — {check.total} row{check.total === 1 ? '' : 's'} read.
           <div style={{ marginTop: 'var(--space-1)' }}>
             <span className="tag tag-accent">{check.created} new</span> <span className="tag tag-accent">{check.updated} changed</span> <span className="tag tag-neutral">{check.unchanged} unchanged</span>{' '}
-            {check.errors.length > 0 && <span className="tag tag-outline" style={{ borderColor: '#a33', color: '#a33' }}>{check.errors.length} not usable</span>}
+            {check.errors.length > 0 && <span className="tag tag-outline" style={{ borderColor: 'var(--color-error)', color: 'var(--color-error)' }}>{check.errors.length} not usable</span>}
           </div>
           {check.errors.length > 0 && (
             <ul style={{ margin: 'var(--space-2) 0 0', paddingLeft: 'var(--space-4)', fontSize: 13 }}>

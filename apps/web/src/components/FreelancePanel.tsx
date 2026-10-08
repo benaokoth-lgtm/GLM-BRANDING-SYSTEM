@@ -135,7 +135,7 @@ function PayCell({ s, b2cReady, busy, run }: { s: Statement; b2cReady: boolean; 
           Mark paid
         </button>
       )}
-      {p.mpesa?.status === 'Failed' && <span className="note" style={{ color: '#a33', margin: 0, flexBasis: '100%' }}>Last M-Pesa attempt failed: {p.mpesa.resultDesc}</span>}
+      {p.mpesa?.status === 'Failed' && <span className="note" style={{ color: 'var(--color-error)', margin: 0, flexBasis: '100%' }}>Last M-Pesa attempt failed: {p.mpesa.resultDesc}</span>}
       <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(async () => { await api.del(`/freelance/payouts/${p.id}`); return 'Approval withdrawn'; })}>
         Withdraw
       </button>
@@ -605,7 +605,7 @@ function TaxTab() {
           hint={`${fmtKsh(data.totals.withheld)} withheld from ${fmtKsh(data.totals.gross)} of commission paid in the month — the figures for the withholding return. The tax is held in Withholding Tax Payable until it is paid over to KRA.`}
         >
           {data.missingPin.length > 0 && (
-            <p className="note" style={{ color: '#a33' }}>
+            <p className="note" style={{ color: 'var(--color-error)' }}>
               No KRA PIN on file for {data.missingPin.join(', ')}. KRA needs it for the withholding certificate — add it under Freelance sales persons → Edit.
             </p>
           )}

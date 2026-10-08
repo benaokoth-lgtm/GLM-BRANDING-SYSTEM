@@ -42,7 +42,7 @@ export default function CorporateClientsPanel() {
 
   return (
     <>
-      {error && <p className="note" style={{ color: '#a33' }}>{error}</p>}
+      {error && <p className="note" style={{ color: 'var(--color-error)' }}>{error}</p>}
       <table className="table">
         <thead>
           <tr>

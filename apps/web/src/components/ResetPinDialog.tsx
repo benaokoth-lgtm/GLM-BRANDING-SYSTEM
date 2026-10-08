@@ -77,7 +77,7 @@ export default function ResetPinDialog({ person, needs, onClose, onDone }: Props
                 Make them choose their own PIN at next sign-in
               </label>
               {!pin && !(email && !!person.email) && <p className="note">With no PIN typed and no email, the made PIN is shown here once for you to hand over.</p>}
-              {err && <p className="note" style={{ color: '#a33' }}>{err}</p>}
+              {err && <p className="note" style={{ color: 'var(--color-error)' }}>{err}</p>}
             </div>
             <div className="dialog-actions">
               <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>

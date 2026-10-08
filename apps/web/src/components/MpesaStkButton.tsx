@@ -145,10 +145,10 @@ export default function MpesaStkButton({ phone, amount, accountReference, descri
           {canConfirmManually && !mayConfirm && <span className="note" style={{ margin: 0 }}>Still nothing? If the customer says they have paid, ask a manager to check the till SMS and confirm it.</span>}
         </>
       )}
-      {status?.status === 'Failed' && <p className="note" style={{ color: '#a33', margin: 0 }}>{status.resultDesc || 'Payment failed or was declined.'}</p>}
+      {status?.status === 'Failed' && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{status.resultDesc || 'Payment failed or was declined.'}</p>}
       {status?.status === 'Cancelled' && <p className="note" style={{ margin: 0 }}>Customer cancelled the prompt.</p>}
       {error && (
-        <p className="note" style={{ color: '#a33', margin: 0 }}>
+        <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>
           {error}
         </p>
       )}

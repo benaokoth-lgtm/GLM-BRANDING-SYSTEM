@@ -58,7 +58,7 @@ export default function NewFilmOrder() {
       <div className="card-title">New film sale</div>
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}

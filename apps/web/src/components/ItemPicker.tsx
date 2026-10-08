@@ -149,7 +149,7 @@ export default function ItemPicker({
         }}
       >
         <span>{o.name}</span>
-        <span style={{ fontSize: 11, opacity: 0.8, whiteSpace: 'nowrap', color: o.warn && i !== active ? '#a33' : undefined }}>{o.hint}</span>
+        <span style={{ fontSize: 11, opacity: 0.8, whiteSpace: 'nowrap', color: o.warn && i !== active ? 'var(--color-error)' : undefined }}>{o.hint}</span>
       </button>
     );
   };

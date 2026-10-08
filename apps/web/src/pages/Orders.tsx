@@ -258,7 +258,7 @@ export default function Orders() {
                         <span className={o.status === 'Quote' ? 'tag tag-outline' : 'tag tag-accent'}>{o.status}</span>
                       </td>
                       <td className="text-muted">{o.status === 'Quote' ? '—' : o.stage}</td>
-                      <td className={o.overdue ? '' : 'text-muted'} style={o.overdue ? { color: '#a33', fontWeight: 700 } : undefined}>
+                      <td className={o.overdue ? '' : 'text-muted'} style={o.overdue ? { color: 'var(--color-error)', fontWeight: 700 } : undefined}>
                         {o.dueDate ? fmtDate(o.dueDate) : '—'}
                       </td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(o.totals.grandTotal)}</td>
@@ -353,7 +353,7 @@ export default function Orders() {
                 <td>
                   <span className={row.status === 'Quote' ? 'tag tag-outline' : 'tag tag-accent'}>{row.status}</span>
                 </td>
-                {showDue && <td className={row.overdue ? '' : 'text-muted'} style={row.overdue ? { color: '#a33', fontWeight: 700 } : undefined}>{row.dueDate ? fmtDate(row.dueDate) : '—'}</td>}
+                {showDue && <td className={row.overdue ? '' : 'text-muted'} style={row.overdue ? { color: 'var(--color-error)', fontWeight: 700 } : undefined}>{row.dueDate ? fmtDate(row.dueDate) : '—'}</td>}
                 <td className="text-muted">{row.status === 'Quote' ? '—' : row.stage}</td>
                 <td>{fmtKsh(row.totals.grandTotal)}</td>
                 <td>{fmtKsh(row.totals.balanceDue)}</td>

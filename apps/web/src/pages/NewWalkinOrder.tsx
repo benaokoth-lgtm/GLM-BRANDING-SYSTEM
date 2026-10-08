@@ -115,11 +115,11 @@ export default function NewWalkinOrder() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <div className="field">
           <label>{sourced ? 'Customer name *' : 'Customer name (optional)'}</label>
-          <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in (optional)" style={sourced && !isNamedClient(customerName) ? { borderColor: '#a33' } : undefined} />
+          <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Walk-in (optional)" style={sourced && !isNamedClient(customerName) ? { borderColor: 'var(--color-error)' } : undefined} />
         </div>
         <div className="field">
           <label>{sourced ? 'Phone *' : 'Phone (optional)'}</label>
-          <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: '#a33' } : undefined} />
+          <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: 'var(--color-error)' } : undefined} />
         </div>
         <div className="field">
           <label>Payment timing</label>
@@ -178,7 +178,7 @@ export default function NewWalkinOrder() {
           </div>
           <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={totals.grandTotal} phone={phone} accountReference={customerName || 'Walk-in order'} />
           {payProblem && (
-            <p className="note" style={{ color: '#a33', marginTop: 'var(--space-2)' }}>
+            <p className="note" style={{ color: 'var(--color-error)', marginTop: 'var(--space-2)' }}>
               {payProblem}
             </p>
           )}
@@ -186,7 +186,7 @@ export default function NewWalkinOrder() {
       )}
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}

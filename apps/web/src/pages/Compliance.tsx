@@ -359,7 +359,7 @@ export default function Compliance() {
       </div>
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}
@@ -754,7 +754,7 @@ export default function Compliance() {
             logged. Casual staff carry no PAYE, so they have no P9.
           </p>
           {p9 && !p9.employer.kraPin && (
-            <p className="note" style={{ color: '#a33' }}>
+            <p className="note" style={{ color: 'var(--color-error)' }}>
               The company's KRA PIN is not recorded — add it under Master Data → Company Info; it prints as the employer's PIN.
             </p>
           )}

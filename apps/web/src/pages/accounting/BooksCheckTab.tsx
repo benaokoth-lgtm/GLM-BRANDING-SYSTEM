@@ -58,7 +58,7 @@ export function BooksCheckTab({ range }: { range: Range }) {
                     <td style={numStyle}>{s.records}</td>
                     <td style={numStyle}>{money(s.expected)}</td>
                     <td style={numStyle}>{money(s.posted)}</td>
-                    <td style={{ ...numStyle, color: Math.abs(s.difference) > 0.02 ? '#a33' : undefined, fontWeight: Math.abs(s.difference) > 0.02 ? 700 : undefined }}>{Math.abs(s.difference) > 0.02 ? money(s.difference) : '✓'}</td>
+                    <td style={{ ...numStyle, color: Math.abs(s.difference) > 0.02 ? 'var(--color-error)' : undefined, fontWeight: Math.abs(s.difference) > 0.02 ? 700 : undefined }}>{Math.abs(s.difference) > 0.02 ? money(s.difference) : '✓'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -84,7 +84,7 @@ export function BooksCheckTab({ range }: { range: Range }) {
                       <td>{i.ref}</td>
                       <td style={numStyle}>{money(i.expected)}</td>
                       <td style={numStyle}>{money(i.posted)}</td>
-                      <td style={{ color: '#a33' }}>{i.problem}</td>
+                      <td style={{ color: 'var(--color-error)' }}>{i.problem}</td>
                     </tr>
                   ))}
                 </tbody>

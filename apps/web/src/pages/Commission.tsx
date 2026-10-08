@@ -131,7 +131,7 @@ function TargetCard({ s, you }: { s: Statement; you?: boolean }) {
     <div>
       <div className="card-kicker">Sales target — {!t.salaryKnown ? 'salary needed' : t.met ? 'met' : `${done}% there`}</div>
       {!t.salaryKnown ? (
-        <p className="note" style={{ marginTop: 0, color: '#a33' }}>
+        <p className="note" style={{ marginTop: 0, color: 'var(--color-error)' }}>
           {you ? 'Your' : 'Their'} gross salary has not been recorded, so there is no target to measure and commission is <b>on hold</b>. Finance adds it under Compliance → Employees.
           {s.heldCommission > 0 && <> {fmtKsh(s.heldCommission)} is waiting.</>}
         </p>
@@ -791,7 +791,7 @@ function RatesTab() {
             <p className="note" style={{ margin: 0 }}>5% is a placeholder — confirm the rate with your accountant. 0 = none. A person can have their own rate.</p>
           </div>
         </div>
-        {problem && <p className="note" style={{ color: '#a33', margin: 0 }}>{problem}</p>}
+        {problem && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{problem}</p>}
         <div>
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!problem || !(Number(artwork) >= 0 && Number(artwork) <= 100) || !(Number(months) >= 1) || !(Number(multiplier) >= 0 && Number(multiplier) <= 20) || !(Number(flMonths) >= 1) || !(Number(flTax) >= 0 && Number(flTax) <= 100) || !(Number(flPremium) >= 0 && Number(flPremium) <= 100) || !(Number(flLow) >= 0 && Number(flLow) <= 100)} onClick={save}>
             Save rates

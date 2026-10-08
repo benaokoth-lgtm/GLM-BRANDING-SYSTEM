@@ -167,7 +167,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
                 ) : (
                   <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Choose the sales person this order is for. It is theirs — film and artwork extras, sales target, and (when ticked) the client.</p>
                 )}
-                {needsDetails && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client and to recognise them on their next order.</p>}
+                {needsDetails && <p className="note" style={{ color: 'var(--color-error)', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client and to recognise them on their next order.</p>}
               </>
             ) : (
             <>
@@ -177,7 +177,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
                   <b>{staffName || 'This staff member'}</b> brought this client in through their own network — credit them for {lookup?.months ?? 12} months
                 </span>
               </label>
-              {needsDetails && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client to you and to recognise them on their next order.</p>}
+              {needsDetails && <p className="note" style={{ color: 'var(--color-error)', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client to you and to recognise them on their next order.</p>}
               {!checked && <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Leave unticked for walk-ins and clients the shop already had — no name or phone is needed, and a house order earns no sourcing commission.</p>}
             </>
             )

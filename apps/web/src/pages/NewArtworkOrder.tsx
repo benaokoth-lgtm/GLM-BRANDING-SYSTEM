@@ -86,7 +86,7 @@ export default function NewArtworkOrder() {
       <div className="card-title">New artwork job</div>
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}
@@ -129,9 +129,9 @@ export default function NewArtworkOrder() {
         <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
           Leave blank to charge the recommended price.{artworkRate != null && ' Charge more and you earn commission on the amount above it.'} Charge less (not under {fmtKsh(floor)}) and the job needs a manager’s approval first.
         </p>
-        {belowFloor && <p className="note" style={{ color: '#a33', margin: 'var(--space-1) 0 0' }}>Blocked — the price cannot be below the minimum of {fmtKsh(floor)} a piece.</p>}
+        {belowFloor && <p className="note" style={{ color: 'var(--color-error)', margin: 'var(--space-1) 0 0' }}>Blocked — the price cannot be below the minimum of {fmtKsh(floor)} a piece.</p>}
         {belowSystem && (
-          <div className="note" style={{ margin: 'var(--space-1) 0 0', borderLeft: '2px solid #a33', paddingLeft: 'var(--space-2)' }}>
+          <div className="note" style={{ margin: 'var(--space-1) 0 0', borderLeft: '2px solid var(--color-error)', paddingLeft: 'var(--space-2)' }}>
             <b>Discount: {fmtKsh(discountTotal)}</b> ({fmtNum(((system - chosen) / system) * 100, 1)}% below the recommended {fmtKsh(system)}). The lower price <i>is</i> the discount — no other discount applies. It goes to a manager for approval first;
             payment is taken and production starts once it is approved.{artworkRate != null && ' No commission premium is earned on it.'}
             {impact && (

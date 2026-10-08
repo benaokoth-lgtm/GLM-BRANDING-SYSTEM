@@ -146,7 +146,7 @@ export default function Reports() {
       </div>
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}
@@ -295,8 +295,8 @@ export default function Reports() {
                       <td style={{ textAlign: 'right' }}>{fmtKsh(h.costs.purchases)}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(h.costs.expenses)}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(h.costs.total)}</td>
-                      <td style={{ textAlign: 'right', fontWeight: 700, color: h.margin < 0 ? '#a33' : undefined }}>{fmtKsh(h.margin)}</td>
-                      <td style={{ textAlign: 'right', color: h.margin < 0 ? '#a33' : undefined }}>{h.marginPct == null ? '—' : `${h.marginPct.toFixed(1)}%`}</td>
+                      <td style={{ textAlign: 'right', fontWeight: 700, color: h.margin < 0 ? 'var(--color-error)' : undefined }}>{fmtKsh(h.margin)}</td>
+                      <td style={{ textAlign: 'right', color: h.margin < 0 ? 'var(--color-error)' : undefined }}>{h.marginPct == null ? '—' : `${h.marginPct.toFixed(1)}%`}</td>
                     </tr>
                     {openHead === h.name && (
                       <tr>
@@ -371,7 +371,7 @@ export default function Reports() {
                   <td></td>
                   <td></td>
                   <td style={{ textAlign: 'right' }}>{fmtKsh(heads.totalCosts)}</td>
-                  <td style={{ textAlign: 'right', color: heads.totalMargin < 0 ? '#a33' : undefined }}>{fmtKsh(heads.totalMargin)}</td>
+                  <td style={{ textAlign: 'right', color: heads.totalMargin < 0 ? 'var(--color-error)' : undefined }}>{fmtKsh(heads.totalMargin)}</td>
                   <td style={{ textAlign: 'right' }}>{heads.totalSales > 0 ? `${((heads.totalMargin / heads.totalSales) * 100).toFixed(1)}%` : '—'}</td>
                 </tr>
               </tbody>

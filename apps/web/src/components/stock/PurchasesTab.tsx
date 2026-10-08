@@ -185,7 +185,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
 
   return (
     <>
-      {error && <p className="note" style={{ color: '#a33' }}>{error}</p>}
+      {error && <p className="note" style={{ color: 'var(--color-error)' }}>{error}</p>}
       {notice && <p className="note" style={{ fontWeight: 700 }}>{notice}</p>}
 
       <Card noPrint>
@@ -289,7 +289,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
             <div style={{ fontFamily: 'var(--font-heading)', fontSize: 20 }}>Total: {fmtKsh(total)}</div>
             {expectedKnown && (
               <div className="note" style={{ margin: 0 }}>
-                Requisition expected {fmtKsh(expected)} for these items — {total - expected === 0 ? 'on budget' : <b style={{ color: total > expected ? '#a33' : undefined }}>{total > expected ? 'over' : 'under'} by {fmtKsh(Math.abs(total - expected))}</b>}
+                Requisition expected {fmtKsh(expected)} for these items — {total - expected === 0 ? 'on budget' : <b style={{ color: total > expected ? 'var(--color-error)' : undefined }}>{total > expected ? 'over' : 'under'} by {fmtKsh(Math.abs(total - expected))}</b>}
               </div>
             )}
           </div>
@@ -369,7 +369,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
                       {p.lines.map((l) => (
                         <div key={l.id} style={{ fontSize: 12 }}>
                           {l.materialName} × {l.qty} @ {l.unitCost}
-                          {l.receivedQty != null && l.receivedQty !== l.qty && <b style={{ color: '#a33' }}> — received {l.receivedQty}</b>}
+                          {l.receivedQty != null && l.receivedQty !== l.qty && <b style={{ color: 'var(--color-error)' }}> — received {l.receivedQty}</b>}
                           {p.status !== 'Rejected' && (
                             <select className="input no-print" style={{ marginLeft: 6, width: 150, padding: '2px 4px', fontSize: 11 }} value={l.businessHeadId ?? ''} onChange={(e) => retagLine(l.id, e.target.value)} aria-label="Business head">
                               <option value="">— not tagged</option>
@@ -427,7 +427,7 @@ export default function PurchasesTab({ materials, reloadSignal, onStockChanged }
                                     <td style={{ textAlign: 'right' }}>{l.qty}</td>
                                     <td>
                                       <input className="input" inputMode="decimal" value={received[l.id] ?? ''} onChange={(e) => setReceived((r) => ({ ...r, [l.id]: e.target.value }))} />
-                                      {got !== l.qty && <div className="note" style={{ margin: 0, color: '#a33' }}>{signed(got - l.qty)} against the invoice</div>}
+                                      {got !== l.qty && <div className="note" style={{ margin: 0, color: 'var(--color-error)' }}>{signed(got - l.qty)} against the invoice</div>}
                                     </td>
                                   </tr>
                                 );

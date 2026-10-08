@@ -161,7 +161,7 @@ export default function CorporateOrderForm({ kind, onCreated }: Props) {
       )}
 
       {error && (
-        <p className="note" style={{ color: '#a33' }}>
+        <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
       )}

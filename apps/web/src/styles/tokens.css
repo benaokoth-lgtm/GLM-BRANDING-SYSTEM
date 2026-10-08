@@ -23,6 +23,9 @@
      headings. Never go lighter than this for text. */
   --color-text-muted: #3f3b35;
   --color-divider: color-mix(in srgb, #0b0b0c 22%, transparent);
+  /* errors / shortfalls / losses (a lighter red under Nocturne) */
+  --color-error: #a33;
+  --color-loss: #b23b2e;
 
   --color-neutral-100: #ebe6dd;
   --color-neutral-200: #e0dad0;
@@ -73,6 +76,123 @@
   --shadow-md: 0 3px 10px color-mix(in srgb, #0b0b0c 10%, transparent);
   --shadow-lg: 0 12px 32px color-mix(in srgb, #0b0b0c 18%, transparent);
 }
+
+/* — Nocturne — the dark scheme. Ivory becomes the accent on a near-black page: primary buttons and the active nav are ivory with dark text.
+   The tint ramps (100–900) run dark → light here, so chips (100/200 background with 800 text) are dark tiles with light text. Text on the page is ≈14:1,
+   muted text ≈ 8:1, error red ≈ 6:1 — all above WCAG AA. Chosen with the colour-scheme picker in the header. */
+:root[data-theme='nocturne'] {
+  color-scheme: dark;
+  --color-bg: #0e1014;
+  --color-surface: #161920;
+  --color-text: #ece7dc;
+  --color-accent: #ece7dc;
+  --color-accent-2: #a89c86;
+  --color-text-muted: #b3ada1;
+  --color-divider: color-mix(in srgb, #ece7dc 22%, transparent);
+  --color-backdrop: #000;
+  --color-error: #ff8a7a;
+  --color-loss: #ff8a7a;
+
+  --color-neutral-100: #23252b;
+  --color-neutral-200: #2c2f36;
+  --color-neutral-300: #454952;
+  --color-neutral-400: #5d626c;
+  --color-neutral-500: #7a7f89;
+  --color-neutral-600: #979ca5;
+  --color-neutral-700: #b4b8bf;
+  --color-neutral-800: #d3d5d9;
+  --color-neutral-900: #eceef0;
+
+  --color-accent-100: #2b2823;
+  --color-accent-200: #3a362f;
+  --color-accent-300: #8a8373;
+  --color-accent-400: #b9b2a2;
+  --color-accent-500: #ece7dc;
+  --color-accent-600: #d9d2c3;
+  --color-accent-700: #c3bcad;
+  --color-accent-800: #ece6da;
+  --color-accent-900: #f6f1ea;
+
+  --color-accent-2-100: #2a2722;
+  --color-accent-2-200: #3a352c;
+  --color-accent-2-300: #5a5242;
+  --color-accent-2-400: #8a7f6b;
+  --color-accent-2-500: #a89c86;
+  --color-accent-2-600: #beb39d;
+  --color-accent-2-700: #d0c7b4;
+  --color-accent-2-800: #e3dccd;
+  --color-accent-2-900: #f1ece2;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.65);
+}
+/* The company logo is usually dark artwork: sit it on a light plate so it stays visible. */
+:root[data-theme='nocturne'] .nav-brand img,
+:root[data-theme='nocturne'] .login-card img { background: #f6f1ea; padding: 4px 6px; border-radius: 2px; }
+:root[data-theme='nocturne'] input[type='date']::-webkit-calendar-picker-indicator { filter: invert(0.85); }
+
+/* — Organic — the natural scheme (the default): warm oat paper, deep-forest ink, a moss-green accent with clay as the second colour, and soft rounded shapes
+   instead of the hard-edged blueprint frames (the corner marks are dropped). Ink on the page ≈ 12:1, muted text ≈ 7:1, white-ish text on the moss
+   buttons ≈ 6:1 — all above WCAG AA. */
+:root[data-theme='organic'] {
+  color-scheme: light;
+  --color-bg: #f1ede0;
+  --color-surface: #faf7ee;
+  --color-text: #23301f;
+  --color-accent: #3f5d3a;
+  --color-accent-2: #8f6335;
+  --color-text-muted: #4a5446;
+  --color-divider: color-mix(in srgb, #23301f 20%, transparent);
+
+  --color-neutral-100: #e8e4d6;
+  --color-neutral-200: #dcd7c6;
+  --color-neutral-300: #c8c2ae;
+  --color-neutral-400: #aaa38c;
+  --color-neutral-500: #8b8570;
+  --color-neutral-600: #6f6a58;
+  --color-neutral-700: #55513f;
+  --color-neutral-800: #3d3b30;
+  --color-neutral-900: #292820;
+
+  --color-accent-100: #e1e9d6;
+  --color-accent-200: #c9d8b8;
+  --color-accent-300: #8fa87e;
+  --color-accent-400: #5f7d55;
+  --color-accent-500: #3f5d3a;
+  --color-accent-600: #335030;
+  --color-accent-700: #284026;
+  --color-accent-800: #1f3320;
+  --color-accent-900: #17261a;
+
+  --color-accent-2-100: #f1e3d3;
+  --color-accent-2-200: #e3c9ad;
+  --color-accent-2-300: #c9a07a;
+  --color-accent-2-400: #b0804f;
+  --color-accent-2-500: #8f6335;
+  --color-accent-2-600: #744f2a;
+  --color-accent-2-700: #5b3e22;
+  --color-accent-2-800: #432d19;
+  --color-accent-2-900: #2c1d10;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 3px color-mix(in srgb, #3d3b30 14%, transparent);
+  --shadow-md: 0 4px 14px color-mix(in srgb, #3d3b30 14%, transparent);
+  --shadow-lg: 0 14px 36px color-mix(in srgb, #3d3b30 22%, transparent);
+}
+:root[data-theme='organic'] .blueprint > .corner { display: none; }
+:root[data-theme='organic'] .blueprint,
+:root[data-theme='organic'] .btn,
+:root[data-theme='organic'] .card,
+:root[data-theme='organic'] .login-user-btn,
+:root[data-theme='organic'] .login-pad button { border-radius: var(--radius-md); }
+:root[data-theme='organic'] .dialog { border-radius: var(--radius-lg); }
+:root[data-theme='organic'] .tag { border-radius: 999px; }
+:root[data-theme='organic'] .login-user-avatar { border-radius: 50%; }
+:root[data-theme='organic'] .btn-primary { box-shadow: var(--shadow-sm); }
+:root[data-theme='organic'] ::-webkit-scrollbar-thumb { border-radius: 4px; }
 
 * ,
 *::before,
@@ -233,7 +353,7 @@ textarea.input { min-height: 90px; resize: vertical; }
 .dialog-backdrop {
   position: fixed; inset: 0; display: grid; place-items: center; z-index: 50;
   padding: var(--space-4);
-  background: color-mix(in srgb, var(--color-neutral-900) 50%, transparent);
+  background: color-mix(in srgb, var(--color-backdrop, var(--color-neutral-900)) 50%, transparent);
 }
 .dialog {
   width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
@@ -247,6 +367,45 @@ textarea.input { min-height: 90px; resize: vertical; }
 /* — print (P&L "Print / PDF") — */
 .print-only { display: none; }
 @media print {
+  :root[data-theme='nocturne'], :root[data-theme='organic'] {
+    color-scheme: light;
+    --color-bg: #f6f1ea;
+    --color-surface: #fbf8f3;
+    --color-text: #0b0b0c;
+    --color-accent: #0b0b0c;
+    --color-accent-2: #6b6458;
+    --color-text-muted: #3f3b35;
+    --color-divider: color-mix(in srgb, #0b0b0c 22%, transparent);
+    --color-error: #a33;
+    --color-loss: #b23b2e;
+    --color-neutral-100: #ebe6dd;
+    --color-neutral-200: #e0dad0;
+    --color-neutral-300: #cfc8bb;
+    --color-neutral-400: #b3ab9c;
+    --color-neutral-500: #968e7f;
+    --color-neutral-600: #7a7367;
+    --color-neutral-700: #5e5850;
+    --color-neutral-800: #433f39;
+    --color-neutral-900: #2a2825;
+    --color-accent-100: #ece5d8;
+    --color-accent-200: #d9d0bf;
+    --color-accent-300: #8f8777;
+    --color-accent-400: #5d574c;
+    --color-accent-500: #0b0b0c;
+    --color-accent-600: #26262a;
+    --color-accent-700: #3b3b40;
+    --color-accent-800: #151517;
+    --color-accent-900: #0b0b0c;
+    --color-accent-2-100: #efeae1;
+    --color-accent-2-200: #ddd5c8;
+    --color-accent-2-300: #bdb3a2;
+    --color-accent-2-400: #978c7a;
+    --color-accent-2-500: #6b6458;
+    --color-accent-2-600: #554f45;
+    --color-accent-2-700: #403b33;
+    --color-accent-2-800: #2c2923;
+    --color-accent-2-900: #1a1815;
+  }
   .no-print { display: none !important; }
   .print-only { display: inline; }
   body { background: #fff; }

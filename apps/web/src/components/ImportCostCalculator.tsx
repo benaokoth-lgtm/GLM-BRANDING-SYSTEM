@@ -604,7 +604,7 @@ export default function ImportCostCalculator({ onImported }: Props) {
           otherwise a new material is created.
         </p>
         {pushError && (
-          <p className="note" style={{ color: '#a33' }}>
+          <p className="note" style={{ color: 'var(--color-error)' }}>
             {pushError}
           </p>
         )}

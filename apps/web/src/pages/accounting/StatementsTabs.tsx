@@ -259,7 +259,7 @@ export function ProfitLossTab({ range }: { range: Range }) {
                       <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 120 }}>
                         <div style={{ width: 14, height: Math.round((Math.max(0, t.revenue) / max) * 120), background: 'var(--color-accent-300)' }} title={fmtKsh(t.revenue)} />
                         <div
-                          style={{ width: 14, height: Math.round((Math.abs(t.netProfit) / max) * 120), background: t.netProfit >= 0 ? 'var(--color-accent-600)' : '#b23b2e' }}
+                          style={{ width: 14, height: Math.round((Math.abs(t.netProfit) / max) * 120), background: t.netProfit >= 0 ? 'var(--color-accent-600)' : 'var(--color-loss)' }}
                           title={fmtKsh(t.netProfit)}
                         />
                       </div>

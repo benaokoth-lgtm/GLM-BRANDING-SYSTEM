@@ -211,7 +211,7 @@ export default function DtfDaily({ kind, reload, setError }: { kind: 'jobs' | 's
                         )}
                         <td style={{ ...right, fontWeight: 700 }}>{fmtKsh(d.total)}</td>
                         <td style={right}>{fmtKsh(d.paid)}</td>
-                        <td style={{ ...right, color: d.balance > 0 ? '#a33' : undefined, fontWeight: d.balance > 0 ? 700 : undefined }}>{d.balance > 0 ? fmtKsh(d.balance) : '—'}</td>
+                        <td style={{ ...right, color: d.balance > 0 ? 'var(--color-error)' : undefined, fontWeight: d.balance > 0 ? 700 : undefined }}>{d.balance > 0 ? fmtKsh(d.balance) : '—'}</td>
                       </tr>
                       {isOpen && (
                         <tr>
@@ -265,7 +265,7 @@ export default function DtfDaily({ kind, reload, setError }: { kind: 'jobs' | 's
                                           <td style={right}>{fmtNum(o.pieces)}</td>
                                           <td style={right}>{fmtNum(o.runningMetres, 2)}</td>
                                           <td style={right}>{fmtNum(o.recommendedPerPiece, 2)}</td>
-                                          <td style={{ ...right, color: o.finalPerPiece < o.recommendedPerPiece ? '#a33' : undefined }}>{fmtNum(o.finalPerPiece, 2)}</td>
+                                          <td style={{ ...right, color: o.finalPerPiece < o.recommendedPerPiece ? 'var(--color-error)' : undefined }}>{fmtNum(o.finalPerPiece, 2)}</td>
                                           <td style={{ ...right, fontWeight: 700 }}>{fmtKsh(o.total)}</td>
                                           <td style={right}>{fmtKsh(o.paid)}</td>
                                           <td style={right}>{o.balance > 0 ? fmtKsh(o.balance) : '—'}</td>

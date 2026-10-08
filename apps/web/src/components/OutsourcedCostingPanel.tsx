@@ -54,7 +54,7 @@ export default function OutsourcedCostingPanel({ orderId, onChanged }: { orderId
     }
   }
 
-  if (!data) return error ? <p className="note" style={{ color: '#a33' }}>{error}</p> : null;
+  if (!data) return error ? <p className="note" style={{ color: 'var(--color-error)' }}>{error}</p> : null;
 
   const saveQuotes = () =>
     run(async () => {

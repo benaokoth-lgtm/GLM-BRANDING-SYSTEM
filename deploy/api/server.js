@@ -71024,6 +71024,20 @@ masterDataRouter.put("/staff/:id/active", requireRole("Admin"), async (req, res)
   await prisma.user.update({ where: { id }, data: { active: parsed.data.active, failedLoginCount: 0, lockedUntil: null, ...parsed.data.active ? {} : { tokenVersion: { increment: 1 } } } });
   res.json({ id, active: parsed.data.active });
 });
+masterDataRouter.put("/staff/:id/role", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ role: external_exports.string().trim().min(1, "Choose a role") }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: "Staff member not found" });
+  const role = parsed.data.role;
+  if (id === req.user.id) return res.status(400).json({ error: "You cannot change your own role. Ask another Admin to do it." });
+  if (role === user.role) return res.json({ id, name: user.name, role, changed: false });
+  if (role !== "Admin" && !await prisma.role.findUnique({ where: { name: role } })) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
+  const needsLongerPin = user.pinLength < await requiredLengthFor(role);
+  await prisma.user.update({ where: { id }, data: { role, tokenVersion: { increment: 1 }, ...needsLongerPin ? { mustChangePin: true } : {} } });
+  res.json({ id, name: user.name, role, previousRole: user.role, changed: true, mustChangePin: needsLongerPin || user.mustChangePin });
+});
 masterDataRouter.put("/staff/:id/name", requireRole("Admin"), async (req, res) => {
   const parsed = external_exports.object(nameParts).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });

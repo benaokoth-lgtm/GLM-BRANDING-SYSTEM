@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { useSubTab } from '../state/SubNavContext';
 import { HeadRow, groupByHead } from '../components/HeadGroups';
+import { localDay, useListSearch } from '../components/useListSearch';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { Card, DateRangeBar, Loading, Notice, Tag, money, numStyle, useLoad, useRange } from './accounting/shared';
@@ -104,6 +105,10 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // Each list is searched by order number and/or date and shown 10 to a page (before the grouping by business head, whose counts stay whole).
+  const waitingS = useListSearch(data?.waiting ?? [], (o) => o.orderNo, (o) => o.createdDate, { id: 'prod-wait', dateLabel: 'Order date' });
+  const tasksS = useListSearch(data?.tasks ?? [], (t) => t.orderNo, (t) => localDay(t.startedAt ?? t.assignedAt), { id: 'prod-task', dateLabel: 'Date (since)' });
+  const headCount = <T extends { businessHead: string }>(rows: T[], head: string) => rows.filter((r) => r.businessHead === head).length;
 
   async function run(fn: () => Promise<string>) {
     setBusy(true);
@@ -158,6 +163,7 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
           title={`Waiting to be assigned (${data.waiting.length})`}
           hint="Every captured order lands here. Give it to a staff member to start production."
         >
+          {waitingS.searchBar}
           <table className="table">
             <thead>
               <tr>
@@ -178,9 +184,16 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                   </td>
                 </tr>
               )}
-              {groupByHead(data.waiting).map(([head, rows]) => (
+              {data.waiting.length > 0 && waitingS.found.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-muted">
+                    No order matches that search.
+                  </td>
+                </tr>
+              )}
+              {groupByHead(waitingS.pageRows).map(([head, rows]) => (
                 <Fragment key={head}>
-                  <HeadRow head={head} count={rows.length} cols={7} />
+                  <HeadRow head={head} count={headCount(waitingS.found, head)} cols={7} />
                   {rows.map((o) => (
                 <tr key={o.orderId}>
                   <td>
@@ -220,6 +233,7 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
               ))}
             </tbody>
           </table>
+          {waitingS.pager}
         </Card>
       )}
 
@@ -238,6 +252,7 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
           ) : undefined
         }
       >
+        {tasksS.searchBar}
         <table className="table">
           <thead>
             <tr>
@@ -259,9 +274,16 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
                 </td>
               </tr>
             )}
-            {groupByHead(data.tasks).map(([head, rows]) => (
+            {data.tasks.length > 0 && tasksS.found.length === 0 && (
+              <tr>
+                <td colSpan={data.manager ? 8 : 7} className="text-muted">
+                  No job matches that search.
+                </td>
+              </tr>
+            )}
+            {groupByHead(tasksS.pageRows).map(([head, rows]) => (
               <Fragment key={head}>
-                <HeadRow head={head} count={rows.length} cols={data.manager ? 8 : 7} />
+                <HeadRow head={head} count={headCount(tasksS.found, head)} cols={data.manager ? 8 : 7} />
                 {rows.map((t) => (
               <tr key={t.id}>
                 <td>
@@ -328,6 +350,7 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
             ))}
           </tbody>
         </table>
+        {tasksS.pager}
       </Card>
     </>
   );
@@ -341,6 +364,7 @@ interface OutsourcedData {
 // Contracted-out jobs with what the customer pays, what the supplier is owed and the profit — for people who can see costs.
 function OutsourcedJobs() {
   const { data, error, loading } = useLoad<OutsourcedData>('/orders/outsourced/jobs');
+  const jobsS = useListSearch(data?.jobs ?? [], (j) => j.orderNo, (j) => j.date, { id: 'out-jobs', dateLabel: 'Order date' });
   return (
     <>
       <Loading loading={loading} error={error} />
@@ -364,6 +388,7 @@ function OutsourcedJobs() {
             ))}
           </div>
           <Card title="Contracted-out jobs" hint="Open an order (All Orders) to cost it or record a supplier bill. Profit in the books takes the VAT out of the sale and out of the supplier's bill (the supplier's VAT is claimed back as input VAT).">
+            {jobsS.searchBar}
             <table className="table">
               <thead>
                 <tr>
@@ -386,7 +411,14 @@ function OutsourcedJobs() {
                     </td>
                   </tr>
                 )}
-                {data.jobs.map((j) => (
+                {data.jobs.length > 0 && jobsS.found.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="text-muted">
+                      No job matches that search.
+                    </td>
+                  </tr>
+                )}
+                {jobsS.pageRows.map((j) => (
                   <tr key={j.orderId}>
                     <td>
                       <strong>{j.orderNo}</strong>
@@ -410,6 +442,7 @@ function OutsourcedJobs() {
                 ))}
               </tbody>
             </table>
+            {jobsS.pager}
           </Card>
         </>
       )}

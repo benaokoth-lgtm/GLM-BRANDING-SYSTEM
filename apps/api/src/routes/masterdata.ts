@@ -115,6 +115,24 @@ masterDataRouter.put('/staff/:id/active', requireRole('Admin'), async (req, res)
   res.json({ id, active: parsed.data.active });
 });
 
+// Change someone's role (what they may do in the system). Applies at once: the role is read from the database on every request, so their open sessions are
+// ended and they sign in again to see their new screens; if the new role needs a longer PIN than they have, they are asked to choose one then. You cannot
+// change your own role (another Admin does it), which also means an active Admin always remains.
+masterDataRouter.put('/staff/:id/role', requireRole('Admin'), async (req, res) => {
+  const parsed = z.object({ role: z.string().trim().min(1, 'Choose a role') }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  const role = parsed.data.role;
+  if (id === req.user!.id) return res.status(400).json({ error: 'You cannot change your own role. Ask another Admin to do it.' });
+  if (role === user.role) return res.json({ id, name: user.name, role, changed: false });
+  if (role !== 'Admin' && !(await prisma.role.findUnique({ where: { name: role } }))) return res.status(400).json({ error: 'Unknown role — add it under Roles & Access first' });
+  const needsLongerPin = user.pinLength < (await requiredLengthFor(role));
+  await prisma.user.update({ where: { id }, data: { role, tokenVersion: { increment: 1 }, ...(needsLongerPin ? { mustChangePin: true } : {}) } });
+  res.json({ id, name: user.name, role, previousRole: user.role, changed: true, mustChangePin: needsLongerPin || user.mustChangePin });
+});
+
 // Change how someone's name is recorded (first name and surname compulsory, middle name optional). The full name follows everywhere it is shown;
 // documents already issued keep the name they were issued with.
 masterDataRouter.put('/staff/:id/name', requireRole('Admin'), async (req, res) => {

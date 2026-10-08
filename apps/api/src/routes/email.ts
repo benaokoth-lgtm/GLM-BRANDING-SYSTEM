@@ -5,7 +5,7 @@ import { prisma } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { canAccessOrder, orderInclude, serializeDetail } from './orders';
 import { buildOrderPdf, documentKind } from '../orderPdf';
-import { explainMailError, getMailer } from '../mailer';
+import { explainMailError, getMailer, refusal } from '../mailer';
 
 export const emailRouter = Router();
 emailRouter.use(requireAuth);
@@ -78,13 +78,15 @@ emailRouter.post('/send', sendLimiter, async (req, res) => {
   const fileBase = `${kind.label}-${detail.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, '-');
 
   try {
-    await mailer.sendMail({
+    const info = await mailer.sendMail({
       to: parsed.data.to,
       subject: parsed.data.subject,
       text: lines.join('\n'),
       html: lines.map((l) => (l ? `<p style="margin:0 0 10px">${esc(l)}</p>` : '')).join(''),
       attachments: [{ filename: `${fileBase}.pdf`, content: pdf, contentType: 'application/pdf' }],
     });
+    const refused = refusal(info, parsed.data.to);
+    if (refused) return res.status(502).json({ error: refused });
     res.json({ ok: true, attachment: `${fileBase}.pdf` });
   } catch (err) {
     res.status(502).json({ error: explainMailError(err, mailer.config) });

@@ -215,6 +215,44 @@ describe('email settings and emailing login PINs', () => {
     await call(admin, 'PUT', '/master-data/settings', { companyName: 'GLM Branding', systemName: '' });
   });
 
+  it('a user can be added with no PIN when there is an email address: one is made, emailed, and works once', async () => {
+    await call(admin, 'PUT', '/master-data/mail', { password: PASS, smtpPort });
+    // neither a PIN nor an email: nothing to give them
+    const none = await call(admin, 'POST', '/master-data/staff', { firstName: 'No', lastName: 'Pin (mail test)', role: 'Staff' });
+    assert.equal(none.status, 400);
+    assert.match(none.body.error, /PIN, or an email/);
+
+    const before = inbox.length;
+    const r = await call(admin, 'POST', '/master-data/staff', { firstName: 'Made', lastName: 'Pin (mail test)', role: 'Staff', email: 'madepin@test.local' });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.emailed.ok, true);
+    const mail = inbox.slice(before).find((m) => m.to.includes('madepin@test.local'))!;
+    assert.ok(mail, 'the email arrived');
+    const pin = /^\s+(\d{4,6})\s*$/m.exec(mail.data)?.[1];
+    assert.ok(pin, 'the made PIN is in the email');
+    const row = await prisma.user.findFirstOrThrow({ where: { name: 'Made Pin (mail test)' } });
+    assert.equal(row.mustChangePin, true);
+    assert.equal(row.pinLength, pin!.length);
+    const login = await call(null, 'POST', '/auth/login', { userId: row.id, pin });
+    assert.equal(login.status, 200);
+    assert.equal(login.body.user.mustChangePin, true);
+
+    // with the mail account not set up, a PIN cannot be made for them
+    await call(admin, 'PUT', '/master-data/mail', { outgoingHost: '', username: '' });
+    const unset = await call(admin, 'POST', '/master-data/staff', { firstName: 'Mail', lastName: 'Off (mail test)', role: 'Staff', email: 'off@test.local' });
+    assert.equal(unset.status, 400);
+    assert.match(unset.body.error, /isn't set up/);
+    await call(admin, 'PUT', '/master-data/mail', { outgoingHost: '127.0.0.1', username: USER, smtpPort });
+  });
+
+  it('a recipient the mail server refuses is reported, not shown as sent', async () => {
+    const { refusal } = await import('../src/mailer');
+    assert.equal(refusal({ accepted: ['a@x.com'], rejected: [], response: '250 OK' }, 'a@x.com'), null);
+    assert.match(refusal({ accepted: [], rejected: ['bad@x.com'], response: '550 no such user' }, 'bad@x.com')!, /refused bad@x\.com.*550 no such user/);
+    assert.match(refusal({ accepted: [{ address: 'o@x.com' }], rejected: [{ address: 'bad@x.com' }] }, 'bad@x.com')!, /refused/);
+    assert.equal(refusal(undefined, 'a@x.com'), null);
+  });
+
   it('an invoice or quotation is emailed as a PDF attachment, built from the order, with a short message in the body', async () => {
     const svc = await prisma.service.create({ data: { name: 'Mail Test Banner', unit: 'piece', price: 1160 } });
     const mk = (orderNo: string, status: string, customerName: string) =>

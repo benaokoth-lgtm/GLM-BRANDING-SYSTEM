@@ -286,7 +286,7 @@ export default function MasterData() {
     setStaffBusy(true);
     try {
       const r = await api.post<{ sentTo: string }>(`/master-data/staff/${id}/send-pin`, {});
-      setStaffNotice(`A new PIN was emailed to ${r.sentTo}`);
+      setStaffNotice(`A new PIN was emailed to ${r.sentTo}. If it does not arrive, ask them to check spam / junk and confirm the address.`);
       loadStaffDetails();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to email the PIN');
@@ -312,12 +312,16 @@ export default function MasterData() {
   async function addStaff() {
     if (!newFirst.trim()) return setError('First name is required');
     if (!newLast.trim()) return setError('Surname is required');
-    if (!/^\d+$/.test(newStaffPin) || newStaffPin.length < newStaffPinNeeds || newStaffPin.length > 6) return setError(`A PIN of ${newStaffPinNeeds === 6 ? '6 digits' : '4 to 6 digits'} is required for this role`);
-    if (isWeakPin(newStaffPin)) return setError('That PIN is too easy to guess (like 1234 or 0000). Choose a less obvious one');
+    // A PIN is optional when an email address is given: the system makes one and emails it (they choose their own at first sign-in).
+    const makePin = !newStaffPin && !!newStaffEmail.trim();
+    if (!makePin) {
+      if (!/^\d+$/.test(newStaffPin) || newStaffPin.length < newStaffPinNeeds || newStaffPin.length > 6) return setError(`A PIN of ${newStaffPinNeeds === 6 ? '6 digits' : '4 to 6 digits'} is required for this role — or leave it blank and enter an email address to have one made and emailed`);
+      if (isWeakPin(newStaffPin)) return setError('That PIN is too easy to guess (like 1234 or 0000). Choose a less obvious one');
+    }
     setError(null);
     try {
-      const r = await api.post<{ emailed?: { ok: boolean; error?: string } }>('/master-data/staff', { firstName: newFirst, middleName: newMiddle, lastName: newLast, role: newStaffRole, pin: newStaffPin, email: newStaffEmail.trim(), emailPin: newStaffEmailPin && !!newStaffEmail.trim() });
-      setStaffNotice(r.emailed ? (r.emailed.ok ? `Added — their PIN was emailed to ${newStaffEmail.trim()}` : `Added, but the PIN email failed: ${r.emailed.error}`) : null);
+      const r = await api.post<{ emailed?: { ok: boolean; error?: string } }>('/master-data/staff', { firstName: newFirst, middleName: newMiddle, lastName: newLast, role: newStaffRole, pin: newStaffPin, email: newStaffEmail.trim(), emailPin: (newStaffEmailPin || makePin) && !!newStaffEmail.trim() });
+      setStaffNotice(r.emailed ? (r.emailed.ok ? `Added — their PIN was emailed to ${newStaffEmail.trim()}. If it does not arrive, ask them to check spam / junk and confirm the address.` : `Added, but the PIN email failed: ${r.emailed.error} Use “Email login PIN” on their line to try again.`) : null);
       setNewFirst('');
       setNewMiddle('');
       setNewLast('');
@@ -812,8 +816,8 @@ export default function MasterData() {
               </select>
             </div>
             <div className="field">
-              <label>{newStaffPinNeeds === 6 ? '6-digit PIN' : 'PIN (4–6 digits)'}</label>
-              <input className="input" value={newStaffPin} maxLength={6} onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, ''))} />
+              <label>{newStaffPinNeeds === 6 ? '6-digit PIN' : 'PIN (4–6 digits)'}{newStaffEmail.trim() ? ' — optional' : ''}</label>
+              <input className="input" value={newStaffPin} maxLength={6} onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, ''))} placeholder={newStaffEmail.trim() ? 'blank = made and emailed' : ''} />
             </div>
             <div className="field">
               <label>Email (optional)</label>
@@ -828,7 +832,7 @@ export default function MasterData() {
             </button>
           </div>
           <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-2)' }}>
-            <input type="checkbox" checked={newStaffEmailPin} disabled={!newStaffEmail.trim()} onChange={(e) => setNewStaffEmailPin(e.target.checked)} /> Email them this PIN now (they will be asked to choose their own at first sign-in — set up the mail account under the Email tab first)
+            <input type="checkbox" checked={newStaffEmailPin || (!newStaffPin && !!newStaffEmail.trim())} disabled={!newStaffEmail.trim() || !newStaffPin} onChange={(e) => setNewStaffEmailPin(e.target.checked)} /> Email them their login now{!newStaffPin && newStaffEmail.trim() ? ' (a PIN is made for them)' : ' with this PIN'} — they will be asked to choose their own at first sign-in (set up the mail account under the Email tab first)
           </label>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
             Roles beyond "Admin" are defined under Roles &amp; Access — add or amend one there before assigning it here. <b>Change role</b> moves someone to another role: they are signed out and sign in again to use it. You cannot change your own role.

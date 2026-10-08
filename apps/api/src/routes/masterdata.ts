@@ -17,7 +17,7 @@ import { ensureBusinessHeadsOnce } from '../purchases';
 import { MARKUP_TYPES } from '@glm/shared';
 import { commissionEnabled } from '../commission';
 import { systemName } from '../company';
-import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig } from '../mailer';
+import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig, refusal } from '../mailer';
 
 export const masterDataRouter = Router();
 masterDataRouter.use(requireAuth);
@@ -44,7 +44,8 @@ async function nameTaken(full: string, exceptId?: number): Promise<boolean> {
 const staffSchema = z.object({
   ...nameParts,
   role: z.string().min(1),
-  pin: z.string().regex(/^\d{4,6}$/, 'A PIN is 4 to 6 digits'),
+  // Optional when an email address is given: a PIN is made for them and emailed (they choose their own at first sign-in).
+  pin: z.string().regex(/^\d{4,6}$/, 'A PIN is 4 to 6 digits').optional().or(z.literal('')),
   email: z.string().trim().toLowerCase().email().optional().or(z.literal('')),
   // Email them their login details now (needs an email and a mail account set up under Master Data → Email).
   emailPin: z.boolean().optional(),
@@ -53,22 +54,28 @@ const staffSchema = z.object({
 masterDataRouter.post('/staff', requireRole('Admin'), async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const { role, pin } = parsed.data;
+  const { role } = parsed.data;
+  const typedPin = parsed.data.pin || '';
   const name = composeName(parsed.data);
   if (await nameTaken(name)) return res.status(400).json({ error: `There is already a staff member called ${name}` });
   const email = parsed.data.email || null;
+  if (!typedPin && !email) return res.status(400).json({ error: 'Enter a PIN, or an email address so a PIN can be made and emailed to them' });
   if (parsed.data.emailPin && !email) return res.status(400).json({ error: 'Enter their email address to email them the PIN' });
+  // No PIN typed: one is made and emailed. A typed PIN is emailed only when asked.
+  const emailThem = !!email && (!!parsed.data.emailPin || !typedPin);
+  if (!typedPin && !(await loadMailConfig())) return res.status(400).json({ error: "Email isn't set up yet — set it up under Master Data → Email first, or type a PIN for them" });
   if (email && (await prisma.user.findUnique({ where: { email } }))) return res.status(400).json({ error: 'That email address is already used by someone else' });
   if (role !== 'Admin') {
     const roleExists = await prisma.role.findUnique({ where: { name: role } });
     if (!roleExists) return res.status(400).json({ error: 'Unknown role — add it under Roles & Access first' });
   }
-  const weak = await pinProblemFor(pin, role);
+  const pin = typedPin || randomPin(await requiredLengthFor(role));
+  const weak = typedPin ? await pinProblemFor(pin, role) : null;
   if (weak) return res.status(400).json({ error: weak });
   const pinHash = await bcrypt.hash(pin, PIN_ROUNDS);
-  const user = await prisma.user.create({ data: { pinLength: pin.length, name, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  const user = await prisma.user.create({ data: { pinLength: pin.length, name, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: emailThem } });
   let emailed: { ok: boolean; error?: string } | undefined;
-  if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
+  if (emailThem && email) emailed = await emailPin(user.name, email, pin);
   res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
 });
 
@@ -81,11 +88,13 @@ async function emailPin(name: string, to: string, pin: string): Promise<{ ok: bo
   const url = mailer.config.loginUrl ? `\nSign in at: ${mailer.config.loginUrl}\n` : '';
   const company = await systemName();
   try {
-    await mailer.sendMail({
+    const info = await mailer.sendMail({
       to,
       subject: `Your ${company} login`,
       text: `Hello ${name},\n\nYou can now sign in to the ${company} system.\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nYou will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.\n\nIf you were not expecting this message, tell your manager.`,
     });
+    const refused = refusal(info, to);
+    if (refused) return { ok: false, error: refused };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: explainMailError(e, mailer.config) };

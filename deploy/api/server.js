@@ -65045,6 +65045,16 @@ function createTransport2(c) {
     socketTimeout: 2e4
   });
 }
+function refusal(info, to) {
+  if (!info) return null;
+  const addr = (a2) => (typeof a2 === "string" ? a2 : a2.address).toLowerCase();
+  const refused = (info.rejected ?? []).map(addr);
+  const taken = (info.accepted ?? []).map(addr);
+  if (refused.includes(to.toLowerCase()) || taken.length === 0 && (info.accepted !== void 0 || refused.length > 0)) {
+    return `The mail server refused ${to}${info.response ? ` (${info.response})` : ""}. Check the address is spelled correctly.`;
+  }
+  return null;
+}
 async function getMailer() {
   const config = await loadMailConfig();
   if (!config) return null;
@@ -71010,7 +71020,8 @@ async function nameTaken(full, exceptId) {
 var staffSchema = external_exports.object({
   ...nameParts,
   role: external_exports.string().min(1),
-  pin: external_exports.string().regex(/^\d{4,6}$/, "A PIN is 4 to 6 digits"),
+  // Optional when an email address is given: a PIN is made for them and emailed (they choose their own at first sign-in).
+  pin: external_exports.string().regex(/^\d{4,6}$/, "A PIN is 4 to 6 digits").optional().or(external_exports.literal("")),
   email: external_exports.string().trim().toLowerCase().email().optional().or(external_exports.literal("")),
   // Email them their login details now (needs an email and a mail account set up under Master Data → Email).
   emailPin: external_exports.boolean().optional()
@@ -71018,22 +71029,27 @@ var staffSchema = external_exports.object({
 masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
   const parsed = staffSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const { role, pin } = parsed.data;
+  const { role } = parsed.data;
+  const typedPin = parsed.data.pin || "";
   const name2 = composeName(parsed.data);
   if (await nameTaken(name2)) return res.status(400).json({ error: `There is already a staff member called ${name2}` });
   const email = parsed.data.email || null;
+  if (!typedPin && !email) return res.status(400).json({ error: "Enter a PIN, or an email address so a PIN can be made and emailed to them" });
   if (parsed.data.emailPin && !email) return res.status(400).json({ error: "Enter their email address to email them the PIN" });
+  const emailThem = !!email && (!!parsed.data.emailPin || !typedPin);
+  if (!typedPin && !await loadMailConfig()) return res.status(400).json({ error: "Email isn't set up yet \u2014 set it up under Master Data \u2192 Email first, or type a PIN for them" });
   if (email && await prisma.user.findUnique({ where: { email } })) return res.status(400).json({ error: "That email address is already used by someone else" });
   if (role !== "Admin") {
     const roleExists = await prisma.role.findUnique({ where: { name: role } });
     if (!roleExists) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
   }
-  const weak = await pinProblemFor(pin, role);
+  const pin = typedPin || randomPin(await requiredLengthFor(role));
+  const weak = typedPin ? await pinProblemFor(pin, role) : null;
   if (weak) return res.status(400).json({ error: weak });
   const pinHash = await import_bcryptjs2.default.hash(pin, PIN_ROUNDS);
-  const user = await prisma.user.create({ data: { pinLength: pin.length, name: name2, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: !!parsed.data.emailPin } });
+  const user = await prisma.user.create({ data: { pinLength: pin.length, name: name2, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName, role, pinHash, email, mustChangePin: emailThem } });
   let emailed;
-  if (parsed.data.emailPin && email) emailed = await emailPin(user.name, email, pin);
+  if (emailThem && email) emailed = await emailPin(user.name, email, pin);
   res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
 });
 async function emailPin(name2, to, pin) {
@@ -71044,7 +71060,7 @@ Sign in at: ${mailer.config.loginUrl}
 ` : "";
   const company = await systemName();
   try {
-    await mailer.sendMail({
+    const info = await mailer.sendMail({
       to,
       subject: `Your ${company} login`,
       text: `Hello ${name2},
@@ -71059,6 +71075,8 @@ You will be asked to choose your own PIN the first time you sign in. Please do t
 
 If you were not expecting this message, tell your manager.`
     });
+    const refused = refusal(info, to);
+    if (refused) return { ok: false, error: refused };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: explainMailError(e, mailer.config) };
@@ -74306,13 +74324,15 @@ emailRouter.post("/send", sendLimiter, async (req, res) => {
   ];
   const fileBase = `${kind.label}-${detail.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, "-");
   try {
-    await mailer.sendMail({
+    const info = await mailer.sendMail({
       to: parsed.data.to,
       subject: parsed.data.subject,
       text: lines.join("\n"),
       html: lines.map((l) => l ? `<p style="margin:0 0 10px">${esc(l)}</p>` : "").join(""),
       attachments: [{ filename: `${fileBase}.pdf`, content: pdf, contentType: "application/pdf" }]
     });
+    const refused = refusal(info, parsed.data.to);
+    if (refused) return res.status(502).json({ error: refused });
     res.json({ ok: true, attachment: `${fileBase}.pdf` });
   } catch (err) {
     res.status(502).json({ error: explainMailError(err, mailer.config) });

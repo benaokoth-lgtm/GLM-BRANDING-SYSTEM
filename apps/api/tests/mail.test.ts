@@ -301,6 +301,28 @@ describe('email settings and emailing login PINs', () => {
     await call(admin, 'PUT', '/master-data/mail', { smtpPort });
   });
 
+  it('Admin can delete someone with no history, but not themselves, the last Admin, or anyone with records', async () => {
+    const fresh = await prisma.user.create({ data: { name: 'Delete Me (mail test)', role: 'Staff', pinHash: 'x' } });
+    const withOrders = await prisma.user.create({ data: { name: 'Has History (mail test)', role: 'Staff', pinHash: 'x' } });
+    await prisma.order.create({ data: { orderNo: 'DEL-TEST-1', kind: 'walkin', staffId: withOrders.id, createdDate: '2026-01-01', status: 'Order', stage: 'Design' } });
+
+    const plain = signToken({ id: fresh.id, name: fresh.name, role: 'Staff' });
+    assert.equal((await call(plain, 'DELETE', `/master-data/staff/${fresh.id}`)).status, 403); // Admin only
+    assert.equal((await call(admin, 'DELETE', `/master-data/staff/${adminId}`)).status, 400); // not yourself
+    assert.equal((await call(admin, 'DELETE', '/master-data/staff/999999')).status, 404);
+
+    const ok = await call(admin, 'DELETE', `/master-data/staff/${fresh.id}`);
+    assert.equal(ok.status, 200);
+    assert.equal(await prisma.user.findUnique({ where: { id: fresh.id } }), null);
+
+    {
+      const refused = await call(admin, 'DELETE', `/master-data/staff/${withOrders.id}`);
+      assert.equal(refused.status, 409);
+      assert.match(refused.body.error, /Switch off/);
+      assert.ok(await prisma.user.findUnique({ where: { id: withOrders.id } }), 'still there');
+    }
+  });
+
   it('a recipient the mail server refuses is reported, not shown as sent', async () => {
     const { refusal } = await import('../src/mailer');
     assert.equal(refusal({ accepted: ['a@x.com'], rejected: [], response: '250 OK' }, 'a@x.com'), null);

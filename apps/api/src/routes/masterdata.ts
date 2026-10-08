@@ -127,6 +127,33 @@ masterDataRouter.put('/staff/:id/active', requireRole('Admin'), async (req, res)
   res.json({ id, active: parsed.data.active });
 });
 
+// Delete a staff member for good. Only possible for someone with no history (a user added by mistake, or who never did anything): once they have taken
+// orders or payments, or have payroll, production, quality, client or commission records, deleting them would orphan or change the books, so the API
+// refuses and says to switch them off instead (their history stays, they just cannot sign in). You cannot delete yourself or the last Admin.
+masterDataRouter.delete('/staff/:id', requireRole('Admin'), async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    include: { _count: { select: { orders: true, payments: true, payrollEntries: true, productionTasks: true, qualityChecks: true, clientOwnerships: true, commissionPayouts: true } } },
+  });
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  if (id === req.user!.id) return res.status(400).json({ error: 'You cannot delete your own account' });
+  if (user.role === 'Admin' && (await prisma.user.count({ where: { role: 'Admin', id: { not: id } } })) === 0) {
+    return res.status(400).json({ error: 'There must always be at least one Admin' });
+  }
+  const labels: Record<string, string> = { orders: 'orders', payments: 'payments', payrollEntries: 'payroll entries', productionTasks: 'production tasks', qualityChecks: 'quality checks', clientOwnerships: 'client assignments', commissionPayouts: 'commission pay-outs' };
+  const held = Object.entries(user._count).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${labels[k] ?? k}`);
+  if (held.length) {
+    return res.status(409).json({ error: `${user.name} cannot be deleted because they have ${held.join(', ')} on record. Deleting would damage those records — use Switch off instead: they can no longer sign in and their history stays.` });
+  }
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch {
+    return res.status(409).json({ error: `${user.name} has records in the system and cannot be deleted. Use Switch off instead.` });
+  }
+  res.json({ ok: true, id, name: user.name });
+});
+
 // ── Front office ────────────────────────────────────────────────────────
 // The sales persons the front office can give orders to (active people whose role is marked "can be assigned orders").
 masterDataRouter.get('/sales-people', async (req, res) => {

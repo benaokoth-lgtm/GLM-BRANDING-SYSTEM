@@ -282,6 +282,21 @@ export default function MasterData() {
     }
   }
 
+  // Permanent. Only works for someone with no history; otherwise the API says why and to use Switch off.
+  async function deleteStaff(id: number, name: string) {
+    if (!window.confirm(`Permanently delete ${name}? This cannot be undone.\n\nOnly people with no orders, payments, payroll or other records can be deleted. For anyone who has worked in the system, use Switch off instead.`)) return;
+    setError(null);
+    setStaffNotice(null);
+    try {
+      await api.del(`/master-data/staff/${id}`);
+      setStaffNotice(`${name} was deleted.`);
+      catalog.reload();
+      loadStaffDetails();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete this person');
+    }
+  }
+
   async function sendPin(id: number, name: string) {
     if (!window.confirm(`Give ${name} a new random PIN and email it to them? Their old PIN stops working, and they will choose their own the first time they sign in.`)) return;
     setError(null);
@@ -782,6 +797,14 @@ export default function MasterData() {
                         <button type="button" className="btn btn-ghost btn-sm" disabled={staffBusy} onClick={() => setStaffActive(s.id, s.name, !d.active)}>
                           {d.active ? 'Switch off' : 'Switch on'}
                         </button>
+                      )}
+                      {d && s.id !== user?.id && (
+                        <>
+                          {' '}
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={staffBusy} style={{ color: '#a33' }} title="Delete for good (only if they have no history)" onClick={() => deleteStaff(s.id, s.name)}>
+                            Delete
+                          </button>
+                        </>
                       )}
                     </td>
                   </tr>

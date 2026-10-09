@@ -226,4 +226,29 @@ describe('NCBA Paybill 880100', () => {
     assert.equal(r.status, 501);
     assert.match(r.body.error, /M-Pesa isn't set up/);
   });
+
+  it('the push notification service works on its own: ready, counted, and its signature check can be switched off', async () => {
+    // NCBA is switched off (the STK buttons use Safaricom), yet notifications are still received
+    const st = (await call('admin', 'GET', '/ncba/settings')).body;
+    assert.equal(st.enabled, false);
+    assert.equal(st.notificationsReady, true);
+    assert.ok(st.activity.lastAt, 'the time of the last notification is shown');
+    assert.ok(st.activity.held >= 0);
+    const ok = await (await post(notice({ transId: 'RKH7STANDA1', amount: '25.00', mobile: '254788888888' }))).json();
+    assert.equal((ok as any).ResultCode, '0');
+    assert.equal((await prisma.mpesaTransaction.findUniqueOrThrow({ where: { mpesaReceipt: 'RKH7STANDA1' } })).kind, 'C2B');
+
+    // a signature that does not match is held while the check is on ...
+    const bad = { ...notice({ transId: 'RKH7NOSIG01', amount: '30.00' }), Hash: 'bm90LXRoZS1zaWduYXR1cmU=' };
+    await post(bad);
+    assert.equal(await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: 'RKH7NOSIG01' } }), null);
+    assert.ok((await call('admin', 'GET', '/ncba/settings')).body.activity.held >= 1);
+    // ... booked when the Admin has turned the check off (the username and password are still required)
+    assert.equal((await call('admin', 'PUT', '/ncba/settings', { checkHash: false })).body.checkHash, false);
+    await post({ ...bad, TransID: 'RKH7NOSIG02' });
+    assert.ok(await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: 'RKH7NOSIG02' } }));
+    await post({ ...bad, TransID: 'RKH7NOSIG03', Password: 'wrong' });
+    assert.equal(await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: 'RKH7NOSIG03' } }), null);
+    await call('admin', 'PUT', '/ncba/settings', { checkHash: true });
+  });
 });

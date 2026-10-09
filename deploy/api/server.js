@@ -22868,8 +22868,8 @@ var require_language = __commonJS({
       if (!match) return null;
       var prefix = match[1];
       var suffix = match[2];
-      var full = prefix;
-      if (suffix) full += "-" + suffix;
+      var full2 = prefix;
+      if (suffix) full2 += "-" + suffix;
       var q = 1;
       if (match[3]) {
         var params = match[3].split(";");
@@ -22883,7 +22883,7 @@ var require_language = __commonJS({
         suffix,
         q,
         i,
-        full
+        full: full2
       };
     }
     function getLanguagePriority(language, accepted, index) {
@@ -66092,8 +66092,8 @@ var tidy = (s) => (s ?? "").trim().replace(/\s+/g, " ");
 function composeName(p) {
   return [tidy(p.firstName), tidy(p.middleName), tidy(p.lastName)].filter(Boolean).join(" ");
 }
-function splitName(full) {
-  const words = tidy(full).split(" ").filter(Boolean);
+function splitName(full2) {
+  const words = tidy(full2).split(" ").filter(Boolean);
   if (words.length === 0) return { firstName: "", middleName: "", lastName: "" };
   if (words.length === 1) return { firstName: words[0], middleName: "", lastName: "" };
   return { firstName: words[0], middleName: words.slice(1, -1).join(" "), lastName: words[words.length - 1] };
@@ -66551,10 +66551,10 @@ async function buildStatements(period, only) {
     const share = total > 0 ? net8 / total : 0;
     if (o.dtfFilmSale) {
       const s = o.dtfFilmSale;
-      const full = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
-      if (full <= 0) addDtfNet(o.staffId, net8);
-      if (full > 0) {
-        const c = round2(full * share);
+      const full2 = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
+      if (full2 <= 0) addDtfNet(o.staffId, net8);
+      if (full2 > 0) {
+        const c = round2(full2 * share);
         const st = who(o.staffId);
         st.film.commission = round2(st.film.commission + c);
         addDtfNet(o.staffId, net8);
@@ -66564,10 +66564,10 @@ async function buildStatements(period, only) {
       const j = o.dtfArtworkJob;
       const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
       const charged = Math.max(sys, j.chargedPerPiece ?? sys);
-      const full = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
-      if (full <= 0) addDtfNet(o.staffId, net8);
-      if (full > 0) {
-        const c = round2(full * share);
+      const full2 = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
+      if (full2 <= 0) addDtfNet(o.staffId, net8);
+      if (full2 > 0) {
+        const c = round2(full2 * share);
         const st = who(o.staffId);
         st.artwork.commission = round2(st.artwork.commission + c);
         addDtfNet(o.staffId, net8);
@@ -71091,8 +71091,8 @@ var nameParts = {
   middleName: external_exports.string().trim().optional().default(""),
   lastName: external_exports.string({ required_error: "Surname is required" }).trim().min(1, "Surname is required")
 };
-async function nameTaken(full, exceptId) {
-  const key2 = full.toLowerCase();
+async function nameTaken(full2, exceptId) {
+  const key2 = full2.toLowerCase();
   return (await prisma.user.findMany({ select: { id: true, name: true } })).some((u) => u.id !== exceptId && u.name.trim().replace(/\s+/g, " ").toLowerCase() === key2);
 }
 var staffSchema = external_exports.object({
@@ -72837,8 +72837,8 @@ ordersRouter.get("/outsourced/jobs", async (req, res) => {
     take: 300
   });
   const jobs = (await Promise.all(orders.map((o) => jobCosting(o.id)))).filter((j) => !!j);
-  const full = await prisma.order.findMany({ where: { id: { in: jobs.map((j) => j.orderId) } }, include: { corporateClient: true } });
-  const byId = new Map(full.map((o) => [o.id, o]));
+  const full2 = await prisma.order.findMany({ where: { id: { in: jobs.map((j) => j.orderId) } }, include: { corporateClient: true } });
+  const byId = new Map(full2.map((o) => [o.id, o]));
   res.json({
     jobs: jobs.map((j) => {
       const o = byId.get(j.orderId);
@@ -75782,11 +75782,22 @@ function publicSettings2(c) {
     notifyUrl: ncbaNotifyUrl(c),
     pushUser: c.pushUser,
     hasPushCredentials: !!(c.pushUser && c.pushPassword && c.pushSecret),
-    checkHash: c.checkHash
+    checkHash: c.checkHash,
+    /** NCBA's notifications are received as soon as it has the address and credentials — they do not depend on the STK push being switched on. */
+    notificationsReady: !!(ncbaNotifyUrl(c) && c.pushUser && c.pushPassword && c.pushSecret)
   };
 }
+async function activity() {
+  const [last2, held, rejected] = await Promise.all([
+    prisma.ncbaNotification.findFirst({ orderBy: { id: "desc" }, select: { receivedAt: true } }),
+    prisma.ncbaNotification.count({ where: { outcome: "Held" } }),
+    prisma.ncbaNotification.count({ where: { outcome: "Rejected", receivedAt: { gt: new Date(Date.now() - 7 * 24 * 3600 * 1e3) } } })
+  ]);
+  return { lastAt: last2?.receivedAt.toISOString() ?? null, held, rejectedLastWeek: rejected };
+}
+var full = async () => ({ ...publicSettings2(await loadNcbaConfig()), activity: await activity() });
 ncbaRouter.get("/settings", requireAuth, requireRole("Admin"), async (_req, res) => {
-  res.json(publicSettings2(await loadNcbaConfig()));
+  res.json(await full());
 });
 var settingsSchema3 = external_exports.object({
   enabled: external_exports.boolean().optional(),
@@ -75837,7 +75848,7 @@ ncbaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res) 
   }
   await prisma.ncbaSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
   resetNcbaToken();
-  res.json(publicSettings2(await loadNcbaConfig()));
+  res.json(await full());
 });
 ncbaRouter.post("/settings/test", requireAuth, requireRole("Admin"), async (_req, res) => {
   try {
@@ -75855,7 +75866,7 @@ ncbaRouter.post("/credentials/generate", requireAuth, requireRole("Admin"), asyn
     where: { id: 1 },
     data: { pushUser: seal(creds.pushUser), pushPassword: seal(creds.pushPassword), pushSecret: seal(creds.pushSecret), ...row.callbackSecret ? {} : { callbackSecret: seal(newNcbaSecret()) } }
   });
-  res.json({ ...creds, settings: publicSettings2(await loadNcbaConfig()) });
+  res.json({ ...creds, settings: await full() });
 });
 ncbaRouter.get("/notifications", requireAuth, requireRole("Admin"), async (_req, res) => {
   const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: "desc" }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });

@@ -46,11 +46,24 @@ function publicSettings(c: NcbaConfig) {
     pushUser: c.pushUser,
     hasPushCredentials: !!(c.pushUser && c.pushPassword && c.pushSecret),
     checkHash: c.checkHash,
+    /** NCBA's notifications are received as soon as it has the address and credentials — they do not depend on the STK push being switched on. */
+    notificationsReady: !!(ncbaNotifyUrl(c) && c.pushUser && c.pushPassword && c.pushSecret),
   };
 }
 
+/** What NCBA has been sending: when the last notification came, and how many are waiting for an Admin (held) or were refused (wrong username or password). */
+async function activity() {
+  const [last, held, rejected] = await Promise.all([
+    prisma.ncbaNotification.findFirst({ orderBy: { id: 'desc' }, select: { receivedAt: true } }),
+    prisma.ncbaNotification.count({ where: { outcome: 'Held' } }),
+    prisma.ncbaNotification.count({ where: { outcome: 'Rejected', receivedAt: { gt: new Date(Date.now() - 7 * 24 * 3600 * 1000) } } }),
+  ]);
+  return { lastAt: last?.receivedAt.toISOString() ?? null, held, rejectedLastWeek: rejected };
+}
+const full = async () => ({ ...publicSettings(await loadNcbaConfig()), activity: await activity() });
+
 ncbaRouter.get('/settings', requireAuth, requireRole('Admin'), async (_req, res) => {
-  res.json(publicSettings(await loadNcbaConfig()));
+  res.json(await full());
 });
 
 const settingsSchema = z.object({
@@ -102,7 +115,7 @@ ncbaRouter.put('/settings', requireAuth, requireRole('Admin'), async (req, res) 
   }
   await prisma.ncbaSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
   resetNcbaToken();
-  res.json(publicSettings(await loadNcbaConfig()));
+  res.json(await full());
 });
 
 // Proves the API username and secret work, without prompting anyone.
@@ -125,7 +138,7 @@ ncbaRouter.post('/credentials/generate', requireAuth, requireRole('Admin'), asyn
     where: { id: 1 },
     data: { pushUser: seal(creds.pushUser), pushPassword: seal(creds.pushPassword), pushSecret: seal(creds.pushSecret), ...(row.callbackSecret ? {} : { callbackSecret: seal(newNcbaSecret()) }) },
   });
-  res.json({ ...creds, settings: publicSettings(await loadNcbaConfig()) });
+  res.json({ ...creds, settings: await full() });
 });
 
 // ── What NCBA has told us ───────────────────────────────────────────────────

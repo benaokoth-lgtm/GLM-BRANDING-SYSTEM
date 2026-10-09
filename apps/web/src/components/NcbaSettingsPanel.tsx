@@ -21,6 +21,8 @@ interface Settings {
   pushUser: string;
   hasPushCredentials: boolean;
   checkHash: boolean;
+  notificationsReady: boolean;
+  activity: { lastAt: string | null; held: number; rejectedLastWeek: number };
 }
 
 interface Received {
@@ -113,6 +115,12 @@ export default function NcbaSettingsPanel() {
       setFresh({ pushUser: r.pushUser, pushPassword: r.pushPassword, pushSecret: r.pushSecret });
       return 'Made — copy them into the letter to NCBA now; they are not shown again';
     });
+  const setCheckHash = (checkHash: boolean) =>
+    run(async () => {
+      if (!checkHash && !window.confirm("Stop checking the signature on NCBA's notifications?\n\nThey will still need your secret address and the username and password, but a payment is booked even if its signature does not match. Do this only if every real payment shows as Held because NCBA's signature layout differs from the guide — and switch it back on once that is sorted out.")) return 'Nothing changed';
+      await api.put('/ncba/settings', { checkHash });
+      return checkHash ? 'Signatures are checked again' : 'Signatures are no longer checked — the secret address, username and password still are';
+    });
   const accept = (n: Received) =>
     run(async () => {
       if (!window.confirm(`Book ${fmtKsh(n.amount)} (${n.transId}) from ${n.payerName || 'an unknown payer'}? Do this only after checking the payment really arrived in the NCBA account.`)) return 'Nothing changed';
@@ -179,7 +187,20 @@ export default function NcbaSettingsPanel() {
           </div>
         </Card>
 
-        <Card title="Payment notifications from NCBA" hint="NCBA posts every payment to this address. Each call carries a username, password and signature made from the secret key; only calls that carry yours are booked.">
+        <Card
+          title="Payment notifications from NCBA"
+          hint="NCBA's push notification service: it posts every payment made to the Paybill to this address. Each call carries a username, password and signature made from the secret key; only calls that carry yours are booked. This works on its own — it does not need the STK push to be switched on."
+          actions={<Tag tone={data.notificationsReady ? 'good' : 'neutral'}>{data.notificationsReady ? 'Ready to receive' : 'Not ready'}</Tag>}
+        >
+          {data.notificationsReady ? (
+            <p className="note" style={{ marginTop: 0 }}>
+              {data.activity.lastAt ? `Last notification received ${new Date(data.activity.lastAt).toLocaleString('en-KE')}.` : 'Nothing received yet — once NCBA has been given the address and credentials below, every payment will show up on the right.'}
+              {data.activity.held > 0 && <b> {data.activity.held} held for you to check.</b>}
+              {data.activity.rejectedLastWeek > 0 && ` ${data.activity.rejectedLastWeek} refused in the last week (wrong username or password).`}
+            </p>
+          ) : (
+            <p className="note" style={{ marginTop: 0 }}>To be ready: save this system's public web address above, and make the notification credentials below.</p>
+          )}
           {data.notifyUrl ? <CopyLine label="Give NCBA this address (the notification endpoint)" value={data.notifyUrl} /> : <p className="note">Save this system's public web address above first — the notification address is built from it.</p>}
           <div style={{ marginTop: 'var(--space-3)' }}>
             <button type="button" className="btn btn-secondary" disabled={busy} onClick={generate}>
@@ -203,6 +224,12 @@ export default function NcbaSettingsPanel() {
             </div>
           )}
           {data.hasPushCredentials && !fresh && <p className="note">Notification credentials are set (username {data.pushUser}).</p>}
+          <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 'var(--space-3)', fontSize: 14 }}>
+            <input type="checkbox" checked={data.checkHash} disabled={busy} onChange={(e) => setCheckHash(e.target.checked)} style={{ marginTop: 3 }} />
+            <span>
+              Check the signature on every notification <span className="text-muted">(recommended). A notification whose signature does not match is held for you instead of being booked.</span>
+            </span>
+          </label>
         </Card>
       </div>
 

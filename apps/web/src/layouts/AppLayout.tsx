@@ -159,6 +159,13 @@ function AppLayoutInner() {
     <div className="shell">
       <div className={'scrim no-print' + (open ? ' open' : '')} onClick={() => setOpen(false)} />
       <aside className={'sidebar no-print' + (open ? ' open' : '') + (collapsed ? ' collapsed' : '')} aria-label="Main menu">
+        {/* 0 — the name on the system screens (Master Data → Company) */}
+        {branding?.systemName && (
+          <div className="side-brand" title={branding.systemName}>
+            {branding.logoDataUrl && <img src={branding.logoDataUrl} alt="" />}
+            <b>{branding.systemName}</b>
+          </div>
+        )}
         {/* 1 — who is signed in */}
         <div className="side-profile">
           <button type="button" className="profile-btn" aria-expanded={menu} title={user ? `${user.name} · ${user.role}` : ''} onClick={() => setMenu((m) => !m)}>

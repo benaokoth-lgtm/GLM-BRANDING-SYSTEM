@@ -9,13 +9,15 @@ import { useCatalog } from '../hooks/useCatalog';
 import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
 import OrderDetailDialog from '../components/OrderDetailDialog';
+import CorporationTaxPanel from '../components/CorporationTaxPanel';
 
-type ComplianceTab = 'vat' | 'due' | 'nssf' | 'shif' | 'payroll' | 'employees' | 'p9';
+type ComplianceTab = 'vat' | 'due' | 'tax' | 'nssf' | 'shif' | 'payroll' | 'employees' | 'p9';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [ComplianceTab, string][] = [
   ['vat', 'VAT'],
   ['due', 'Payments due'],
+  ['tax', 'Corporation tax'],
   ['nssf', 'NSSF'],
   ['shif', 'SHIF'],
   ['payroll', 'Payroll'],
@@ -105,17 +107,17 @@ interface DueRow {
   housingEmployer: number;
   outputVat: number;
   inputVat: number;
-  vatCreditBf: number;
   vatPayable: number;
   vatCreditCarried: number;
   wht: number;
+  incomeTax: number;
   total: number;
 }
 interface DueData {
   from: string;
   to: string;
   months: DueRow[];
-  totals: { paye: number; nssfEmployee: number; nssfEmployer: number; shif: number; housingEmployee: number; housingEmployer: number; vatPayable: number; wht: number; total: number; employerShare: number } | null;
+  totals: { paye: number; nssfEmployee: number; nssfEmployer: number; shif: number; housingEmployee: number; housingEmployer: number; vatPayable: number; wht: number; incomeTax: number; total: number; employerShare: number } | null;
   owing: { paye: number; nssf: number; shif: number; housing: number; vat: number; wht: number; total: number } | null;
 }
 
@@ -172,7 +174,7 @@ function DuePayments({ from, to }: { from: string; to: string }) {
           Payments due, month by month
         </div>
         <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
-          Whole calendar months for the dates chosen above. <b>PAYE, SHIF and the housing levy</b> are due by the 9th of the next month, <b>NSSF</b> by the 15th, <b>VAT and withholding tax</b> by the 20th. NSSF and the housing levy show the employee's share (taken from pay) and the employer's own matching share; SHIF is the employee's alone, remitted by the employer. Casual staff carry no statutory deductions.
+          Whole calendar months for the dates chosen above. <b>PAYE, SHIF and the housing levy</b> are due by the 9th of the next month, <b>NSSF</b> by the 15th, <b>VAT and withholding tax</b> by the 20th. <b>Income tax</b> (Corporation tax tab) is the instalment or balance still unpaid, shown in the month before the 20th (or month-end) it falls due. NSSF and the housing levy show the employee's share (taken from pay) and the employer's own matching share; SHIF is the employee's alone, remitted by the employer. Casual staff carry no statutory deductions.
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table className="table" style={{ whiteSpace: 'nowrap' }}>
@@ -188,6 +190,7 @@ function DuePayments({ from, to }: { from: string; to: string }) {
                 <th style={R}>Housing levy — employer</th>
                 <th style={R}>VAT</th>
                 <th style={R}>Withholding tax</th>
+                <th style={R}>Income tax</th>
                 <th style={R}>Total to pay</th>
               </tr>
             </thead>
@@ -202,11 +205,12 @@ function DuePayments({ from, to }: { from: string; to: string }) {
                   <td style={R}>{dash(m.shif)}</td>
                   <td style={R}>{dash(m.housingEmployee)}</td>
                   <td style={R}>{dash(m.housingEmployer)}</td>
-                  <td style={R} title={m.vatCreditCarried > 0 ? `More VAT was paid on purchases than charged on sales: a credit of ${fmtKsh(m.vatCreditCarried)} is carried to the next month.` : m.vatCreditBf > 0 ? `After a credit of ${fmtKsh(m.vatCreditBf)} brought forward from the month before.` : undefined}>
+                  <td style={R} title={m.vatCreditCarried > 0 ? `More VAT was paid on purchases than charged on sales this month: a credit of ${fmtKsh(m.vatCreditCarried)}. It is not used to reduce any other month's VAT.` : undefined}>
                     {dash(m.vatPayable)}
-                    {m.vatCreditCarried > 0 && <span className="text-muted" style={{ fontSize: 11 }}> (credit {fmtKsh(m.vatCreditCarried)})</span>}
+                    {m.vatCreditCarried > 0 && <span className="text-muted" style={{ fontSize: 11 }}> (credit {fmtKsh(m.vatCreditCarried)}, not offset)</span>}
                   </td>
                   <td style={R}>{dash(m.wht)}</td>
+                  <td style={R}>{dash(m.incomeTax)}</td>
                   <td style={{ ...R, fontWeight: 700 }}>{dash(m.total)}</td>
                 </tr>
               ))}
@@ -223,6 +227,7 @@ function DuePayments({ from, to }: { from: string; to: string }) {
                   <td style={R}>{fmtKsh(t.housingEmployer)}</td>
                   <td style={R}>{fmtKsh(t.vatPayable)}</td>
                   <td style={R}>{fmtKsh(t.wht)}</td>
+                  <td style={R}>{fmtKsh(t.incomeTax)}</td>
                   <td style={{ ...R, fontSize: 18 }}>{fmtKsh(t.total)}</td>
                 </tr>
               </tfoot>
@@ -499,45 +504,47 @@ export default function Compliance() {
         ))}
       </div>
 
-      <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
-        <i className="corner tl"></i>
-        <i className="corner tr"></i>
-        <i className="corner bl"></i>
-        <i className="corner br"></i>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'end', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('month')}>
-              This month
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('quarter')}>
-              This quarter
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('year')}>
-              Year to date
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => applyPreset('last12')}>
-              Last 12 months
-            </button>
-          </div>
-          <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end', flexWrap: 'wrap' }}>
-            <div className="field" style={{ margin: 0 }}>
-              <label>From</label>
-              <input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+      {tab !== 'tax' && (
+        <div className="card blueprint no-print" style={{ padding: 'var(--space-4)' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'end', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('month')}>
+                This month
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('quarter')}>
+                This quarter
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('year')}>
+                Year to date
+              </button>
+              <button type="button" className="btn btn-secondary" onClick={() => applyPreset('last12')}>
+                Last 12 months
+              </button>
             </div>
-            <div className="field" style={{ margin: 0 }}>
-              <label>To</label>
-              <input className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end', flexWrap: 'wrap' }}>
+              <div className="field" style={{ margin: 0 }}>
+                <label>From</label>
+                <input className="input" type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+              </div>
+              <div className="field" style={{ margin: 0 }}>
+                <label>To</label>
+                <input className="input" type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+              </div>
+              <button type="button" className="btn btn-primary blueprint" onClick={() => window.print()}>
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                Print / PDF
+              </button>
             </div>
-            <button type="button" className="btn btn-primary blueprint" onClick={() => window.print()}>
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              Print / PDF
-            </button>
           </div>
         </div>
-      </div>
+      )}
 
       {error && (
         <p className="note" style={{ color: 'var(--color-error)' }}>
@@ -546,6 +553,8 @@ export default function Compliance() {
       )}
 
       {tab === 'due' && <DuePayments from={fromDate} to={toDate} />}
+
+      {tab === 'tax' && <CorporationTaxPanel />}
 
       {tab === 'vat' && (
         <>

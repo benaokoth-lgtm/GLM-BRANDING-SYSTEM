@@ -8,6 +8,14 @@
 }
 .sidebar.collapsed { width: 70px; }
 
+/* 0 — the system name */
+.side-brand { display: flex; align-items: center; gap: 10px; padding: 14px 14px 12px; border-bottom: 1px solid var(--color-divider); min-height: 28px; }
+.side-brand img { max-height: 30px; max-width: 44px; object-fit: contain; flex: none; }
+.side-brand b { font-family: var(--font-heading); font-size: 16px; line-height: 1.2; color: var(--color-text); overflow-wrap: anywhere; }
+.sidebar.collapsed .side-brand { justify-content: center; padding: 14px 6px 12px; }
+.sidebar.collapsed .side-brand b { display: none; }
+.sidebar.collapsed .side-brand:not(:has(img)) b { display: block; font-size: 13px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 56px; }
+
 /* 1 — the person */
 .side-profile { position: relative; border-bottom: 1px solid var(--color-divider); }
 .profile-btn {

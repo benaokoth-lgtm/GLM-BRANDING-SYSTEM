@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router23 = require_router();
+    var Router24 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router23({
+        this._router = new Router24({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router23 = require_router();
+    var Router24 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router23;
+    exports2.Router = Router24;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express22 = __toESM(require_express2());
+var import_express23 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -65894,8 +65894,8 @@ function ownershipEnd(start, months) {
   const total = m - 1 + months;
   const ny = y + Math.floor(total / 12);
   const nm = total % 12;
-  const lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
-  const nd = Math.min(d, lastDay);
+  const lastDay2 = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  const nd = Math.min(d, lastDay2);
   return `${ny}-${String(nm + 1).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
 }
 var WALK_IN_CLIENT = "Walk-in";
@@ -73055,9 +73055,422 @@ ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canView
 
 // apps/api/src/routes/finance.ts
 var import_express4 = __toESM(require_express2());
+
+// apps/api/src/accounting/reports.ts
+var inRange = (d, from, to) => d >= from && d <= to;
+function monthsOf(from, to) {
+  const out = [];
+  let y = Number(from.slice(0, 4));
+  let m = Number(from.slice(5, 7));
+  const endKey = to.slice(0, 7);
+  for (; ; ) {
+    const key2 = `${y}-${String(m).padStart(2, "0")}`;
+    if (key2 > endKey) break;
+    out.push(key2);
+    if (m === 12) {
+      y++;
+      m = 1;
+    } else m++;
+    if (out.length > 120) break;
+  }
+  return out;
+}
+async function buildProfitLoss(from, to) {
+  const ledger = await loadLedger();
+  const months = monthsOf(from, to);
+  const monthIndex = new Map(months.map((m, i) => [m, i]));
+  const rows = /* @__PURE__ */ new Map();
+  const outside = { before: { income: 0, expenses: 0 }, after: { income: 0, expenses: 0 } };
+  for (const p of ledger.postings) {
+    const acc = ledger.byId.get(p.accountId);
+    if (!acc || acc.type !== "Income" && acc.type !== "Expense") continue;
+    const signed = acc.type === "Income" ? p.credit - p.debit : p.debit - p.credit;
+    if (!inRange(p.date, from, to)) {
+      const side = p.date < from ? outside.before : outside.after;
+      if (acc.type === "Income") side.income += signed;
+      else side.expenses += signed;
+      continue;
+    }
+    let row = rows.get(acc.id);
+    if (!row) {
+      row = { id: acc.id, code: acc.code, name: acc.name, amount: 0, byMonth: months.map(() => 0) };
+      rows.set(acc.id, row);
+    }
+    row.amount += signed;
+    const idx = monthIndex.get(p.date.slice(0, 7));
+    if (idx !== void 0) row.byMonth[idx] += signed;
+  }
+  const section = (type) => {
+    const isCos = (id) => ledger.byId.get(id).subtype === COST_OF_SALES_SUBTYPE;
+    const list = [...rows.values()].filter((r) => (type === "CostOfSales" ? isCos(r.id) : ledger.byId.get(r.id).type === type && !(type === "Expense" && isCos(r.id))) && (Math.abs(r.amount) > 4e-3 || r.byMonth.some((v) => Math.abs(v) > 4e-3))).sort((a2, b) => a2.code.localeCompare(b.code)).map((r) => ({ ...r, amount: round2(r.amount), byMonth: r.byMonth.map(round2) }));
+    return { rows: list, total: round2(list.reduce((a2, r) => a2 + r.amount, 0)), byMonth: months.map((_, i) => round2(list.reduce((a2, r) => a2 + r.byMonth[i], 0))) };
+  };
+  const income = section("Income");
+  const costOfSales = section("CostOfSales");
+  const expenses = section("Expense");
+  const grossProfit = round2(income.total - costOfSales.total);
+  const netProfit = round2(grossProfit - expenses.total);
+  return {
+    from,
+    to,
+    months,
+    income,
+    costOfSales,
+    grossProfit,
+    grossByMonth: months.map((_, i) => round2(income.byMonth[i] - costOfSales.byMonth[i])),
+    grossMargin: income.total > 0 ? round2(grossProfit / income.total * 100) : null,
+    expenses,
+    netProfit,
+    netByMonth: months.map((_, i) => round2(income.byMonth[i] - costOfSales.byMonth[i] - expenses.byMonth[i])),
+    margin: income.total > 0 ? round2(netProfit / income.total * 100) : null,
+    outside: {
+      before: { income: round2(outside.before.income), expenses: round2(outside.before.expenses) },
+      after: { income: round2(outside.after.income), expenses: round2(outside.after.expenses) }
+    }
+  };
+}
+function priorRange(from, to) {
+  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00Z");
+  const toD = /* @__PURE__ */ new Date(to + "T00:00:00Z");
+  const lengthMs = toD.getTime() - fromD.getTime();
+  const priorTo = new Date(fromD.getTime() - 864e5);
+  const priorFrom = new Date(priorTo.getTime() - lengthMs);
+  return { from: priorFrom.toISOString().slice(0, 10), to: priorTo.toISOString().slice(0, 10) };
+}
+var pctChange = (cur, prev) => prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
+async function buildProfitLossDashboard(from, to, current) {
+  const prior = priorRange(from, to);
+  const y = Number(to.slice(0, 4));
+  const m = Number(to.slice(5, 7));
+  const first = new Date(Date.UTC(y, m - 1 - 5, 1)).toISOString().slice(0, 10);
+  const last2 = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  const [priorPl, trendPl, cash] = await Promise.all([
+    buildProfitLoss(prior.from, prior.to),
+    buildProfitLoss(first, last2),
+    prisma.payment.aggregate({ _sum: { amount: true }, where: { date: { gte: from, lte: to } } })
+  ]);
+  return {
+    cashReceived: round2(cash._sum.amount ?? 0),
+    revChangePct: pctChange(current.income, priorPl.income.total),
+    profitChangePct: pctChange(current.netProfit, priorPl.netProfit),
+    priorFrom: prior.from,
+    priorTo: prior.to,
+    trend: trendPl.months.map((month, i) => ({ label: `${month.slice(5, 7)}/${month.slice(2, 4)}`, revenue: trendPl.income.byMonth[i], netProfit: trendPl.netByMonth[i] }))
+  };
+}
+async function buildBalanceSheet(asOf) {
+  const ledger = await loadLedger();
+  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
+  const line = (type) => ledger.accounts.filter((a2) => a2.type === type).sort((a2, b) => a2.code.localeCompare(b.code)).map((a2) => ({ id: a2.id, code: a2.code, name: a2.name, subtype: a2.subtype, amount: naturalBalance(a2.type, sums.get(a2.id)) })).filter((r) => Math.abs(r.amount) > 4e-3);
+  const total = (rows) => round2(rows.reduce((a2, r) => a2 + r.amount, 0));
+  const assets = line("Asset");
+  const liabilities = line("Liability");
+  const equityAccounts = line("Equity");
+  const currentEarnings = round2(total(line("Income")) - total(line("Expense")));
+  const equity = [
+    ...equityAccounts,
+    { id: 0, code: "", name: "Profit earned to date (not yet closed to retained earnings)", subtype: "CurrentEarnings", amount: currentEarnings }
+  ];
+  const totalAssets = total(assets);
+  const totalLiabilities = total(liabilities);
+  const totalEquity = total(equity);
+  return {
+    asOf,
+    assets: { rows: assets, total: totalAssets },
+    liabilities: { rows: liabilities, total: totalLiabilities },
+    equity: { rows: equity, total: totalEquity },
+    liabilitiesAndEquity: round2(totalLiabilities + totalEquity),
+    balanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
+  };
+}
+async function buildTrialBalance(asOf) {
+  const ledger = await loadLedger();
+  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
+  const rows = ledger.accounts.sort((a2, b) => a2.code.localeCompare(b.code)).map((a2) => {
+    const b = sums.get(a2.id) || { debit: 0, credit: 0 };
+    const net8 = round2(b.debit - b.credit);
+    return { id: a2.id, code: a2.code, name: a2.name, type: a2.type, debit: net8 > 0 ? net8 : 0, credit: net8 < 0 ? -net8 : 0 };
+  }).filter((r) => r.debit > 4e-3 || r.credit > 4e-3);
+  const debit = round2(rows.reduce((x, r) => x + r.debit, 0));
+  const credit = round2(rows.reduce((x, r) => x + r.credit, 0));
+  return { asOf, rows, debit, credit, balanced: Math.abs(debit - credit) < 0.01 };
+}
+async function buildAccountLedger(accountId, from, to) {
+  const ledger = await loadLedger();
+  const acc = ledger.byId.get(accountId);
+  if (!acc) return null;
+  const mine = ledger.postings.filter((p) => p.accountId === accountId).sort((a2, b) => a2.date < b.date ? -1 : a2.date > b.date ? 1 : 0);
+  const sign2 = (p) => acc.type === "Asset" || acc.type === "Expense" ? p.debit - p.credit : p.credit - p.debit;
+  const opening = round2(mine.filter((p) => p.date < from).reduce((a2, p) => a2 + sign2(p), 0));
+  let running3 = opening;
+  const rows = mine.filter((p) => inRange(p.date, from, to)).map((p) => {
+    running3 = round2(running3 + sign2(p));
+    return { date: p.date, source: p.source, ref: p.ref, memo: p.memo, debit: p.debit, credit: p.credit, balance: running3 };
+  });
+  return { account: { id: acc.id, code: acc.code, name: acc.name, type: acc.type }, from, to, opening, closing: running3, rows };
+}
+var AGE_BUCKETS = ["Not yet due", "0\u201330 days", "31\u201360 days", "61\u201390 days", "Over 90 days"];
+function ageBucket(ageDays) {
+  return ageDays < 0 ? "Not yet due" : ageDays <= 30 ? "0\u201330 days" : ageDays <= 60 ? "31\u201360 days" : ageDays <= 90 ? "61\u201390 days" : "Over 90 days";
+}
+var daysBetween = (from, to) => Math.floor(((/* @__PURE__ */ new Date(to + "T00:00:00")).getTime() - (/* @__PURE__ */ new Date(from + "T00:00:00")).getTime()) / 864e5);
+async function buildPayablesAging(asOf) {
+  const entries = await prisma.expense.findMany({ where: { paid: false, date: { lte: asOf } }, include: { payments: true, notes: true } });
+  const rows = entries.map((e) => {
+    const paidAmount = round2(e.payments.filter((p) => p.date <= asOf).reduce((a2, p) => a2 + p.amount, 0));
+    const credited = round2(e.notes.filter((n) => n.type === "SupplierDebit" && n.date <= asOf).reduce((a2, n) => a2 + n.total, 0));
+    const outstanding = round2(e.amount - paidAmount - credited);
+    const ageDays = daysBetween(e.dueDate ?? e.date, asOf);
+    return { id: e.id, date: e.date, dueDate: e.dueDate, supplier: e.supplier, head: e.category, invoice: e.invoiceNumber, amount: e.amount, paidAmount, credited, outstanding, ageDays, bucket: ageBucket(ageDays) };
+  }).filter((r) => r.outstanding > 4e-3).sort((a2, b) => b.ageDays - a2.ageDays);
+  const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
+  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket };
+}
+async function buildReceivablesAging(asOf) {
+  const orders = await prisma.order.findMany({
+    where: { createdDate: { lte: asOf } },
+    include: { lineItems: true, payments: true, corporateClient: true, notes: true }
+  });
+  let credits = 0;
+  const rows = [];
+  for (const o of orders) {
+    if (!(o.kind === "walkin" || o.status !== "Quote")) continue;
+    const lines = o.lineItems.map((li) => ({
+      itemType: li.itemType,
+      serviceId: li.serviceId,
+      materialId: li.materialId,
+      qty: li.qty,
+      unitPrice: li.unitPrice,
+      discountPct: li.discountPct,
+      discountAmt: li.discountAmt,
+      heatPressFee: li.heatPressFee
+    }));
+    const amount = round2(computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal);
+    const paid = round2(o.payments.filter((p) => p.date <= asOf).reduce((a2, p) => a2 + p.amount, 0));
+    const adjustments = round2(
+      o.notes.filter((n) => n.date <= asOf).reduce((a2, n) => a2 + (n.type === "Credit" ? -n.receivableAmt : n.type === "Debit" ? n.total : 0), 0)
+    );
+    const outstanding = round2(amount + adjustments - paid);
+    if (outstanding < -4e-3) credits += outstanding;
+    if (!(outstanding > 4e-3)) continue;
+    const ageDays = daysBetween(o.dueDate ?? o.createdDate, asOf);
+    rows.push({
+      orderId: o.id,
+      ref: o.orderNo,
+      party: o.customerName || o.corporateClient?.name || "Customer",
+      status: o.status,
+      date: o.createdDate,
+      dueDate: o.dueDate,
+      amount,
+      paid,
+      adjustments,
+      outstanding,
+      ageDays,
+      bucket: ageBucket(ageDays)
+    });
+  }
+  rows.sort((a2, b) => b.ageDays - a2.ageDays);
+  const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
+  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket, overpaidCredits: round2(credits) };
+}
+async function buildCashFlowStatement(from, to) {
+  const ledger = await loadLedger();
+  const cashIds = new Set(CASH_ACCOUNT_CODES.map((c) => ledger.byCode.get(c)?.id).filter((id) => !!id));
+  const isCash = (p) => cashIds.has(p.accountId);
+  const cashBalanceAsOf = (cutoff) => ledger.postings.filter((p) => isCash(p) && cutoff(p.date)).reduce((a2, p) => a2 + p.debit - p.credit, 0);
+  const openingCash = round2(cashBalanceAsOf((d) => d < from));
+  const closingCash = round2(cashBalanceAsOf((d) => d <= to));
+  const moves = ledger.postings.filter((p) => isCash(p) && inRange(p.date, from, to) && p.source !== "Opening");
+  const legsByEntry = /* @__PURE__ */ new Map();
+  for (const p of ledger.postings) {
+    if (!inRange(p.date, from, to)) continue;
+    const k = `${p.source}\0${p.ref}\0${p.date}`;
+    legsByEntry.set(k, [...legsByEntry.get(k) || [], p]);
+  }
+  const STATIC = { Capital: "Financing", Drawings: "Financing", "Asset purchase": "Investing" };
+  const bucketFor = (p) => {
+    if (STATIC[p.source]) return STATIC[p.source];
+    const legs = legsByEntry.get(`${p.source}\0${p.ref}\0${p.date}`) || [];
+    const other = legs.filter((l) => !isCash(l));
+    if (other.length === 0) return "Internal";
+    if (p.source === "Petty cash top-up") {
+      return other.some((l) => ledger.byId.get(l.accountId)?.type === "Equity") ? "Financing" : "Internal";
+    }
+    if (["Manual", "BankDeposit", "TaxPayment"].includes(p.source) || p.source === "Opening") {
+      const types = new Set(other.map((l) => ledger.byId.get(l.accountId)?.type));
+      if (types.has("Equity") || other.some((l) => ledger.byId.get(l.accountId)?.code === ACCT.loans)) return "Financing";
+      if (other.some((l) => ledger.byId.get(l.accountId)?.subtype === "FixedAsset")) return "Investing";
+    }
+    return "Operating";
+  };
+  const totals = { Operating: 0, Investing: 0, Financing: 0, Internal: 0 };
+  const bySource = /* @__PURE__ */ new Map();
+  for (const p of moves) {
+    const bucket = bucketFor(p);
+    const signed = p.debit - p.credit;
+    totals[bucket] += signed;
+    const key2 = `${bucket}:${p.source}`;
+    const row = bySource.get(key2) || { source: p.source, bucket, amount: 0 };
+    row.amount += signed;
+    bySource.set(key2, row);
+  }
+  const lines = [...bySource.values()].map((r) => ({ ...r, amount: round2(r.amount) })).filter((r) => Math.abs(r.amount) > 4e-3);
+  const section = (bucket) => ({ total: round2(totals[bucket]), lines: lines.filter((l) => l.bucket === bucket) });
+  const netChange = round2(totals.Operating + totals.Investing + totals.Financing);
+  return {
+    from,
+    to,
+    openingCash,
+    closingCash,
+    netChange,
+    operating: section("Operating"),
+    investing: section("Investing"),
+    financing: section("Financing"),
+    internalTransfers: round2(totals.Internal),
+    reconciles: Math.abs(round2(openingCash + netChange + totals.Internal) - closingCash) < 0.01
+  };
+}
+
+// apps/api/src/incomeTax.ts
+var TURNOVER_TAX_MIN = 1e6;
+var TURNOVER_TAX_MAX = 25e6;
+var NOT_DEDUCTIBLE = /entertain|\bfines?\b|penalt|donation/i;
+async function loadTaxConfig() {
+  const r = await prisma.taxSettings.findUnique({ where: { id: 1 } });
+  return {
+    regime: r?.regime === "turnover" ? "turnover" : "corporation",
+    corporationRate: r?.corporationRate ?? 30,
+    turnoverRate: r?.turnoverRate ?? 3,
+    yearEndMonth: r && r.yearEndMonth >= 1 && r.yearEndMonth <= 12 ? r.yearEndMonth : 12
+  };
+}
+var pad = (n) => String(n).padStart(2, "0");
+var lastDay = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+function yearPeriod(year, yearEndMonth) {
+  const startMonth = yearEndMonth % 12 + 1;
+  const startYear = yearEndMonth === 12 ? year : year - 1;
+  return { start: `${startYear}-${pad(startMonth)}-01`, end: `${year}-${pad(yearEndMonth)}-${lastDay(year, yearEndMonth)}`, startYear, startMonth };
+}
+async function computeYear(year, cfg, withPrior = true) {
+  const per = yearPeriod(year, cfg.yearEndMonth);
+  const [pl, adj, payments] = await Promise.all([
+    buildProfitLoss(per.start, per.end),
+    prisma.taxYear.findUnique({ where: { year } }),
+    prisma.taxPayment.findMany({ where: { taxYear: year }, orderBy: [{ date: "asc" }, { id: "asc" }] })
+  ]);
+  const rate = cfg.corporationRate;
+  const paidFor = (period) => round2(payments.filter((p) => p.period === period).reduce((a2, p) => a2 + p.amount, 0));
+  const profit = pl.netProfit;
+  const autoAddBacks = pl.expenses.rows.filter((r) => r.amount > 4e-3 && (r.code === ACCT.depreciation || NOT_DEDUCTIBLE.test(r.name))).map((r) => ({ label: r.code === ACCT.depreciation ? `${r.name} (replaced by capital allowances)` : `Not deductible: ${r.name}`, amount: round2(r.amount) }));
+  const manualAddBacks = adj?.addBacks ?? 0;
+  const adjusted = round2(profit + autoAddBacks.reduce((a2, b) => a2 + b.amount, 0) + manualAddBacks);
+  const capitalAllowances = adj?.capitalAllowances ?? 0;
+  const beforeLosses = round2(adjusted - capitalAllowances);
+  const taxLoss = beforeLosses < 0 ? round2(-beforeLosses) : 0;
+  const lossesUsed = beforeLosses > 0 ? round2(Math.min(adj?.lossesUsed ?? 0, beforeLosses)) : 0;
+  const taxable = round2(Math.max(0, beforeLosses - lossesUsed));
+  const tax = round2(taxable * rate / 100);
+  const credits = adj?.whtCredits ?? 0;
+  const taxAfterCredits = round2(Math.max(0, tax - credits));
+  const today = todayStr();
+  let currentEstimate = tax;
+  if (today >= per.start && today < per.end) {
+    const elapsed = (Number(today.slice(0, 4)) - per.startYear) * 12 + (Number(today.slice(5, 7)) - per.startMonth) + 1;
+    currentEstimate = round2(tax * 12 / Math.max(1, elapsed));
+  }
+  const priorTax = withPrior ? await taxOfYear(year - 1, cfg) : 0;
+  const suggestedEstimate = priorTax > 0 ? round2(Math.min(currentEstimate, priorTax * 1.1)) : currentEstimate;
+  const estimate = adj?.estimateTax ?? suggestedEstimate;
+  const each = round2(Math.max(0, estimate - credits) / 4);
+  const items = [4, 6, 9, 12].map((k, i) => {
+    const m0 = per.startMonth + k - 1;
+    const y = per.startYear + Math.floor((m0 - 1) / 12);
+    const m = (m0 - 1) % 12 + 1;
+    const paid = paidFor(`I${i + 1}`);
+    return { key: `I${i + 1}`, label: `Instalment ${i + 1} (month ${k})`, dueDate: `${y}-${pad(m)}-20`, amount: each, paid, outstanding: round2(Math.max(0, each - paid)) };
+  });
+  const scheduled = items.reduce((a2, i) => a2 + Math.max(i.amount, i.paid), 0);
+  const finalAmount = round2(Math.max(0, taxAfterCredits - scheduled));
+  const finalPaid = paidFor("FINAL");
+  const fm0 = cfg.yearEndMonth + 4;
+  const fy = year + Math.floor((fm0 - 1) / 12);
+  const fm = (fm0 - 1) % 12 + 1;
+  items.push({ key: "FINAL", label: "Balance of the tax", dueDate: `${fy}-${pad(fm)}-${lastDay(fy, fm)}`, amount: finalAmount, paid: finalPaid, outstanding: round2(Math.max(0, finalAmount - finalPaid)) });
+  const totalPaid = round2(payments.filter((p) => !/^\d{4}-\d{2}$/.test(p.period)).reduce((a2, p) => a2 + p.amount, 0));
+  const turnoverRows = pl.months.map((month, i) => {
+    const turnover = pl.income.byMonth[i] ?? 0;
+    const t = round2(turnover * cfg.turnoverRate / 100);
+    const m = Number(month.slice(5, 7));
+    const y = Number(month.slice(0, 4)) + (m === 12 ? 1 : 0);
+    const nm = m % 12 + 1;
+    const paid = paidFor(month);
+    return { month, turnover: round2(turnover), tax: t, dueDate: `${y}-${pad(nm)}-20`, paid, outstanding: round2(Math.max(0, t - paid)) };
+  });
+  const annualTurnover = round2(pl.income.total);
+  return {
+    year,
+    period: { start: per.start, end: per.end },
+    regime: cfg.regime,
+    rate,
+    profit,
+    autoAddBacks,
+    manualAddBacks,
+    adjusted,
+    capitalAllowances,
+    taxLoss,
+    lossesUsed,
+    taxable,
+    tax,
+    credits,
+    taxAfterCredits,
+    estimate: round2(estimate),
+    suggestedEstimate,
+    estimateIsManual: adj?.estimateTax != null,
+    priorTax,
+    items,
+    totalPaid,
+    overpaid: round2(Math.max(0, totalPaid - taxAfterCredits)),
+    outstanding: round2(items.reduce((a2, i) => a2 + i.outstanding, 0)),
+    turnover: { rate: cfg.turnoverRate, annual: annualTurnover, eligible: annualTurnover >= TURNOVER_TAX_MIN && annualTurnover <= TURNOVER_TAX_MAX, months: turnoverRows, tax: round2(turnoverRows.reduce((a2, r) => a2 + r.tax, 0)), outstanding: round2(turnoverRows.reduce((a2, r) => a2 + r.outstanding, 0)) },
+    adjustments: { addBacks: adj?.addBacks ?? 0, capitalAllowances, lossesUsed: adj?.lossesUsed ?? 0, whtCredits: credits, estimateTax: adj?.estimateTax ?? null, note: adj?.note ?? "" },
+    payments: payments.map((p) => ({ id: p.id, period: p.period, date: p.date, amount: p.amount, reference: p.reference, note: p.note, capturedByName: p.capturedByName }))
+  };
+}
+async function incomeTaxByMonth(months, cfg) {
+  const out = /* @__PURE__ */ new Map();
+  if (months.length === 0) return out;
+  const wanted = new Set(months);
+  const add = (month, amount) => {
+    if (wanted.has(month) && amount > 4e-3) out.set(month, round2((out.get(month) ?? 0) + amount));
+  };
+  const first = Number(months[0].slice(0, 4)) - 1;
+  const last2 = Number(months[months.length - 1].slice(0, 4)) + 1;
+  for (let year = first; year <= last2; year++) {
+    const c = await computeYear(year, cfg);
+    if (cfg.regime === "turnover") {
+      for (const r of c.turnover.months) add(r.month, r.outstanding);
+    } else {
+      for (const it of c.items) {
+        let y = Number(it.dueDate.slice(0, 4));
+        let m = Number(it.dueDate.slice(5, 7)) - 1;
+        if (m === 0) {
+          m = 12;
+          y -= 1;
+        }
+        add(`${y}-${pad(m)}`, it.outstanding);
+      }
+    }
+  }
+  return out;
+}
+async function taxOfYear(year, cfg) {
+  return (await computeYear(year, cfg, false)).tax;
+}
+
+// apps/api/src/routes/finance.ts
 var financeRouter = (0, import_express4.Router)();
 financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
-function inRange(d, from, to) {
+function inRange2(d, from, to) {
   return d >= from && d <= to;
 }
 function parseRange(req) {
@@ -73165,15 +73578,14 @@ financeRouter.get("/statutory-due", async (req, res) => {
     if (VAT_SALE_SOURCES.has(post.source)) row.outputVat += post.credit - post.debit;
     else if (VAT_PURCHASE_SOURCES.has(post.source)) row.inputVat += post.debit - post.credit;
   }
-  let credit = 0;
+  const incomeTaxDue = await incomeTaxByMonth(months, await loadTaxConfig());
   const rows = months.map((month) => {
     const r = by.get(month);
     r.vatNet = r.outputVat - r.inputVat;
-    const after = r.vatNet - credit;
-    const vatCreditBf = credit;
-    const vatPayable = Math.max(0, after);
-    credit = Math.max(0, -after);
-    const total = r.paye + r.nssfEmployee + r.nssfEmployer + r.shif + r.housingEmployee + r.housingEmployer + vatPayable + r.wht;
+    const incomeTax = incomeTaxDue.get(month) ?? 0;
+    const vatPayable = Math.max(0, r.vatNet);
+    const credit = Math.max(0, -r.vatNet);
+    const total = r.paye + r.nssfEmployee + r.nssfEmployer + r.shif + r.housingEmployee + r.housingEmployer + vatPayable + r.wht + incomeTax;
     return {
       month,
       paye: round2(r.paye),
@@ -73184,10 +73596,10 @@ financeRouter.get("/statutory-due", async (req, res) => {
       housingEmployer: round2(r.housingEmployer),
       outputVat: round2(r.outputVat),
       inputVat: round2(r.inputVat),
-      vatCreditBf: round2(vatCreditBf),
       vatPayable: round2(vatPayable),
       vatCreditCarried: round2(credit),
       wht: round2(r.wht),
+      incomeTax: round2(incomeTax),
       total: round2(total)
     };
   });
@@ -73201,6 +73613,7 @@ financeRouter.get("/statutory-due", async (req, res) => {
     housingEmployer: sum((r) => r.housingEmployer),
     vatPayable: sum((r) => r.vatPayable),
     wht: sum((r) => r.wht),
+    incomeTax: sum((r) => r.incomeTax),
     total: sum((r) => r.total),
     /** The employer's own cost within it: the matching NSSF and housing levy. */
     employerShare: sum((r) => r.nssfEmployer + r.housingEmployer)
@@ -73344,7 +73757,7 @@ financeRouter.get("/vat", async (req, res) => {
   let inputVat = 0;
   let otherVat = 0;
   for (const p of ledger.postings) {
-    if (p.accountId !== vatAcct?.id || !inRange(p.date, range2.from, range2.to)) continue;
+    if (p.accountId !== vatAcct?.id || !inRange2(p.date, range2.from, range2.to)) continue;
     if (VAT_SALE_SOURCES.has(p.source)) outputVat += p.credit - p.debit;
     else if (VAT_PURCHASE_SOURCES.has(p.source)) inputVat += p.debit - p.credit;
     else otherVat += p.credit - p.debit;
@@ -73354,7 +73767,7 @@ financeRouter.get("/vat", async (req, res) => {
   let corporateSales = 0;
   for (const o of orders) {
     const recognised = o.kind === "walkin" || o.status !== "Quote";
-    if (!recognised || !inRange(o.createdDate, range2.from, range2.to)) continue;
+    if (!recognised || !inRange2(o.createdDate, range2.from, range2.to)) continue;
     const lines = o.lineItems.map((li) => ({
       itemType: li.itemType,
       serviceId: li.serviceId,
@@ -73393,7 +73806,7 @@ financeRouter.get("/vat", async (req, res) => {
   const heads = headRows.map((h) => ({ id: h.id, name: h.name, applicable: vatOf(h.name), isDefault: h.vatApplicable == null }));
   const groups = /* @__PURE__ */ new Map();
   for (const p of ledger.postings) {
-    if (!inRange(p.date, range2.from, range2.to) || !(VAT_SALE_SOURCES.has(p.source) || VAT_PURCHASE_SOURCES.has(p.source))) continue;
+    if (!inRange2(p.date, range2.from, range2.to) || !(VAT_SALE_SOURCES.has(p.source) || VAT_PURCHASE_SOURCES.has(p.source))) continue;
     const k = `${p.source}\0${p.ref}`;
     groups.set(k, [...groups.get(k) ?? [], p]);
   }
@@ -73426,7 +73839,7 @@ financeRouter.get("/vat", async (req, res) => {
   };
   const outsourcedSales = [];
   for (const o of orders) {
-    if (!(o.kind === "walkin" || o.status !== "Quote") || !inRange(o.createdDate, range2.from, range2.to)) continue;
+    if (!(o.kind === "walkin" || o.status !== "Quote") || !inRange2(o.createdDate, range2.from, range2.to)) continue;
     const lines = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
     const total = round2(computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal);
     if (total <= 0 || !o.lineItems.some((li) => li.service?.outsourced)) continue;
@@ -73686,7 +74099,7 @@ financeRouter.get("/petty-cash", async (req, res) => {
     prisma.payment.findMany({ where: { method: "Cash", date: { gte: range2.from, lte: range2.to } } })
   ]);
   const petty = ledger.byCode.get("1010");
-  const mine = petty ? ledger.postings.filter((p) => p.accountId === petty.id && inRange(p.date, range2.from, range2.to)) : [];
+  const mine = petty ? ledger.postings.filter((p) => p.accountId === petty.id && inRange2(p.date, range2.from, range2.to)) : [];
   const balance = await computePettyCashBalance(range2.to);
   const rows = mine.map((p, i) => {
     const isTopUp = p.source === "Petty cash top-up";
@@ -74326,7 +74739,7 @@ stockRouter.post("/imports", async (req, res) => {
 var import_express6 = __toESM(require_express2());
 var reportsRouter = (0, import_express6.Router)();
 reportsRouter.use(requireAuth, requirePermission("canAccessReports"));
-function inRange2(d, from, to) {
+function inRange3(d, from, to) {
   return d >= from && d <= to;
 }
 function parseRange2(req) {
@@ -74346,7 +74759,7 @@ reportsRouter.get("/sales-by-category", async (req, res) => {
   let materialsQty = 0;
   let materialsRevenue = 0;
   for (const o of orders) {
-    if (!inRange2(o.createdDate, range2.from, range2.to)) continue;
+    if (!inRange3(o.createdDate, range2.from, range2.to)) continue;
     for (const li of o.lineItems) {
       const input = {
         itemType: li.itemType,
@@ -74722,10 +75135,10 @@ emailRouter.post("/send", sendLimiter, async (req, res) => {
     return res.status(500).json({ error: "Could not prepare the PDF to attach" });
   }
   const owes = detail.totals.balanceDue > 9e-3 && kind.isInvoice;
-  const money3 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money4 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const who = detail.corporateClient?.name || (detail.customerName && detail.customerName.trim().toLowerCase() !== "walk-in" ? detail.customerName : "");
   const reach = [company.companyPhone, company.companyPhone2].filter((p) => p && p.trim()).join(" / ");
-  const summary = `Total ${money3(detail.totals.grandTotal)}${kind.isInvoice ? owes ? `. Balance due ${money3(detail.totals.balanceDue)}${detail.dueDate ? ` by ${detail.dueDate}` : ""}.` : ". Paid in full, thank you." : "."}`;
+  const summary = `Total ${money4(detail.totals.grandTotal)}${kind.isInvoice ? owes ? `. Balance due ${money4(detail.totals.balanceDue)}${detail.dueDate ? ` by ${detail.dueDate}` : ""}.` : ". Paid in full, thank you." : "."}`;
   const lines = [
     `Dear ${who || "customer"},`,
     ...parsed.data.message?.trim() ? ["", parsed.data.message.trim()] : [],
@@ -74756,281 +75169,6 @@ emailRouter.post("/send", sendLimiter, async (req, res) => {
 // apps/api/src/routes/mpesa.ts
 var import_express8 = __toESM(require_express2());
 var import_crypto8 = require("crypto");
-
-// apps/api/src/accounting/reports.ts
-var inRange3 = (d, from, to) => d >= from && d <= to;
-function monthsOf(from, to) {
-  const out = [];
-  let y = Number(from.slice(0, 4));
-  let m = Number(from.slice(5, 7));
-  const endKey = to.slice(0, 7);
-  for (; ; ) {
-    const key2 = `${y}-${String(m).padStart(2, "0")}`;
-    if (key2 > endKey) break;
-    out.push(key2);
-    if (m === 12) {
-      y++;
-      m = 1;
-    } else m++;
-    if (out.length > 120) break;
-  }
-  return out;
-}
-async function buildProfitLoss(from, to) {
-  const ledger = await loadLedger();
-  const months = monthsOf(from, to);
-  const monthIndex = new Map(months.map((m, i) => [m, i]));
-  const rows = /* @__PURE__ */ new Map();
-  const outside = { before: { income: 0, expenses: 0 }, after: { income: 0, expenses: 0 } };
-  for (const p of ledger.postings) {
-    const acc = ledger.byId.get(p.accountId);
-    if (!acc || acc.type !== "Income" && acc.type !== "Expense") continue;
-    const signed = acc.type === "Income" ? p.credit - p.debit : p.debit - p.credit;
-    if (!inRange3(p.date, from, to)) {
-      const side = p.date < from ? outside.before : outside.after;
-      if (acc.type === "Income") side.income += signed;
-      else side.expenses += signed;
-      continue;
-    }
-    let row = rows.get(acc.id);
-    if (!row) {
-      row = { id: acc.id, code: acc.code, name: acc.name, amount: 0, byMonth: months.map(() => 0) };
-      rows.set(acc.id, row);
-    }
-    row.amount += signed;
-    const idx = monthIndex.get(p.date.slice(0, 7));
-    if (idx !== void 0) row.byMonth[idx] += signed;
-  }
-  const section = (type) => {
-    const isCos = (id) => ledger.byId.get(id).subtype === COST_OF_SALES_SUBTYPE;
-    const list = [...rows.values()].filter((r) => (type === "CostOfSales" ? isCos(r.id) : ledger.byId.get(r.id).type === type && !(type === "Expense" && isCos(r.id))) && (Math.abs(r.amount) > 4e-3 || r.byMonth.some((v) => Math.abs(v) > 4e-3))).sort((a2, b) => a2.code.localeCompare(b.code)).map((r) => ({ ...r, amount: round2(r.amount), byMonth: r.byMonth.map(round2) }));
-    return { rows: list, total: round2(list.reduce((a2, r) => a2 + r.amount, 0)), byMonth: months.map((_, i) => round2(list.reduce((a2, r) => a2 + r.byMonth[i], 0))) };
-  };
-  const income = section("Income");
-  const costOfSales = section("CostOfSales");
-  const expenses = section("Expense");
-  const grossProfit = round2(income.total - costOfSales.total);
-  const netProfit = round2(grossProfit - expenses.total);
-  return {
-    from,
-    to,
-    months,
-    income,
-    costOfSales,
-    grossProfit,
-    grossByMonth: months.map((_, i) => round2(income.byMonth[i] - costOfSales.byMonth[i])),
-    grossMargin: income.total > 0 ? round2(grossProfit / income.total * 100) : null,
-    expenses,
-    netProfit,
-    netByMonth: months.map((_, i) => round2(income.byMonth[i] - costOfSales.byMonth[i] - expenses.byMonth[i])),
-    margin: income.total > 0 ? round2(netProfit / income.total * 100) : null,
-    outside: {
-      before: { income: round2(outside.before.income), expenses: round2(outside.before.expenses) },
-      after: { income: round2(outside.after.income), expenses: round2(outside.after.expenses) }
-    }
-  };
-}
-function priorRange(from, to) {
-  const fromD = /* @__PURE__ */ new Date(from + "T00:00:00Z");
-  const toD = /* @__PURE__ */ new Date(to + "T00:00:00Z");
-  const lengthMs = toD.getTime() - fromD.getTime();
-  const priorTo = new Date(fromD.getTime() - 864e5);
-  const priorFrom = new Date(priorTo.getTime() - lengthMs);
-  return { from: priorFrom.toISOString().slice(0, 10), to: priorTo.toISOString().slice(0, 10) };
-}
-var pctChange = (cur, prev) => prev ? Math.round((cur - prev) / Math.abs(prev) * 1e3) / 10 : null;
-async function buildProfitLossDashboard(from, to, current) {
-  const prior = priorRange(from, to);
-  const y = Number(to.slice(0, 4));
-  const m = Number(to.slice(5, 7));
-  const first = new Date(Date.UTC(y, m - 1 - 5, 1)).toISOString().slice(0, 10);
-  const last2 = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-  const [priorPl, trendPl, cash] = await Promise.all([
-    buildProfitLoss(prior.from, prior.to),
-    buildProfitLoss(first, last2),
-    prisma.payment.aggregate({ _sum: { amount: true }, where: { date: { gte: from, lte: to } } })
-  ]);
-  return {
-    cashReceived: round2(cash._sum.amount ?? 0),
-    revChangePct: pctChange(current.income, priorPl.income.total),
-    profitChangePct: pctChange(current.netProfit, priorPl.netProfit),
-    priorFrom: prior.from,
-    priorTo: prior.to,
-    trend: trendPl.months.map((month, i) => ({ label: `${month.slice(5, 7)}/${month.slice(2, 4)}`, revenue: trendPl.income.byMonth[i], netProfit: trendPl.netByMonth[i] }))
-  };
-}
-async function buildBalanceSheet(asOf) {
-  const ledger = await loadLedger();
-  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
-  const line = (type) => ledger.accounts.filter((a2) => a2.type === type).sort((a2, b) => a2.code.localeCompare(b.code)).map((a2) => ({ id: a2.id, code: a2.code, name: a2.name, subtype: a2.subtype, amount: naturalBalance(a2.type, sums.get(a2.id)) })).filter((r) => Math.abs(r.amount) > 4e-3);
-  const total = (rows) => round2(rows.reduce((a2, r) => a2 + r.amount, 0));
-  const assets = line("Asset");
-  const liabilities = line("Liability");
-  const equityAccounts = line("Equity");
-  const currentEarnings = round2(total(line("Income")) - total(line("Expense")));
-  const equity = [
-    ...equityAccounts,
-    { id: 0, code: "", name: "Profit earned to date (not yet closed to retained earnings)", subtype: "CurrentEarnings", amount: currentEarnings }
-  ];
-  const totalAssets = total(assets);
-  const totalLiabilities = total(liabilities);
-  const totalEquity = total(equity);
-  return {
-    asOf,
-    assets: { rows: assets, total: totalAssets },
-    liabilities: { rows: liabilities, total: totalLiabilities },
-    equity: { rows: equity, total: totalEquity },
-    liabilitiesAndEquity: round2(totalLiabilities + totalEquity),
-    balanced: Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01
-  };
-}
-async function buildTrialBalance(asOf) {
-  const ledger = await loadLedger();
-  const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
-  const rows = ledger.accounts.sort((a2, b) => a2.code.localeCompare(b.code)).map((a2) => {
-    const b = sums.get(a2.id) || { debit: 0, credit: 0 };
-    const net8 = round2(b.debit - b.credit);
-    return { id: a2.id, code: a2.code, name: a2.name, type: a2.type, debit: net8 > 0 ? net8 : 0, credit: net8 < 0 ? -net8 : 0 };
-  }).filter((r) => r.debit > 4e-3 || r.credit > 4e-3);
-  const debit = round2(rows.reduce((x, r) => x + r.debit, 0));
-  const credit = round2(rows.reduce((x, r) => x + r.credit, 0));
-  return { asOf, rows, debit, credit, balanced: Math.abs(debit - credit) < 0.01 };
-}
-async function buildAccountLedger(accountId, from, to) {
-  const ledger = await loadLedger();
-  const acc = ledger.byId.get(accountId);
-  if (!acc) return null;
-  const mine = ledger.postings.filter((p) => p.accountId === accountId).sort((a2, b) => a2.date < b.date ? -1 : a2.date > b.date ? 1 : 0);
-  const sign2 = (p) => acc.type === "Asset" || acc.type === "Expense" ? p.debit - p.credit : p.credit - p.debit;
-  const opening = round2(mine.filter((p) => p.date < from).reduce((a2, p) => a2 + sign2(p), 0));
-  let running3 = opening;
-  const rows = mine.filter((p) => inRange3(p.date, from, to)).map((p) => {
-    running3 = round2(running3 + sign2(p));
-    return { date: p.date, source: p.source, ref: p.ref, memo: p.memo, debit: p.debit, credit: p.credit, balance: running3 };
-  });
-  return { account: { id: acc.id, code: acc.code, name: acc.name, type: acc.type }, from, to, opening, closing: running3, rows };
-}
-var AGE_BUCKETS = ["Not yet due", "0\u201330 days", "31\u201360 days", "61\u201390 days", "Over 90 days"];
-function ageBucket(ageDays) {
-  return ageDays < 0 ? "Not yet due" : ageDays <= 30 ? "0\u201330 days" : ageDays <= 60 ? "31\u201360 days" : ageDays <= 90 ? "61\u201390 days" : "Over 90 days";
-}
-var daysBetween = (from, to) => Math.floor(((/* @__PURE__ */ new Date(to + "T00:00:00")).getTime() - (/* @__PURE__ */ new Date(from + "T00:00:00")).getTime()) / 864e5);
-async function buildPayablesAging(asOf) {
-  const entries = await prisma.expense.findMany({ where: { paid: false, date: { lte: asOf } }, include: { payments: true, notes: true } });
-  const rows = entries.map((e) => {
-    const paidAmount = round2(e.payments.filter((p) => p.date <= asOf).reduce((a2, p) => a2 + p.amount, 0));
-    const credited = round2(e.notes.filter((n) => n.type === "SupplierDebit" && n.date <= asOf).reduce((a2, n) => a2 + n.total, 0));
-    const outstanding = round2(e.amount - paidAmount - credited);
-    const ageDays = daysBetween(e.dueDate ?? e.date, asOf);
-    return { id: e.id, date: e.date, dueDate: e.dueDate, supplier: e.supplier, head: e.category, invoice: e.invoiceNumber, amount: e.amount, paidAmount, credited, outstanding, ageDays, bucket: ageBucket(ageDays) };
-  }).filter((r) => r.outstanding > 4e-3).sort((a2, b) => b.ageDays - a2.ageDays);
-  const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
-  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket };
-}
-async function buildReceivablesAging(asOf) {
-  const orders = await prisma.order.findMany({
-    where: { createdDate: { lte: asOf } },
-    include: { lineItems: true, payments: true, corporateClient: true, notes: true }
-  });
-  let credits = 0;
-  const rows = [];
-  for (const o of orders) {
-    if (!(o.kind === "walkin" || o.status !== "Quote")) continue;
-    const lines = o.lineItems.map((li) => ({
-      itemType: li.itemType,
-      serviceId: li.serviceId,
-      materialId: li.materialId,
-      qty: li.qty,
-      unitPrice: li.unitPrice,
-      discountPct: li.discountPct,
-      discountAmt: li.discountAmt,
-      heatPressFee: li.heatPressFee
-    }));
-    const amount = round2(computeOrderTotals({ lineItems: lines, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal);
-    const paid = round2(o.payments.filter((p) => p.date <= asOf).reduce((a2, p) => a2 + p.amount, 0));
-    const adjustments = round2(
-      o.notes.filter((n) => n.date <= asOf).reduce((a2, n) => a2 + (n.type === "Credit" ? -n.receivableAmt : n.type === "Debit" ? n.total : 0), 0)
-    );
-    const outstanding = round2(amount + adjustments - paid);
-    if (outstanding < -4e-3) credits += outstanding;
-    if (!(outstanding > 4e-3)) continue;
-    const ageDays = daysBetween(o.dueDate ?? o.createdDate, asOf);
-    rows.push({
-      orderId: o.id,
-      ref: o.orderNo,
-      party: o.customerName || o.corporateClient?.name || "Customer",
-      status: o.status,
-      date: o.createdDate,
-      dueDate: o.dueDate,
-      amount,
-      paid,
-      adjustments,
-      outstanding,
-      ageDays,
-      bucket: ageBucket(ageDays)
-    });
-  }
-  rows.sort((a2, b) => b.ageDays - a2.ageDays);
-  const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
-  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket, overpaidCredits: round2(credits) };
-}
-async function buildCashFlowStatement(from, to) {
-  const ledger = await loadLedger();
-  const cashIds = new Set(CASH_ACCOUNT_CODES.map((c) => ledger.byCode.get(c)?.id).filter((id) => !!id));
-  const isCash = (p) => cashIds.has(p.accountId);
-  const cashBalanceAsOf = (cutoff) => ledger.postings.filter((p) => isCash(p) && cutoff(p.date)).reduce((a2, p) => a2 + p.debit - p.credit, 0);
-  const openingCash = round2(cashBalanceAsOf((d) => d < from));
-  const closingCash = round2(cashBalanceAsOf((d) => d <= to));
-  const moves = ledger.postings.filter((p) => isCash(p) && inRange3(p.date, from, to) && p.source !== "Opening");
-  const legsByEntry = /* @__PURE__ */ new Map();
-  for (const p of ledger.postings) {
-    if (!inRange3(p.date, from, to)) continue;
-    const k = `${p.source}\0${p.ref}\0${p.date}`;
-    legsByEntry.set(k, [...legsByEntry.get(k) || [], p]);
-  }
-  const STATIC = { Capital: "Financing", Drawings: "Financing", "Asset purchase": "Investing" };
-  const bucketFor = (p) => {
-    if (STATIC[p.source]) return STATIC[p.source];
-    const legs = legsByEntry.get(`${p.source}\0${p.ref}\0${p.date}`) || [];
-    const other = legs.filter((l) => !isCash(l));
-    if (other.length === 0) return "Internal";
-    if (p.source === "Petty cash top-up") {
-      return other.some((l) => ledger.byId.get(l.accountId)?.type === "Equity") ? "Financing" : "Internal";
-    }
-    if (["Manual", "BankDeposit", "TaxPayment"].includes(p.source) || p.source === "Opening") {
-      const types = new Set(other.map((l) => ledger.byId.get(l.accountId)?.type));
-      if (types.has("Equity") || other.some((l) => ledger.byId.get(l.accountId)?.code === ACCT.loans)) return "Financing";
-      if (other.some((l) => ledger.byId.get(l.accountId)?.subtype === "FixedAsset")) return "Investing";
-    }
-    return "Operating";
-  };
-  const totals = { Operating: 0, Investing: 0, Financing: 0, Internal: 0 };
-  const bySource = /* @__PURE__ */ new Map();
-  for (const p of moves) {
-    const bucket = bucketFor(p);
-    const signed = p.debit - p.credit;
-    totals[bucket] += signed;
-    const key2 = `${bucket}:${p.source}`;
-    const row = bySource.get(key2) || { source: p.source, bucket, amount: 0 };
-    row.amount += signed;
-    bySource.set(key2, row);
-  }
-  const lines = [...bySource.values()].map((r) => ({ ...r, amount: round2(r.amount) })).filter((r) => Math.abs(r.amount) > 4e-3);
-  const section = (bucket) => ({ total: round2(totals[bucket]), lines: lines.filter((l) => l.bucket === bucket) });
-  const netChange = round2(totals.Operating + totals.Investing + totals.Financing);
-  return {
-    from,
-    to,
-    openingCash,
-    closingCash,
-    netChange,
-    operating: section("Operating"),
-    investing: section("Investing"),
-    financing: section("Financing"),
-    internalTransfers: round2(totals.Internal),
-    reconciles: Math.abs(round2(openingCash + netChange + totals.Internal) - closingCash) < 0.01
-  };
-}
 
 // apps/api/src/accounting/mpesaMatching.ts
 async function openTargets() {
@@ -75285,8 +75423,8 @@ async function getAccessToken(c) {
 }
 function darajaTimestamp() {
   const d = /* @__PURE__ */ new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+  const pad2 = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
 }
 
 // apps/api/src/mpesaB2c.ts
@@ -76141,9 +76279,78 @@ ncbaRouter.post("/notify/:secret", import_express9.default.text({ type: ["text/x
   }
 });
 
-// apps/api/src/routes/embroidery.ts
+// apps/api/src/routes/tax.ts
 var import_express10 = __toESM(require_express2());
-var embroideryRouter = (0, import_express10.Router)();
+var taxRouter = (0, import_express10.Router)();
+taxRouter.use(requireAuth, requirePermission("canAccessFinance"));
+var yearSchema = external_exports.coerce.number().int().min(2e3).max(2100);
+var money = external_exports.number().min(0).max(1e12);
+taxRouter.get("/settings", async (_req, res) => {
+  res.json(await loadTaxConfig());
+});
+var settingsSchema4 = external_exports.object({
+  regime: external_exports.enum(["corporation", "turnover"]),
+  corporationRate: external_exports.number().min(0).max(100),
+  turnoverRate: external_exports.number().min(0).max(100),
+  yearEndMonth: external_exports.number().int().min(1).max(12)
+});
+taxRouter.put("/settings", requireRole("Admin"), async (req, res) => {
+  const parsed = settingsSchema4.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid settings" });
+  await prisma.taxSettings.upsert({ where: { id: 1 }, update: parsed.data, create: { id: 1, ...parsed.data } });
+  res.json(await loadTaxConfig());
+});
+taxRouter.get("/year/:year", async (req, res) => {
+  const year = yearSchema.safeParse(req.params.year);
+  if (!year.success) return res.status(400).json({ error: "Enter a valid year" });
+  res.json(await computeYear(year.data, await loadTaxConfig()));
+});
+var adjustSchema = external_exports.object({
+  addBacks: money,
+  capitalAllowances: money,
+  lossesUsed: money,
+  whtCredits: money,
+  /** The tax the instalments are based on; null goes back to the suggested figure. */
+  estimateTax: money.nullable(),
+  note: external_exports.string().trim().max(500).default("")
+});
+taxRouter.put("/year/:year", requireRole("Admin"), async (req, res) => {
+  const year = yearSchema.safeParse(req.params.year);
+  if (!year.success) return res.status(400).json({ error: "Enter a valid year" });
+  const parsed = adjustSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid figures" });
+  const data = { ...parsed.data, updatedByName: req.user.name };
+  await prisma.taxYear.upsert({ where: { year: year.data }, update: data, create: { year: year.data, ...data } });
+  res.json(await computeYear(year.data, await loadTaxConfig()));
+});
+var paymentSchema2 = external_exports.object({
+  /** I1–I4: the instalments; FINAL: the balance; YYYY-MM: turnover tax for that month. */
+  period: external_exports.string().regex(/^(I[1-4]|FINAL|\d{4}-(0[1-9]|1[0-2]))$/, "Choose what the payment is for"),
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter the date paid"),
+  amount: external_exports.number().positive().max(1e12),
+  reference: external_exports.string().trim().max(120).default(""),
+  note: external_exports.string().trim().max(300).default("")
+});
+taxRouter.post("/year/:year/payments", requireRole("Admin"), async (req, res) => {
+  const year = yearSchema.safeParse(req.params.year);
+  if (!year.success) return res.status(400).json({ error: "Enter a valid year" });
+  const parsed = paymentSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid payment" });
+  await prisma.taxPayment.create({ data: { taxYear: year.data, ...parsed.data, capturedByName: req.user.name } });
+  res.status(201).json(await computeYear(year.data, await loadTaxConfig()));
+});
+taxRouter.delete("/payments/:id", requireRole("Admin"), async (req, res) => {
+  const id = external_exports.coerce.number().int().positive().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: "Invalid payment" });
+  const row = await prisma.taxPayment.findUnique({ where: { id: id.data } });
+  if (!row) return res.status(404).json({ error: "Payment not found" });
+  await prisma.taxPayment.delete({ where: { id: row.id } });
+  res.json(await computeYear(row.taxYear, await loadTaxConfig()));
+});
+
+// apps/api/src/routes/embroidery.ts
+var import_express11 = __toESM(require_express2());
+var embroideryRouter = (0, import_express11.Router)();
 embroideryRouter.use(requireAuth);
 async function loadEmbroiderySettings() {
   const row = await prisma.embroiderySettings.findUnique({ where: { id: 1 } });
@@ -76160,7 +76367,7 @@ var mayQuote = requirePermission("canCaptureOrders");
 embroideryRouter.get("/config", mayQuote, async (req, res) => {
   res.json({ settings: await loadEmbroiderySettings() });
 });
-var settingsSchema4 = external_exports.object({
+var settingsSchema5 = external_exports.object({
   stitchRate: external_exports.number().positive(),
   stitchMin: external_exports.number().min(0),
   setupFee: external_exports.number().min(0),
@@ -76169,7 +76376,7 @@ var settingsSchema4 = external_exports.object({
   qtyTiers: external_exports.array(external_exports.object({ min: external_exports.number().min(1), discountPct: external_exports.number().min(0).max(90) })).min(1).max(12)
 });
 embroideryRouter.put("/settings", requireRole("Admin"), async (req, res) => {
-  const parsed = settingsSchema4.safeParse(req.body);
+  const parsed = settingsSchema5.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const s = { ...parsed.data, qtyTiers: [...parsed.data.qtyTiers].sort((a2, b) => a2.min - b.min) };
   const problem = embroiderySettingsProblem(s);
@@ -76295,9 +76502,9 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
 });
 
 // apps/api/src/routes/assets.ts
-var import_express11 = __toESM(require_express2());
+var import_express12 = __toESM(require_express2());
 var ASSET_FUNDING2 = ["Bank", "Cash", "M-Pesa", "Owner Capital", "Opening Balance"];
-var assetsRouter = (0, import_express11.Router)();
+var assetsRouter = (0, import_express12.Router)();
 assetsRouter.use(requireAuth, requirePermission("canAccessFinance"));
 assetsRouter.get("/", async (req, res) => {
   const { category, condition } = req.query;
@@ -76409,9 +76616,9 @@ assetsRouter.delete("/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/dtf.ts
-var import_express12 = __toESM(require_express2());
+var import_express13 = __toESM(require_express2());
 var import_client3 = require("@prisma/client");
-var dtfRouter = (0, import_express12.Router)();
+var dtfRouter = (0, import_express13.Router)();
 dtfRouter.use(requireAuth, requirePermission("canAccessDtf", "canManageDtf"));
 var manageOnly = requirePermission("canManageDtf");
 var dateStr2 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
@@ -76554,7 +76761,7 @@ dtfRouter.get("/data", async (req, res) => {
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending" } }) : 0
   });
 });
-var settingsSchema5 = external_exports.object({
+var settingsSchema6 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
   rollWidthCm: external_exports.number().positive(),
   stdPricePerM: external_exports.number().positive(),
@@ -76564,7 +76771,7 @@ var settingsSchema5 = external_exports.object({
   fixedChargePerMetre: external_exports.number().min(0)
 }).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" });
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
-  const parsed = settingsSchema5.safeParse(req.body);
+  const parsed = settingsSchema6.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   await getSettings();
   await prisma.dtfSetting.update({ where: { id: 1 }, data: parsed.data });
@@ -76841,8 +77048,8 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
     for (const s of sales) byDay2.set(s.soldOn, [...byDay2.get(s.soldOn) ?? [], s]);
     const days2 = [...byDay2.entries()].map(([date, list]) => {
       const orders = list.map((s) => {
-        const money3 = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
-        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money3 };
+        const money4 = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
+        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money4 };
       });
       const metres = round2(list.reduce((a2, s) => a2 + s.metres, 0));
       return {
@@ -76866,8 +77073,8 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
       const calc = { id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece };
       const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
       const final = jobTotals(calc).finalPerPiece;
-      const money3 = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
-      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money3 };
+      const money4 = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
+      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money4 };
     });
     const counted = orders.filter((o) => o.approval !== "Pending");
     const pieces = counted.reduce((a2, o) => a2 + o.pieces, 0);
@@ -76932,7 +77139,7 @@ dtfRouter.delete("/jobs/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/accounting.ts
-var import_express13 = __toESM(require_express2());
+var import_express14 = __toESM(require_express2());
 
 // apps/api/src/accounting/reconcile.ts
 var key = (source, ref) => `${source}\0${ref}`;
@@ -77342,7 +77549,7 @@ async function depreciationSchedule(from, to, asOf) {
 }
 
 // apps/api/src/routes/accounting.ts
-var accountingRouter = (0, import_express13.Router)();
+var accountingRouter = (0, import_express14.Router)();
 accountingRouter.use(requireAuth);
 var dateStr3 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 var isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -77682,7 +77889,7 @@ accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => 
 });
 
 // apps/api/src/routes/production.ts
-var import_express14 = __toESM(require_express2());
+var import_express15 = __toESM(require_express2());
 
 // apps/api/src/production.ts
 async function ensureProduction() {
@@ -77751,7 +77958,7 @@ function productionSummary(o) {
 }
 
 // apps/api/src/routes/production.ts
-var productionRouter = (0, import_express14.Router)();
+var productionRouter = (0, import_express15.Router)();
 productionRouter.use(requireAuth, requirePermission("canAccessProduction", "canManageProduction"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -77944,8 +78151,8 @@ productionRouter.get("/productivity", async (req, res) => {
 });
 
 // apps/api/src/routes/quality.ts
-var import_express15 = __toESM(require_express2());
-var qualityRouter = (0, import_express15.Router)();
+var import_express16 = __toESM(require_express2());
+var qualityRouter = (0, import_express16.Router)();
 qualityRouter.use(requireAuth, requirePermission("canAccessQuality"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -78067,8 +78274,8 @@ qualityRouter.post("/orders/:orderId/check", async (req, res) => {
 });
 
 // apps/api/src/routes/commission.ts
-var import_express16 = __toESM(require_express2());
-var commissionRouter = (0, import_express16.Router)();
+var import_express17 = __toESM(require_express2());
+var commissionRouter = (0, import_express17.Router)();
 commissionRouter.use(requireAuth, async (_req, _res, next) => {
   await ensureCommissionAccessOnce();
   next();
@@ -78084,7 +78291,7 @@ commissionRouter.get("/settings", async (_req, res) => {
   res.json(await getCommissionConfig());
 });
 var bandSchema = external_exports.object({ from: external_exports.number().min(0), rate: external_exports.number().min(0).max(100) });
-var settingsSchema6 = external_exports.object({
+var settingsSchema7 = external_exports.object({
   generalBands: external_exports.array(bandSchema).min(1),
   filmBands: external_exports.array(bandSchema).min(1),
   // Freelance sales persons — weekly net sales received at or above base prices → rate
@@ -78101,7 +78308,7 @@ var settingsSchema6 = external_exports.object({
   targetMode: external_exports.enum(TARGET_MODES).optional()
 });
 commissionRouter.put("/settings", manage, async (req, res) => {
-  const parsed = settingsSchema6.safeParse(req.body);
+  const parsed = settingsSchema7.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
   const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null);
@@ -78353,7 +78560,7 @@ commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
 });
 
 // apps/api/src/routes/pricelists.ts
-var import_express17 = __toESM(require_express2());
+var import_express18 = __toESM(require_express2());
 
 // apps/api/src/xlsx.ts
 var import_node_zlib2 = __toESM(require("node:zlib"));
@@ -78530,7 +78737,7 @@ function readXlsx(buf) {
 }
 
 // apps/api/src/routes/pricelists.ts
-var pricelistsRouter = (0, import_express17.Router)();
+var pricelistsRouter = (0, import_express18.Router)();
 pricelistsRouter.use(requireAuth);
 var XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 var MAX_ROWS = 3e3;
@@ -78570,12 +78777,12 @@ function sheetRows(grid, itemHeaders) {
   }
   return { rows, has: (h) => col(h) >= 0 };
 }
-var money = (s) => {
+var money2 = (s) => {
   if (s === void 0) return null;
   const n = Number(s.replace(/[, ]/g, "").replace(/^ksh/i, ""));
   return Number.isFinite(n) ? n : NaN;
 };
-var rawBody = import_express17.default.raw({ type: () => true, limit: "10mb" });
+var rawBody = import_express18.default.raw({ type: () => true, limit: "10mb" });
 function parseGrid(req) {
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error("Choose an Excel (.xlsx) file to upload");
   const grid = readXlsx(req.body);
@@ -78612,7 +78819,7 @@ pricelistsRouter.post("/services", requireRole("Admin"), rawBody, async (req, re
     }
     seen.add(fullName.toLowerCase());
     const priceText = row.get("price");
-    const price = money(priceText);
+    const price = money2(priceText);
     const unitText = (row.get("unit") ?? "").toLowerCase();
     if (unitText && !SERVICE_UNITS.includes(unitText)) {
       fail(`Unit must be ${SERVICE_UNITS.join(", ")} (not "${unitText}")`);
@@ -78687,7 +78894,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
     }
     seen.add(fullName.toLowerCase());
     const priceText = row.get("price");
-    const price = money(priceText);
+    const price = money2(priceText);
     const unit = clean2(row.get("unit") ?? "");
     const headName = row.get("business head") ?? "";
     const head = headName ? heads.find((h) => same3(h.name, headName)) : void 0;
@@ -78696,7 +78903,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
       continue;
     }
     const reorderText = row.get("reorder level");
-    const reorder = reorderText ? money(reorderText) : null;
+    const reorder = reorderText ? money2(reorderText) : null;
     if (reorderText && !(reorder >= 0)) {
       fail("Reorder level must be a number, 0 or more");
       continue;
@@ -78749,7 +78956,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
 
 // apps/api/src/routes/backup.ts
 var import_node_crypto12 = __toESM(require("node:crypto"));
-var import_express18 = __toESM(require_express2());
+var import_express19 = __toESM(require_express2());
 
 // apps/api/src/backup.ts
 var import_node_fs4 = __toESM(require("node:fs"));
@@ -79032,9 +79239,9 @@ function startBackupScheduler() {
 }
 
 // apps/api/src/routes/backup.ts
-var backupRouter = (0, import_express18.Router)();
+var backupRouter = (0, import_express19.Router)();
 var admin = [requireAuth, requireRole("Admin")];
-var rawBody2 = import_express18.default.raw({ type: () => true, limit: "200mb" });
+var rawBody2 = import_express19.default.raw({ type: () => true, limit: "200mb" });
 var stamp2 = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
 backupRouter.get("/status", ...admin, async (_req, res) => {
   const s = await getBackupSettings();
@@ -79056,7 +79263,7 @@ backupRouter.get("/status", ...admin, async (_req, res) => {
     files: listLocal()
   });
 });
-var settingsSchema7 = external_exports.object({
+var settingsSchema8 = external_exports.object({
   enabled: external_exports.boolean().optional(),
   intervalHours: external_exports.number().int().min(1).max(24 * 31).optional(),
   keepCount: external_exports.number().int().min(1).max(365).optional(),
@@ -79065,7 +79272,7 @@ var settingsSchema7 = external_exports.object({
   driveClientSecret: external_exports.string().trim().max(300).optional()
 });
 backupRouter.put("/settings", ...admin, async (req, res) => {
-  const parsed = settingsSchema7.safeParse(req.body);
+  const parsed = settingsSchema8.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const { driveClientSecret, ...rest } = parsed.data;
   const current = await getBackupSettings();
@@ -79167,7 +79374,7 @@ backupRouter.post("/google/disconnect", ...admin, async (_req, res) => {
 });
 
 // apps/api/src/routes/security.ts
-var import_express19 = __toESM(require_express2());
+var import_express20 = __toESM(require_express2());
 
 // apps/api/src/secrets.ts
 var plain2 = (v) => !!v && !isSealed(v);
@@ -79204,7 +79411,7 @@ async function sealStoredSecrets() {
 }
 
 // apps/api/src/routes/security.ts
-var securityRouter = (0, import_express19.Router)();
+var securityRouter = (0, import_express20.Router)();
 securityRouter.use(requireAuth, requireRole("Admin"));
 securityRouter.get("/status", async (req, res) => {
   const setting = await prisma.setting.findUnique({ where: { id: 1 } });
@@ -79256,8 +79463,8 @@ securityRouter.get("/audit", async (req, res) => {
 });
 
 // apps/api/src/routes/freelance.ts
-var import_express20 = __toESM(require_express2());
-var freelanceRouter = (0, import_express20.Router)();
+var import_express21 = __toESM(require_express2());
+var freelanceRouter = (0, import_express21.Router)();
 freelanceRouter.use(requireAuth, async (_req, res, next) => {
   if (!await commissionEnabled()) return res.status(403).json({ error: "Commission is switched off. An Admin can switch it on in Master Data \u2192 Company Info.", commissionOff: true });
   next();
@@ -79597,7 +79804,7 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
 });
 
 // apps/api/src/routes/whatsapp.ts
-var import_express21 = __toESM(require_express2());
+var import_express22 = __toESM(require_express2());
 
 // apps/api/src/whatsapp.ts
 var base2 = () => process.env.NODE_ENV === "test" && process.env.WHATSAPP_TEST_URL ? process.env.WHATSAPP_TEST_URL : "https://graph.facebook.com";
@@ -79704,7 +79911,7 @@ async function sendInvoiceDocument(cfg, m) {
 }
 
 // apps/api/src/routes/whatsapp.ts
-var whatsappRouter = (0, import_express21.Router)();
+var whatsappRouter = (0, import_express22.Router)();
 whatsappRouter.use(requireAuth);
 var sendLimiter2 = lib_default({
   windowMs: 60 * 60 * 1e3,
@@ -79729,7 +79936,7 @@ var publicView = (row) => ({
 whatsappRouter.get("/settings", requireRole("Admin"), async (_req, res) => {
   res.json(publicView(await prisma.whatsappSettings.findUnique({ where: { id: 1 } })));
 });
-var settingsSchema8 = external_exports.object({
+var settingsSchema9 = external_exports.object({
   enabled: external_exports.boolean().optional(),
   phoneNumberId: external_exports.string().trim().regex(/^\d{5,25}$/, "The Phone number ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
   businessAccountId: external_exports.string().trim().regex(/^\d{5,25}$/, "The WhatsApp Business Account ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
@@ -79740,7 +79947,7 @@ var settingsSchema8 = external_exports.object({
   apiVersion: external_exports.string().trim().regex(/^v\d{1,2}\.\d$/, "The API version looks like v21.0").optional()
 });
 whatsappRouter.put("/settings", requireRole("Admin"), async (req, res) => {
-  const parsed = settingsSchema8.safeParse(req.body);
+  const parsed = settingsSchema9.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const b = parsed.data;
   const row = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
@@ -79770,7 +79977,7 @@ whatsappRouter.get("/status", async (_req, res) => {
   const cfg = await loadWhatsappConfig();
   res.json({ ready: !!cfg, template: !!cfg?.templateName });
 });
-var money2 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+var money3 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 var sendSchema2 = external_exports.object({
   orderId: external_exports.number().int().positive(),
   // Where to send it; left out, the number on the order is used.
@@ -79791,7 +79998,7 @@ whatsappRouter.post("/send", sendLimiter2, async (req, res) => {
   const kind = documentKind(detail);
   const owes = kind.isInvoice && detail.totals.balanceDue > 9e-3;
   const who = detail.corporateClient?.name || (detail.customerName && detail.customerName.trim().toLowerCase() !== "walk-in" ? detail.customerName : "") || "customer";
-  const closing = kind.isInvoice ? owes ? `Balance due ${money2(detail.totals.balanceDue)}${detail.dueDate ? ` by ${fmtDate(detail.dueDate)}` : ""}.` : "Paid in full, thank you." : "Please contact us to confirm.";
+  const closing = kind.isInvoice ? owes ? `Balance due ${money3(detail.totals.balanceDue)}${detail.dueDate ? ` by ${fmtDate(detail.dueDate)}` : ""}.` : "Paid in full, thank you." : "Please contact us to confirm.";
   const filename = `${kind.label}-${detail.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, "-") + ".pdf";
   const log2 = (status, extra) => prisma.whatsappMessage.create({ data: { orderId: order.id, toNumber: to, status, mode: extra.mode ?? "", waMessageId: extra.waMessageId ?? null, error: extra.error ?? "", sentByName: req.user.name } });
   try {
@@ -79800,8 +80007,8 @@ whatsappRouter.post("/send", sendLimiter2, async (req, res) => {
       to,
       pdf,
       filename,
-      params: [who, kind.label.toLowerCase(), detail.orderNo, money2(detail.totals.grandTotal), closing],
-      caption: `${kind.label} ${detail.orderNo} from ${company.companyName}. Total ${money2(detail.totals.grandTotal)}. ${closing}`
+      params: [who, kind.label.toLowerCase(), detail.orderNo, money3(detail.totals.grandTotal), closing],
+      caption: `${kind.label} ${detail.orderNo} from ${company.companyName}. Total ${money3(detail.totals.grandTotal)}. ${closing}`
     });
     await log2("Sent", { waMessageId: sent.messageId, mode: sent.mode });
     res.json({ ok: true, to, messageId: sent.messageId, mode: sent.mode, attachment: filename });
@@ -79824,11 +80031,11 @@ whatsappRouter.get("/log", async (req, res) => {
 
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express22.default)();
+var app = (0, import_express23.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express22.default.json({ limit: "5mb" }));
+app.use(import_express23.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -79853,6 +80060,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/master-data", masterDataRouter);
 app.use("/api/orders", ordersRouter);
 app.use("/api/finance", financeRouter);
+app.use("/api/tax", taxRouter);
 app.use("/api/stock", stockRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/email", emailRouter);

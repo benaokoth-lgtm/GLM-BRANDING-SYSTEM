@@ -765,6 +765,46 @@ model EmbroideryJob {
   createdAt        DateTime @default(now())
 }
 
+// Income tax (Compliance → Corporation tax). One row (id = 1): how the business is taxed — corporation tax on taxable profit (30% for a resident company) or turnover tax
+// on gross sales (3%, for turnover between 1M and 25M) — and the accounting year's end month.
+model TaxSettings {
+  id              Int      @id @default(1)
+  regime          String   @default("corporation") // corporation | turnover
+  corporationRate Float    @default(30)
+  turnoverRate    Float    @default(3)
+  yearEndMonth    Int      @default(12) // the accounting year ends on the last day of this month
+  updatedAt       DateTime @updatedAt
+}
+
+// What is entered by hand for one accounting year (named by the calendar year in which it ENDS): the adjustments the books cannot know.
+model TaxYear {
+  id                Int      @id @default(autoincrement())
+  year              Int      @unique
+  addBacks          Float    @default(0) // other expenses the Income Tax Act does not allow, added back to the profit
+  capitalAllowances Float    @default(0) // wear and tear and other capital allowances claimed (deducted)
+  lossesUsed        Float    @default(0) // tax losses brought forward and used this year (deducted)
+  whtCredits        Float    @default(0) // tax already deducted at source by customers (certificates held), credited against the tax
+  estimateTax       Float? // the estimate the instalments are based on; blank = the system's own (the lower of this year's estimate and 110% of last year's tax)
+  note              String   @default("")
+  updatedByName     String   @default("")
+  updatedAt         DateTime @updatedAt
+}
+
+// Income tax paid to KRA, as recorded here. period: I1 … I4 (the instalments), FINAL (the balance), or YYYY-MM (turnover tax for that month).
+model TaxPayment {
+  id             Int      @id @default(autoincrement())
+  taxYear        Int
+  period         String
+  date           String
+  amount         Float
+  reference      String   @default("")
+  note           String   @default("")
+  capturedByName String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([taxYear])
+}
+
 // NCBA Bank Lipa na M-Pesa on Paybill 880100 (Master Data → NCBA): STK prompts through NCBA's API, and NCBA's payment notifications. One row (id = 1).
 // Every secret is sealed with DATA_KEY and never sent back to the browser.
 model NcbaSettings {

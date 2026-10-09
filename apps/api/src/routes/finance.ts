@@ -19,6 +19,7 @@ import {
   splitGross,
 } from '@glm/shared';
 import { ensureStaffNamesOnce } from '../staffNames';
+import { incomeTaxByMonth, loadTaxConfig } from '../incomeTax';
 import type { LineItemInput } from '@glm/shared';
 import { ensureChartOnce, accountIdForNewExpenseHead } from '../accounting/chart';
 import { loadLedger, pettyCashBalance, pettyCashShortfall } from '../accounting/ledger';
@@ -101,7 +102,7 @@ financeRouter.get('/payroll', async (req, res) => {
 // Everything the business must remit, month by month, in one place — what the accountant is given a cheque for: PAYE, NSSF (the employee's share taken from pay and the
 // employer's matching share), SHIF, the Affordable Housing Levy (employee's and employer's), VAT and withholding tax. Whole calendar months. Payroll amounts come from the
 // pay entries (employees only; casual staff carry no statutory deductions); VAT is the month's output VAT less its input VAT, and a month with more input than output is a
-// credit carried forward to the next month in the list (nothing to pay) — as the books have it, not counting any VAT remitted by journal; withholding tax is what was
+// credit for that month alone (nothing to pay) — it is NOT carried forward to reduce a later month's VAT, each month stands on its own — as the books have it, not counting any VAT remitted by journal; withholding tax is what was
 // withheld from freelance commission. The "owing now" block is each payable account's balance in the books today, so tax already remitted by journal comes off it.
 const monthsBetween = (fromMonth: string, toMonth: string): string[] => {
   const out: string[] = [];
@@ -157,15 +158,17 @@ financeRouter.get('/statutory-due', async (req, res) => {
     else if (VAT_PURCHASE_SOURCES.has(post.source)) row.inputVat += post.debit - post.credit;
   }
 
-  let credit = 0; // VAT credit brought forward within the list
+  // Income tax still to be paid (instalments / balance / turnover tax), placed in the month it is paid for.
+  const incomeTaxDue = await incomeTaxByMonth(months, await loadTaxConfig());
+
   const rows = months.map((month) => {
     const r = by.get(month)!;
     r.vatNet = r.outputVat - r.inputVat;
-    const after = r.vatNet - credit;
-    const vatCreditBf = credit;
-    const vatPayable = Math.max(0, after);
-    credit = Math.max(0, -after);
-    const total = r.paye + r.nssfEmployee + r.nssfEmployer + r.shif + r.housingEmployee + r.housingEmployer + vatPayable + r.wht;
+    const incomeTax = incomeTaxDue.get(month) ?? 0;
+    // A month with more VAT on purchases than on sales has nothing to pay; the credit is shown for information and does not reduce any other month's VAT.
+    const vatPayable = Math.max(0, r.vatNet);
+    const credit = Math.max(0, -r.vatNet);
+    const total = r.paye + r.nssfEmployee + r.nssfEmployer + r.shif + r.housingEmployee + r.housingEmployer + vatPayable + r.wht + incomeTax;
     return {
       month,
       paye: round2(r.paye),
@@ -176,10 +179,10 @@ financeRouter.get('/statutory-due', async (req, res) => {
       housingEmployer: round2(r.housingEmployer),
       outputVat: round2(r.outputVat),
       inputVat: round2(r.inputVat),
-      vatCreditBf: round2(vatCreditBf),
       vatPayable: round2(vatPayable),
       vatCreditCarried: round2(credit),
       wht: round2(r.wht),
+      incomeTax: round2(incomeTax),
       total: round2(total),
     };
   });
@@ -193,6 +196,7 @@ financeRouter.get('/statutory-due', async (req, res) => {
     housingEmployer: sum((r) => r.housingEmployer),
     vatPayable: sum((r) => r.vatPayable),
     wht: sum((r) => r.wht),
+    incomeTax: sum((r) => r.incomeTax),
     total: sum((r) => r.total),
     /** The employer's own cost within it: the matching NSSF and housing levy. */
     employerShare: sum((r) => r.nssfEmployer + r.housingEmployer),

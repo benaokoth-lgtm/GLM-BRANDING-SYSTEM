@@ -53,7 +53,7 @@ describe('statutory payments due, month by month', () => {
     assert.equal((await call('fin', '/finance/statutory-due')).status, 400);
   });
 
-  it('adds up each month: payroll deductions with both shares, VAT after any credit brought forward, and withholding tax', async () => {
+  it("adds up each month: payroll deductions with both shares, VAT (a month's credit never reduces another month's), and withholding tax", async () => {
     const mar = '2037-03-25';
     const apr = '2037-04-25';
     await prisma.payrollEntry.createMany({
@@ -81,23 +81,22 @@ describe('statutory payments due, month by month', () => {
     assert.equal(m3.housingEmployee, r2(pay.housingLevy));
     assert.equal(m3.housingEmployer, r2(pay.housingLevyEmployer));
     assert.equal(m3.wht, 250);
-    // March: more input than output, so nothing to pay and a credit carried
+    // March: more input than output, so nothing to pay; the credit is shown but offsets nothing
     assert.equal(m3.vatPayable, 0);
-    assert.equal(m3.vatCreditCarried, 160);
+    assert.equal(m3.vatCreditCarried, 160); // informational only
     assert.equal(m3.total, r2(pay.paye + pay.nssf + pay.nssfEmployer + pay.shif + pay.housingLevy + pay.housingLevyEmployer + 250));
 
-    // April: the same payroll (the casual adds nothing), and VAT 480 less the 160 credit brought forward
+    // April: the same payroll (the casual adds nothing), and the full VAT of 480 — March's credit does not reduce it
     assert.equal(m4.paye, r2(pay.paye));
     assert.equal(m4.outputVat, 480);
-    assert.equal(m4.vatCreditBf, 160);
-    assert.equal(m4.vatPayable, 320);
+    assert.equal(m4.vatPayable, 480);
     assert.equal(m4.wht, 0);
-    assert.equal(m4.total, r2(pay.paye + pay.nssf + pay.nssfEmployer + pay.shif + pay.housingLevy + pay.housingLevyEmployer + 320));
+    assert.equal(m4.total, r2(pay.paye + pay.nssf + pay.nssfEmployer + pay.shif + pay.housingLevy + pay.housingLevyEmployer + 480));
 
     // the total at the end is the cheque: every column and the grand total add up the months
     assert.equal(r.totals.total, r2(m3.total + m4.total));
     assert.equal(r.totals.paye, r2(m3.paye + m4.paye));
-    assert.equal(r.totals.vatPayable, 320);
+    assert.equal(r.totals.vatPayable, 480);
     assert.equal(r.totals.wht, 250);
     assert.equal(r.totals.employerShare, r2(m3.nssfEmployer + m3.housingEmployer + m4.nssfEmployer + m4.housingEmployer));
   });

@@ -10,11 +10,12 @@ import DeleteReasonRow from '../components/DeleteReasonRow';
 import DeletionRequestsCard from '../components/DeletionRequestsCard';
 import OrderDetailDialog from '../components/OrderDetailDialog';
 
-type ComplianceTab = 'vat' | 'nssf' | 'shif' | 'payroll' | 'employees' | 'p9';
+type ComplianceTab = 'vat' | 'due' | 'nssf' | 'shif' | 'payroll' | 'employees' | 'p9';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [ComplianceTab, string][] = [
   ['vat', 'VAT'],
+  ['due', 'Payments due'],
   ['nssf', 'NSSF'],
   ['shif', 'SHIF'],
   ['payroll', 'Payroll'],
@@ -91,6 +92,186 @@ function AccountStatement({ rows, totals, heads, empty }: { rows: VatStatementPa
         </tr>
       </tfoot>
     </table>
+  );
+}
+
+interface DueRow {
+  month: string;
+  paye: number;
+  nssfEmployee: number;
+  nssfEmployer: number;
+  shif: number;
+  housingEmployee: number;
+  housingEmployer: number;
+  outputVat: number;
+  inputVat: number;
+  vatCreditBf: number;
+  vatPayable: number;
+  vatCreditCarried: number;
+  wht: number;
+  total: number;
+}
+interface DueData {
+  from: string;
+  to: string;
+  months: DueRow[];
+  totals: { paye: number; nssfEmployee: number; nssfEmployer: number; shif: number; housingEmployee: number; housingEmployer: number; vatPayable: number; wht: number; total: number; employerShare: number } | null;
+  owing: { paye: number; nssf: number; shif: number; housing: number; vat: number; wht: number; total: number } | null;
+}
+
+const dash = (n: number) => (n ? fmtKsh(n) : '—');
+const monthLabel = (m: string) => new Date(`${m}-01T00:00:00`).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
+const payBy = (m: string) => {
+  const d = new Date(`${m}-01T00:00:00`);
+  d.setMonth(d.getMonth() + 1);
+  return `9 ${d.toLocaleDateString('en-KE', { month: 'short', year: 'numeric' })}`;
+};
+
+// Payments due: every statutory payment the business must make, month by month, with the total at the end — the amount the accountant is given a cheque for.
+function DuePayments({ from, to }: { from: string; to: string }) {
+  const [data, setData] = useState<DueData | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    setData(null);
+    setErr('');
+    api.get<DueData>(`/finance/statutory-due?from=${from}&to=${to}`).then(setData).catch((e) => setErr(e instanceof Error ? e.message : 'Could not load the payments due'));
+  }, [from, to]);
+
+  if (err) return <p className="note" style={{ color: 'var(--color-error)' }}>{err}</p>;
+  if (!data) return <p className="note">Loading…</p>;
+  const t = data.totals;
+  const R = { textAlign: 'right' } as const;
+
+  return (
+    <>
+      <div className="print-only" style={{ fontFamily: 'var(--font-heading)', fontSize: 20 }}>
+        Statutory payments due — {monthLabel(data.months[0]?.month ?? from.slice(0, 7))} to {monthLabel(data.months[data.months.length - 1]?.month ?? to.slice(0, 7))}
+      </div>
+      {t && (
+        <div className="card blueprint" style={{ padding: 'var(--space-4)', display: 'flex', gap: 'var(--space-6)', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div>
+            <div className="card-kicker">Total to pay — write the cheque for</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 40, lineHeight: 1.1 }}>{fmtKsh(t.total)}</div>
+            <div className="note" style={{ margin: 0 }}>
+              for {data.months.length} month{data.months.length === 1 ? '' : 's'}. Of this, the employer's own cost (the matching NSSF and housing levy) is {fmtKsh(t.employerShare)}; the rest was taken from staff pay, collected as VAT, or withheld from freelancers.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+        <i className="corner tl"></i>
+        <i className="corner tr"></i>
+        <i className="corner bl"></i>
+        <i className="corner br"></i>
+        <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+          Payments due, month by month
+        </div>
+        <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
+          Whole calendar months for the dates chosen above. <b>PAYE, SHIF and the housing levy</b> are due by the 9th of the next month, <b>NSSF</b> by the 15th, <b>VAT and withholding tax</b> by the 20th. NSSF and the housing levy show the employee's share (taken from pay) and the employer's own matching share; SHIF is the employee's alone, remitted by the employer. Casual staff carry no statutory deductions.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ whiteSpace: 'nowrap' }}>
+            <thead>
+              <tr>
+                <th>Month</th>
+                <th>Pay by</th>
+                <th style={R}>PAYE</th>
+                <th style={R}>NSSF — employee</th>
+                <th style={R}>NSSF — employer</th>
+                <th style={R}>SHIF</th>
+                <th style={R}>Housing levy — employee</th>
+                <th style={R}>Housing levy — employer</th>
+                <th style={R}>VAT</th>
+                <th style={R}>Withholding tax</th>
+                <th style={R}>Total to pay</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.months.map((m) => (
+                <tr key={m.month}>
+                  <td>{monthLabel(m.month)}</td>
+                  <td className="text-muted">{payBy(m.month)}</td>
+                  <td style={R}>{dash(m.paye)}</td>
+                  <td style={R}>{dash(m.nssfEmployee)}</td>
+                  <td style={R}>{dash(m.nssfEmployer)}</td>
+                  <td style={R}>{dash(m.shif)}</td>
+                  <td style={R}>{dash(m.housingEmployee)}</td>
+                  <td style={R}>{dash(m.housingEmployer)}</td>
+                  <td style={R} title={m.vatCreditCarried > 0 ? `More VAT was paid on purchases than charged on sales: a credit of ${fmtKsh(m.vatCreditCarried)} is carried to the next month.` : m.vatCreditBf > 0 ? `After a credit of ${fmtKsh(m.vatCreditBf)} brought forward from the month before.` : undefined}>
+                    {dash(m.vatPayable)}
+                    {m.vatCreditCarried > 0 && <span className="text-muted" style={{ fontSize: 11 }}> (credit {fmtKsh(m.vatCreditCarried)})</span>}
+                  </td>
+                  <td style={R}>{dash(m.wht)}</td>
+                  <td style={{ ...R, fontWeight: 700 }}>{dash(m.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+            {t && (
+              <tfoot>
+                <tr style={{ fontFamily: 'var(--font-heading)' }}>
+                  <td colSpan={2}>Total to pay</td>
+                  <td style={R}>{fmtKsh(t.paye)}</td>
+                  <td style={R}>{fmtKsh(t.nssfEmployee)}</td>
+                  <td style={R}>{fmtKsh(t.nssfEmployer)}</td>
+                  <td style={R}>{fmtKsh(t.shif)}</td>
+                  <td style={R}>{fmtKsh(t.housingEmployee)}</td>
+                  <td style={R}>{fmtKsh(t.housingEmployer)}</td>
+                  <td style={R}>{fmtKsh(t.vatPayable)}</td>
+                  <td style={R}>{fmtKsh(t.wht)}</td>
+                  <td style={{ ...R, fontSize: 18 }}>{fmtKsh(t.total)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+        {data.months.length > 0 && data.months.every((m) => m.total === 0) && <p className="note">Nothing is due for these months — there is no pay entered and no VAT or withholding tax. Pick a wider range above (for example Year to date).</p>}
+      </div>
+
+      {data.owing && (
+        <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+          <i className="corner tl"></i>
+          <i className="corner tr"></i>
+          <i className="corner bl"></i>
+          <i className="corner br"></i>
+          <div className="card-title" style={{ marginBottom: 'var(--space-2)' }}>
+            Still owing on the books today
+          </div>
+          <p className="note" style={{ marginBottom: 'var(--space-3)' }}>
+            What the accounts show as unpaid on each statutory account, across all months, after any payments already recorded to them (Accounting → Journals). A credit (for example VAT paid on purchases above VAT charged on sales) is owed back to the business, and is taken off the total. Use this to check the cheque: if the months above include tax that was already paid, this is the true balance.
+          </p>
+          <table className="table" style={{ maxWidth: 480 }}>
+            <tbody>
+              {(
+                [
+                  ['PAYE', data.owing.paye],
+                  ['NSSF (both shares)', data.owing.nssf],
+                  ['SHIF', data.owing.shif],
+                  ['Housing levy (both shares)', data.owing.housing],
+                  ['VAT', data.owing.vat],
+                  ['Withholding tax', data.owing.wht],
+                ] as [string, number][]
+              ).map(([k, v]) => (
+                <tr key={k}>
+                  <td>{k}</td>
+                  <td style={R}>{v < 0 ? `${fmtKsh(-v)} credit` : fmtKsh(v)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr style={{ fontFamily: 'var(--font-heading)' }}>
+                <td>Total owing</td>
+                <td style={R}>{fmtKsh(data.owing.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -363,6 +544,8 @@ export default function Compliance() {
           {error}
         </p>
       )}
+
+      {tab === 'due' && <DuePayments from={fromDate} to={toDate} />}
 
       {tab === 'vat' && (
         <>

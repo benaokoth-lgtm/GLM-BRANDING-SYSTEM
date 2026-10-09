@@ -97,6 +97,118 @@ financeRouter.get('/payroll', async (req, res) => {
   res.json({ fromDate: range.from, toDate: range.to, rows, ...totals });
 });
 
+// ── Statutory payments due (Compliance → Payments due) ──────────────────────
+// Everything the business must remit, month by month, in one place — what the accountant is given a cheque for: PAYE, NSSF (the employee's share taken from pay and the
+// employer's matching share), SHIF, the Affordable Housing Levy (employee's and employer's), VAT and withholding tax. Whole calendar months. Payroll amounts come from the
+// pay entries (employees only; casual staff carry no statutory deductions); VAT is the month's output VAT less its input VAT, and a month with more input than output is a
+// credit carried forward to the next month in the list (nothing to pay) — as the books have it, not counting any VAT remitted by journal; withholding tax is what was
+// withheld from freelance commission. The "owing now" block is each payable account's balance in the books today, so tax already remitted by journal comes off it.
+const monthsBetween = (fromMonth: string, toMonth: string): string[] => {
+  const out: string[] = [];
+  let y = Number(fromMonth.slice(0, 4));
+  let m = Number(fromMonth.slice(5, 7));
+  while (`${y}-${String(m).padStart(2, '0')}` <= toMonth && out.length < 36) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    if (++m > 12) {
+      m = 1;
+      y++;
+    }
+  }
+  return out;
+};
+
+financeRouter.get('/statutory-due', async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
+  const months = monthsBetween(range.from.slice(0, 7), range.to.slice(0, 7));
+  if (months.length === 0) return res.json({ from: range.from, to: range.to, months: [], totals: null, owing: null });
+  const lo = `${months[0]}-01`;
+  const hi = `${months[months.length - 1]}-31`;
+
+  const [entries, withheld, ledger] = await Promise.all([
+    prisma.payrollEntry.findMany({ where: { date: { gte: lo, lte: hi } } }),
+    prisma.expense.findMany({ where: { date: { gte: lo, lte: hi }, withholdingTax: { gt: 0 } }, select: { date: true, withholdingTax: true } }),
+    loadLedger(),
+  ]);
+
+  const blank = () => ({ paye: 0, nssfEmployee: 0, nssfEmployer: 0, shif: 0, housingEmployee: 0, housingEmployer: 0, outputVat: 0, inputVat: 0, vatNet: 0, wht: 0 });
+  const by = new Map(months.map((m) => [m, blank()]));
+  for (const e of entries) {
+    const row = by.get(e.date.slice(0, 7));
+    if (!row) continue;
+    const pay = computePay(e.grossPay, e.employeeType as 'Employee' | 'Casual', e.date);
+    row.paye += pay.paye;
+    row.nssfEmployee += pay.nssf;
+    row.nssfEmployer += pay.nssfEmployer;
+    row.shif += pay.shif;
+    row.housingEmployee += pay.housingLevy;
+    row.housingEmployer += pay.housingLevyEmployer;
+  }
+  for (const w of withheld) {
+    const row = by.get(w.date.slice(0, 7));
+    if (row) row.wht += w.withholdingTax;
+  }
+  const vatAcct = ledger.byCode.get(ACCT.vatPayable);
+  for (const post of ledger.postings) {
+    if (post.accountId !== vatAcct?.id) continue;
+    const row = by.get(post.date.slice(0, 7));
+    if (!row) continue;
+    if (VAT_SALE_SOURCES.has(post.source)) row.outputVat += post.credit - post.debit;
+    else if (VAT_PURCHASE_SOURCES.has(post.source)) row.inputVat += post.debit - post.credit;
+  }
+
+  let credit = 0; // VAT credit brought forward within the list
+  const rows = months.map((month) => {
+    const r = by.get(month)!;
+    r.vatNet = r.outputVat - r.inputVat;
+    const after = r.vatNet - credit;
+    const vatCreditBf = credit;
+    const vatPayable = Math.max(0, after);
+    credit = Math.max(0, -after);
+    const total = r.paye + r.nssfEmployee + r.nssfEmployer + r.shif + r.housingEmployee + r.housingEmployer + vatPayable + r.wht;
+    return {
+      month,
+      paye: round2(r.paye),
+      nssfEmployee: round2(r.nssfEmployee),
+      nssfEmployer: round2(r.nssfEmployer),
+      shif: round2(r.shif),
+      housingEmployee: round2(r.housingEmployee),
+      housingEmployer: round2(r.housingEmployer),
+      outputVat: round2(r.outputVat),
+      inputVat: round2(r.inputVat),
+      vatCreditBf: round2(vatCreditBf),
+      vatPayable: round2(vatPayable),
+      vatCreditCarried: round2(credit),
+      wht: round2(r.wht),
+      total: round2(total),
+    };
+  });
+  const sum = (f: (r: (typeof rows)[number]) => number) => round2(rows.reduce((a, r) => a + f(r), 0));
+  const totals = {
+    paye: sum((r) => r.paye),
+    nssfEmployee: sum((r) => r.nssfEmployee),
+    nssfEmployer: sum((r) => r.nssfEmployer),
+    shif: sum((r) => r.shif),
+    housingEmployee: sum((r) => r.housingEmployee),
+    housingEmployer: sum((r) => r.housingEmployer),
+    vatPayable: sum((r) => r.vatPayable),
+    wht: sum((r) => r.wht),
+    total: sum((r) => r.total),
+    /** The employer's own cost within it: the matching NSSF and housing levy. */
+    employerShare: sum((r) => r.nssfEmployer + r.housingEmployer),
+  };
+
+  // What the books say is owing today on each payable account (remittances made by journal are already taken off).
+  const balance = (code: string) => {
+    const a = ledger.byCode.get(code);
+    return a ? round2(ledger.postings.filter((x) => x.accountId === a.id).reduce((t, x) => t + x.credit - x.debit, 0)) : 0;
+  };
+  const owing = { paye: balance(ACCT.payePayable), nssf: balance(ACCT.nssfPayable), shif: balance(ACCT.shifPayable), housing: balance(ACCT.housingLevyPayable), vat: balance(ACCT.vatPayable), wht: balance(ACCT.whtPayable), total: 0 };
+  owing.total = round2(owing.paye + owing.nssf + owing.shif + owing.housing + owing.vat + owing.wht);
+
+  res.json({ from: range.from, to: range.to, months: rows, totals, owing });
+});
+
 // ── Employee details (Compliance → Employees) ─────────────────────────────
 // The identifiers payroll and the P9 need for each person: National ID, KRA PIN and SHIF registration number. Optional, tidied on the way in
 // (KRA PIN in capitals, spaces removed), and National ID / KRA PIN cannot belong to two people.

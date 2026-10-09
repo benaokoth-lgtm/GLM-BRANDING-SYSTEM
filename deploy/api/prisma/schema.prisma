@@ -717,9 +717,12 @@ model MpesaTransaction {
 }
 
 // Embroidery pricing (Master Data → Embroidery Pricing): the numbers behind the Embroidery Order calculator. One row (id = 1); `tiers` is JSON
-// ([{ min, rate, floor }]). Every order keeps a snapshot of what it was priced with (EmbroideryJob), so a later change never reprices history.
+// ([{ min, discountPct }]: the quantity discounts that give the price by quantity). Every order keeps a snapshot of what it was priced with (EmbroideryJob), so a later change never reprices history.
 model EmbroiderySettings {
   id             Int      @id @default(1)
+  // The price by stitches: KES per 1,000 stitches, and the least charged per piece.
+  stitchRate     Float    @default(16)
+  stitchMin      Float    @default(60)
   setupFee       Float    @default(1200)
   originationFee Float    @default(1500)
   waiveAtQty     Int      @default(100)

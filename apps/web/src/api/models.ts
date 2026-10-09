@@ -605,6 +605,8 @@ export interface EmbroideryProfitabilityData {
   setup: { charged: number; waived: number };
   originationJobs: number;
   belowRecommended: { jobs: number; given: number };
+  /** What staff took off the price by stitches by applying the price by quantity (a standard price, not a giveaway). */
+  quantityDiscounts: number;
   pendingApproval: { jobs: number; value: number };
   cost: { purchases: number; expenses: number; total: number };
   consumableBreakdown: EmbroideryConsumableBreakdownRow[];

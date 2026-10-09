@@ -4,7 +4,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DEFAULT_EMBROIDERY_SETTINGS, embroiderySettingsProblem, floorCoversStitches, quoteDesign, quoteJob, tierFor } from '@glm/shared';
+import { DEFAULT_EMBROIDERY_SETTINGS, embroiderySettingsProblem, qtyTierFor, quantityPrice, quoteDesign, quoteJob, stitchPrice } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -12,38 +12,50 @@ import { signToken } from '../src/middleware/auth';
 describe('embroidery pricing arithmetic', () => {
   const S = DEFAULT_EMBROIDERY_SETTINGS;
 
-  it('uses the tier for the quantity: its rate and its own minimum price per piece', () => {
-    assert.equal(tierFor(S.tiers, 1).rate, 14);
-    assert.equal(tierFor(S.tiers, 11).rate, 12);
-    assert.equal(tierFor(S.tiers, 12).rate, 10);
-    assert.equal(tierFor(S.tiers, 500).floor, 100);
-    assert.equal(tierFor([...S.tiers].reverse(), 25).rate, 9); // order in the list does not matter
-    // 6,000 stitches: 84 at 1 piece is lifted to that tier's 150; 60 at 12 pieces is lifted to 120; 42 at 100 pieces to 100
-    assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 1, S).recommended, 150);
-    assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 12, S).recommended, 120);
-    assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 100, S).recommended, 100);
+  it('prices by stitch count first: the price moves with the stitches, with a small minimum for tiny designs', () => {
+    assert.equal(stitchPrice(3000, S), 60); // 48 lifted to the minimum of 60
+    assert.equal(stitchPrice(5000, S), 80);
+    assert.equal(stitchPrice(6000, S), 96);
+    assert.equal(stitchPrice(10000, S), 160);
+    assert.equal(stitchPrice(20000, S), 320);
+    assert.equal(stitchPrice(6333, S), 102); // 101.33 rounded up to the whole shilling
+    // a bigger design always costs more once it is above the minimum — the stitch count is not hidden
+    assert.ok(stitchPrice(8000, S) > stitchPrice(6000, S));
   });
 
-  it('the stitch count changes the price only above the stitches the minimum covers', () => {
-    const t = tierFor(S.tiers, 12); // rate 10, minimum 120
-    assert.equal(floorCoversStitches(t), 12000);
-    const price = (stitches: number) => quoteDesign({ name: 'x', stitches }, 12, S).recommended;
-    assert.equal(price(4000), price(12000)); // the same minimum price all the way up to 12,000 stitches
-    assert.equal(price(14000), 140); // then each extra 1,000 stitches adds the rate (10)
-    assert.equal(price(15000), 150);
-    assert.equal(floorCoversStitches({ min: 1, rate: 0, floor: 100 }), Infinity);
+  it('the price by quantity is the price by stitches less the quantity discount, and never higher', () => {
+    assert.equal(qtyTierFor(S.qtyTiers, 5).discountPct, 0);
+    assert.equal(qtyTierFor(S.qtyTiers, 12).discountPct, 10);
+    assert.equal(qtyTierFor([...S.qtyTiers].reverse(), 25).discountPct, 15); // the order of the list does not matter
+    const byQty = (q: number) => quantityPrice(6000, q, S);
+    assert.deepEqual([1, 5, 6, 12, 25, 50, 100].map(byQty), [96, 96, 92, 87, 82, 77, 72]);
+    for (const q of [1, 6, 12, 25, 50, 100, 1000]) assert.ok(byQty(q) <= stitchPrice(6000, S));
+    // it falls (or stays) as the quantity rises
+    assert.ok([1, 6, 12, 25, 50, 100].map(byQty).every((p, i, all) => i === 0 || p <= all[i - 1]!));
   });
 
-  it('rounds a stitch cost above the minimum up to the whole shilling', () => {
-    const q = quoteDesign({ name: 'x', stitches: 13333 }, 12, S); // 10 × 13.333 = 133.33
-    assert.equal(q.floored, false);
-    assert.equal(q.recommended, 134);
+  it('the staff apply either price; one of their own is measured against the lowest standard price', () => {
+    const by = (basis: 'stitch' | 'quantity', pricePerPiece?: number) => quoteDesign({ name: 'x', stitches: 6000, basis, pricePerPiece }, 12, S);
+    const stitch = by('stitch');
+    assert.equal(stitch.piece, 96);
+    assert.equal(stitch.basis, 'stitch');
+    const qty = by('quantity');
+    assert.equal(qty.piece, 87);
+    assert.equal(qty.recommended, 87);
+    assert.ok(qty.piece < stitch.piece);
+    const custom = by('stitch', 90);
+    assert.equal(custom.basis, 'custom');
+    assert.equal(custom.piece, 90);
+    assert.equal(custom.lowest, 87); // below this needs approval
+    assert.equal(stitch.stitchPrice, 96);
+    assert.equal(stitch.quantityPrice, 87);
+    assert.equal(stitch.discountPct, 10);
   });
 
-  it('puts the setup fee on its own line: charged once per design, and waived on a repeat or from the waiver quantity', () => {
+  it('keeps the setup fee on its own line: once per design, waived on a repeat or from the waiver quantity', () => {
     const one = quoteDesign({ name: 'x', stitches: 6000 }, 12, S);
     assert.equal(one.setup, 1200);
-    assert.equal(one.subtotal, 120 * 12 + 1200); // the piece price carries no share of the setup
+    assert.equal(one.subtotal, 96 * 12 + 1200); // the piece price carries no share of the setup
     assert.equal(quoteDesign({ name: 'x', stitches: 6000, repeat: true }, 12, S).setup, 0);
     assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 100, S).setupWaived, true);
     assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 99, S).setup, 1200);
@@ -57,15 +69,17 @@ describe('embroidery pricing arithmetic', () => {
     assert.equal(mine.origination, 1500);
     assert.equal(theirs.origination, 0);
     assert.equal(mine.total - theirs.total, 1500); // once, however many designs
-    // 2 designs × (piece × 12 + setup): 120 and 200 per piece
-    assert.equal(theirs.total, 120 * 12 + 1200 + 200 * 12 + 1200);
+    assert.equal(theirs.total, 96 * 12 + 1200 + 320 * 12 + 1200);
   });
 
-  it('refuses settings that leave a quantity without a rate', () => {
+  it('refuses settings with no rate, no band for 1 piece, or a price by quantity that would rise with the quantity', () => {
     assert.equal(embroiderySettingsProblem(S), null);
-    assert.match(embroiderySettingsProblem({ ...S, tiers: [] })!, /at least one/);
-    assert.match(embroiderySettingsProblem({ ...S, tiers: [{ min: 5, rate: 10, floor: 100 }] })!, /quantity 1/);
-    assert.match(embroiderySettingsProblem({ ...S, tiers: [{ min: 1, rate: 10, floor: 100 }, { min: 1, rate: 9, floor: 90 }] })!, /same quantity/);
+    assert.match(embroiderySettingsProblem({ ...S, stitchRate: 0 })!, /more than 0/);
+    assert.match(embroiderySettingsProblem({ ...S, qtyTiers: [] })!, /at least one/);
+    assert.match(embroiderySettingsProblem({ ...S, qtyTiers: [{ min: 5, discountPct: 10 }] })!, /1 piece/);
+    assert.match(embroiderySettingsProblem({ ...S, qtyTiers: [{ min: 1, discountPct: 0 }, { min: 1, discountPct: 5 }] })!, /same quantity/);
+    assert.match(embroiderySettingsProblem({ ...S, qtyTiers: [{ min: 1, discountPct: 0 }, { min: 6, discountPct: 95 }] })!, /0% and 90%/);
+    assert.match(embroiderySettingsProblem({ ...S, qtyTiers: [{ min: 1, discountPct: 0 }, { min: 6, discountPct: 10 }, { min: 12, discountPct: 5 }] })!, /must not go up/);
     assert.match(embroiderySettingsProblem({ ...S, setupFee: -1 })!, /negative/);
   });
 });
@@ -108,10 +122,11 @@ describe('embroidery orders', () => {
     assert.equal((await call('nobody', 'GET', '/embroidery/config')).status, 403);
     const cfg = await call('sales', 'GET', '/embroidery/config');
     assert.equal(cfg.status, 200);
-    assert.equal(cfg.body.settings.tiers.length, 6);
+    assert.equal(cfg.body.settings.qtyTiers.length, 6);
+    assert.equal(cfg.body.settings.stitchRate, 16);
 
     assert.equal((await call('manager', 'PUT', '/embroidery/settings', cfg.body.settings)).status, 403);
-    assert.equal((await call('admin', 'PUT', '/embroidery/settings', { ...cfg.body.settings, tiers: [{ min: 5, rate: 10, floor: 100 }] })).status, 400);
+    assert.equal((await call('admin', 'PUT', '/embroidery/settings', { ...cfg.body.settings, qtyTiers: [{ min: 5, discountPct: 10 }] })).status, 400);
     const saved = await call('admin', 'PUT', '/embroidery/settings', { ...cfg.body.settings, setupFee: 1000 });
     assert.equal(saved.status, 200);
     assert.equal((await call('sales', 'GET', '/embroidery/config')).body.settings.setupFee, 1000);
@@ -127,13 +142,13 @@ describe('embroidery orders', () => {
     const piece = lines.find((l) => l.serviceName.startsWith('Embroidery per piece'))!;
     assert.match(piece.serviceName, /Left chest · 6,000 stitches/);
     assert.equal(piece.qty, 12);
-    assert.equal(piece.unitPrice, 120); // 6,000 stitches × KES 10 = 60, lifted to this tier's minimum
+    assert.equal(piece.unitPrice, 96); // 6,000 stitches × KES 16 per 1,000: the price by stitches (the default basis)
     const setup = lines.find((l) => l.serviceName.startsWith('Embroidery digitizing setup'))!;
     assert.equal(setup.unitPrice, 1200);
     assert.equal(setup.qty, 1);
     const orig = lines.find((l) => l.serviceName === 'Design origination')!;
     assert.equal(orig.unitPrice, 1500);
-    assert.equal(r.body.totals.grandTotal, 120 * 12 + 1200 + 1500);
+    assert.equal(r.body.totals.grandTotal, 96 * 12 + 1200 + 1500);
     assert.equal(r.body.staff.id, ids.sales);
 
     const row = await prisma.order.findUniqueOrThrow({ where: { id: r.body.id }, include: { embroideryJob: true } });
@@ -164,18 +179,31 @@ describe('embroidery orders', () => {
     const lines = r.body.lineItems as any[];
     assert.equal(lines.length, 1); // no setup, no origination
     assert.match(lines[0].serviceName, /6,000 stitches/);
-    assert.equal(r.body.totals.grandTotal, 120 * 12);
+    assert.equal(r.body.totals.grandTotal, 96 * 12);
     assert.equal((await prisma.embroideryDesign.findUniqueOrThrow({ where: { id: saved[0].id } })).timesUsed >= 2, true);
   });
 
-  it('charging more than recommended is open to everyone; charging less sends the job to the price-approval queue', async () => {
+  it('the staff apply the price by stitches or the lower price by quantity; only a price below the quantity price goes for approval', async () => {
+    // by stitches (the default)
+    const full = await order('sales', { clientSupplies: true });
+    assert.equal(full.status, 201);
+    assert.equal((full.body.lineItems as any[]).find((l) => l.serviceName.startsWith('Embroidery per piece')).unitPrice, 96);
+    // by quantity: lower, and a standard price — no approval
+    const lower = await order('sales', { clientSupplies: true, designs: [{ name: 'By quantity', stitches: 6000, basis: 'quantity' }] });
+    assert.equal(lower.status, 201, JSON.stringify(lower.body));
+    assert.equal((lower.body.lineItems as any[]).find((l) => l.serviceName.startsWith('Embroidery per piece')).unitPrice, 87); // 10% off at 12 pieces
+    assert.equal(lower.body.priceApproval, null);
+    // a price of their own above either standard price is open to everyone
     const more = await order('sales', { clientSupplies: true, designs: [{ name: 'Premium', stitches: 6000, pricePerPiece: 150 }] });
     assert.equal(more.status, 201);
     assert.equal((more.body.lineItems as any[]).find((l) => l.serviceName.startsWith('Embroidery per piece')).unitPrice, 150);
     assert.equal(more.body.priceApproval, null);
+    // between the two standard prices is fine too
+    const between = await order('sales', { clientSupplies: true, designs: [{ name: 'Between', stitches: 6000, pricePerPiece: 90 }] });
+    assert.equal(between.body.priceApproval, null);
 
-    // anyone may ask for a lower price; it waits for a manager, like an artwork job
-    const cheap = await order('sales', { clientSupplies: true, designs: [{ name: 'Cheap', stitches: 6000, pricePerPiece: 100 }] });
+    // below the price by quantity: it waits in the price-approval queue, like an artwork job
+    const cheap = await order('sales', { clientSupplies: true, designs: [{ name: 'Cheap', stitches: 6000, pricePerPiece: 70 }] });
     assert.equal(cheap.status, 201, JSON.stringify(cheap.body));
     assert.equal(cheap.body.priceApproval, 'Pending');
     const job = await prisma.embroideryJob.findUniqueOrThrow({ where: { orderId: cheap.body.id } });
@@ -183,14 +211,22 @@ describe('embroidery orders', () => {
     assert.equal(job.belowRecommended, true);
     const ask = await prisma.priceApproval.findFirstOrThrow({ where: { orderId: cheap.body.id } });
     assert.equal(ask.kind, 'embroidery');
-    assert.equal(ask.systemPerPiece, 120);
-    assert.equal(ask.chargedPerPiece, 100);
-    assert.equal(ask.shortfall, 240); // (120 − 100) × 12 pieces
+    assert.equal(ask.systemPerPiece, 87);
+    assert.equal(ask.chargedPerPiece, 70);
+    assert.equal(ask.shortfall, 204); // (87 − 70) × 12 pieces
 
     // it cannot be paid for at capture while the price waits
-    const paid = await order('sales', { paymentTiming: 'onAcceptance', payments: [{ method: 'Cash', amount: 500 }], designs: [{ name: 'Cheap again', stitches: 6000, pricePerPiece: 100 }] });
+    const paid = await order('sales', { paymentTiming: 'onAcceptance', payments: [{ method: 'Cash', amount: 500 }], designs: [{ name: 'Cheap again', stitches: 6000, pricePerPiece: 70 }] });
     assert.equal(paid.status, 400);
     assert.match(paid.body.error, /approval/);
+  });
+
+  it('keeps what each design was priced with: both standard prices and the one applied', async () => {
+    const r = await order('sales', { clientSupplies: true, designs: [{ name: 'Snapshot', stitches: 6000, basis: 'quantity' }] });
+    const job = await prisma.embroideryJob.findUniqueOrThrow({ where: { orderId: r.body.id } });
+    const d = JSON.parse(job.designsJson)[0];
+    assert.deepEqual({ stitchPrice: d.stitchPrice, quantityPrice: d.quantityPrice, basis: d.basis, piece: d.piece, discountPct: d.discountPct }, { stitchPrice: 96, quantityPrice: 87, basis: 'quantity', piece: 87, discountPct: 10 });
+    assert.equal(JSON.parse(job.settingsJson).stitchRate, 16);
   });
 
   it('waives the setup fee from the waiver quantity, and prices several placements on one garment', async () => {
@@ -198,7 +234,7 @@ describe('embroidery orders', () => {
     assert.equal(big.status, 201, JSON.stringify(big.body));
     const lines = big.body.lineItems as any[];
     assert.equal(lines.length, 2); // two piece lines, no setup lines
-    assert.deepEqual(lines.map((l) => l.unitPrice).sort((a, b) => a - b), [100, 140]); // 42 → minimum 100; 7 × 20 = 140
+    assert.deepEqual(lines.map((l) => l.unitPrice).sort((a, b) => a - b), [96, 320]); // 6,000 and 20,000 stitches by stitches (the quantity price is the lower option)
   });
 
   it('refuses an unknown garment, an empty job, and someone who may not take orders', async () => {

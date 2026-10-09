@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { buildLineTotal, computeOrderTotals, defaultBusinessHeadName, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, EMBROIDERY_ORIGINATION_SERVICE, EMBROIDERY_PIECE_SERVICE, EMBROIDERY_SETUP_SERVICE, GENERAL_ORDER_HEAD, tierFor, todayStr, VAT_RATE } from '@glm/shared';
-import type { EmbroideryTier } from '@glm/shared';
+import { buildLineTotal, computeOrderTotals, defaultBusinessHeadName, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, EMBROIDERY_ORIGINATION_SERVICE, EMBROIDERY_PIECE_SERVICE, EMBROIDERY_SETUP_SERVICE, GENERAL_ORDER_HEAD, todayStr, VAT_RATE } from '@glm/shared';
 import { ensureBusinessHeadsOnce, ensurePurchasesOnce } from '../purchases';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
@@ -105,6 +104,7 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
   let originationJobs = 0;
   let belowJobs = 0;
   let given = 0;
+  let quantityDiscounts = 0;
   let pendingJobs = 0;
   let pendingValue = 0;
   const bands = new Map<number, { jobs: number; garments: number; revenue: number }>();
@@ -140,26 +140,31 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
       }
     }
     if (job) {
-      const designs = JSON.parse(job.designsJson || '[]') as { stitches: number; setupWaived?: boolean; setup?: number; recommended?: number; piece?: number }[];
+      const designs = JSON.parse(job.designsJson || '[]') as { stitches: number; setupWaived?: boolean; setup?: number; recommended?: number; lowest?: number; stitchPrice?: number; basis?: string; piece?: number }[];
       garments += job.qty;
       placements += job.qty * designs.length;
       stitches += job.qty * designs.reduce((a, d) => a + (Number(d.stitches) || 0), 0);
       for (const d of designs) {
         if (d.setupWaived) setupWaived++;
         else if ((d.setup ?? 0) > 0) setupCharged++;
-        if (d.recommended != null && d.piece != null && d.piece < d.recommended) given += (d.recommended - d.piece) * job.qty;
+        // given away = below the lowest standard price (the price by quantity; the recommended price for jobs made before the two prices existed)
+        const floor = d.lowest ?? d.recommended;
+        if (floor != null && d.piece != null && d.piece < floor) given += (floor - d.piece) * job.qty;
+        // a quantity discount is a standard price, not a giveaway: shown apart
+        if (d.basis === 'quantity' && d.stitchPrice != null && d.piece != null && d.piece < d.stitchPrice) quantityDiscounts += (d.stitchPrice - d.piece) * job.qty;
       }
       if (!job.clientSupplied) originationJobs++;
       if (job.belowRecommended) belowJobs++;
       // the quantity band, from the tiers the job was priced with
-      let tiers: EmbroideryTier[] = [];
+      let starts: number[] = [];
       try {
-        tiers = (JSON.parse(job.settingsJson || '{}') as { tiers?: EmbroideryTier[] }).tiers ?? [];
+        const snap = JSON.parse(job.settingsJson || '{}') as { qtyTiers?: { min: number }[]; tiers?: { min: number }[] };
+        starts = (snap.qtyTiers ?? snap.tiers ?? []).map((t) => Number(t.min)).filter((m) => Number.isFinite(m));
       } catch {
         /* an unreadable snapshot leaves the job out of the bands */
       }
-      if (tiers.length) {
-        const from = tierFor(tiers, job.qty).min;
+      if (starts.length) {
+        const from = Math.max(...starts.filter((m) => m <= job.qty), Math.min(...starts));
         const band = bands.get(from) ?? { jobs: 0, garments: 0, revenue: 0 };
         band.jobs++;
         band.garments += job.qty;
@@ -217,6 +222,7 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
     setup: { charged: setupCharged, waived: setupWaived },
     originationJobs,
     belowRecommended: { jobs: belowJobs, given: round(given) },
+    quantityDiscounts: round(quantityDiscounts),
     pendingApproval: { jobs: pendingJobs, value: round(pendingValue) },
     cost: { purchases: round(purchases), expenses: round(expenseTotal), total: round(cost) },
     consumableBreakdown: [...byMaterial.entries()].map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: round(v.totalCost) })).sort((x, y) => y.totalCost - x.totalCost),

@@ -46,7 +46,7 @@ after(async () => {
 
 describe('embroidery price approvals', () => {
   it('holds a below-recommended job: no payment, no production, until a manager approves — and not the person who asked', async () => {
-    const r = await order('sales', { designs: [{ name: 'Discounted', stitches: 6000, pricePerPiece: 100 }] });
+    const r = await order('sales', { designs: [{ name: 'Discounted', stitches: 6000, pricePerPiece: 70 }] });
     assert.equal(r.status, 201, JSON.stringify(r.body));
     const id = r.body.id as number;
     assert.equal(r.body.priceApproval, 'Pending');
@@ -71,7 +71,7 @@ describe('embroidery price approvals', () => {
 
     // the person who captured it cannot approve it (an Admin who captured it would not be able to either)
     assert.equal((await call('sales', 'POST', `/dtf/approvals/${ask.id}/approve`)).status, 403);
-    const own = await order('approver', { designs: [{ name: 'Own discount', stitches: 6000, pricePerPiece: 90 }] });
+    const own = await order('approver', { designs: [{ name: 'Own discount', stitches: 6000, pricePerPiece: 60 }] });
     const ownAsk = (await prisma.priceApproval.findFirstOrThrow({ where: { orderId: own.body.id } })).id;
     assert.equal((await call('approver', 'POST', `/dtf/approvals/${ownAsk}/approve`)).status, 400);
 
@@ -83,7 +83,7 @@ describe('embroidery price approvals', () => {
   });
 
   it('rejecting removes the order and its job, and keeps the request as the record', async () => {
-    const r = await order('sales', { designs: [{ name: 'Rejected price', stitches: 6000, pricePerPiece: 80 }] });
+    const r = await order('sales', { designs: [{ name: 'Rejected price', stitches: 6000, pricePerPiece: 50 }] });
     const ask = await prisma.priceApproval.findFirstOrThrow({ where: { orderId: r.body.id } });
     assert.equal((await call('admin', 'POST', `/dtf/approvals/${ask.id}/reject`, {})).status, 400); // a reason is needed
     assert.equal((await call('admin', 'POST', `/dtf/approvals/${ask.id}/reject`, { reason: 'Too low for this client' })).status, 200);
@@ -188,5 +188,19 @@ describe('embroidery profitability report', () => {
       assert.equal(r.grossProfit, Math.round((r.revenue - 500) * 100) / 100);
     }
     assert.equal(r.underpriced, false);
+  });
+
+  it('counts a quantity discount as a standard price, not as a giveaway', async () => {
+    const from = '2031-01-01';
+    const to = '2031-01-31';
+    const svc = await prisma.service.findFirstOrThrow({ where: { name: 'Embroidery per piece' } });
+    const staff = await prisma.user.findFirstOrThrow({ where: { name: 'sales (ea test)' } });
+    const o = await prisma.order.create({ data: { orderNo: 'RPT-QTY-1', kind: 'walkin', staffId: staff.id, createdDate: '2031-01-10', status: 'Order', stage: 'Order Received', lineItems: { create: [{ itemType: 'service', serviceId: svc.id, qty: 12, unitPrice: 87, description: 'd' }] } } });
+    const design = { stitches: 6000, stitchPrice: 96, quantityPrice: 87, lowest: 87, recommended: 87, basis: 'quantity', piece: 87, setup: 0, setupWaived: true };
+    await prisma.embroideryJob.create({ data: { orderId: o.id, qty: 12, clientSupplied: true, designsJson: JSON.stringify([design]), settingsJson: JSON.stringify({ qtyTiers: [{ min: 1, discountPct: 0 }, { min: 12, discountPct: 10 }] }) } });
+    const r = (await call('admin', 'GET', `/reports/embroidery-profitability?from=${from}&to=${to}`)).body;
+    assert.equal(r.quantityDiscounts, 108); // (96 − 87) × 12
+    assert.deepEqual(r.belowRecommended, { jobs: 0, given: 0 });
+    assert.equal(r.byBand[0].from, 12);
   });
 });

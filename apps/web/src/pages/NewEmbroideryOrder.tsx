@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WALK_IN_CLIENT, floorCoversStitches, fmtKsh, isNamedClient, quoteJob, tierFor } from '@glm/shared';
+import { WALK_IN_CLIENT, fmtKsh, isNamedClient, quoteJob } from '@glm/shared';
+import type { EmbroideryBasis } from '@glm/shared';
 import type { EmbroiderySettingsValues } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
@@ -12,7 +13,7 @@ import SourcingField from '../components/SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../components/SplitPayments';
 import type { PaymentRow } from '../components/SplitPayments';
 
-// Embroidery order: priced by stitch count (Master Data → Embroidery Pricing holds the rates). It is a General Order underneath — payments, receipts, invoices,
+// Embroidery order: priced by stitch count first (Master Data → Embroidery Pricing holds the rate), with the lower price by quantity beside it — the staff apply either. It is a General Order underneath — payments, receipts, invoices,
 // the front office capturing for a sales person and commission all work as for the other orders. The setup (digitizing) fee and the design origination fee are
 // their own lines on the order; the piece line carries the design name and its stitches. The server works the real price out; this screen previews it.
 
@@ -36,14 +37,16 @@ interface DesignRow {
   stitches: string;
   /** Keep a new design for repeat orders. */
   save: boolean;
-  /** Blank = the recommended price per piece. */
+  /** Which standard price is applied: by stitches (the default) or by quantity. */
+  basis: EmbroideryBasis;
+  /** A price of their own; blank = the standard price chosen. Below the price by quantity it goes to a manager for approval. */
   price: string;
 }
 
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
 const right = { textAlign: 'right' } as const;
 let nextKey = 1;
-const blankDesign = (): DesignRow => ({ key: nextKey++, name: '', stitches: '', save: true, price: '' });
+const blankDesign = (): DesignRow => ({ key: nextKey++, name: '', stitches: '', save: true, basis: 'stitch', price: '' });
 
 export default function NewEmbroideryOrder() {
   const { materials, loading } = useCatalog();
@@ -95,7 +98,7 @@ export default function NewEmbroideryOrder() {
   const pieces = Math.max(1, Math.round(num(qty)) || 1);
   const rows = designs.map((d) => ({ ...d, stitchesN: Math.round(num(d.stitches)), priceN: d.price.trim() === '' ? null : num(d.price) }));
   const quote = quoteJob(
-    rows.map((d) => ({ name: d.name || 'Design', stitches: d.stitchesN, repeat: d.designId != null, pricePerPiece: d.priceN })),
+    rows.map((d) => ({ name: d.name || 'Design', stitches: d.stitchesN, repeat: d.designId != null, basis: d.basis, pricePerPiece: d.priceN })),
     pieces,
     clientSupplies,
     settings,
@@ -108,7 +111,8 @@ export default function NewEmbroideryOrder() {
   const garmentTotal = garmentRows.reduce((a, g) => a + g.total, 0);
   const grandTotal = quote.total + garmentTotal;
 
-  const belowFor = (i: number) => rows[i]!.priceN != null && rows[i]!.priceN! < quote.designs[i]!.recommended - 0.005;
+  // a price of their own below the price by quantity (the lowest standard price) is the only one that needs a manager
+  const belowFor = (i: number) => rows[i]!.priceN != null && rows[i]!.priceN! < quote.designs[i]!.lowest - 0.005;
   const designsOk = rows.every((d) => d.name.trim() && d.stitchesN > 0);
   // A price below the recommended one is allowed, but the job then waits for a manager's approval and cannot be paid for or produced until it is given.
   const needsApproval = rows.some((_, i) => belowFor(i));
@@ -122,7 +126,7 @@ export default function NewEmbroideryOrder() {
 
   function useSavedDesign(s: Saved) {
     setDesigns((ds) => {
-      const fresh: DesignRow = { key: nextKey++, designId: s.id, name: s.name, stitches: String(s.stitches), save: false, price: '' };
+      const fresh: DesignRow = { key: nextKey++, designId: s.id, name: s.name, stitches: String(s.stitches), save: false, basis: 'stitch', price: '' };
       // a still-empty first row is replaced by the saved design rather than left blank beside it
       return ds.length === 1 && !ds[0]!.name && !ds[0]!.stitches ? [fresh] : [...ds, fresh].slice(0, 6);
     });
@@ -154,6 +158,7 @@ export default function NewEmbroideryOrder() {
             name: d.name.trim(),
             stitches: d.stitchesN,
             repeat: d.designId != null,
+            basis: d.basis,
             pricePerPiece: d.priceN != null && d.priceN > 0 ? d.priceN : null,
             save: d.designId == null && d.save,
           })),
@@ -171,8 +176,12 @@ export default function NewEmbroideryOrder() {
     }
   }
 
-  // the price ladder: the same designs at the usual quantities
-  const ladder = [1, 6, 12, 25, 50, 100].map((q) => ({ q, quote: quoteJob(rows.map((d) => ({ name: d.name || 'Design', stitches: d.stitchesN, repeat: d.designId != null })), q, clientSupplies, settings) }));
+  // the comparison: the same designs at the usual quantities, priced by stitches and by quantity
+  const ladderQtys = [...new Set([1, 6, 12, 25, 50, 100, pieces])].sort((a, b) => a - b);
+  const ladder = ladderQtys.map((q) => {
+    const at = (basis: EmbroideryBasis) => quoteJob(rows.map((d) => ({ name: d.name || 'Design', stitches: d.stitchesN, repeat: d.designId != null, basis })), q, clientSupplies, settings);
+    return { q, byStitch: at('stitch'), byQty: at('quantity') };
+  });
 
   return (
     <div className="card blueprint" style={{ maxWidth: 960 }}>
@@ -249,10 +258,6 @@ export default function NewEmbroideryOrder() {
                 <label>Stitches</label>
                 <input className="input" inputMode="numeric" value={d.stitches} disabled={d.designId != null} title={d.designId != null ? 'A saved design keeps its stitch count' : undefined} onChange={(e) => setDesign(d.key, { stitches: e.target.value.replace(/\D/g, '') })} placeholder="6000" />
               </div>
-              <div className="field" style={{ margin: 0 }}>
-                <label>Price per piece (blank = {fmtKsh(q.recommended)})</label>
-                <input className="input" inputMode="decimal" value={d.price} onChange={(e) => setDesign(d.key, { price: e.target.value })} placeholder={String(q.recommended)} style={below ? { borderColor: 'var(--color-error)' } : undefined} />
-              </div>
               {designs.length > 1 ? (
                 <button type="button" className="btn btn-ghost btn-sm" aria-label="Remove this design" onClick={() => setDesigns((ds) => ds.filter((x) => x.key !== d.key))}>
                   ✕
@@ -260,6 +265,38 @@ export default function NewEmbroideryOrder() {
               ) : (
                 <span />
               )}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-3)', alignItems: 'stretch' }}>
+              {(
+                [
+                  ['stitch', 'By stitches', q.stitchPrice, rows[i]!.stitchesN > 0 ? `${fmtKsh(settings.stitchRate)} per 1,000 stitches${q.minimumApplied ? ` (minimum ${fmtKsh(settings.stitchMin)} applies)` : ''}` : 'enter the stitches'],
+                  ['quantity', 'By quantity', q.quantityPrice, q.discountPct > 0 ? `${q.discountPct}% off at ${pieces} pieces` : 'no quantity discount yet at this quantity'],
+                ] as [EmbroideryBasis, string, number, string][]
+              ).map(([id, label, price, note]) => {
+                const chosen = d.price.trim() === '' && d.basis === id;
+                const unavailable = id === 'quantity' && q.quantityPrice >= q.stitchPrice;
+                return (
+                  <label key={id} className={'blueprint'} style={{ padding: 'var(--space-3)', cursor: unavailable ? 'not-allowed' : 'pointer', opacity: unavailable ? 0.6 : 1, borderColor: chosen ? 'var(--color-accent)' : undefined, borderWidth: chosen ? 2 : undefined }}>
+                    <i className="corner tl"></i>
+                    <i className="corner tr"></i>
+                    <i className="corner bl"></i>
+                    <i className="corner br"></i>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="radio" name={`basis-${d.key}`} checked={chosen} disabled={unavailable} onChange={() => setDesign(d.key, { basis: id, price: '' })} />
+                      <b>{label}</b>
+                    </span>
+                    <div style={{ fontFamily: 'var(--font-heading)', fontSize: 26, lineHeight: 1.1 }}>{rows[i]!.stitchesN > 0 ? fmtKsh(price) : '—'}</div>
+                    <div className="note" style={{ margin: 0 }}>per piece · {note}</div>
+                  </label>
+                );
+              })}
+              <div className="field" style={{ margin: 0 }}>
+                <label>A different price per piece</label>
+                <input className="input" inputMode="decimal" value={d.price} onChange={(e) => setDesign(d.key, { price: e.target.value })} placeholder="blank = the price chosen" style={below ? { borderColor: 'var(--color-error)' } : undefined} />
+                <p className="note" style={{ margin: '4px 0 0' }}>
+                  Anything from {fmtKsh(q.lowest)} up is open to you; below {fmtKsh(q.lowest)} goes to a manager.
+                </p>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', alignItems: 'center', marginTop: 'var(--space-2)' }}>
               {d.designId != null ? (
@@ -269,13 +306,10 @@ export default function NewEmbroideryOrder() {
                   <input type="checkbox" checked={d.save} onChange={(e) => setDesign(d.key, { save: e.target.checked })} /> Keep this design for repeat orders
                 </label>
               )}
-              <span className="note" style={{ margin: 0 }}>
-                {rows[i]!.stitchesN > 0 ? `${q.rate} per 1,000 stitches → ${fmtKsh(q.stitchCost)}${q.floored ? `, so the ${fmtKsh(q.floor)} minimum applies — it covers up to ${floorCoversStitches(tierFor(settings.tiers, pieces)).toLocaleString('en-KE')} stitches; above that each extra 1,000 stitches adds ${fmtKsh(q.rate)}` : ''}` : 'Enter the stitch count to price it'}
-              </span>
             </div>
             {below && (
               <p className="note" style={{ color: 'var(--color-error)', margin: 'var(--space-2) 0 0' }}>
-                Below the recommended {fmtKsh(q.recommended)} per piece — a manager has to approve this price before the job can be paid for or produced.
+                Below the price by quantity ({fmtKsh(q.lowest)}) — a manager has to approve this price before the job can be paid for or produced.
               </p>
             )}
           </div>
@@ -398,32 +432,43 @@ export default function NewEmbroideryOrder() {
         <p className="note">The setup fee is waived from {settings.waiveAtQty} pieces, and on a repeat of a saved design.</p>
       )}
 
-      <details style={{ marginTop: 'var(--space-3)' }}>
-        <summary style={{ cursor: 'pointer' }} className="note">
-          Price ladder — the same {designs.length > 1 ? 'designs' : 'design'} at other quantities
-        </summary>
-        <table className="table" style={{ marginTop: 'var(--space-2)' }}>
-          <thead>
-            <tr>
-              <th>Pieces</th>
-              <th style={right}>Per piece</th>
-              <th style={right}>Order total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ladder.map((l) => (
-              <tr key={l.q}>
-                <td>{l.q}</td>
-                <td style={right}>{l.quote.designs.map((d) => fmtKsh(d.piece)).join(' + ')}</td>
+      <div className="card-kicker" style={{ marginTop: 'var(--space-4)' }}>
+        Compare — the same {designs.length > 1 ? 'designs' : 'design'} priced by stitches and by quantity
+      </div>
+      <table className="table" style={{ marginTop: 'var(--space-2)' }}>
+        <thead>
+          <tr>
+            <th>Pieces</th>
+            <th style={right}>By stitches / piece</th>
+            <th style={right}>By quantity / piece</th>
+            <th style={right}>Saves / piece</th>
+            <th style={right}>Job by stitches</th>
+            <th style={right}>Job by quantity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ladder.map((l) => {
+            const a = l.byStitch.designs.reduce((x, d) => x + d.piece, 0);
+            const b = l.byQty.designs.reduce((x, d) => x + d.piece, 0);
+            return (
+              <tr key={l.q} style={l.q === pieces ? { background: 'color-mix(in srgb, var(--color-accent) 10%, transparent)' } : undefined}>
+                <td>
+                  {l.q}
+                  {l.q === pieces && <span className="text-muted"> (this job)</span>}
+                </td>
+                <td style={right}>{fmtKsh(a)}</td>
+                <td style={right}>{fmtKsh(b)}</td>
+                <td style={right}>{a > b ? fmtKsh(a - b) : '—'}</td>
+                <td style={right}>{fmtKsh(l.byStitch.total)}</td>
                 <td style={right}>
-                  <b>{fmtKsh(l.quote.total)}</b>
+                  <b>{fmtKsh(l.byQty.total)}</b>
                 </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="note">Totals include setup and, if it applies, design origination.</p>
-      </details>
+            );
+          })}
+        </tbody>
+      </table>
+      <p className="note">The price by quantity is the price by stitches less a quantity discount, so it is never higher. Job totals include setup and, if it applies, design origination.</p>
 
       {needsApproval && (
         <p className="note" style={{ marginTop: 'var(--space-4)', borderLeft: '2px solid var(--color-error)', paddingLeft: 'var(--space-2)' }}>

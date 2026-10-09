@@ -66171,37 +66171,63 @@ function pinProblem(pin, role, permissions) {
 
 // packages/shared/src/embroidery.ts
 var DEFAULT_EMBROIDERY_SETTINGS = {
+  stitchRate: 16,
+  stitchMin: 60,
   setupFee: 1200,
   originationFee: 1500,
   waiveAtQty: 100,
-  tiers: [
-    { min: 1, rate: 14, floor: 150 },
-    { min: 6, rate: 12, floor: 150 },
-    { min: 12, rate: 10, floor: 120 },
-    { min: 25, rate: 9, floor: 120 },
-    { min: 50, rate: 8, floor: 100 },
-    { min: 100, rate: 7, floor: 100 }
+  qtyTiers: [
+    { min: 1, discountPct: 0 },
+    { min: 6, discountPct: 5 },
+    { min: 12, discountPct: 10 },
+    { min: 25, discountPct: 15 },
+    { min: 50, discountPct: 20 },
+    { min: 100, discountPct: 25 }
   ]
 };
 var EMBROIDERY_PIECE_SERVICE = "Embroidery per piece";
 var EMBROIDERY_SETUP_SERVICE = "Embroidery digitizing setup";
 var EMBROIDERY_ORIGINATION_SERVICE = "Design origination";
-var sortedTiers = (tiers) => [...tiers].sort((a2, b) => a2.min - b.min);
-function tierFor(tiers, qty) {
-  const ts = sortedTiers(tiers);
-  let hit = ts[0] ?? { min: 1, rate: 0, floor: 0 };
-  for (const t of ts) if (qty >= t.min) hit = t;
+var sortedQtyTiers = (tiers) => [...tiers].sort((a2, b) => a2.min - b.min);
+function qtyTierFor(tiers, qty) {
+  let hit = sortedQtyTiers(tiers)[0] ?? { min: 1, discountPct: 0 };
+  for (const t of sortedQtyTiers(tiers)) if (qty >= t.min) hit = t;
   return hit;
+}
+function stitchPrice(stitches, s) {
+  return Math.ceil(Math.max(s.stitchRate * (Number(stitches) || 0) / 1e3, s.stitchMin) - 1e-9);
+}
+function quantityPrice(stitches, qty, s) {
+  const base3 = stitchPrice(stitches, s);
+  const d = qtyTierFor(s.qtyTiers, Math.max(1, Math.round(qty) || 1)).discountPct;
+  return Math.min(base3, Math.ceil(base3 * (1 - d / 100) - 1e-9));
 }
 function quoteDesign(d, qty, s) {
   const q = Math.max(1, Math.round(qty) || 1);
-  const tier = tierFor(s.tiers, q);
-  const stitchCost = tier.rate * (Number(d.stitches) || 0) / 1e3;
-  const recommended = Math.ceil(Math.max(stitchCost, tier.floor) - 1e-9);
-  const piece = d.pricePerPiece != null && d.pricePerPiece > 0 ? Math.round(d.pricePerPiece * 100) / 100 : recommended;
+  const stitches = Number(d.stitches) || 0;
+  const stitchCost = s.stitchRate * stitches / 1e3;
+  const byStitch = stitchPrice(stitches, s);
+  const byQty = quantityPrice(stitches, q, s);
+  const recommended = d.basis === "quantity" ? byQty : byStitch;
+  const custom2 = d.pricePerPiece != null && d.pricePerPiece > 0;
+  const piece = custom2 ? Math.round(d.pricePerPiece * 100) / 100 : recommended;
   const setupWaived = !!d.repeat || s.waiveAtQty > 0 && q >= s.waiveAtQty;
   const setup = setupWaived ? 0 : s.setupFee;
-  return { rate: tier.rate, floor: tier.floor, stitchCost, floored: stitchCost < tier.floor, recommended, piece, pieces: piece * q, setup, setupWaived, subtotal: piece * q + setup };
+  return {
+    stitchCost,
+    minimumApplied: stitchCost < s.stitchMin,
+    stitchPrice: byStitch,
+    discountPct: qtyTierFor(s.qtyTiers, q).discountPct,
+    quantityPrice: byQty,
+    basis: custom2 ? "custom" : d.basis === "quantity" ? "quantity" : "stitch",
+    recommended,
+    lowest: byQty,
+    piece,
+    pieces: piece * q,
+    setup,
+    setupWaived,
+    subtotal: piece * q + setup
+  };
 }
 function quoteJob(designs, qty, clientSupplies, s) {
   const q = Math.max(1, Math.round(qty) || 1);
@@ -66210,12 +66236,16 @@ function quoteJob(designs, qty, clientSupplies, s) {
   return { qty: q, designs: ds, origination, total: ds.reduce((a2, d) => a2 + d.subtotal, 0) + origination };
 }
 function embroiderySettingsProblem(s) {
-  if (!s.tiers.length) return "There must be at least one stitch-rate tier";
-  const mins = s.tiers.map((t) => t.min);
-  if (mins.some((m) => !(m >= 1) || !Number.isFinite(m))) return "Each tier must start at a quantity of 1 or more";
-  if (new Set(mins).size !== mins.length) return "Two tiers start at the same quantity";
-  if (!mins.includes(1) && Math.min(...mins) > 1) return "The first tier must start at quantity 1, so every quantity has a rate";
-  if (s.tiers.some((t) => !(t.rate >= 0) || !(t.floor >= 0))) return "Rates and minimum prices cannot be negative";
+  if (!(s.stitchRate > 0)) return "The rate per 1,000 stitches must be more than 0";
+  if (!(s.stitchMin >= 0)) return "The minimum price by stitches cannot be negative";
+  if (!s.qtyTiers.length) return "There must be at least one quantity band";
+  const mins = s.qtyTiers.map((t) => t.min);
+  if (mins.some((m) => !(m >= 1) || !Number.isFinite(m))) return "Each quantity band must start at 1 piece or more";
+  if (new Set(mins).size !== mins.length) return "Two quantity bands start at the same quantity";
+  if (!mins.includes(1)) return "The first quantity band must start at 1 piece, so every quantity has a price";
+  if (s.qtyTiers.some((t) => !(t.discountPct >= 0) || t.discountPct > 90)) return "A quantity discount must be between 0% and 90%";
+  const sorted = sortedQtyTiers(s.qtyTiers);
+  for (let i = 1; i < sorted.length; i++) if (sorted[i].discountPct < sorted[i - 1].discountPct) return "A bigger quantity cannot have a smaller discount than a smaller one \u2014 the price by quantity must not go up with the quantity";
   if (!(s.setupFee >= 0) || !(s.originationFee >= 0) || !(s.waiveAtQty >= 0)) return "Fees and the waiver quantity cannot be negative";
   return null;
 }
@@ -74226,6 +74256,7 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
   let originationJobs = 0;
   let belowJobs = 0;
   let given = 0;
+  let quantityDiscounts = 0;
   let pendingJobs = 0;
   let pendingValue = 0;
   const bands = /* @__PURE__ */ new Map();
@@ -74266,17 +74297,20 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
       for (const d of designs) {
         if (d.setupWaived) setupWaived++;
         else if ((d.setup ?? 0) > 0) setupCharged++;
-        if (d.recommended != null && d.piece != null && d.piece < d.recommended) given += (d.recommended - d.piece) * job.qty;
+        const floor2 = d.lowest ?? d.recommended;
+        if (floor2 != null && d.piece != null && d.piece < floor2) given += (floor2 - d.piece) * job.qty;
+        if (d.basis === "quantity" && d.stitchPrice != null && d.piece != null && d.piece < d.stitchPrice) quantityDiscounts += (d.stitchPrice - d.piece) * job.qty;
       }
       if (!job.clientSupplied) originationJobs++;
       if (job.belowRecommended) belowJobs++;
-      let tiers = [];
+      let starts = [];
       try {
-        tiers = JSON.parse(job.settingsJson || "{}").tiers ?? [];
+        const snap = JSON.parse(job.settingsJson || "{}");
+        starts = (snap.qtyTiers ?? snap.tiers ?? []).map((t) => Number(t.min)).filter((m) => Number.isFinite(m));
       } catch {
       }
-      if (tiers.length) {
-        const from = tierFor(tiers, job.qty).min;
+      if (starts.length) {
+        const from = Math.max(...starts.filter((m) => m <= job.qty), Math.min(...starts));
         const band = bands.get(from) ?? { jobs: 0, garments: 0, revenue: 0 };
         band.jobs++;
         band.garments += job.qty;
@@ -74331,6 +74365,7 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
     setup: { charged: setupCharged, waived: setupWaived },
     originationJobs,
     belowRecommended: { jobs: belowJobs, given: round(given) },
+    quantityDiscounts: round(quantityDiscounts),
     pendingApproval: { jobs: pendingJobs, value: round(pendingValue) },
     cost: { purchases: round(purchases), expenses: round(expenseTotal), total: round(cost) },
     consumableBreakdown: [...byMaterial.entries()].map(([materialName2, v]) => ({ materialName: materialName2, qty: v.qty, totalCost: round(v.totalCost) })).sort((x, y) => y.totalCost - x.totalCost),
@@ -75969,31 +76004,33 @@ embroideryRouter.use(requireAuth);
 async function loadEmbroiderySettings() {
   const row = await prisma.embroiderySettings.findUnique({ where: { id: 1 } });
   if (!row) return DEFAULT_EMBROIDERY_SETTINGS;
-  let tiers = DEFAULT_EMBROIDERY_SETTINGS.tiers;
+  let qtyTiers = DEFAULT_EMBROIDERY_SETTINGS.qtyTiers;
   try {
     const parsed = JSON.parse(row.tiers);
-    if (Array.isArray(parsed) && parsed.length) tiers = parsed.map((t) => ({ min: Number(t.min), rate: Number(t.rate), floor: Number(t.floor) }));
+    if (Array.isArray(parsed) && parsed.length && parsed.every((t) => typeof t.discountPct === "number")) qtyTiers = parsed.map((t) => ({ min: Number(t.min), discountPct: Number(t.discountPct) }));
   } catch {
   }
-  return { setupFee: row.setupFee, originationFee: row.originationFee, waiveAtQty: row.waiveAtQty, tiers };
+  return { stitchRate: row.stitchRate, stitchMin: row.stitchMin, setupFee: row.setupFee, originationFee: row.originationFee, waiveAtQty: row.waiveAtQty, qtyTiers };
 }
 var mayQuote = requirePermission("canCaptureOrders");
 embroideryRouter.get("/config", mayQuote, async (req, res) => {
   res.json({ settings: await loadEmbroiderySettings() });
 });
 var settingsSchema4 = external_exports.object({
+  stitchRate: external_exports.number().positive(),
+  stitchMin: external_exports.number().min(0),
   setupFee: external_exports.number().min(0),
   originationFee: external_exports.number().min(0),
   waiveAtQty: external_exports.number().int().min(0),
-  tiers: external_exports.array(external_exports.object({ min: external_exports.number().min(1), rate: external_exports.number().min(0), floor: external_exports.number().min(0) })).min(1).max(12)
+  qtyTiers: external_exports.array(external_exports.object({ min: external_exports.number().min(1), discountPct: external_exports.number().min(0).max(90) })).min(1).max(12)
 });
 embroideryRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   const parsed = settingsSchema4.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const s = { ...parsed.data, tiers: [...parsed.data.tiers].sort((a2, b) => a2.min - b.min) };
+  const s = { ...parsed.data, qtyTiers: [...parsed.data.qtyTiers].sort((a2, b) => a2.min - b.min) };
   const problem = embroiderySettingsProblem(s);
   if (problem) return res.status(400).json({ error: problem });
-  const data = { setupFee: s.setupFee, originationFee: s.originationFee, waiveAtQty: s.waiveAtQty, tiers: JSON.stringify(s.tiers), updatedByName: req.user.name };
+  const data = { stitchRate: s.stitchRate, stitchMin: s.stitchMin, setupFee: s.setupFee, originationFee: s.originationFee, waiveAtQty: s.waiveAtQty, tiers: JSON.stringify(s.qtyTiers), updatedByName: req.user.name };
   await prisma.embroiderySettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
   res.json(await loadEmbroiderySettings());
 });
@@ -76010,7 +76047,9 @@ var designSchema = external_exports.object({
   name: external_exports.string().trim().min(1, 'Name each design (for example "Left chest logo")').max(60),
   stitches: external_exports.number().int().min(1, "Enter the stitch count").max(2e6),
   repeat: external_exports.boolean().default(false),
-  /** Only to charge something other than the recommended price per piece. */
+  /** Which standard price the staff apply: the price by stitches (the default) or the price by quantity. */
+  basis: external_exports.enum(["stitch", "quantity"]).default("stitch"),
+  /** Only to charge something that is neither standard price. */
   pricePerPiece: external_exports.number().positive().nullable().optional(),
   /** Keep this design for repeat orders. */
   save: external_exports.boolean().optional()
@@ -76042,9 +76081,9 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
     designs.push({ ...d, stitches: keep ? keep.stitches : d.stitches });
   }
   const quote = quoteJob(designs, qty, clientSupplies, settings);
-  const belowRecommended = designs.some((d, i) => d.pricePerPiece != null && d.pricePerPiece < quote.designs[i].recommended - 5e-3);
+  const belowRecommended = designs.some((d, i) => d.pricePerPiece != null && d.pricePerPiece < quote.designs[i].lowest - 5e-3);
   if (belowRecommended && form.paymentTiming === "onAcceptance" && (form.payments?.length ?? 0) > 0) {
-    return res.status(400).json({ error: "A price below the recommended price needs a manager\u2019s approval first \u2014 take the payment once it is approved" });
+    return res.status(400).json({ error: "A price below the lowest standard price (the price by quantity) needs a manager\u2019s approval first \u2014 take the payment once it is approved" });
   }
   const svc = await ensureServices();
   const stitchesText = (n) => n.toLocaleString("en-KE");
@@ -76056,7 +76095,7 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
   };
   for (const [i, d] of designs.entries()) {
     const q = quote.designs[i];
-    add({ itemType: "service", serviceId: svc.piece.id, materialId: null, qty, unitPrice: q.piece, discountPct: 0, discountAmt: 0, description: `${d.name} \xB7 ${stitchesText(d.stitches)} stitches` }, q.recommended);
+    add({ itemType: "service", serviceId: svc.piece.id, materialId: null, qty, unitPrice: q.piece, discountPct: 0, discountAmt: 0, description: `${d.name} \xB7 ${stitchesText(d.stitches)} stitches` }, d.pricePerPiece != null ? q.lowest : q.recommended);
     if (q.setup > 0) add({ itemType: "service", serviceId: svc.setup.id, materialId: null, qty: 1, unitPrice: q.setup, discountPct: 0, discountAmt: 0, description: d.name }, q.setup);
   }
   if (quote.origination > 0) add({ itemType: "service", serviceId: svc.origination.id, materialId: null, qty: 1, unitPrice: quote.origination, discountPct: 0, discountAmt: 0 }, quote.origination);
@@ -76084,7 +76123,7 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
         }
       });
       if (belowRecommended) {
-        const rec = quote.designs.reduce((a2, d) => a2 + d.recommended, 0);
+        const rec = quote.designs.reduce((a2, d) => a2 + d.lowest, 0);
         const charged = quote.designs.reduce((a2, d) => a2 + d.piece, 0);
         await tx.priceApproval.create({
           data: {

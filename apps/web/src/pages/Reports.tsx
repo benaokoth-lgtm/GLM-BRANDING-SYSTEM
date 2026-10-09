@@ -539,8 +539,9 @@ export default function Reports() {
                 <tr><td>Setup fee charged (designs)</td><td style={{ textAlign: 'right' }}>{embroidery.setup.charged}</td></tr>
                 <tr><td>Setup waived (repeat of a saved design, or from the waiver quantity)</td><td style={{ textAlign: 'right' }}>{embroidery.setup.waived}</td></tr>
                 <tr><td>Jobs where we created the artwork (design origination)</td><td style={{ textAlign: 'right' }}>{embroidery.originationJobs}</td></tr>
-                <tr><td>Jobs approved below the recommended price</td><td style={{ textAlign: 'right' }}>{embroidery.belowRecommended.jobs}</td></tr>
-                <tr><td>Given away against the recommended price (incl. VAT)</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.belowRecommended.given)}</td></tr>
+                <tr><td>Quantity discounts applied (price by quantity instead of by stitches, incl. VAT)</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.quantityDiscounts)}</td></tr>
+                <tr><td>Jobs approved below the lowest standard price (the price by quantity)</td><td style={{ textAlign: 'right' }}>{embroidery.belowRecommended.jobs}</td></tr>
+                <tr><td>Given away below that price (incl. VAT)</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.belowRecommended.given)}</td></tr>
               </tbody>
             </table>
           </div>
@@ -571,7 +572,7 @@ export default function Reports() {
                   ))}
                 </tbody>
               </table>
-              <p className="note">Bands are the quantity tiers each job was priced with. A band whose revenue per garment sits right on the minimum price is one where the minimum, not the stitch rate, sets the price.</p>
+              <p className="note">Bands are the quantity bands each job was priced with.</p>
             </div>
           )}
 

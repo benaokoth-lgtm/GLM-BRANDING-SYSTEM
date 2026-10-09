@@ -25,14 +25,15 @@ embroideryRouter.use(requireAuth);
 export async function loadEmbroiderySettings(): Promise<EmbroiderySettingsValues> {
   const row = await prisma.embroiderySettings.findUnique({ where: { id: 1 } });
   if (!row) return DEFAULT_EMBROIDERY_SETTINGS;
-  let tiers = DEFAULT_EMBROIDERY_SETTINGS.tiers;
+  let qtyTiers = DEFAULT_EMBROIDERY_SETTINGS.qtyTiers;
   try {
     const parsed = JSON.parse(row.tiers);
-    if (Array.isArray(parsed) && parsed.length) tiers = parsed.map((t) => ({ min: Number(t.min), rate: Number(t.rate), floor: Number(t.floor) }));
+    // (an older save held stitch-rate tiers, { min, rate, floor }: those are not quantity discounts, so the standing ones are used until the Admin saves again)
+    if (Array.isArray(parsed) && parsed.length && parsed.every((t) => typeof t.discountPct === 'number')) qtyTiers = parsed.map((t) => ({ min: Number(t.min), discountPct: Number(t.discountPct) }));
   } catch {
-    /* an unreadable value falls back to the standing tiers */
+    /* an unreadable value falls back to the standing discounts */
   }
-  return { setupFee: row.setupFee, originationFee: row.originationFee, waiveAtQty: row.waiveAtQty, tiers };
+  return { stitchRate: row.stitchRate, stitchMin: row.stitchMin, setupFee: row.setupFee, originationFee: row.originationFee, waiveAtQty: row.waiveAtQty, qtyTiers };
 }
 
 /** Whoever may capture orders sees the numbers (they are the price list); changing them is the Admin's. */
@@ -42,19 +43,21 @@ embroideryRouter.get('/config', mayQuote, async (req, res) => {
 });
 
 const settingsSchema = z.object({
+  stitchRate: z.number().positive(),
+  stitchMin: z.number().min(0),
   setupFee: z.number().min(0),
   originationFee: z.number().min(0),
   waiveAtQty: z.number().int().min(0),
-  tiers: z.array(z.object({ min: z.number().min(1), rate: z.number().min(0), floor: z.number().min(0) })).min(1).max(12),
+  qtyTiers: z.array(z.object({ min: z.number().min(1), discountPct: z.number().min(0).max(90) })).min(1).max(12),
 });
 
 embroideryRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const s = { ...parsed.data, tiers: [...parsed.data.tiers].sort((a, b) => a.min - b.min) };
+  const s = { ...parsed.data, qtyTiers: [...parsed.data.qtyTiers].sort((a, b) => a.min - b.min) };
   const problem = embroiderySettingsProblem(s);
   if (problem) return res.status(400).json({ error: problem });
-  const data = { setupFee: s.setupFee, originationFee: s.originationFee, waiveAtQty: s.waiveAtQty, tiers: JSON.stringify(s.tiers), updatedByName: req.user!.name };
+  const data = { stitchRate: s.stitchRate, stitchMin: s.stitchMin, setupFee: s.setupFee, originationFee: s.originationFee, waiveAtQty: s.waiveAtQty, tiers: JSON.stringify(s.qtyTiers), updatedByName: req.user!.name };
   await prisma.embroiderySettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
   res.json(await loadEmbroiderySettings());
 });
@@ -75,7 +78,9 @@ const designSchema = z.object({
   name: z.string().trim().min(1, 'Name each design (for example "Left chest logo")').max(60),
   stitches: z.number().int().min(1, 'Enter the stitch count').max(2_000_000),
   repeat: z.boolean().default(false),
-  /** Only to charge something other than the recommended price per piece. */
+  /** Which standard price the staff apply: the price by stitches (the default) or the price by quantity. */
+  basis: z.enum(['stitch', 'quantity']).default('stitch'),
+  /** Only to charge something that is neither standard price. */
   pricePerPiece: z.number().positive().nullable().optional(),
   /** Keep this design for repeat orders. */
   save: z.boolean().optional(),
@@ -118,11 +123,12 @@ embroideryRouter.post('/orders', mayQuote, async (req, res) => {
   }
 
   const quote = quoteJob(designs, qty, clientSupplies, settings);
-  // Charging less than the recommended price per piece is allowed, but the job then waits in the price-approval queue (the same one artwork jobs use) and cannot
-  // be paid for or produced until a manager approves it. Charging more is open to everyone.
-  const belowRecommended = designs.some((d, i) => d.pricePerPiece != null && d.pricePerPiece < quote.designs[i]!.recommended - 0.005);
+  // The staff apply either standard price: by stitches, or by quantity (never higher). A price of their own is open to everyone above the price by quantity — the
+  // lowest standard price — but below it the job waits in the price-approval queue (the one artwork jobs use) and cannot be paid for or produced until a manager
+  // approves it.
+  const belowRecommended = designs.some((d, i) => d.pricePerPiece != null && d.pricePerPiece < quote.designs[i]!.lowest - 0.005);
   if (belowRecommended && form.paymentTiming === 'onAcceptance' && (form.payments?.length ?? 0) > 0) {
-    return res.status(400).json({ error: 'A price below the recommended price needs a manager’s approval first — take the payment once it is approved' });
+    return res.status(400).json({ error: 'A price below the lowest standard price (the price by quantity) needs a manager’s approval first — take the payment once it is approved' });
   }
 
   const svc = await ensureServices();
@@ -136,7 +142,7 @@ embroideryRouter.post('/orders', mayQuote, async (req, res) => {
   for (const [i, d] of designs.entries()) {
     const q = quote.designs[i]!;
     // the piece line: priced per piece, with the design and its stitch count after the name
-    add({ itemType: 'service', serviceId: svc.piece.id, materialId: null, qty, unitPrice: q.piece, discountPct: 0, discountAmt: 0, description: `${d.name} · ${stitchesText(d.stitches)} stitches` }, q.recommended);
+    add({ itemType: 'service', serviceId: svc.piece.id, materialId: null, qty, unitPrice: q.piece, discountPct: 0, discountAmt: 0, description: `${d.name} · ${stitchesText(d.stitches)} stitches` }, d.pricePerPiece != null ? q.lowest : q.recommended);
     // the setup (digitizing) fee, on its own line, unless waived
     if (q.setup > 0) add({ itemType: 'service', serviceId: svc.setup.id, materialId: null, qty: 1, unitPrice: q.setup, discountPct: 0, discountAmt: 0, description: d.name }, q.setup);
   }
@@ -167,7 +173,7 @@ embroideryRouter.post('/orders', mayQuote, async (req, res) => {
       });
       if (belowRecommended) {
         // one request per job: the figures are per garment, summed over its designs
-        const rec = quote.designs.reduce((a, d) => a + d.recommended, 0);
+        const rec = quote.designs.reduce((a, d) => a + d.lowest, 0);
         const charged = quote.designs.reduce((a, d) => a + d.piece, 0);
         await tx.priceApproval.create({
           data: {

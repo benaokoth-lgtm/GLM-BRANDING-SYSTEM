@@ -11,8 +11,22 @@
     />
     <meta name="theme-color" content="#F6F1EA" />
     <title>Loading…</title>
-    <script type="module" crossorigin src="/assets/index-BKHvcjoO.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DtBfB1di.css">
+    <script>
+      // Organic is the default; the header picker saves Nocturne or Ivory instead.
+      (function () {
+        var bars = { organic: '#F1EDE0', nocturne: '#0E1014', ivory: '#F6F1EA' };
+        var t = 'organic';
+        try {
+          var saved = localStorage.getItem('glm_theme');
+          if (saved && bars[saved]) t = saved;
+        } catch (e) {}
+        document.documentElement.setAttribute('data-theme', t);
+        var m = document.querySelector('meta[name="theme-color"]');
+        if (m) m.setAttribute('content', bars[t]);
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-C8bYrvwm.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DBMNvGAf.css">
   </head>
   <body>
     <div id="root"></div>

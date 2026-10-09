@@ -504,7 +504,7 @@ var require_depd = __commonJS({
       var site = callSiteLocation(stack[1]);
       var file = site[0];
       function deprecate(message) {
-        log.call(deprecate, message);
+        log2.call(deprecate, message);
       }
       deprecate._file = file;
       deprecate._ignored = isignored(namespace);
@@ -533,7 +533,7 @@ var require_depd = __commonJS({
       var str = process.env.TRACE_DEPRECATION || "";
       return containsNamespace(str, namespace);
     }
-    function log(message, site) {
+    function log2(message, site) {
       var haslisteners = eehaslisteners(process, "deprecation");
       if (!haslisteners && this._ignored) {
         return;
@@ -673,7 +673,7 @@ var require_depd = __commonJS({
         "message",
         "site",
         '"use strict"\nreturn function (' + args + ") {log.call(deprecate, message, site)\nreturn fn.apply(this, arguments)\n}"
-      )(fn, log, this, message, site);
+      )(fn, log2, this, message, site);
       return deprecatedfn;
     }
     function wrapproperty(obj, prop, message) {
@@ -698,13 +698,13 @@ var require_depd = __commonJS({
       var set = descriptor.set;
       if (typeof get === "function") {
         descriptor.get = function getter() {
-          log.call(deprecate, message, site);
+          log2.call(deprecate, message, site);
           return get.apply(this, arguments);
         };
       }
       if (typeof set === "function") {
         descriptor.set = function setter() {
-          log.call(deprecate, message, site);
+          log2.call(deprecate, message, site);
           return set.apply(this, arguments);
         };
       }
@@ -1541,7 +1541,7 @@ var require_debug = __commonJS({
 var require_browser = __commonJS({
   "node_modules/body-parser/node_modules/debug/src/browser.js"(exports2, module2) {
     exports2 = module2.exports = require_debug();
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -1589,7 +1589,7 @@ var require_browser = __commonJS({
       });
       args.splice(lastC, 0, c);
     }
-    function log() {
+    function log2() {
       return "object" === typeof console && console.log && Function.prototype.apply.call(console.log, console, arguments);
     }
     function save(namespaces) {
@@ -1630,7 +1630,7 @@ var require_node = __commonJS({
     var util4 = require("util");
     exports2 = module2.exports = require_debug();
     exports2.init = init;
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -1681,7 +1681,7 @@ var require_node = __commonJS({
         args[0] = (/* @__PURE__ */ new Date()).toUTCString() + " " + name2 + " " + args[0];
       }
     }
-    function log() {
+    function log2() {
       return stream.write(util4.format.apply(util4, arguments) + "\n");
     }
     function save(namespaces) {
@@ -17986,7 +17986,7 @@ var require_debug2 = __commonJS({
 var require_browser2 = __commonJS({
   "node_modules/finalhandler/node_modules/debug/src/browser.js"(exports2, module2) {
     exports2 = module2.exports = require_debug2();
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -18034,7 +18034,7 @@ var require_browser2 = __commonJS({
       });
       args.splice(lastC, 0, c);
     }
-    function log() {
+    function log2() {
       return "object" === typeof console && console.log && Function.prototype.apply.call(console.log, console, arguments);
     }
     function save(namespaces) {
@@ -18075,7 +18075,7 @@ var require_node2 = __commonJS({
     var util4 = require("util");
     exports2 = module2.exports = require_debug2();
     exports2.init = init;
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -18126,7 +18126,7 @@ var require_node2 = __commonJS({
         args[0] = (/* @__PURE__ */ new Date()).toUTCString() + " " + name2 + " " + args[0];
       }
     }
-    function log() {
+    function log2() {
       return stream.write(util4.format.apply(util4, arguments) + "\n");
     }
     function save(namespaces) {
@@ -18705,7 +18705,7 @@ var require_debug3 = __commonJS({
 var require_browser3 = __commonJS({
   "node_modules/express/node_modules/debug/src/browser.js"(exports2, module2) {
     exports2 = module2.exports = require_debug3();
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -18753,7 +18753,7 @@ var require_browser3 = __commonJS({
       });
       args.splice(lastC, 0, c);
     }
-    function log() {
+    function log2() {
       return "object" === typeof console && console.log && Function.prototype.apply.call(console.log, console, arguments);
     }
     function save(namespaces) {
@@ -18794,7 +18794,7 @@ var require_node3 = __commonJS({
     var util4 = require("util");
     exports2 = module2.exports = require_debug3();
     exports2.init = init;
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -18845,7 +18845,7 @@ var require_node3 = __commonJS({
         args[0] = (/* @__PURE__ */ new Date()).toUTCString() + " " + name2 + " " + args[0];
       }
     }
-    function log() {
+    function log2() {
       return stream.write(util4.format.apply(util4, arguments) + "\n");
     }
     function save(namespaces) {
@@ -20271,7 +20271,7 @@ var require_debug4 = __commonJS({
 var require_browser4 = __commonJS({
   "node_modules/send/node_modules/debug/src/browser.js"(exports2, module2) {
     exports2 = module2.exports = require_debug4();
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -20319,7 +20319,7 @@ var require_browser4 = __commonJS({
       });
       args.splice(lastC, 0, c);
     }
-    function log() {
+    function log2() {
       return "object" === typeof console && console.log && Function.prototype.apply.call(console.log, console, arguments);
     }
     function save(namespaces) {
@@ -20360,7 +20360,7 @@ var require_node4 = __commonJS({
     var util4 = require("util");
     exports2 = module2.exports = require_debug4();
     exports2.init = init;
-    exports2.log = log;
+    exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
     exports2.load = load;
@@ -20411,7 +20411,7 @@ var require_node4 = __commonJS({
         args[0] = (/* @__PURE__ */ new Date()).toUTCString() + " " + name2 + " " + args[0];
       }
     }
-    function log() {
+    function log2() {
       return stream.write(util4.format.apply(util4, arguments) + "\n");
     }
     function save(namespaces) {
@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router21 = require_router();
+    var Router22 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router21({
+        this._router = new Router22({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router21 = require_router();
+    var Router22 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router21;
+    exports2.Router = Router22;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -26835,12 +26835,12 @@ var require_jwa = __commonJS({
       };
     }
     var bufferEqual;
-    var timingSafeEqual2 = "timingSafeEqual" in crypto12 ? function timingSafeEqual3(a2, b) {
+    var timingSafeEqual4 = "timingSafeEqual" in crypto12 ? function timingSafeEqual5(a2, b) {
       if (a2.byteLength !== b.byteLength) {
         return false;
       }
       return crypto12.timingSafeEqual(a2, b);
-    } : function timingSafeEqual3(a2, b) {
+    } : function timingSafeEqual5(a2, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
       }
@@ -26849,7 +26849,7 @@ var require_jwa = __commonJS({
     function createHmacVerifier(bits) {
       return function verify(thing, signature, secret) {
         var computedSig = createHmacSigner(bits)(thing, secret);
-        return timingSafeEqual2(Buffer3.from(signature), Buffer3.from(computedSig));
+        return timingSafeEqual4(Buffer3.from(signature), Buffer3.from(computedSig));
       };
     }
     function createKeySigner(bits) {
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express20 = __toESM(require_express2());
+var import_express21 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -60394,10 +60394,10 @@ var Mail = class extends import_node_events.EventEmitter {
       tnx: "create"
     }, "Creating transport: %s", this.getVersionString());
     if (typeof this.transporter.on === "function") {
-      this.transporter.on("log", (log) => {
+      this.transporter.on("log", (log2) => {
         this.logger.debug({
           tnx: "transport"
-        }, "%s: %s", log.type, log.message);
+        }, "%s: %s", log2.type, log2.message);
       });
       this.transporter.on("error", (err) => {
         this.logger.error({
@@ -64965,12 +64965,12 @@ function subKey(purpose) {
 }
 var dataKeyConfigured = () => rootKey() !== null;
 var isSealed = (v) => !!v && v.startsWith(SEALED);
-function seal(plain2) {
+function seal(plain3) {
   const key2 = subKey("secrets");
-  if (!key2 || !plain2 || isSealed(plain2)) return plain2;
+  if (!key2 || !plain3 || isSealed(plain3)) return plain3;
   const iv = import_node_crypto9.default.randomBytes(12);
   const c = import_node_crypto9.default.createCipheriv("aes-256-gcm", key2, iv);
-  const body = Buffer.concat([c.update(plain2, "utf8"), c.final()]);
+  const body = Buffer.concat([c.update(plain3, "utf8"), c.final()]);
   return SEALED + Buffer.concat([iv, c.getAuthTag(), body]).toString("base64");
 }
 function open(stored) {
@@ -65184,7 +65184,7 @@ async function writeAudit(e) {
   }
 }
 var AUDITED_READS = [/^\/api\/backup\//, /^\/api\/finance\/(employees|p9|payroll)/, /^\/api\/master-data\/staff-details/, /^\/api\/pricelists\/.*\.xlsx$/];
-var SKIPPED = [/^\/api\/auth\/login/, /^\/api\/auth\/forgot-pin/, /^\/api\/auth\/reset-pin/, /^\/api\/mpesa\/(callback|c2b)/, /^\/api\/health/];
+var SKIPPED = [/^\/api\/auth\/login/, /^\/api\/auth\/forgot-pin/, /^\/api\/auth\/reset-pin/, /^\/api\/mpesa\/(callback|c2b)/, /^\/api\/ncba\/notify\//, /^\/api\/health/];
 function auditMiddleware(req, res, next) {
   res.on("finish", () => {
     const url = req.originalUrl.split("?")[0];
@@ -65709,9 +65709,9 @@ function matchPayment(payment, targets) {
   if (key2.length >= 7) {
     const candidates = targets.filter((t) => phoneKey(t.phone) === key2 && fits(payment, t));
     const exact = candidates.filter((t) => Math.abs(t.balance - payment.amount) <= TOLERANCE);
-    const pick = exact.length ? exact : candidates;
-    if (pick.length === 1) return { matched: true, target: pick[0], reason: "phone-and-amount" };
-    if (pick.length > 1) return { matched: false, reason: `More than one open order for this number could take KES ${Math.round(payment.amount)} \u2014 choose which one` };
+    const pick2 = exact.length ? exact : candidates;
+    if (pick2.length === 1) return { matched: true, target: pick2[0], reason: "phone-and-amount" };
+    if (pick2.length > 1) return { matched: false, reason: `More than one open order for this number could take KES ${Math.round(payment.amount)} \u2014 choose which one` };
   }
   return { matched: false, reason: "No open order matches this payment" };
 }
@@ -71052,7 +71052,8 @@ masterDataRouter.post("/staff", requireRole("Admin"), async (req, res) => {
   if (emailThem && email) emailed = await emailPin(user.name, email, pin);
   res.status(201).json({ id: user.id, name: user.name, role: user.role, emailed });
 });
-async function emailPin(name2, to, pin) {
+async function emailPin(name2, to, pin, opts = {}) {
+  const mustChange = opts.mustChange ?? true;
   const mailer = await getMailer();
   if (!mailer) return { ok: false, error: "Email isn't set up yet \u2014 set it up under Master Data \u2192 Email first" };
   const url = mailer.config.loginUrl ? `
@@ -71062,16 +71063,16 @@ Sign in at: ${mailer.config.loginUrl}
   try {
     const info = await mailer.sendMail({
       to,
-      subject: `Your ${company} login`,
+      subject: opts.reset ? `Your ${company} PIN was reset` : `Your ${company} login`,
       text: `Hello ${name2},
 
-You can now sign in to the ${company} system.
+${opts.reset ? `Your PIN for the ${company} system has been reset.` : `You can now sign in to the ${company} system.`}
 ${url}
 Choose your name on the sign-in screen and enter this PIN:
 
     ${pin}
 
-You will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.
+${mustChange ? "You will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards." : "Please delete this email once you have signed in."}
 
 If you were not expecting this message, tell your manager.`
     });
@@ -71101,6 +71102,29 @@ masterDataRouter.put("/staff/:id/active", requireRole("Admin"), async (req, res)
   }
   await prisma.user.update({ where: { id }, data: { active: parsed.data.active, failedLoginCount: 0, lockedUntil: null, ...parsed.data.active ? {} : { tokenVersion: { increment: 1 } } } });
   res.json({ id, active: parsed.data.active });
+});
+masterDataRouter.delete("/staff/:id", requireRole("Admin"), async (req, res) => {
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({
+    where: { id },
+    include: { _count: { select: { orders: true, payments: true, payrollEntries: true, productionTasks: true, qualityChecks: true, clientOwnerships: true, commissionPayouts: true } } }
+  });
+  if (!user) return res.status(404).json({ error: "Staff member not found" });
+  if (id === req.user.id) return res.status(400).json({ error: "You cannot delete your own account" });
+  if (user.role === "Admin" && await prisma.user.count({ where: { role: "Admin", id: { not: id } } }) === 0) {
+    return res.status(400).json({ error: "There must always be at least one Admin" });
+  }
+  const labels = { orders: "orders", payments: "payments", payrollEntries: "payroll entries", productionTasks: "production tasks", qualityChecks: "quality checks", clientOwnerships: "client assignments", commissionPayouts: "commission pay-outs" };
+  const held = Object.entries(user._count).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${labels[k] ?? k}`);
+  if (held.length) {
+    return res.status(409).json({ error: `${user.name} cannot be deleted because they have ${held.join(", ")} on record. Deleting would damage those records \u2014 use Switch off instead: they can no longer sign in and their history stays.` });
+  }
+  try {
+    await prisma.user.delete({ where: { id } });
+  } catch {
+    return res.status(409).json({ error: `${user.name} has records in the system and cannot be deleted. Use Switch off instead.` });
+  }
+  res.json({ ok: true, id, name: user.name });
 });
 masterDataRouter.get("/sales-people", async (req, res) => {
   if (!await canCaptureForOthers(req.user.role)) return res.status(403).json({ error: "Not permitted for your role" });
@@ -71168,7 +71192,7 @@ masterDataRouter.post("/staff/:id/send-pin", requireRole("Admin"), async (req, r
   if (!user.email) return res.status(400).json({ error: `${user.name} has no email address yet \u2014 add one first` });
   if (!await loadMailConfig()) return res.status(400).json({ error: "Email isn't set up yet \u2014 set it up under Master Data \u2192 Email first" });
   const pin = randomPin(await requiredLengthFor(user.role));
-  const previous = { pinHash: user.pinHash, mustChangePin: user.mustChangePin };
+  const previous = { pinHash: user.pinHash, pinLength: user.pinLength, mustChangePin: user.mustChangePin };
   await prisma.user.update({ where: { id: user.id }, data: { pinHash: await import_bcryptjs2.default.hash(pin, PIN_ROUNDS), pinLength: pin.length, mustChangePin: true, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
   const sent = await emailPin(user.name, user.email, pin);
   if (!sent.ok) {
@@ -71176,6 +71200,36 @@ masterDataRouter.post("/staff/:id/send-pin", requireRole("Admin"), async (req, r
     return res.status(502).json({ error: `The email could not be sent, so their PIN was left unchanged. ${sent.error}` });
   }
   res.json({ ok: true, sentTo: user.email });
+});
+masterDataRouter.post("/staff/:id/reset-pin", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ pin: external_exports.string().regex(/^\d{4,6}$/, "A PIN is 4 to 6 digits").optional().or(external_exports.literal("")), email: external_exports.boolean().optional(), mustChange: external_exports.boolean().optional() }).safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: "Staff member not found" });
+  if (id === req.user.id) return res.status(400).json({ error: "To change your own PIN use Change PIN at the top of the screen." });
+  const typed = parsed.data.pin || "";
+  const sendIt = !!parsed.data.email;
+  const mustChange = parsed.data.mustChange ?? true;
+  if (sendIt) {
+    if (!user.email) return res.status(400).json({ error: `${user.name} has no email address yet \u2014 add one first, or untick the email box` });
+    if (!await loadMailConfig()) return res.status(400).json({ error: "Email isn't set up yet \u2014 set it up under Master Data \u2192 Email first, or untick the email box" });
+  }
+  if (typed) {
+    const weak = await pinProblemFor(typed, user.role);
+    if (weak) return res.status(400).json({ error: weak });
+  }
+  const pin = typed || randomPin(await requiredLengthFor(user.role));
+  const previous = { pinHash: user.pinHash, pinLength: user.pinLength, mustChangePin: user.mustChangePin, failedLoginCount: user.failedLoginCount, lockCount: user.lockCount, lockedUntil: user.lockedUntil };
+  await prisma.user.update({ where: { id }, data: { pinHash: await import_bcryptjs2.default.hash(pin, PIN_ROUNDS), pinLength: pin.length, mustChangePin: mustChange, failedLoginCount: 0, lockCount: 0, lockedUntil: null, tokenVersion: { increment: 1 } } });
+  if (sendIt) {
+    const sent = await emailPin(user.name, user.email, pin, { reset: true, mustChange });
+    if (!sent.ok) {
+      await prisma.user.update({ where: { id }, data: previous });
+      return res.status(502).json({ error: `The email could not be sent, so their PIN was left unchanged. ${sent.error}` });
+    }
+  }
+  res.json({ ok: true, emailed: sendIt, sentTo: sendIt ? user.email : void 0, mustChange, ...!typed && !sendIt ? { pin } : {} });
 });
 function publicMail(row, source) {
   return {
@@ -71524,7 +71578,7 @@ var clientSchema = external_exports.object({
   email: external_exports.string().max(200).optional(),
   phone: external_exports.string().max(50).optional()
 });
-masterDataRouter.post("/corporate-clients", requireRole("Admin"), async (req, res) => {
+masterDataRouter.post("/corporate-clients", requirePermission("canAccessFinance"), async (req, res) => {
   const parsed = clientSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? "", phone: parsed.data.phone ?? "" } }));
@@ -71534,7 +71588,7 @@ var clientUpdateSchema = external_exports.object({
   email: external_exports.string().max(200).optional(),
   phone: external_exports.string().max(50).optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
-masterDataRouter.put("/corporate-clients/:id", requireRole("Admin"), async (req, res) => {
+masterDataRouter.put("/corporate-clients/:id", requirePermission("canAccessFinance"), async (req, res) => {
   const parsed = clientUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const client = await prisma.corporateClient.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
@@ -73130,7 +73184,7 @@ financeRouter.get("/vat", async (req, res) => {
     const billVat = vatOf(e.category) ? splitGross(e.amount, VAT_RATE).vat : 0;
     return { expenseId: e.id, date: e.date, orderNo: e.orderId != null ? orderNoById.get(e.orderId) ?? null : null, supplier: e.supplier, invoiceNumber: e.invoiceNumber, gross: round2(e.amount), net: round2(e.amount - billVat), vat: billVat };
   });
-  const sum = (rows, pick) => round2(rows.reduce((a2, r) => a2 + pick(r), 0));
+  const sum = (rows, pick2) => round2(rows.reduce((a2, r) => a2 + pick2(r), 0));
   const outsourced = {
     sales: { rows: outsourcedSales, net: sum(outsourcedSales, (r) => r.net), vat: sum(outsourcedSales, (r) => r.vat), gross: sum(outsourcedSales, (r) => r.gross) },
     bills: { rows: outsourcedBills, net: sum(outsourcedBills, (r) => r.net), vat: sum(outsourcedBills, (r) => r.vat), gross: sum(outsourcedBills, (r) => r.gross) },
@@ -73235,6 +73289,20 @@ financeRouter.patch("/expenses/:id/business-head", async (req, res) => {
   if (parsed.data.businessHeadId != null && !await prisma.businessHead.findUnique({ where: { id: parsed.data.businessHeadId } })) return res.status(400).json({ error: "That business head does not exist" });
   const updated = await prisma.expense.update({ where: { id: Number(req.params.id) }, data: { businessHeadId: parsed.data.businessHeadId } }).catch(() => null);
   if (!updated) return res.status(404).json({ error: "Expense not found" });
+  res.json(updated);
+});
+financeRouter.patch("/expenses/:id/category", async (req, res) => {
+  const parsed = external_exports.object({ category: external_exports.string().min(1).max(100), detachFromJob: external_exports.boolean().optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose an expense head" });
+  if (!(await expenseHeadNames()).includes(parsed.data.category)) return res.status(400).json({ error: "Choose one of the expense heads (add new ones under Accounting \u2192 Chart of Accounts)" });
+  const expense = await prisma.expense.findUnique({ where: { id: Number(req.params.id) }, include: { purchase: { select: { id: true } }, order: { select: { orderNo: true } } } });
+  if (!expense) return res.status(404).json({ error: "Expense not found" });
+  if (expense.category === parsed.data.category) return res.json(expense);
+  if (expense.purchase) return res.status(400).json({ error: "This expense is linked to a stock purchase, so its head cannot be changed here" });
+  if (expense.orderId != null && !parsed.data.detachFromJob) return res.status(400).json({ error: `This is recorded as the supplier bill for order ${expense.order?.orderNo ?? expense.orderId}. Moving it takes it off that job.` });
+  if (expense.withholdingTax > 0) return res.status(400).json({ error: "This is freelance commission with tax withheld, so its head cannot be changed here" });
+  req.body.was = expense.category;
+  const updated = await prisma.expense.update({ where: { id: expense.id }, data: { category: parsed.data.category, ...expense.orderId != null ? { orderId: null } : {} } });
   res.json(updated);
 });
 var expensePaymentSchema = external_exports.object({ date: dateStr, amount: external_exports.number().positive(), method: external_exports.enum(EXPENSE_METHODS), note: external_exports.string().max(200).optional() });
@@ -74341,7 +74409,7 @@ emailRouter.post("/send", sendLimiter, async (req, res) => {
 
 // apps/api/src/routes/mpesa.ts
 var import_express8 = __toESM(require_express2());
-var import_crypto6 = require("crypto");
+var import_crypto8 = require("crypto");
 
 // apps/api/src/accounting/reports.ts
 var inRange3 = (d, from, to) => d >= from && d <= to;
@@ -74993,6 +75061,193 @@ async function handleB2cTimeout(body) {
   ]);
 }
 
+// apps/api/src/ncba.ts
+var import_crypto6 = require("crypto");
+var NCBA_BASE_URL = "https://c2bapis.ncbagroup.com";
+var newNcbaSecret = (bytes = 24) => (0, import_crypto6.randomBytes)(bytes).toString("hex");
+async function getNcbaRow() {
+  return await prisma.ncbaSettings.findUnique({ where: { id: 1 } }) ?? prisma.ncbaSettings.create({ data: { id: 1 } });
+}
+async function loadNcbaConfig() {
+  const r = await prisma.ncbaSettings.findUnique({ where: { id: 1 } });
+  return {
+    enabled: r?.enabled ?? false,
+    baseUrl: (r?.baseUrl || NCBA_BASE_URL).replace(/\/+$/, ""),
+    apiUsername: r?.apiUsername ?? "",
+    apiSecret: open(r?.apiSecret ?? ""),
+    payBillNo: r?.payBillNo || "880100",
+    accountNo: r?.accountNo ?? "",
+    network: r?.network || "Safaricom",
+    publicBaseUrl: (r?.publicBaseUrl ?? "").replace(/\/+$/, ""),
+    callbackSecret: open(r?.callbackSecret ?? ""),
+    pushUser: open(r?.pushUser ?? ""),
+    pushPassword: open(r?.pushPassword ?? ""),
+    pushSecret: open(r?.pushSecret ?? ""),
+    checkHash: r?.checkHash ?? true
+  };
+}
+var ncbaReady = (c) => c.enabled && !!(c.apiUsername && c.apiSecret && c.payBillNo && c.accountNo);
+function ncbaNotifyUrl(c) {
+  return c.publicBaseUrl && c.callbackSecret ? `${c.publicBaseUrl}/api/ncba/notify/${c.callbackSecret}` : null;
+}
+function ncbaBaseUrlOk(url) {
+  if (process.env.NODE_ENV === "test") return /^http:\/\/127\.0\.0\.1:\d+$/.test(url) || /^https:\/\/([a-z0-9-]+\.)*ncbagroup\.com$/i.test(url);
+  return /^https:\/\/([a-z0-9-]+\.)*ncbagroup\.com$/i.test(url);
+}
+var NcbaError = class extends Error {
+};
+var tokenCache = null;
+function resetNcbaToken() {
+  tokenCache = null;
+}
+async function fetchJson(url, init) {
+  let res;
+  try {
+    res = await fetch(url, { ...init, signal: AbortSignal.timeout(3e4) });
+  } catch (e) {
+    throw new NcbaError(`Could not reach NCBA (${e instanceof Error ? e.message : "network error"}). Check the server's internet connection and try again.`);
+  }
+  return { status: res.status, data: await res.json().catch(() => null) };
+}
+async function ncbaToken(c) {
+  const key2 = `${c.baseUrl}|${c.apiUsername}|${c.apiSecret}`;
+  if (tokenCache && tokenCache.key === key2 && tokenCache.until > Date.now()) return tokenCache.token;
+  const headers = { Authorization: "Basic " + Buffer.from(`${c.apiUsername}:${c.apiSecret}`).toString("base64") };
+  const url = `${c.baseUrl}/payments/api/v1/auth/token`;
+  let r = await fetchJson(url, { method: "GET", headers });
+  if (r.status === 404 || r.status === 405) r = await fetchJson(url, { method: "POST", headers });
+  if (r.status === 401) throw new NcbaError("NCBA did not accept the API username and secret key. Check them against the signed instruction letter you gave NCBA.");
+  const token = r.data?.access_token;
+  if (r.status !== 200 || typeof token !== "string") throw new NcbaError(`NCBA could not give a token (${r.data?.message || `HTTP ${r.status}`}).`);
+  const seconds = Number(r.data?.expires_in) || 18e3;
+  tokenCache = { key: key2, token, until: Date.now() + Math.max(60, seconds - 300) * 1e3 };
+  return token;
+}
+async function authed(c, path4, body) {
+  const call = async (token) => fetchJson(`${c.baseUrl}${path4}`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let r = await call(await ncbaToken(c));
+  if (r.status === 401) {
+    resetNcbaToken();
+    r = await call(await ncbaToken(c));
+  }
+  return r;
+}
+async function ncbaInitiate(c, p) {
+  const r = await authed(c, "/payments/api/v1/stk-push/initiate", {
+    TelephoneNo: p.phone,
+    Amount: String(Math.round(p.amount)),
+    PayBillNo: c.payBillNo,
+    AccountNo: c.accountNo,
+    Network: c.network,
+    TransactionType: "CustomerPayBillOnline"
+  });
+  const d = r.data ?? {};
+  if (r.status !== 200 || !d.TransactionID) throw new NcbaError(d.StatusDescription || d.message || `NCBA rejected the payment request (HTTP ${r.status})`);
+  return { transactionId: String(d.TransactionID), referenceId: d.ReferenceID ? String(d.ReferenceID) : "" };
+}
+async function ncbaQuery(c, transactionId) {
+  const r = await authed(c, "/payments/api/v1/stk-push/query", { TransactionID: transactionId });
+  if (r.status !== 200) throw new NcbaError(r.data?.message || `NCBA could not say (HTTP ${r.status})`);
+  return { status: String(r.data?.status ?? "").toUpperCase(), description: String(r.data?.description ?? "") };
+}
+var pick = (o, ...names) => {
+  for (const n of names) {
+    const hit = Object.keys(o).find((k) => k.toLowerCase() === n.toLowerCase());
+    if (hit != null && o[hit] != null) return String(o[hit]);
+  }
+  return "";
+};
+function xmlTag(xml, tag) {
+  const m = new RegExp(`<(?:[\\w-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[\\w-]+:)?${tag}>`, "i").exec(xml);
+  if (!m) return "";
+  return m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").trim();
+}
+function parseNotice(body) {
+  if (typeof body === "string") {
+    if (!/<\w/.test(body)) return null;
+    const x = (...tags) => tags.map((t) => xmlTag(body, t)).find((v) => v) ?? "";
+    const notice = {
+      transType: x("TransType"),
+      transId: x("TransID"),
+      ftRef: x("FTRef"),
+      transTime: x("TransTime"),
+      amount: x("TransAmount"),
+      account: x("AccountNr", "BusinessShortCode"),
+      billRef: x("BillRefNumber"),
+      narrative: x("Narrative"),
+      mobile: x("PhoneNr", "Mobile"),
+      name: x("CustomerName", "Name"),
+      username: x("User", "Username"),
+      password: x("Password"),
+      hash: x("HashVal", "SecretKey", "Hash")
+    };
+    if (!notice.billRef && notice.narrative) notice.billRef = notice.narrative;
+    return notice.transId ? { notice, format: "xml" } : null;
+  }
+  if (body && typeof body === "object") {
+    const o = body;
+    const notice = {
+      transType: pick(o, "TransType"),
+      transId: pick(o, "TransID"),
+      ftRef: pick(o, "FTRef"),
+      transTime: pick(o, "TransTime"),
+      amount: pick(o, "TransAmount"),
+      account: pick(o, "BusinessShortCode", "AccountNr"),
+      billRef: pick(o, "BillRefNumber"),
+      narrative: pick(o, "Narrative"),
+      mobile: pick(o, "Mobile", "PhoneNr"),
+      name: pick(o, "name", "CustomerName"),
+      username: pick(o, "Username", "User"),
+      password: pick(o, "Password"),
+      hash: pick(o, "Hash", "HashVal", "SecretKey")
+    };
+    return notice.transId ? { notice, format: "json" } : null;
+  }
+  return null;
+}
+function hashCandidates(secret, n) {
+  const core = (withFt, withNarr) => secret + n.transType + n.transId + (withFt ? n.ftRef : "") + n.transTime + n.amount + n.account + n.billRef + (withNarr ? n.narrative : "") + n.mobile + n.name + "1";
+  const out = [];
+  for (const [ft, narr] of [[false, false], [true, false], [false, true], [true, true]]) {
+    const digest = (0, import_crypto6.createHash)("sha256").update(core(ft, narr), "utf8");
+    const raw = digest.copy().digest();
+    out.push(Buffer.from(raw.toString("hex")).toString("base64"), raw.toString("base64"));
+  }
+  return out;
+}
+var same2 = (a2, b) => {
+  const x = Buffer.from(a2);
+  const y = Buffer.from(b);
+  return x.length === y.length && (0, import_crypto6.timingSafeEqual)(x, y);
+};
+function hashOk(secret, n) {
+  if (!secret || !n.hash) return false;
+  return hashCandidates(secret, n).some((h) => same2(h, n.hash));
+}
+function credentialsOk(c, n) {
+  return !!c.pushUser && !!c.pushPassword && same2(n.username, c.pushUser) && same2(n.password, c.pushPassword);
+}
+function phoneMatches(sent, reported) {
+  const r = reported.trim();
+  if (!r) return false;
+  const digits = (s) => s.replace(/\D/g, "");
+  if (/^[0-9a-f]{64}$/i.test(r)) {
+    const d = digits(sent);
+    const forms = [d, "+" + d, "0" + d.slice(3), d.slice(3)];
+    return forms.some((f) => (0, import_crypto6.createHash)("sha256").update(f).digest("hex") === r.toLowerCase());
+  }
+  const a2 = digits(sent);
+  const b = digits(r);
+  return !!a2 && !!b && a2.slice(-9) === b.slice(-9);
+}
+function replyFor(format, ok) {
+  if (format === "json") return { type: "application/json", body: JSON.stringify({ ResultCode: ok ? "0" : "1", ResultDesc: ok ? "Received" : "Not accepted" }) };
+  return {
+    type: "text/xml",
+    body: `<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Header/><soapenv:Body><NCBAPaymentNotificationResult><Result>${ok ? "OK" : "FAIL"}</Result></NCBAPaymentNotificationResult></soapenv:Body></soapenv:Envelope>`
+  };
+}
+
 // apps/api/src/routes/mpesa.ts
 var mpesaRouter = (0, import_express8.Router)();
 var MAX_STK_AMOUNT = 25e4;
@@ -75140,10 +75395,13 @@ var stkPushSchema = external_exports.object({
   orderId: external_exports.number().int().optional()
 });
 mpesaRouter.post("/stkpush", requireAuth, async (req, res) => {
+  const ncba = await loadNcbaConfig();
+  const viaNcba = ncba.enabled;
+  if (viaNcba && !ncbaReady(ncba)) return res.status(501).json({ error: "NCBA isn't fully set up \u2014 an Admin can finish it under Master Data \u2192 NCBA" });
   const cfg = await loadMpesaConfig();
-  if (!isReady(cfg)) return res.status(501).json({ error: NOT_SET_UP });
-  const urls = callbackUrls(cfg);
-  if (!urls) return res.status(501).json({ error: "M-Pesa needs this installation\u2019s public web address \u2014 an Admin can add it under Master Data \u2192 M-Pesa" });
+  if (!viaNcba && !isReady(cfg)) return res.status(501).json({ error: NOT_SET_UP });
+  const urls = viaNcba ? null : callbackUrls(cfg);
+  if (!viaNcba && !urls) return res.status(501).json({ error: "M-Pesa needs this installation\u2019s public web address \u2014 an Admin can add it under Master Data \u2192 M-Pesa" });
   const parsed = stkPushSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   if (parsed.data.orderId) {
@@ -75159,6 +75417,18 @@ mpesaRouter.post("/stkpush", requireAuth, async (req, res) => {
   const phone = normalizePhone(parsed.data.phone);
   if (!phone) return res.status(400).json({ error: "Enter a valid Kenyan phone number (e.g. 07xx xxx xxx)" });
   if (await prisma.mpesaTransaction.count({ where: { phone, kind: "STK", createdAt: { gt: new Date(Date.now() - 10 * 6e4) } } }) >= 3) return res.status(429).json({ error: "That number has already been sent several prompts in the last few minutes. Ask the customer to check their phone, or wait a little." });
+  if (viaNcba) {
+    try {
+      const sent = await ncbaInitiate(ncba, { phone, amount: parsed.data.amount });
+      const id = `NCBA-${sent.transactionId}`;
+      await prisma.mpesaTransaction.create({
+        data: { checkoutRequestId: id, merchantRequestId: sent.referenceId, phone, amount: parsed.data.amount, accountReference: parsed.data.accountReference, orderId: parsed.data.orderId ?? null, createdByName: req.user.name }
+      });
+      return res.status(201).json({ checkoutRequestId: id });
+    } catch (err) {
+      return res.status(err instanceof NcbaError ? 502 : 500).json({ error: err instanceof Error ? err.message : "Failed to reach NCBA" });
+    }
+  }
   try {
     const token = await getAccessToken(cfg);
     const timestamp = darajaTimestamp();
@@ -75234,7 +75504,7 @@ async function handleStkCallback(body) {
 function secretOk(given, want) {
   const a2 = Buffer.from(given);
   const b = Buffer.from(want);
-  return want.length >= 16 && a2.length === b.length && (0, import_crypto6.timingSafeEqual)(a2, b);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto8.timingSafeEqual)(a2, b);
 }
 mpesaRouter.post("/callback/:secret", async (req, res) => {
   const cfg = await loadMpesaConfig();
@@ -75246,10 +75516,25 @@ mpesaRouter.post("/callback", async (req, res) => {
   if (cfg.source === "env") await handleStkCallback(req.body).catch((e) => console.error("STK callback failed", e));
   res.json(ACK);
 });
+var lastAsked = /* @__PURE__ */ new Map();
+async function askNcba(tx) {
+  const age = Date.now() - tx.createdAt.getTime();
+  if (age < 2e4 || age > 2 * 60 * 6e4 || Date.now() - (lastAsked.get(tx.id) ?? 0) < 1e4) return;
+  lastAsked.set(tx.id, Date.now());
+  const cfg = await loadNcbaConfig();
+  if (!ncbaReady(cfg)) return;
+  const answer = await ncbaQuery(cfg, tx.checkoutRequestId.slice("NCBA-".length));
+  if (answer.status === "SUCCESS") await markSuccess(tx, null);
+  else if (answer.status === "FAILED" && age > 12e4) {
+    await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Failed", resultDesc: answer.description || "NCBA says the payment did not go through" } });
+  }
+}
 mpesaRouter.get("/status/:checkoutRequestId", requireAuth, async (req, res) => {
   const tx = await prisma.mpesaTransaction.findUnique({ where: { checkoutRequestId: req.params.checkoutRequestId } });
   if (!tx) return res.status(404).json({ error: "STK push not found" });
-  res.json({ status: tx.status, amount: tx.amount, mpesaReceipt: tx.mpesaReceipt, resultDesc: tx.resultDesc });
+  if (tx.status === "Pending" && tx.checkoutRequestId.startsWith("NCBA-")) await askNcba(tx).catch(() => void 0);
+  const now = await prisma.mpesaTransaction.findUnique({ where: { id: tx.id } });
+  res.json({ status: now?.status ?? tx.status, amount: tx.amount, mpesaReceipt: now?.mpesaReceipt ?? tx.mpesaReceipt, resultDesc: now?.resultDesc ?? tx.resultDesc });
 });
 var confirmSchema = external_exports.object({ receipt: external_exports.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, "Enter the M-Pesa confirmation code from the SMS (10 letters and numbers)").optional() });
 mpesaRouter.post("/:checkoutRequestId/confirm-manually", requireAuth, async (req, res) => {
@@ -75311,10 +75596,191 @@ mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
   res.json(ACK);
 });
 
-// apps/api/src/routes/assets.ts
+// apps/api/src/routes/ncba.ts
 var import_express9 = __toESM(require_express2());
+var import_crypto10 = require("crypto");
+var ncbaRouter = (0, import_express9.Router)();
+var LABEL = "M-Pesa (NCBA Paybill)";
+function publicSettings2(c) {
+  return {
+    enabled: c.enabled,
+    ready: ncbaReady(c),
+    baseUrl: c.baseUrl,
+    apiUsername: c.apiUsername,
+    hasApiSecret: !!c.apiSecret,
+    payBillNo: c.payBillNo,
+    accountNo: c.accountNo,
+    network: c.network,
+    publicBaseUrl: c.publicBaseUrl,
+    notifyUrl: ncbaNotifyUrl(c),
+    pushUser: c.pushUser,
+    hasPushCredentials: !!(c.pushUser && c.pushPassword && c.pushSecret),
+    checkHash: c.checkHash
+  };
+}
+ncbaRouter.get("/settings", requireAuth, requireRole("Admin"), async (_req, res) => {
+  res.json(publicSettings2(await loadNcbaConfig()));
+});
+var settingsSchema3 = external_exports.object({
+  enabled: external_exports.boolean().optional(),
+  baseUrl: external_exports.string().trim().max(200).optional(),
+  apiUsername: external_exports.string().trim().max(200).optional(),
+  apiSecret: external_exports.string().trim().max(300).optional(),
+  // blank = keep what is saved
+  payBillNo: external_exports.string().trim().max(20).optional(),
+  accountNo: external_exports.string().trim().max(60).optional(),
+  network: external_exports.string().trim().max(30).optional(),
+  publicBaseUrl: external_exports.string().trim().max(200).optional(),
+  checkHash: external_exports.boolean().optional()
+});
+ncbaRouter.put("/settings", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = settingsSchema3.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const b = parsed.data;
+  const row = await getNcbaRow();
+  const cur = await loadNcbaConfig();
+  const data = {};
+  if (b.baseUrl !== void 0) {
+    const v = (b.baseUrl || NCBA_BASE_URL).replace(/\/+$/, "");
+    if (!ncbaBaseUrlOk(v)) return res.status(400).json({ error: "That is not an NCBA address. It should be https://c2bapis.ncbagroup.com unless NCBA gave you a test address on ncbagroup.com." });
+    data.baseUrl = v;
+  }
+  if (b.publicBaseUrl !== void 0) {
+    const v = b.publicBaseUrl.replace(/\/+$/, "");
+    if (v && !/^https:\/\//.test(v)) return res.status(400).json({ error: "The public web address must start with https:// \u2014 NCBA will not send notifications over plain http" });
+    data.publicBaseUrl = v;
+  }
+  if (b.apiUsername !== void 0) data.apiUsername = b.apiUsername;
+  if (b.apiSecret) data.apiSecret = seal(b.apiSecret);
+  if (b.payBillNo !== void 0) data.payBillNo = b.payBillNo || "880100";
+  if (b.accountNo !== void 0) data.accountNo = b.accountNo;
+  if (b.network !== void 0) data.network = b.network || "Safaricom";
+  if (b.checkHash !== void 0) data.checkHash = b.checkHash;
+  if (b.enabled !== void 0) data.enabled = b.enabled;
+  if (!row.callbackSecret) data.callbackSecret = seal(newNcbaSecret());
+  const willBe = {
+    enabled: data.enabled ?? cur.enabled,
+    apiUsername: data.apiUsername ?? cur.apiUsername,
+    hasSecret: !!(b.apiSecret || cur.apiSecret),
+    payBillNo: data.payBillNo ?? cur.payBillNo,
+    accountNo: data.accountNo ?? cur.accountNo
+  };
+  if (willBe.enabled && !(willBe.apiUsername && willBe.hasSecret && willBe.payBillNo && willBe.accountNo)) {
+    return res.status(400).json({ error: "Fill in the API username, the secret key, the Paybill number and the account number before switching NCBA on" });
+  }
+  await prisma.ncbaSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  resetNcbaToken();
+  res.json(publicSettings2(await loadNcbaConfig()));
+});
+ncbaRouter.post("/settings/test", requireAuth, requireRole("Admin"), async (_req, res) => {
+  try {
+    await ncbaToken(await loadNcbaConfig());
+    res.json({ ok: true });
+  } catch (e) {
+    if (e instanceof NcbaError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+ncbaRouter.post("/credentials/generate", requireAuth, requireRole("Admin"), async (_req, res) => {
+  const row = await getNcbaRow();
+  const creds = { pushUser: `glm${newNcbaSecret(4)}`, pushPassword: newNcbaSecret(12), pushSecret: newNcbaSecret(16) };
+  await prisma.ncbaSettings.update({
+    where: { id: 1 },
+    data: { pushUser: seal(creds.pushUser), pushPassword: seal(creds.pushPassword), pushSecret: seal(creds.pushSecret), ...row.callbackSecret ? {} : { callbackSecret: seal(newNcbaSecret()) } }
+  });
+  res.json({ ...creds, settings: publicSettings2(await loadNcbaConfig()) });
+});
+ncbaRouter.get("/notifications", requireAuth, requireRole("Admin"), async (_req, res) => {
+  const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: "desc" }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });
+  res.json(rows);
+});
+ncbaRouter.post("/notifications/:id/accept", requireAuth, requireRole("Admin"), async (req, res) => {
+  const row = await prisma.ncbaNotification.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row) return res.status(404).json({ error: "Notification not found" });
+  if (row.outcome !== "Held") return res.status(400).json({ error: "Only a held notification can be accepted" });
+  const notice = JSON.parse(row.rawJson);
+  const result = await applyNotice(notice, req.user.name);
+  await prisma.ncbaNotification.update({ where: { id: row.id }, data: { outcome: result.outcome, note: `Accepted by ${req.user.name}. ${result.note}` } });
+  res.json({ ok: true, outcome: result.outcome });
+});
+function secretOk2(given, want) {
+  const a2 = Buffer.from(given);
+  const b = Buffer.from(want);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto10.timingSafeEqual)(a2, b);
+}
+async function applyNotice(n, by) {
+  const receipt = n.transId.toUpperCase();
+  const amount = Number(n.amount);
+  if (!receipt || !(amount > 0)) throw new Error("The notification has no receipt code or amount");
+  if (await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: receipt } })) return { outcome: "Duplicate", note: "Already on record" };
+  const open2 = await prisma.mpesaTransaction.findMany({
+    where: { kind: "STK", checkoutRequestId: { startsWith: "NCBA-" }, mpesaReceipt: null, status: { in: ["Pending", "Success", "Failed"] }, createdAt: { gt: new Date(Date.now() - 60 * 6e4) } },
+    orderBy: { id: "asc" }
+  });
+  const sameAmount = open2.filter((t) => Math.abs(t.amount - amount) <= 0.5);
+  const byPhone = n.mobile ? sameAmount.filter((t) => phoneMatches(t.phone, n.mobile)) : [];
+  const target = byPhone[0] ?? (!n.mobile && sameAmount.length === 1 ? sameAmount[0] : void 0);
+  if (target) {
+    try {
+      if (target.status === "Success") {
+        await prisma.mpesaTransaction.update({ where: { id: target.id }, data: { mpesaReceipt: receipt } });
+        await prisma.payment.updateMany({ where: { mpesaTransactionId: target.id, reference: null }, data: { reference: receipt } });
+      } else {
+        await markSuccess(target, receipt);
+      }
+      return { outcome: "Matched", note: `Matched to the prompt sent to ${target.phone}` };
+    } catch (e) {
+      if (e.code === "P2002") return { outcome: "Duplicate", note: "Already on record" };
+      throw e;
+    }
+  }
+  const date = normaliseDate(n.transTime) ?? todayStr();
+  const kept = await storeReceipt({ kind: "C2B", receipt, amount, date, phone: n.mobile, name: n.name, reference: n.billRef || n.narrative, raw: { ...n, username: void 0, password: void 0, hash: void 0 } }, LABEL).catch((e) => {
+    if (e.code === "P2002") return null;
+    throw e;
+  });
+  if (!kept) return { outcome: "Duplicate", note: "Already on record" };
+  await autoMatch(LABEL);
+  return { outcome: "Received", note: "Recorded as a Paybill payment; Accounting \u2192 M-Pesa matches it to an order" };
+}
+var plain = (n) => ({ transType: n.transType, transId: n.transId, ftRef: n.ftRef, transTime: n.transTime, amount: n.amount, account: n.account, billRef: n.billRef, narrative: n.narrative, mobile: n.mobile, name: n.name });
+async function log(n, outcome, note) {
+  await prisma.ncbaNotification.create({
+    data: { transId: n.transId.toUpperCase(), amount: Number(n.amount) || 0, billRef: n.billRef || n.narrative, phone: n.mobile, payerName: n.name, outcome, note, rawJson: JSON.stringify(plain(n)) }
+  });
+}
+ncbaRouter.post("/notify/:secret", import_express9.default.text({ type: ["text/xml", "application/xml", "application/soap+xml", "text/plain"], limit: "200kb" }), async (req, res) => {
+  const cfg = await loadNcbaConfig();
+  const send2 = (format2, ok) => {
+    const r = replyFor(format2, ok);
+    res.type(r.type).send(r.body);
+  };
+  if (!secretOk2(String(req.params.secret), cfg.callbackSecret)) return res.status(404).end();
+  const parsed = parseNotice(req.body);
+  if (!parsed) return send2(typeof req.body === "string" ? "xml" : "json", false);
+  const { notice, format } = parsed;
+  try {
+    if (!credentialsOk(cfg, notice)) {
+      await log(notice, "Rejected", "The username or password on the notification is not the one given to NCBA");
+      return send2(format, false);
+    }
+    if (cfg.checkHash && !hashOk(cfg.pushSecret, notice)) {
+      await log(notice, "Held", "The signature on the notification did not match. An Admin can accept it after checking the payment is real (Master Data \u2192 NCBA).");
+      return send2(format, true);
+    }
+    const result = await applyNotice(notice, LABEL);
+    await log(notice, result.outcome, result.note);
+    send2(format, true);
+  } catch (e) {
+    console.error("NCBA notification failed", e);
+    send2(format, false);
+  }
+});
+
+// apps/api/src/routes/assets.ts
+var import_express10 = __toESM(require_express2());
 var ASSET_FUNDING2 = ["Bank", "Cash", "M-Pesa", "Owner Capital", "Opening Balance"];
-var assetsRouter = (0, import_express9.Router)();
+var assetsRouter = (0, import_express10.Router)();
 assetsRouter.use(requireAuth, requirePermission("canAccessFinance"));
 assetsRouter.get("/", async (req, res) => {
   const { category, condition } = req.query;
@@ -75426,9 +75892,9 @@ assetsRouter.delete("/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/dtf.ts
-var import_express10 = __toESM(require_express2());
+var import_express11 = __toESM(require_express2());
 var import_client3 = require("@prisma/client");
-var dtfRouter = (0, import_express10.Router)();
+var dtfRouter = (0, import_express11.Router)();
 dtfRouter.use(requireAuth, requirePermission("canAccessDtf", "canManageDtf"));
 var manageOnly = requirePermission("canManageDtf");
 var dateStr2 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
@@ -75571,7 +76037,7 @@ dtfRouter.get("/data", async (req, res) => {
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending" } }) : 0
   });
 });
-var settingsSchema3 = external_exports.object({
+var settingsSchema4 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
   rollWidthCm: external_exports.number().positive(),
   stdPricePerM: external_exports.number().positive(),
@@ -75581,7 +76047,7 @@ var settingsSchema3 = external_exports.object({
   fixedChargePerMetre: external_exports.number().min(0)
 }).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" });
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
-  const parsed = settingsSchema3.safeParse(req.body);
+  const parsed = settingsSchema4.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   await getSettings();
   await prisma.dtfSetting.update({ where: { id: 1 }, data: parsed.data });
@@ -75945,7 +76411,7 @@ dtfRouter.delete("/jobs/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/accounting.ts
-var import_express11 = __toESM(require_express2());
+var import_express12 = __toESM(require_express2());
 
 // apps/api/src/accounting/reconcile.ts
 var key = (source, ref) => `${source}\0${ref}`;
@@ -76355,7 +76821,7 @@ async function depreciationSchedule(from, to, asOf) {
 }
 
 // apps/api/src/routes/accounting.ts
-var accountingRouter = (0, import_express11.Router)();
+var accountingRouter = (0, import_express12.Router)();
 accountingRouter.use(requireAuth);
 var dateStr3 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 var isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -76695,7 +77161,7 @@ accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => 
 });
 
 // apps/api/src/routes/production.ts
-var import_express12 = __toESM(require_express2());
+var import_express13 = __toESM(require_express2());
 
 // apps/api/src/production.ts
 async function ensureProduction() {
@@ -76763,7 +77229,7 @@ function productionSummary(o) {
 }
 
 // apps/api/src/routes/production.ts
-var productionRouter = (0, import_express12.Router)();
+var productionRouter = (0, import_express13.Router)();
 productionRouter.use(requireAuth, requirePermission("canAccessProduction", "canManageProduction"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -76956,8 +77422,8 @@ productionRouter.get("/productivity", async (req, res) => {
 });
 
 // apps/api/src/routes/quality.ts
-var import_express13 = __toESM(require_express2());
-var qualityRouter = (0, import_express13.Router)();
+var import_express14 = __toESM(require_express2());
+var qualityRouter = (0, import_express14.Router)();
 qualityRouter.use(requireAuth, requirePermission("canAccessQuality"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -77079,8 +77545,8 @@ qualityRouter.post("/orders/:orderId/check", async (req, res) => {
 });
 
 // apps/api/src/routes/commission.ts
-var import_express14 = __toESM(require_express2());
-var commissionRouter = (0, import_express14.Router)();
+var import_express15 = __toESM(require_express2());
+var commissionRouter = (0, import_express15.Router)();
 commissionRouter.use(requireAuth, async (_req, _res, next) => {
   await ensureCommissionAccessOnce();
   next();
@@ -77096,7 +77562,7 @@ commissionRouter.get("/settings", async (_req, res) => {
   res.json(await getCommissionConfig());
 });
 var bandSchema = external_exports.object({ from: external_exports.number().min(0), rate: external_exports.number().min(0).max(100) });
-var settingsSchema4 = external_exports.object({
+var settingsSchema5 = external_exports.object({
   generalBands: external_exports.array(bandSchema).min(1),
   filmBands: external_exports.array(bandSchema).min(1),
   // Freelance sales persons — weekly net sales received at or above base prices → rate
@@ -77113,7 +77579,7 @@ var settingsSchema4 = external_exports.object({
   targetMode: external_exports.enum(TARGET_MODES).optional()
 });
 commissionRouter.put("/settings", manage, async (req, res) => {
-  const parsed = settingsSchema4.safeParse(req.body);
+  const parsed = settingsSchema5.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
   const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null);
@@ -77313,7 +77779,7 @@ commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
 });
 
 // apps/api/src/routes/pricelists.ts
-var import_express15 = __toESM(require_express2());
+var import_express16 = __toESM(require_express2());
 
 // apps/api/src/xlsx.ts
 var import_node_zlib2 = __toESM(require("node:zlib"));
@@ -77490,12 +77956,12 @@ function readXlsx(buf) {
 }
 
 // apps/api/src/routes/pricelists.ts
-var pricelistsRouter = (0, import_express15.Router)();
+var pricelistsRouter = (0, import_express16.Router)();
 pricelistsRouter.use(requireAuth);
 var XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 var MAX_ROWS = 3e3;
 var SERVICE_UNITS = ["piece", "metre", "sqm"];
-var same2 = (a2, b) => a2.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase();
+var same3 = (a2, b) => a2.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase();
 var clean2 = (s) => s.trim().replace(/\s+/g, " ");
 function send(res, filename, sheet, rows, widths) {
   res.setHeader("Content-Type", XLSX_TYPE);
@@ -77535,7 +78001,7 @@ var money = (s) => {
   const n = Number(s.replace(/[, ]/g, "").replace(/^ksh/i, ""));
   return Number.isFinite(n) ? n : NaN;
 };
-var rawBody = import_express15.default.raw({ type: () => true, limit: "10mb" });
+var rawBody = import_express16.default.raw({ type: () => true, limit: "10mb" });
 function parseGrid(req) {
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error("Choose an Excel (.xlsx) file to upload");
   const grid = readXlsx(req.body);
@@ -77579,13 +78045,13 @@ pricelistsRouter.post("/services", requireRole("Admin"), rawBody, async (req, re
       continue;
     }
     const headName = row.get("business head") ?? "";
-    const head = headName ? heads.find((h) => same2(h.name, headName)) : void 0;
+    const head = headName ? heads.find((h) => same3(h.name, headName)) : void 0;
     if (headName && !head) {
       fail(`Business head "${headName}" does not exist`);
       continue;
     }
     const description = row.get("description");
-    const current = existing.find((s) => same2(s.name, fullName));
+    const current = existing.find((s) => same3(s.name, fullName));
     if (current) {
       const data = {};
       if (priceText) {
@@ -77650,7 +78116,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
     const price = money(priceText);
     const unit = clean2(row.get("unit") ?? "");
     const headName = row.get("business head") ?? "";
-    const head = headName ? heads.find((h) => same2(h.name, headName)) : void 0;
+    const head = headName ? heads.find((h) => same3(h.name, headName)) : void 0;
     if (headName && !head) {
       fail(`Business head "${headName}" does not exist`);
       continue;
@@ -77662,7 +78128,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
       continue;
     }
     const description = row.get("description");
-    const current = lines.find((l) => same2(l.item, item) && same2(l.size, size));
+    const current = lines.find((l) => same3(l.item, item) && same3(l.size, size));
     if (current) {
       const data = {};
       if (priceText) {
@@ -77689,7 +78155,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
         fail("A new item needs a price greater than 0");
         continue;
       }
-      const group = lines.filter((l) => same2(l.item, item));
+      const group = lines.filter((l) => same3(l.item, item));
       if (group.some((l) => !l.size) && size) {
         fail(`${item} exists without a size \u2014 give that line a size first, then add the other sizes`);
         continue;
@@ -77709,7 +78175,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
 
 // apps/api/src/routes/backup.ts
 var import_node_crypto12 = __toESM(require("node:crypto"));
-var import_express16 = __toESM(require_express2());
+var import_express17 = __toESM(require_express2());
 
 // apps/api/src/backup.ts
 var import_node_fs4 = __toESM(require("node:fs"));
@@ -77992,9 +78458,9 @@ function startBackupScheduler() {
 }
 
 // apps/api/src/routes/backup.ts
-var backupRouter = (0, import_express16.Router)();
+var backupRouter = (0, import_express17.Router)();
 var admin = [requireAuth, requireRole("Admin")];
-var rawBody2 = import_express16.default.raw({ type: () => true, limit: "200mb" });
+var rawBody2 = import_express17.default.raw({ type: () => true, limit: "200mb" });
 var stamp2 = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
 backupRouter.get("/status", ...admin, async (_req, res) => {
   const s = await getBackupSettings();
@@ -78016,7 +78482,7 @@ backupRouter.get("/status", ...admin, async (_req, res) => {
     files: listLocal()
   });
 });
-var settingsSchema5 = external_exports.object({
+var settingsSchema6 = external_exports.object({
   enabled: external_exports.boolean().optional(),
   intervalHours: external_exports.number().int().min(1).max(24 * 31).optional(),
   keepCount: external_exports.number().int().min(1).max(365).optional(),
@@ -78025,7 +78491,7 @@ var settingsSchema5 = external_exports.object({
   driveClientSecret: external_exports.string().trim().max(300).optional()
 });
 backupRouter.put("/settings", ...admin, async (req, res) => {
-  const parsed = settingsSchema5.safeParse(req.body);
+  const parsed = settingsSchema6.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const { driveClientSecret, ...rest } = parsed.data;
   const current = await getBackupSettings();
@@ -78127,44 +78593,44 @@ backupRouter.post("/google/disconnect", ...admin, async (_req, res) => {
 });
 
 // apps/api/src/routes/security.ts
-var import_express17 = __toESM(require_express2());
+var import_express18 = __toESM(require_express2());
 
 // apps/api/src/secrets.ts
-var plain = (v) => !!v && !isSealed(v);
+var plain2 = (v) => !!v && !isSealed(v);
 async function secretStatus() {
   const unsealed = [];
   const m = await prisma.mpesaSettings.findUnique({ where: { id: 1 } });
   if (m) {
-    for (const k of ["consumerKey", "consumerSecret", "passkey", "callbackSecret"]) if (plain(m[k])) unsealed.push(`M-Pesa ${k}`);
+    for (const k of ["consumerKey", "consumerSecret", "passkey", "callbackSecret"]) if (plain2(m[k])) unsealed.push(`M-Pesa ${k}`);
   }
   const mail = await prisma.mailSettings.findUnique({ where: { id: 1 } });
-  if (plain(mail?.password)) unsealed.push("Email password");
+  if (plain2(mail?.password)) unsealed.push("Email password");
   const b = await prisma.backupSettings.findUnique({ where: { id: 1 } });
   if (b) {
-    for (const k of ["driveClientSecret", "driveRefreshToken"]) if (plain(b[k])) unsealed.push(`Google Drive ${k}`);
+    for (const k of ["driveClientSecret", "driveRefreshToken"]) if (plain2(b[k])) unsealed.push(`Google Drive ${k}`);
   }
   const wa = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
-  if (plain(wa?.accessToken)) unsealed.push("WhatsApp access token");
+  if (plain2(wa?.accessToken)) unsealed.push("WhatsApp access token");
   return { unsealed };
 }
 async function sealStoredSecrets() {
   if (!dataKeyConfigured()) return;
   const m = await prisma.mpesaSettings.findUnique({ where: { id: 1 } });
-  if (m && ["consumerKey", "consumerSecret", "passkey", "callbackSecret"].some((k) => plain(m[k]))) {
+  if (m && ["consumerKey", "consumerSecret", "passkey", "callbackSecret"].some((k) => plain2(m[k]))) {
     await prisma.mpesaSettings.update({ where: { id: 1 }, data: { consumerKey: seal(m.consumerKey), consumerSecret: seal(m.consumerSecret), passkey: seal(m.passkey), callbackSecret: seal(m.callbackSecret) } });
   }
   const mail = await prisma.mailSettings.findUnique({ where: { id: 1 } });
-  if (mail && plain(mail.password)) await prisma.mailSettings.update({ where: { id: 1 }, data: { password: seal(mail.password) } });
+  if (mail && plain2(mail.password)) await prisma.mailSettings.update({ where: { id: 1 }, data: { password: seal(mail.password) } });
   const wa = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
-  if (wa && plain(wa.accessToken)) await prisma.whatsappSettings.update({ where: { id: 1 }, data: { accessToken: seal(wa.accessToken) } });
+  if (wa && plain2(wa.accessToken)) await prisma.whatsappSettings.update({ where: { id: 1 }, data: { accessToken: seal(wa.accessToken) } });
   const b = await prisma.backupSettings.findUnique({ where: { id: 1 } });
-  if (b && (plain(b.driveClientSecret) || plain(b.driveRefreshToken))) {
+  if (b && (plain2(b.driveClientSecret) || plain2(b.driveRefreshToken))) {
     await prisma.backupSettings.update({ where: { id: 1 }, data: { driveClientSecret: seal(b.driveClientSecret), driveRefreshToken: seal(b.driveRefreshToken) } });
   }
 }
 
 // apps/api/src/routes/security.ts
-var securityRouter = (0, import_express17.Router)();
+var securityRouter = (0, import_express18.Router)();
 securityRouter.use(requireAuth, requireRole("Admin"));
 securityRouter.get("/status", async (req, res) => {
   const setting = await prisma.setting.findUnique({ where: { id: 1 } });
@@ -78216,8 +78682,8 @@ securityRouter.get("/audit", async (req, res) => {
 });
 
 // apps/api/src/routes/freelance.ts
-var import_express18 = __toESM(require_express2());
-var freelanceRouter = (0, import_express18.Router)();
+var import_express19 = __toESM(require_express2());
+var freelanceRouter = (0, import_express19.Router)();
 freelanceRouter.use(requireAuth, async (_req, res, next) => {
   if (!await commissionEnabled()) return res.status(403).json({ error: "Commission is switched off. An Admin can switch it on in Master Data \u2192 Company Info.", commissionOff: true });
   next();
@@ -78557,7 +79023,7 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
 });
 
 // apps/api/src/routes/whatsapp.ts
-var import_express19 = __toESM(require_express2());
+var import_express20 = __toESM(require_express2());
 
 // apps/api/src/whatsapp.ts
 var base2 = () => process.env.NODE_ENV === "test" && process.env.WHATSAPP_TEST_URL ? process.env.WHATSAPP_TEST_URL : "https://graph.facebook.com";
@@ -78664,7 +79130,7 @@ async function sendInvoiceDocument(cfg, m) {
 }
 
 // apps/api/src/routes/whatsapp.ts
-var whatsappRouter = (0, import_express19.Router)();
+var whatsappRouter = (0, import_express20.Router)();
 whatsappRouter.use(requireAuth);
 var sendLimiter2 = lib_default({
   windowMs: 60 * 60 * 1e3,
@@ -78689,7 +79155,7 @@ var publicView = (row) => ({
 whatsappRouter.get("/settings", requireRole("Admin"), async (_req, res) => {
   res.json(publicView(await prisma.whatsappSettings.findUnique({ where: { id: 1 } })));
 });
-var settingsSchema6 = external_exports.object({
+var settingsSchema7 = external_exports.object({
   enabled: external_exports.boolean().optional(),
   phoneNumberId: external_exports.string().trim().regex(/^\d{5,25}$/, "The Phone number ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
   businessAccountId: external_exports.string().trim().regex(/^\d{5,25}$/, "The WhatsApp Business Account ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
@@ -78700,7 +79166,7 @@ var settingsSchema6 = external_exports.object({
   apiVersion: external_exports.string().trim().regex(/^v\d{1,2}\.\d$/, "The API version looks like v21.0").optional()
 });
 whatsappRouter.put("/settings", requireRole("Admin"), async (req, res) => {
-  const parsed = settingsSchema6.safeParse(req.body);
+  const parsed = settingsSchema7.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const b = parsed.data;
   const row = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
@@ -78753,7 +79219,7 @@ whatsappRouter.post("/send", sendLimiter2, async (req, res) => {
   const who = detail.corporateClient?.name || (detail.customerName && detail.customerName.trim().toLowerCase() !== "walk-in" ? detail.customerName : "") || "customer";
   const closing = kind.isInvoice ? owes ? `Balance due ${money2(detail.totals.balanceDue)}${detail.dueDate ? ` by ${fmtDate(detail.dueDate)}` : ""}.` : "Paid in full, thank you." : "Please contact us to confirm.";
   const filename = `${kind.label}-${detail.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, "-") + ".pdf";
-  const log = (status, extra) => prisma.whatsappMessage.create({ data: { orderId: order.id, toNumber: to, status, mode: extra.mode ?? "", waMessageId: extra.waMessageId ?? null, error: extra.error ?? "", sentByName: req.user.name } });
+  const log2 = (status, extra) => prisma.whatsappMessage.create({ data: { orderId: order.id, toNumber: to, status, mode: extra.mode ?? "", waMessageId: extra.waMessageId ?? null, error: extra.error ?? "", sentByName: req.user.name } });
   try {
     const pdf = await buildOrderPdf(detail, company);
     const sent = await sendInvoiceDocument(cfg, {
@@ -78763,12 +79229,12 @@ whatsappRouter.post("/send", sendLimiter2, async (req, res) => {
       params: [who, kind.label.toLowerCase(), detail.orderNo, money2(detail.totals.grandTotal), closing],
       caption: `${kind.label} ${detail.orderNo} from ${company.companyName}. Total ${money2(detail.totals.grandTotal)}. ${closing}`
     });
-    await log("Sent", { waMessageId: sent.messageId, mode: sent.mode });
+    await log2("Sent", { waMessageId: sent.messageId, mode: sent.mode });
     res.json({ ok: true, to, messageId: sent.messageId, mode: sent.mode, attachment: filename });
   } catch (e) {
     const message = e instanceof WhatsappError ? e.message : "Could not prepare or send the message";
     if (!(e instanceof WhatsappError)) console.error("WhatsApp send failed", e);
-    await log("Failed", { error: message });
+    await log2("Failed", { error: message });
     res.status(502).json({ error: message });
   }
 });
@@ -78784,11 +79250,11 @@ whatsappRouter.get("/log", async (req, res) => {
 
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express20.default)();
+var app = (0, import_express21.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express20.default.json({ limit: "5mb" }));
+app.use(import_express21.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -78796,6 +79262,15 @@ app.use((req, res, next) => {
   res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
   res.setHeader("Cache-Control", "no-store");
   if (req.secure || req.headers["x-forwarded-proto"] === "https") res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  next();
+});
+var SLOW_MS = Number(process.env.SLOW_REQUEST_MS) || 1e3;
+app.use((req, res, next) => {
+  const started = Date.now();
+  res.on("finish", () => {
+    const ms2 = Date.now() - started;
+    if (ms2 >= SLOW_MS && process.env.NODE_ENV !== "test") console.warn(`[slow] ${req.method} ${req.originalUrl.split("?")[0]} ${ms2}ms (${res.statusCode})`);
+  });
   next();
 });
 app.use(auditMiddleware);
@@ -78808,6 +79283,7 @@ app.use("/api/stock", stockRouter);
 app.use("/api/reports", reportsRouter);
 app.use("/api/email", emailRouter);
 app.use("/api/mpesa", mpesaRouter);
+app.use("/api/ncba", ncbaRouter);
 app.use("/api/assets", assetsRouter);
 app.use("/api/dtf", dtfRouter);
 app.use("/api/accounting", accountingRouter);

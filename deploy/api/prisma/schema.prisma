@@ -298,6 +298,11 @@ model Expense {
   // The line of business this cost belongs to (null = shared, not tagged to one).
   businessHeadId  Int?
   businessHead    BusinessHead? @relation(fields: [businessHeadId], references: [id])
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([date])
+  @@index([orderId])
+  @@index([businessHeadId])
 }
 
 // A payment made against an expense bought on credit (partial payments allowed).
@@ -310,6 +315,9 @@ model ExpensePayment {
   method         String
   note           String  @default("")
   capturedByName String  @default("")
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([expenseId])
 }
 
 // An expense head (the old fixed EXPENSE_CATEGORIES list, now editable) and the Expense account it posts to.
@@ -341,6 +349,9 @@ model ExpenseAmendment {
   requestedAt      DateTime  @default(now())
   decidedByName    String?
   decidedAt        DateTime?
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([expenseId])
 }
 
 // Finance > Payroll — a pay-run log. Employees are paid a fixed monthly
@@ -371,6 +382,10 @@ model PayrollEntry {
   grossPay       Float // Employee: fixed monthly salary entered directly. Casual: daysWorked * rate.
   paymentSource  String // 'Petty Cash' | 'Bank/Cheque'
   capturedByName String  @default("")
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([staffId])
+  @@index([date])
 }
 
 // Finance > Petty Cash — the "in" side of the float (bank withdrawals or cash
@@ -445,6 +460,9 @@ model StockRequisitionLine {
   qty           Float
   // The unit price expected when the requisition is raised — what the purchases reconciliation compares the real price against.
   estUnitCost   Float?
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([requisitionId])
 }
 
 // Stock > Purchases — the held-then-released middle stage between a
@@ -490,6 +508,9 @@ model Purchase {
   rejectReason     String?
   capturedByName   String
   createdAt        DateTime          @default(now())
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([materialId])
 }
 
 // One material on a purchase order: what was bought, at what price, and what the store manager counted in.
@@ -506,6 +527,9 @@ model PurchaseLine {
   // Which line of business this was bought for — what Reports → Sales by Business Head charges the cost to. Null = not tagged.
   businessHeadId Int?
   businessHead   BusinessHead? @relation(fields: [businessHeadId], references: [id])
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([purchaseId])
 }
 
 model Order {
@@ -570,6 +594,13 @@ model Order {
   expenses          Expense[]
   productionTasks   ProductionTask[]
   qualityChecks     QualityCheck[]
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([staffId])
+  @@index([status])
+  @@index([createdDate])
+  @@index([corporateClientId])
+  @@index([freelanceAgentId])
 }
 
 // A line item is either a standalone material sale (Cap, Polo Shirt, canvas,
@@ -608,6 +639,9 @@ model OrderLineItem {
   supplierCost Float?
   markupType   String?
   markupValue  Float?
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([orderId])
 }
 
 model Payment {
@@ -624,6 +658,11 @@ model Payment {
   mpesaTransaction   MpesaTransaction? @relation(fields: [mpesaTransactionId], references: [id])
   staffId  Int?
   staff    User?  @relation(fields: [staffId], references: [id])
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([orderId])
+  @@index([staffId])
+  @@index([date])
 }
 
 // One STK push request/result. orderId is set once the push is tied to a
@@ -663,6 +702,47 @@ model MpesaTransaction {
   dismissedNote     String?
   rawJson           String   @default("{}")
   payment           Payment?
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([orderId])
+}
+
+// NCBA Bank Lipa na M-Pesa on Paybill 880100 (Master Data → NCBA): STK prompts through NCBA's API, and NCBA's payment notifications. One row (id = 1).
+// Every secret is sealed with DATA_KEY and never sent back to the browser.
+model NcbaSettings {
+  id             Int      @id @default(1)
+  enabled        Boolean  @default(false) // on = the "Send M-Pesa STK push" button goes through NCBA instead of Safaricom's Daraja
+  baseUrl        String   @default("https://c2bapis.ncbagroup.com")
+  apiUsername    String   @default("") // the user name on the signed instruction letter
+  apiSecret      String   @default("") // the secret key (API password) from the same letter
+  payBillNo      String   @default("880100")
+  accountNo      String   @default("") // the account number / Till short code sent with every prompt
+  network        String   @default("Safaricom")
+  publicBaseUrl  String   @default("") // this server's own https address, which NCBA must be able to reach
+  callbackSecret String   @default("") // random path segment in the address NCBA posts notifications to
+  // What NCBA must send with each notification so we know it is NCBA: made here, given to NCBA in the letter, then used to check every call.
+  pushUser       String   @default("")
+  pushPassword   String   @default("")
+  pushSecret     String   @default("")
+  checkHash      Boolean  @default(true) // check the signature on each notification (a notification that fails is held for an Admin, not booked)
+  updatedAt      DateTime @updatedAt
+}
+
+// Every notification NCBA sent to us, and what was done with it. The notification's own username, password and signature are never kept.
+model NcbaNotification {
+  id         Int      @id @default(autoincrement())
+  receivedAt DateTime @default(now())
+  transId    String   @default("") // the M-Pesa receipt code
+  amount     Float    @default(0)
+  billRef    String   @default("")
+  phone      String   @default("")
+  payerName  String   @default("")
+  outcome    String // Matched (to a prompt we sent) | Received (a payment with no prompt) | Duplicate | Held | Rejected
+  note       String   @default("")
+  rawJson    String   @default("{}")
+
+  @@index([receivedAt])
+  @@index([transId])
 }
 
 // Mail account the system sends email from — login PINs to staff, the Admin's PIN-reset code, invoices. Edited by the Admin under
@@ -858,6 +938,10 @@ model AdjustmentNote {
   restocked       Boolean  @default(false)
   createdByName   String   @default("")
   createdAt       DateTime @default(now())
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([orderId])
+  @@index([expenseId])
 }
 
 // ── Production & Quality Control ────────────────────────────────────────
@@ -907,6 +991,9 @@ model QualityCheck {
   note           String         @default("")
 
   @@index([orderId])
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([taskId])
 }
 
 // ── DTF Sales & Roll Tracker ────────────────────────────────────────────
@@ -1016,6 +1103,9 @@ model ClientOwner {
   createdAt   DateTime @default(now())
 
   @@index([clientKey])
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([staffId])
 }
 
 // One row (id 1): the rates. Commission is on money RECEIVED; every figure is editable because there is no sales history to calibrate to yet.
@@ -1161,6 +1251,9 @@ model CommissionPayout {
   expenseId     Int?
 
   @@unique([period, staffId])
+
+  // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
+  @@index([staffId])
 }
 
 // A request to charge less than the recommended price on an artwork job. The job (and its order) stay on hold until a DTF manager

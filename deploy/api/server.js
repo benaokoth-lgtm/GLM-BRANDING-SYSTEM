@@ -71735,17 +71735,19 @@ var clientSchema = external_exports.object({
   name: external_exports.string().min(1),
   creditDays: external_exports.number().int().positive(),
   email: external_exports.string().max(200).optional(),
-  phone: external_exports.string().max(50).optional()
+  phone: external_exports.string().max(50).optional(),
+  contactPerson: external_exports.string().trim().max(120).optional()
 });
 masterDataRouter.post("/corporate-clients", requirePermission("canAccessFinance"), async (req, res) => {
   const parsed = clientSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? "", phone: parsed.data.phone ?? "" } }));
+  res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? "", phone: parsed.data.phone ?? "", contactPerson: parsed.data.contactPerson ?? "" } }));
 });
 var clientUpdateSchema = external_exports.object({
   creditDays: external_exports.number().int().positive().optional(),
   email: external_exports.string().max(200).optional(),
-  phone: external_exports.string().max(50).optional()
+  phone: external_exports.string().max(50).optional(),
+  contactPerson: external_exports.string().trim().max(120).optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/corporate-clients/:id", requirePermission("canAccessFinance"), async (req, res) => {
   const parsed = clientUpdateSchema.safeParse(req.body);
@@ -72040,7 +72042,7 @@ async function buildOrderPdf(order, company) {
   text("PREPARED BY", colX[1], y, { size: 13, font: bold, color: NAVY });
   y -= 15;
   let yb = y;
-  const billTo = [client?.name || order.customerName || (order.kind === "walkin" ? WALK_IN_CLIENT : "-"), client?.phone || order.phone || "", client?.email || ""].filter(Boolean);
+  const billTo = [client?.name || order.customerName || (order.kind === "walkin" ? WALK_IN_CLIENT : "-"), client?.contactPerson ? `Attn: ${client.contactPerson}` : "", client?.phone || order.phone || "", client?.email || ""].filter(Boolean);
   for (const l of billTo) for (const w of wrap4(l, reg, 10, 160)) {
     text(w, colX[0], yb, { size: 10 });
     yb -= 12.5;
@@ -72480,7 +72482,7 @@ function serializeSummary(order) {
     channel: order.channel,
     customerName: order.customerName,
     phone: order.phone,
-    corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone } : null,
+    corporateClient: order.corporateClient ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone, contactPerson: order.corporateClient.contactPerson } : null,
     staff: { id: order.staff.id, name: order.staff.name },
     // Set when someone other than the sales person keyed the order (the front office capturing on their behalf).
     capturedByName: order.capturedByName && order.capturedByName !== order.staff.name ? order.capturedByName : null,

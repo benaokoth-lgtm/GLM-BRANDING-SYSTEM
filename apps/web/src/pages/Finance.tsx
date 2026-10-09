@@ -547,8 +547,11 @@ export default function Finance() {
                   <th>Business head</th>
                   <th>Note</th>
                   <th>Invoice #</th>
+                  <th>Supplier</th>
                   <th style={{ textAlign: 'right' }}>Amount</th>
-                  <th>Paid</th>
+                  <th>Method</th>
+                  <th style={{ textAlign: 'right' }}>Owed</th>
+                  <th>Due</th>
                   <th>Captured by</th>
                   <th></th>
                 </tr>
@@ -579,25 +582,18 @@ export default function Finance() {
                       </td>
                       <td className="text-muted">{e.note}</td>
                       <td className="text-muted">{e.invoiceNumber || '—'}</td>
+                      <td className="text-muted">{e.supplier || '—'}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(e.amount)}</td>
-                      <td>
-                        {e.paid ? (
-                          <span className="text-muted">{e.method}</span>
-                        ) : e.outstanding > 0 ? (
-                          <span>
-                            <span className="tag tag-outline" style={{ fontSize: 10 }}>On credit</span>{' '}
-                            {e.supplier && <span className="text-muted">{e.supplier} · </span>}
-                            <strong>{fmtKsh(e.outstanding)}</strong> owed{e.dueDate ? <span className="text-muted"> · due {fmtDate(e.dueDate)}</span> : null}{' '}
-                            <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setPayingId(e.id); setPayDraft({ date: today, amount: String(e.outstanding), method: 'Bank Transfer' }); setError(null); }} disabled={busy}>
-                              Pay
-                            </button>
-                          </span>
-                        ) : (
-                          <span className="text-muted">Settled{e.supplier ? ` — ${e.supplier}` : ''}</span>
-                        )}
-                      </td>
+                      <td className="text-muted">{e.paid ? e.method : 'Credit'}</td>
+                      <td style={{ textAlign: 'right', fontWeight: e.outstanding > 0 ? 700 : undefined }}>{e.outstanding > 0 ? fmtKsh(e.outstanding) : <span className="text-muted">—</span>}</td>
+                      <td className="text-muted" style={{ whiteSpace: 'nowrap' }}>{e.outstanding > 0 && e.dueDate ? fmtDate(e.dueDate) : '—'}</td>
                       <td className="text-muted">{e.capturedByName || '—'}</td>
                       <td style={{ display: 'flex', gap: 'var(--space-1)' }}>
+                        {e.outstanding > 0 && (
+                          <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setPayingId(e.id); setPayDraft({ date: today, amount: String(e.outstanding), method: 'Bank Transfer' }); setError(null); }} disabled={busy}>
+                            Pay
+                          </button>
+                        )}
                         <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startAmend(e)} disabled={busy}>
                           Amend
                         </button>
@@ -613,11 +609,11 @@ export default function Finance() {
                       </td>
                     </tr>
                     {deleteTarget?.type === 'Expense' && deleteTarget.id === e.id && (
-                      <DeleteReasonRow colSpan={9} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
+                      <DeleteReasonRow colSpan={12} reason={deleteReason} setReason={setDeleteReason} onSubmit={submitDeleteRequest} onCancel={() => setDeleteTarget(null)} busy={busy} />
                     )}
                     {payingId === e.id && (
                       <tr>
-                        <td colSpan={9} style={{ background: 'var(--color-surface)' }}>
+                        <td colSpan={12} style={{ background: 'var(--color-surface)' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                             <div className="field" style={{ margin: 0 }}>
                               <label>Payment date</label>
@@ -649,7 +645,7 @@ export default function Finance() {
                     )}
                     {amendingId === e.id && (
                       <tr>
-                        <td colSpan={9} style={{ background: 'var(--color-surface)' }}>
+                        <td colSpan={12} style={{ background: 'var(--color-surface)' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1.6fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                             <div className="field" style={{ margin: 0 }}>
                               <label>Date</label>
@@ -692,10 +688,12 @@ export default function Finance() {
               </tbody>
               <tfoot>
                 <tr style={{ fontFamily: 'var(--font-heading)' }}>
-                  <td colSpan={4} style={{ textAlign: 'right', paddingRight: 12 }}>
+                  <td colSpan={6} style={{ textAlign: 'right', paddingRight: 12 }}>
                     Total
                   </td>
                   <td style={{ textAlign: 'right' }}>{fmtKsh(expenses.totalExpenses)}</td>
+                  <td></td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(expenses.rows.reduce((a, r) => a + r.outstanding, 0))}</td>
                   <td></td>
                   <td></td>
                   <td></td>

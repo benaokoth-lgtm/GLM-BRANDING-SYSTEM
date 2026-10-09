@@ -230,6 +230,8 @@ model CorporateClient {
   // both on file yet.
   email      String  @default("")
   phone      String  @default("")
+  // Who to address documents to at the client (optional): printed as "Attn:" on their invoices and quotations.
+  contactPerson String @default("")
   orders     Order[]
 }
 

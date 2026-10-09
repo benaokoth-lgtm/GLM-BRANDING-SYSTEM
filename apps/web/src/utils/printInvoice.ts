@@ -168,6 +168,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
         <h2>BILL TO</h2>
         <div class="who">
           ${esc(client?.name || order.customerName || (order.kind === 'walkin' ? WALK_IN_CLIENT : '—'))}
+          ${client?.contactPerson ? `<br/>Attn: ${esc(client.contactPerson)}` : ''}
           ${client?.phone || order.phone ? `<br/>${esc(client?.phone || order.phone || '')}` : ''}
           ${client?.email ? `<br/>${esc(client.email)}` : ''}
         </div>

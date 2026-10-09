@@ -8,9 +8,10 @@ export default function CorporateClientsPanel() {
   const catalog = useCatalog();
   const [newName, setNewName] = useState('');
   const [newCreditDays, setNewCreditDays] = useState('');
+  const [newContact, setNewContact] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [drafts, setDrafts] = useState<Record<number, { email?: string; phone?: string }>>({});
+  const [drafts, setDrafts] = useState<Record<number, { email?: string; phone?: string; contactPerson?: string }>>({});
   const [error, setError] = useState<string | null>(null);
 
   async function addClient() {
@@ -18,9 +19,10 @@ export default function CorporateClientsPanel() {
     if (!newName.trim()) return setError('Client name is required');
     setError(null);
     try {
-      await api.post('/master-data/corporate-clients', { name: newName, creditDays: days, email: newEmail, phone: newPhone });
+      await api.post('/master-data/corporate-clients', { name: newName, creditDays: days, email: newEmail, phone: newPhone, contactPerson: newContact });
       setNewName('');
       setNewCreditDays('');
+      setNewContact('');
       setNewEmail('');
       setNewPhone('');
       catalog.reload();
@@ -29,7 +31,7 @@ export default function CorporateClientsPanel() {
     }
   }
 
-  async function saveField(clientId: number, field: 'email' | 'phone', value: string) {
+  async function saveField(clientId: number, field: 'email' | 'phone' | 'contactPerson', value: string) {
     setError(null);
     try {
       await api.put(`/master-data/corporate-clients/${clientId}`, { [field]: value });
@@ -48,6 +50,7 @@ export default function CorporateClientsPanel() {
           <tr>
             <th>Corporate client</th>
             <th>Credit terms</th>
+            <th>Contact person</th>
             <th>Email</th>
             <th>Phone</th>
           </tr>
@@ -57,6 +60,16 @@ export default function CorporateClientsPanel() {
             <tr key={c.id}>
               <td>{c.name}</td>
               <td className="text-muted">{c.creditDays} days</td>
+              <td>
+                <input
+                  className="input"
+                  style={{ minWidth: 150 }}
+                  value={drafts[c.id]?.contactPerson ?? c.contactPerson ?? ''}
+                  onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: { ...d[c.id], contactPerson: e.target.value } }))}
+                  onBlur={(e) => saveField(c.id, 'contactPerson', e.target.value)}
+                  placeholder="Optional"
+                />
+              </td>
               <td>
                 <input
                   className="input"
@@ -82,9 +95,9 @@ export default function CorporateClientsPanel() {
         </tbody>
       </table>
       <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-        Email and phone prefill the "Send email"/"Send WhatsApp" targets on that client's invoices and quotations.
+        The contact person is printed as "Attn:" on that client's invoices and quotations. Email and phone prefill the "Send email"/"Send WhatsApp" targets.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.8fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 960 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 0.7fr 1fr 1fr 1fr auto', gap: 'var(--space-3)', marginTop: 'var(--space-4)', alignItems: 'end', maxWidth: 960 }}>
         <div className="field">
           <label>New corporate client</label>
           <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} />
@@ -92,6 +105,10 @@ export default function CorporateClientsPanel() {
         <div className="field">
           <label>Credit terms (days)</label>
           <input className="input" value={newCreditDays} onChange={(e) => setNewCreditDays(e.target.value)} />
+        </div>
+        <div className="field">
+          <label>Contact person</label>
+          <input className="input" value={newContact} onChange={(e) => setNewContact(e.target.value)} placeholder="Optional" />
         </div>
         <div className="field">
           <label>Email</label>

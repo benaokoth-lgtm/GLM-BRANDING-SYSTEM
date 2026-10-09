@@ -51,6 +51,8 @@ export interface CorporateClient {
   creditDays: number;
   email: string;
   phone: string;
+  /** Who documents are addressed to at the client (optional). */
+  contactPerson?: string;
 }
 
 export interface CompanySettings {
@@ -79,7 +81,7 @@ export interface OrderSummary {
   channel: 'general' | 'dtf';
   customerName: string | null;
   phone: string | null;
-  corporateClient: { id: number; name: string; email: string; phone: string } | null;
+  corporateClient: { id: number; name: string; email: string; phone: string; contactPerson?: string } | null;
   staff: { id: number; name: string };
   /** Set when the front office keyed the order for the sales person (staff). */
   capturedByName?: string | null;

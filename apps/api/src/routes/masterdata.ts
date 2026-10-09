@@ -766,12 +766,13 @@ const clientSchema = z.object({
   creditDays: z.number().int().positive(),
   email: z.string().max(200).optional(),
   phone: z.string().max(50).optional(),
+  contactPerson: z.string().trim().max(120).optional(),
 });
 
 masterDataRouter.post('/corporate-clients', requirePermission('canAccessFinance'), async (req, res) => {
   const parsed = clientSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? '', phone: parsed.data.phone ?? '' } }));
+  res.status(201).json(await prisma.corporateClient.create({ data: { ...parsed.data, email: parsed.data.email ?? '', phone: parsed.data.phone ?? '', contactPerson: parsed.data.contactPerson ?? '' } }));
 });
 
 const clientUpdateSchema = z
@@ -779,6 +780,7 @@ const clientUpdateSchema = z
     creditDays: z.number().int().positive().optional(),
     email: z.string().max(200).optional(),
     phone: z.string().max(50).optional(),
+    contactPerson: z.string().trim().max(120).optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 

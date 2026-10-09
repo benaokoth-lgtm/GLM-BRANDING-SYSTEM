@@ -103,11 +103,22 @@ describe('corporate clients are managed from Finance', () => {
 
   it('a finance role can add and edit one; a role without finance access cannot', async () => {
     assert.equal((await call('plain', 'POST', '/master-data/corporate-clients', { name: 'Nope Ltd (reassign test)', creditDays: 30 })).status, 403);
-    const added = await call('fin', 'POST', '/master-data/corporate-clients', { name: 'Acme Corp (reassign test)', creditDays: 45, email: 'ap@acme.test' });
+    const added = await call('fin', 'POST', '/master-data/corporate-clients', { name: 'Acme Corp (reassign test)', creditDays: 45, email: 'ap@acme.test', contactPerson: 'Jane Doe' });
     assert.equal(added.status, 201);
+    assert.equal(added.body.contactPerson, 'Jane Doe'); // the contact person is optional but kept
     const edited = await call('fin', 'PUT', `/master-data/corporate-clients/${added.body.id}`, { phone: '0700 000 000' });
     assert.equal(edited.status, 200);
     assert.equal(edited.body.phone, '0700 000 000');
+    const renamed = await call('fin', 'PUT', `/master-data/corporate-clients/${added.body.id}`, { contactPerson: 'John Smith' });
+    assert.equal(renamed.body.contactPerson, 'John Smith');
+    // a client with none is fine
+    const bare = await call('fin', 'POST', '/master-data/corporate-clients', { name: 'Bare Ltd (reassign test)', creditDays: 30 });
+    assert.equal(bare.body.contactPerson, '');
+    // their orders carry it, for the invoice and the quotation
+    const finUser = await prisma.user.findFirstOrThrow({ where: { name: 'fin (reassign test)' } });
+    const inv = await prisma.order.create({ data: { orderNo: 'CP-TEST-1', kind: 'corporate', corporateClientId: added.body.id, staffId: finUser.id, createdDate: today, status: 'Invoice', stage: 'Order Received' } });
+    const detail = await call('fin', 'GET', `/orders/${inv.id}`);
+    assert.equal(detail.body.corporateClient.contactPerson, 'John Smith');
     assert.equal((await call('plain', 'PUT', `/master-data/corporate-clients/${added.body.id}`, { phone: 'x' })).status, 403);
   });
 });

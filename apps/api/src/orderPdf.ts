@@ -14,7 +14,7 @@ export interface PdfOrder {
   dueDate: string | null;
   customerName: string | null;
   phone: string | null;
-  corporateClient: { name: string; phone: string | null; email: string | null } | null;
+  corporateClient: { name: string; phone: string | null; email: string | null; contactPerson?: string | null } | null;
   staff: { name: string };
   lineItems: { qty: number; itemType: string; serviceName: string | null; materialName: string | null; unitPrice: number; lineTotal: number; heatPressFee: number | null; discountPct: number; discountAmt: number }[];
   totals: { subtotal: number; orderDiscount: number; grandTotal: number; balanceDue: number };
@@ -177,7 +177,7 @@ export async function buildOrderPdf(order: PdfOrder, company: PdfCompany): Promi
   text('PREPARED BY', colX[1]!, y, { size: 13, font: bold, color: NAVY });
   y -= 15;
   let yb = y;
-  const billTo = [client?.name || order.customerName || (order.kind === 'walkin' ? WALK_IN_CLIENT : '-'), client?.phone || order.phone || '', client?.email || ''].filter(Boolean);
+  const billTo = [client?.name || order.customerName || (order.kind === 'walkin' ? WALK_IN_CLIENT : '-'), client?.contactPerson ? `Attn: ${client.contactPerson}` : '', client?.phone || order.phone || '', client?.email || ''].filter(Boolean);
   for (const l of billTo) for (const w of wrap(l, reg, 10, 160)) {
     text(w, colX[0]!, yb, { size: 10 });
     yb -= 12.5;

@@ -74,7 +74,7 @@ export function serializeSummary(order: FullOrder) {
     customerName: order.customerName,
     phone: order.phone,
     corporateClient: order.corporateClient
-      ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone }
+      ? { id: order.corporateClient.id, name: order.corporateClient.name, email: order.corporateClient.email, phone: order.corporateClient.phone, contactPerson: order.corporateClient.contactPerson }
       : null,
     staff: { id: order.staff.id, name: order.staff.name },
     // Set when someone other than the sales person keyed the order (the front office capturing on their behalf).

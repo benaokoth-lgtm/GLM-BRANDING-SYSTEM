@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
 import ChangePinDialog from '../components/ChangePinDialog';
 import { useTheme, type Theme } from '../hooks/useTheme';
@@ -54,13 +54,13 @@ import { useBranding } from '../hooks/useBranding';
 import { SubNavProvider, useSubNav } from '../state/SubNavContext';
 import { useFeatures } from '../hooks/useFeatures';
 
-// The sidebar. A slim rail on the left holds the module groups (Sales, Operations, Money, Admin), the colour scheme, Change PIN and Log out; the panel beside it lists
-// the modules of the chosen group. The group follows the page being worked on, and a click on another group's icon shows that group without leaving the page.
-type Group = 'sales' | 'operations' | 'money' | 'admin';
+// The sidebar, in one column: the signed-in person at the top (their menu has Change PIN and Log out), the modules in labelled groups, and the everyday
+// utilities (colour scheme, collapse) at the bottom. Only the modules a person's role allows are listed, so a group with nothing in it does not appear.
+type Group = 'sales' | 'operations' | 'finance' | 'admin';
 const GROUPS: [Group, string][] = [
   ['sales', 'Sales'],
   ['operations', 'Operations'],
-  ['money', 'Money'],
+  ['finance', 'Finance'],
   ['admin', 'Admin'],
 ];
 const GROUP_OF: Record<string, Group> = {
@@ -73,11 +73,11 @@ const GROUP_OF: Record<string, Group> = {
   '/quality': 'operations',
   '/stock': 'operations',
   '/dtf': 'operations',
-  '/finance': 'money',
-  '/compliance': 'money',
-  '/accounting': 'money',
-  '/payments': 'money',
-  '/reports': 'money',
+  '/finance': 'finance',
+  '/compliance': 'finance',
+  '/accounting': 'finance',
+  '/payments': 'finance',
+  '/reports': 'finance',
   '/master-data': 'admin',
 };
 const ICON_OF: Record<string, string> = {
@@ -103,6 +103,7 @@ const THEME_ICONS: [Theme, string, string][] = [
   ['nocturne', 'moon', 'Nocturne'],
   ['ivory', 'ivory', 'Ivory'],
 ];
+const COLLAPSE_KEY = 'glm_sidebar';
 
 function AppLayoutInner() {
   const branding = useBranding();
@@ -113,83 +114,109 @@ function AppLayoutInner() {
   const { theme, choose } = useTheme();
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false); // the drawer, on a narrow screen
+  const [menu, setMenu] = useState(false); // the person's menu
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const tabs = user ? buildTabs(user, !!features?.commission) : [];
 
-  // The group on show follows the page; clicking another group's icon shows that group until the page changes.
-  const current = (tabs.find(([path]) => pathname === path || pathname.startsWith(path + '/')) ?? tabs[0])?.[0];
-  const pageGroup = current ? groupOf(current) : 'sales';
-  const [picked, setPicked] = useState<Group | null>(null);
   useEffect(() => {
-    setPicked(null);
     setOpen(false);
+    setMenu(false);
   }, [pathname]);
-  const shown = picked ?? pageGroup;
-  const present = GROUPS.filter(([g]) => tabs.some(([path]) => groupOf(path) === g));
-  const list = tabs.filter(([path]) => groupOf(path) === shown);
-  const canCapture = !!user && (user.role === 'Admin' || user.permissions.canCaptureOrders);
-  const initials = (branding?.companyName || branding?.systemName || 'GLM').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  // the person's menu closes when anything else is clicked
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.side-profile')) setMenu(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menu]);
+
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1');
+      } catch {
+        /* the choice just isn't remembered */
+      }
+      return !c;
+    });
+  }
+
+  const initials = (user?.name ?? '').split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
 
   return (
     <div className="shell">
       <div className={'scrim no-print' + (open ? ' open' : '')} onClick={() => setOpen(false)} />
-      <aside className={'sidebar no-print' + (open ? ' open' : '')} aria-label="Main menu">
-        <div className="rail">
-          <div className="rail-mark" title={branding?.systemName ?? ''}>{initials}</div>
-          {present.map(([g, label]) => (
-            <button key={g} type="button" className={'rail-btn' + (g === shown ? ' active' : '')} title={label} aria-label={label} aria-pressed={g === shown} onClick={() => setPicked(g)}>
-              <Icon name={g} size={20} />
-            </button>
-          ))}
-          <div className="rail-spacer" />
-          <button type="button" className="rail-btn" title="Change PIN" aria-label="Change PIN" onClick={() => setChangingPin(true)}>
-            <Icon name="key" size={20} />
+      <aside className={'sidebar no-print' + (open ? ' open' : '') + (collapsed ? ' collapsed' : '')} aria-label="Main menu">
+        {/* 1 — who is signed in */}
+        <div className="side-profile">
+          <button type="button" className="profile-btn" aria-expanded={menu} title={user ? `${user.name} · ${user.role}` : ''} onClick={() => setMenu((m) => !m)}>
+            <span className="avatar">{initials}</span>
+            <span className="profile-text">
+              <b>{user?.name}</b>
+              <span>{user?.role}</span>
+            </span>
+            <span className="chev" style={{ display: 'grid', color: 'var(--color-text-muted)' }}>
+              <Icon name="chevron" size={16} />
+            </span>
           </button>
-          <div className="rail-themes" role="group" aria-label="Colour scheme">
-            {THEME_ICONS.map(([id, icon, label]) => (
-              <button key={id} type="button" className={'rail-btn' + (theme === id ? ' active' : '')} title={label + ' colours'} aria-label={label + ' colours'} aria-pressed={theme === id} onClick={() => choose(id)}>
-                <Icon name={icon} size={16} />
+          {menu && (
+            <div className="profile-menu" role="menu">
+              <button type="button" role="menuitem" className="side-util" onClick={() => { setMenu(false); setChangingPin(true); }}>
+                <span className="icon-wrap"><Icon name="key" size={18} /></span>
+                <span>Change PIN</span>
               </button>
-            ))}
-          </div>
-          <button type="button" className="rail-btn" title="Log out" aria-label="Log out" onClick={logout}>
-            <Icon name="logout" size={20} />
-          </button>
-        </div>
-
-        <div className="panel">
-          {branding?.logoDataUrl && <img className="panel-logo" src={branding.logoDataUrl} alt={branding.companyName} />}
-          <div className="panel-org" title={branding?.systemName ?? ''}>
-            <span>{branding?.systemName || branding?.companyName || ''}</span>
-            {canCapture && (
-              <Link className="plus" to="/orders/new/walkin" title="New order" aria-label="New order" onClick={subNav.goHome}>
-                <Icon name="plus" size={14} />
-              </Link>
-            )}
-          </div>
-          <div className="panel-title">{GROUPS.find(([g]) => g === shown)?.[1]}</div>
-          {/* While someone is working in one of a module's sub-items, a click on the module here returns that module to its starting view. */}
-          <nav className="panel-nav">
-            {list.map(([path, label]) => (
-              <NavLink key={path} to={path} onClick={subNav.goHome} className={({ isActive }) => 'panel-link' + (isActive ? ' active' : '')}>
-                <Icon name={ICON_OF[path] ?? 'orders'} size={18} />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-          {user && (
-            <div className="panel-user">
-              <div className="who">
-                <b>{user.name}</b>
-                <span className="text-muted">{user.role}</span>
-              </div>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setChangingPin(true)}>
-                <Icon name="key" size={14} /> Change PIN
-              </button>
-              <button type="button" className="btn btn-secondary btn-sm" onClick={logout}>
-                <Icon name="logout" size={14} /> Log out
+              <button type="button" role="menuitem" className="side-util" onClick={logout}>
+                <span className="icon-wrap"><Icon name="logout" size={18} /></span>
+                <span>Log out</span>
               </button>
             </div>
           )}
+        </div>
+
+        {/* 2, 3, 4 — the modules, grouped by area; the page being worked on is filled in */}
+        <nav className="side-scroll">
+          {GROUPS.map(([g, label]) => {
+            const items = tabs.filter(([path]) => groupOf(path) === g);
+            if (!items.length) return null;
+            return (
+              <div key={g} className="side-group">
+                <div className="side-group-title">{label}</div>
+                {items.map(([path, text]) => (
+                  <NavLink key={path} to={path} title={text} onClick={subNav.goHome} className={({ isActive }) => 'side-link' + (isActive ? ' active' : '')}>
+                    <span className="icon-wrap"><Icon name={ICON_OF[path] ?? 'orders'} size={19} /></span>
+                    <span>{text}</span>
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* 5 — utilities */}
+        <div className="side-foot">
+          <div className="side-themes" role="group" aria-label="Colour scheme">
+            <div className="label">
+              <span className="icon-wrap"><Icon name="palette" size={19} /></span>
+              <span>Colours</span>
+            </div>
+            {THEME_ICONS.map(([id, icon, label]) => (
+              <button key={id} type="button" className={'theme-dot' + (theme === id ? ' active' : '')} title={label + ' colours'} aria-label={label + ' colours'} aria-pressed={theme === id} onClick={() => choose(id)}>
+                <Icon name={icon} size={14} />
+              </button>
+            ))}
+          </div>
+          <button type="button" className="side-util side-collapse" title={collapsed ? 'Expand the menu' : 'Collapse the menu'} onClick={toggleCollapsed}>
+            <span className="icon-wrap"><Icon name={collapsed ? 'expand' : 'collapse'} size={19} /></span>
+            <span>Collapse</span>
+          </button>
         </div>
       </aside>
 

@@ -12,6 +12,7 @@ import EmbroiderySettingsPanel from '../components/EmbroiderySettingsPanel';
 import MailSettingsPanel from '../components/MailSettingsPanel';
 import WhatsappSettingsPanel from '../components/WhatsappSettingsPanel';
 import ResetPinDialog from '../components/ResetPinDialog';
+import StaffEditDialog from '../components/StaffEditDialog';
 import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
@@ -115,6 +116,8 @@ export default function MasterData() {
   const [roleDrafts, setRoleDrafts] = useState<Record<number, string>>({});
   const [staffNotice, setStaffNotice] = useState<string | null>(null);
   // The person whose PIN is being reset (the dialog sets a new one: typed here, or made, and optionally emailed).
+  // The person being edited (name, email, role, order taking) in one window.
+  const [editing, setEditing] = useState<{ id: number } | null>(null);
   const [resetting, setResetting] = useState<{ id: number; name: string; email: string | null; role: string } | null>(null);
   const [staffBusy, setStaffBusy] = useState(false);
 
@@ -778,6 +781,13 @@ export default function MasterData() {
                         Email login PIN
                       </button>{' '}
                       {d && (
+                        <>
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={staffBusy} title="Change their name, email, role or order taking" onClick={() => setEditing({ id: s.id })}>
+                            Edit
+                          </button>{' '}
+                        </>
+                      )}
+                      {d && (
                         <button type="button" className="btn btn-ghost btn-sm" disabled={staffBusy} onClick={() => setStaffActive(s.id, s.name, !d.active)}>
                           {d.active ? 'Switch off' : 'Switch on'}
                         </button>
@@ -796,6 +806,26 @@ export default function MasterData() {
               })}
             </tbody>
           </table>
+          {editing &&
+            (() => {
+              const d = staffDetails.find((x) => x.id === editing.id);
+              if (!d) return null;
+              return (
+                <StaffEditDialog
+                  person={d}
+                  isSelf={d.id === user?.id}
+                  roleNames={roleNames}
+                  permissionsOf={(r) => roles.find((x) => x.name === r)?.permissions}
+                  onClose={() => setEditing(null)}
+                  onDone={(message) => {
+                    setStaffNotice(message);
+                    setEditing(null);
+                    catalog.reload();
+                    loadStaffDetails();
+                  }}
+                />
+              );
+            })()}
           {resetting && (
             <ResetPinDialog
               person={resetting}

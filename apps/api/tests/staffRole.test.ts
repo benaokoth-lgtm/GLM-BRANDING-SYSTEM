@@ -75,4 +75,74 @@ describe('changing a user\'s role', () => {
     assert.match(self.body.error, /own role/);
 
   });
+
+  describe('the Edit button on a staff row: name, email, role and order taking saved together', () => {
+    const edit = (who: string, id: number, body: Record<string, unknown>) => call(tokens[who]!, 'PUT', `/master-data/staff/${id}`, body);
+    const base = (over: Record<string, unknown> = {}) => ({ firstName: 'Edit', middleName: '', lastName: 'Person', email: '', ...over });
+    let sales = 0;
+    let target = 0;
+
+    before(async () => {
+      await prisma.role.create({ data: { name: 'RoleSalesPerson', canBeAssignedOrders: true } });
+      const t = await prisma.user.create({ data: { name: 'Target Person (edit test)', firstName: 'Target', lastName: 'Person (edit test)', role: 'RoleCounter', pinHash: 'x', pinLength: 4 } });
+      target = t.id;
+      const sp = await prisma.user.create({ data: { name: 'Sales Person (edit test)', firstName: 'Sales', lastName: 'Person (edit test)', role: 'RoleSalesPerson', pinHash: 'x', pinLength: 4 } });
+      sales = sp.id;
+      tokens.sales = signToken({ id: sp.id, name: sp.name, role: 'RoleSalesPerson' });
+    });
+
+    it('is for the Admin only', async () => {
+      assert.equal((await edit('sales', target, base())).status, 403);
+    });
+
+    it('changes the name, email and role in one save, and signs them out because their role changed', async () => {
+      const r = await edit('boss', target, base({ firstName: 'Tara', middleName: 'W', lastName: 'Getter (edit test)', email: 'Target.Edit@Test.Local', role: 'RoleCashier' }));
+      assert.equal(r.status, 200, JSON.stringify(r.body));
+      assert.equal(r.body.roleChanged, true);
+      const row = await prisma.user.findUniqueOrThrow({ where: { id: target } });
+      assert.deepEqual([row.name, row.firstName, row.middleName, row.lastName, row.email, row.role], ['Tara W Getter (edit test)', 'Tara', 'W', 'Getter (edit test)', 'target.edit@test.local', 'RoleCashier']);
+      assert.equal(row.tokenVersion, 1);
+    });
+
+    it('saves nothing when one field is wrong (a name or an email someone else has)', async () => {
+      const before = await prisma.user.findUniqueOrThrow({ where: { id: target } });
+      const dup = await edit('boss', target, base({ firstName: 'amina', lastName: '(role test)', role: 'RoleCounter' }));
+      assert.equal(dup.status, 400);
+      assert.match(dup.body.error, /already a staff member called/);
+      await prisma.user.update({ where: { id: ids.brian! }, data: { email: 'taken.edit@test.local' } });
+      const mail = await edit('boss', target, base({ firstName: 'Tara', lastName: 'Getter (edit test)', email: 'taken.edit@test.local', role: 'RoleCounter' }));
+      assert.equal(mail.status, 400);
+      assert.match(mail.body.error, /email/);
+      const after = await prisma.user.findUniqueOrThrow({ where: { id: target } });
+      assert.deepEqual([after.name, after.email, after.role, after.tokenVersion], [before.name, before.email, before.role, before.tokenVersion]);
+      assert.equal((await edit('boss', target, { firstName: '', lastName: 'X', email: '' })).status, 400); // a first name is needed
+    });
+
+    it('lets someone edit their own name and email but not their own role', async () => {
+      assert.equal((await edit('boss', ids.boss!, base({ firstName: 'Boss', lastName: 'One (role test)', email: 'boss.one@test.local', role: 'Admin' }))).status, 200);
+      const own = await edit('boss', ids.boss!, base({ firstName: 'Boss', lastName: 'One (role test)', role: 'RoleCounter' }));
+      assert.equal(own.status, 400);
+      assert.match(own.body.error, /own role/);
+      assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: ids.boss! } })).role, 'Admin');
+    });
+
+    it('a role that needs a longer PIN makes them choose one', async () => {
+      const r = await edit('boss', target, base({ firstName: 'Tara', middleName: 'W', lastName: 'Getter (edit test)', role: 'Admin' }));
+      assert.equal(r.status, 200);
+      assert.equal(r.body.mustChangePin, true);
+      assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: target } })).mustChangePin, true);
+    });
+
+    it('switches order taking for a sales person only, and signs them out', async () => {
+      const off = await edit('boss', sales, base({ firstName: 'Sales', lastName: 'Person (edit test)', orderTaking: false }));
+      assert.equal(off.status, 200, JSON.stringify(off.body));
+      const row = await prisma.user.findUniqueOrThrow({ where: { id: sales } });
+      assert.equal(row.orderTakingOff, true);
+      assert.equal(row.tokenVersion, 1);
+      // not a sales person: nothing to switch
+      const none = await edit('boss', ids.brian!, base({ firstName: 'Brian', lastName: '(role test)', role: 'RoleCounter', orderTaking: false }));
+      assert.equal(none.status, 400);
+      assert.match(none.body.error, /not a sales person/);
+    });
+  });
 });

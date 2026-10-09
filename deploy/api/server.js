@@ -71282,6 +71282,50 @@ masterDataRouter.put("/staff/:id/name", requireRole("Admin"), async (req, res) =
   const user = await prisma.user.update({ where: { id }, data: { name: name2, firstName: parsed.data.firstName, middleName: parsed.data.middleName, lastName: parsed.data.lastName } });
   res.json({ id: user.id, name: user.name, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName });
 });
+var editSchema = external_exports.object({
+  ...nameParts,
+  email: external_exports.string().trim().toLowerCase().email().or(external_exports.literal("")),
+  role: external_exports.string().trim().min(1).optional(),
+  orderTaking: external_exports.boolean().optional()
+});
+masterDataRouter.put("/staff/:id", requireRole("Admin"), async (req, res) => {
+  const parsed = editSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Check the details and try again" });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: "Staff member not found" });
+  const d = parsed.data;
+  const name2 = composeName(d);
+  if (await nameTaken(name2, id)) return res.status(400).json({ error: `There is already a staff member called ${name2}` });
+  const email = d.email || null;
+  if (email) {
+    const other = await prisma.user.findUnique({ where: { email } });
+    if (other && other.id !== id) return res.status(400).json({ error: "That email address is already used by someone else" });
+  }
+  const role = d.role ?? user.role;
+  const roleChanged = role !== user.role;
+  if (roleChanged) {
+    if (id === req.user.id) return res.status(400).json({ error: "You cannot change your own role. Ask another Admin to do it." });
+    if (role !== "Admin" && !await prisma.role.findUnique({ where: { name: role } })) return res.status(400).json({ error: "Unknown role \u2014 add it under Roles & Access first" });
+  }
+  const needsLongerPin = roleChanged && user.pinLength < await requiredLengthFor(role);
+  let orderTakingOff = user.orderTakingOff;
+  let orderTakingChanged = false;
+  if (d.orderTaking !== void 0 && d.orderTaking === user.orderTakingOff) {
+    const frontOffice = await canCaptureForOthers(role);
+    const sales = (await permissionsForRole(role)).canBeAssignedOrders;
+    if (frontOffice) return res.status(400).json({ error: `${name2} is front office and always takes orders` });
+    if (!sales) return res.status(400).json({ error: `${name2} is not a sales person (the role is not marked "can be assigned orders" under Roles & Access)` });
+    orderTakingOff = !d.orderTaking;
+    orderTakingChanged = true;
+  }
+  const signOut = roleChanged || orderTakingChanged && id !== req.user.id;
+  const updated = await prisma.user.update({
+    where: { id },
+    data: { name: name2, firstName: d.firstName, middleName: d.middleName, lastName: d.lastName, email, role, orderTakingOff, ...needsLongerPin ? { mustChangePin: true } : {}, ...signOut ? { tokenVersion: { increment: 1 } } : {} }
+  });
+  res.json({ id: updated.id, name: updated.name, role: updated.role, roleChanged, previousRole: roleChanged ? user.role : void 0, orderTakingChanged, mustChangePin: needsLongerPin || updated.mustChangePin });
+});
 masterDataRouter.put("/staff/:id/email", requireRole("Admin"), async (req, res) => {
   const parsed = external_exports.object({ email: external_exports.string().trim().toLowerCase().email().or(external_exports.literal("")) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Enter a valid email address (or leave it blank to remove it)" });

@@ -218,6 +218,60 @@ masterDataRouter.put('/staff/:id/name', requireRole('Admin'), async (req, res) =
   res.json({ id: user.id, name: user.name, firstName: user.firstName, middleName: user.middleName, lastName: user.lastName });
 });
 
+// Edit a staff member in one go (the Edit button on their row): name, email, role and — for a sales person — whether they take orders. Everything is checked first and
+// then saved together, so a mistake in one field changes nothing. The same rules as the separate changes apply: names and emails are unique, you cannot change your own
+// role, a role that needs a longer PIN makes them choose one, and a change of role or of order taking signs them out so their screens follow at once.
+const editSchema = z.object({
+  ...nameParts,
+  email: z.string().trim().toLowerCase().email().or(z.literal('')),
+  role: z.string().trim().min(1).optional(),
+  orderTaking: z.boolean().optional(),
+});
+
+masterDataRouter.put('/staff/:id', requireRole('Admin'), async (req, res) => {
+  const parsed = editSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Check the details and try again' });
+  const id = Number(req.params.id);
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) return res.status(404).json({ error: 'Staff member not found' });
+  const d = parsed.data;
+
+  const name = composeName(d);
+  if (await nameTaken(name, id)) return res.status(400).json({ error: `There is already a staff member called ${name}` });
+  const email = d.email || null;
+  if (email) {
+    const other = await prisma.user.findUnique({ where: { email } });
+    if (other && other.id !== id) return res.status(400).json({ error: 'That email address is already used by someone else' });
+  }
+
+  const role = d.role ?? user.role;
+  const roleChanged = role !== user.role;
+  if (roleChanged) {
+    if (id === req.user!.id) return res.status(400).json({ error: 'You cannot change your own role. Ask another Admin to do it.' });
+    if (role !== 'Admin' && !(await prisma.role.findUnique({ where: { name: role } }))) return res.status(400).json({ error: 'Unknown role — add it under Roles & Access first' });
+  }
+  const needsLongerPin = roleChanged && user.pinLength < (await requiredLengthFor(role));
+
+  // Order taking only means something for a sales person (the new role, if it is being changed): the front office always takes orders, other roles have none to switch.
+  let orderTakingOff = user.orderTakingOff;
+  let orderTakingChanged = false;
+  if (d.orderTaking !== undefined && d.orderTaking === user.orderTakingOff) {
+    const frontOffice = await canCaptureForOthers(role);
+    const sales = (await permissionsForRole(role)).canBeAssignedOrders;
+    if (frontOffice) return res.status(400).json({ error: `${name} is front office and always takes orders` });
+    if (!sales) return res.status(400).json({ error: `${name} is not a sales person (the role is not marked "can be assigned orders" under Roles & Access)` });
+    orderTakingOff = !d.orderTaking;
+    orderTakingChanged = true;
+  }
+
+  const signOut = roleChanged || (orderTakingChanged && id !== req.user!.id);
+  const updated = await prisma.user.update({
+    where: { id },
+    data: { name, firstName: d.firstName, middleName: d.middleName, lastName: d.lastName, email, role, orderTakingOff, ...(needsLongerPin ? { mustChangePin: true } : {}), ...(signOut ? { tokenVersion: { increment: 1 } } : {}) },
+  });
+  res.json({ id: updated.id, name: updated.name, role: updated.role, roleChanged, previousRole: roleChanged ? user.role : undefined, orderTakingChanged, mustChangePin: needsLongerPin || updated.mustChangePin });
+});
+
 masterDataRouter.put('/staff/:id/email', requireRole('Admin'), async (req, res) => {
   const parsed = z.object({ email: z.string().trim().toLowerCase().email().or(z.literal('')) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Enter a valid email address (or leave it blank to remove it)' });

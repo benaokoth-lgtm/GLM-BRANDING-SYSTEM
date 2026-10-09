@@ -59,6 +59,9 @@ export default function Production() {
   const manager = queue.data?.manager ?? false;
   const { user } = useAuth();
   const seeCosts = user?.role === 'Admin' || !!user?.permissions.canSeeCosts;
+  // Contracted-out work is tracked on its own tab: waiting to go to a supplier, and out with one. (Costs and profit on that tab are for people who can see costs.)
+  const outCount = (queue.data?.waiting ?? []).filter((o) => o.outsourced).length + (queue.data?.tasks ?? []).filter((t) => t.assigneeId == null).length;
+  const showOutsourced = manager || seeCosts;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -77,25 +80,28 @@ export default function Production() {
           <i className="corner br"></i>
           {manager ? 'Staff productivity' : 'My output'}
         </button>
-        {seeCosts && (
+        {showOutsourced && (
           <button type="button" className={'btn blueprint ' + (tab === 'outsourced' ? 'btn-primary' : 'btn-secondary')} onClick={() => setTab('outsourced')}>
             <i className="corner tl"></i>
             <i className="corner tr"></i>
             <i className="corner bl"></i>
             <i className="corner br"></i>
-            Outsourced jobs
+            Outsourced jobs{outCount > 0 ? ` (${outCount})` : ''}
           </button>
         )}
       </div>
-      {tab === 'jobs' && <Jobs queue={queue} />}
+      {tab === 'jobs' && <Jobs queue={queue} outCount={outCount} onOutsourced={() => setTab('outsourced')} />}
       {tab === 'productivity' && <Productivity range={range} />}
-      {tab === 'outsourced' && seeCosts && <OutsourcedJobs />}
+      {tab === 'outsourced' && showOutsourced && <OutsourcedTab queue={queue} seeCosts={seeCosts} />}
     </div>
   );
 }
 
-function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
+function Jobs({ queue, outCount, onOutsourced }: { queue: ReturnType<typeof useLoad<Queue>>; outCount: number; onOutsourced: () => void }) {
   const { data, error, loading, reload } = queue;
+  // Contracted-out orders (waiting for a supplier) and jobs out with a supplier are tracked under Outsourced jobs, not here.
+  const waitingRows = (data?.waiting ?? []).filter((o) => !o.outsourced);
+  const taskRows = (data?.tasks ?? []).filter((t) => t.assigneeId != null);
   const [pick, setPick] = useState<Record<number, string>>({}); // orderId → staff chosen
   const [supplierPick, setSupplierPick] = useState<Record<number, string>>({}); // orderId → supplier typed
   const [supplierOpen, setSupplierOpen] = useState<number | null>(null);
@@ -106,8 +112,8 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
   // Each list is searched by order number and/or date and shown 10 to a page (before the grouping by business head, whose counts stay whole).
-  const waitingS = useListSearch(data?.waiting ?? [], (o) => o.orderNo, (o) => o.createdDate, { id: 'prod-wait', dateLabel: 'Order date' });
-  const tasksS = useListSearch(data?.tasks ?? [], (t) => t.orderNo, (t) => localDay(t.startedAt ?? t.assignedAt), { id: 'prod-task', dateLabel: 'Date (since)' });
+  const waitingS = useListSearch(waitingRows, (o) => o.orderNo, (o) => o.createdDate, { id: 'prod-wait', dateLabel: 'Order date' });
+  const tasksS = useListSearch(taskRows, (t) => t.orderNo, (t) => localDay(t.startedAt ?? t.assignedAt), { id: 'prod-task', dateLabel: 'Date (since)' });
   const headCount = <T extends { businessHead: string }>(rows: T[], head: string) => rows.filter((r) => r.businessHead === head).length;
 
   async function run(fn: () => Promise<string>) {
@@ -158,10 +164,19 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
     <>
       <Notice error={err || error} message={msg} />
 
+      {data.manager && outCount > 0 && (
+        <p className="note" style={{ margin: 0 }}>
+          <b>{outCount}</b> outsourced {outCount === 1 ? 'job is' : 'jobs are'} waiting for a supplier or out with one — they are tracked under{' '}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onOutsourced}>
+            Outsourced jobs →
+          </button>
+        </p>
+      )}
+
       {data.manager && (
         <Card
-          title={`Waiting to be assigned (${data.waiting.length})`}
-          hint="Every captured order lands here. Give it to a staff member to start production."
+          title={`Waiting to be assigned (${waitingRows.length})`}
+          hint="Every captured order lands here, except contracted-out work (see Outsourced jobs). Give it to a staff member to start production."
         >
           {waitingS.searchBar}
           <table className="table">
@@ -177,14 +192,14 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
               </tr>
             </thead>
             <tbody>
-              {data.waiting.length === 0 && (
+              {waitingRows.length === 0 && (
                 <tr>
                   <td colSpan={7} className="text-muted">
                     Nothing waiting — every order has someone on it.
                   </td>
                 </tr>
               )}
-              {data.waiting.length > 0 && waitingS.found.length === 0 && (
+              {waitingRows.length > 0 && waitingS.found.length === 0 && (
                 <tr>
                   <td colSpan={7} className="text-muted">
                     No order matches that search.
@@ -238,7 +253,7 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
       )}
 
       <Card
-        title={data.manager ? `In production (${data.tasks.length})` : `My jobs (${data.tasks.length})`}
+        title={data.manager ? `In production (${taskRows.length})` : `My jobs (${taskRows.length})`}
         hint={
           data.manager
             ? 'Jobs in hand. A worker starts a job, then finishes it with the units produced — that sends it to Quality Control (it is not completed).'
@@ -267,14 +282,14 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
             </tr>
           </thead>
           <tbody>
-            {data.tasks.length === 0 && (
+            {taskRows.length === 0 && (
               <tr>
                 <td colSpan={data.manager ? 8 : 7} className="text-muted">
                   {data.manager ? 'No jobs in hand.' : 'Nothing assigned to you right now.'}
                 </td>
               </tr>
             )}
-            {data.tasks.length > 0 && tasksS.found.length === 0 && (
+            {taskRows.length > 0 && tasksS.found.length === 0 && (
               <tr>
                 <td colSpan={data.manager ? 8 : 7} className="text-muted">
                   No job matches that search.
@@ -352,6 +367,231 @@ function Jobs({ queue }: { queue: ReturnType<typeof useLoad<Queue>> }) {
         </table>
         {tasksS.pager}
       </Card>
+    </>
+  );
+}
+
+// Outsourced jobs: the contracted-out work from start to finish. Orders that are waiting for a supplier (or that are to be made in-house after all), jobs out with a
+// supplier and received back into quality control; and — for people who can see costs — what the customer pays, what each supplier is owed and the profit.
+function OutsourcedTab({ queue, seeCosts }: { queue: ReturnType<typeof useLoad<Queue>>; seeCosts: boolean }) {
+  const { data, error, loading, reload } = queue;
+  const [supplierPick, setSupplierPick] = useState<Record<number, string>>({});
+  const [pick, setPick] = useState<Record<number, string>>({});
+  const [finishing, setFinishing] = useState<number | null>(null);
+  const [units, setUnits] = useState('');
+  const [note, setNote] = useState('');
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const waiting = (data?.waiting ?? []).filter((o) => o.outsourced);
+  const atSupplier = (data?.tasks ?? []).filter((t) => t.assigneeId == null);
+  const waitingS = useListSearch(waiting, (o) => o.orderNo, (o) => o.createdDate, { id: 'out-wait', dateLabel: 'Order date' });
+  const atS = useListSearch(atSupplier, (t) => t.orderNo, (t) => localDay(t.startedAt ?? t.assignedAt), { id: 'out-at', dateLabel: 'Date sent' });
+
+  async function run(fn: () => Promise<string>) {
+    setBusy(true);
+    setErr('');
+    setMsg('');
+    try {
+      setMsg(await fn());
+      reload();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!data) return <Loading loading={loading} error={error} />;
+
+  return (
+    <>
+      <Notice error={err || error} message={msg} />
+      {data.manager && (
+        <Card title={`Waiting to go to a supplier (${waiting.length})`} hint="Contracted-out orders. Say which supplier, and send it; it then shows below as out with that supplier. (Or make it in-house instead.)">
+          {waitingS.searchBar}
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>Items</th>
+                <th style={numStyle}>Units</th>
+                <th>Payment</th>
+                <th style={{ width: 360 }}>Supplier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {waiting.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-muted">
+                    Nothing is waiting to go to a supplier.
+                  </td>
+                </tr>
+              )}
+              {waiting.length > 0 && waitingS.found.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="text-muted">
+                    No order matches that search.
+                  </td>
+                </tr>
+              )}
+              {waitingS.pageRows.map((o) => (
+                <tr key={o.orderId}>
+                  <td>
+                    <strong>{o.orderNo}</strong> {o.channel === 'dtf' && <Tag>DTF</Tag>}
+                  </td>
+                  <td className="text-muted">{fmtDate(o.createdDate)}</td>
+                  <td>{o.customer}</td>
+                  <td className="text-muted" style={{ fontSize: 12 }}>
+                    {itemsText(o.items)}
+                  </td>
+                  <td style={numStyle}>{o.units}</td>
+                  <td>{o.balanceDue > 0 ? <Tag tone="bad">owes {fmtKsh(o.balanceDue)}</Tag> : <Tag tone="good">paid</Tag>}</td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
+                      <input className="input" style={{ minWidth: 150 }} placeholder="Supplier" value={supplierPick[o.orderId] ?? o.supplierHint} onChange={(e) => setSupplierPick((x) => ({ ...x, [o.orderId]: e.target.value }))} />
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={busy || !(supplierPick[o.orderId] ?? o.supplierHint).trim()}
+                        onClick={() =>
+                          run(async () => {
+                            const supplierName = (supplierPick[o.orderId] ?? o.supplierHint).trim();
+                            await api.post(`/production/orders/${o.orderId}/send-to-supplier`, { supplierName });
+                            return `${o.orderNo} sent to ${supplierName}`;
+                          })
+                        }
+                      >
+                        Send to supplier
+                      </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                      <select className="input" style={{ width: 'auto', minWidth: 170 }} value={pick[o.orderId] ?? ''} onChange={(e) => setPick((x) => ({ ...x, [o.orderId]: e.target.value }))}>
+                        <option value="">Make in-house instead…</option>
+                        {data.staff.map((st) => (
+                          <option key={st.id} value={st.id}>
+                            {st.name} ({st.active} in hand)
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy || !pick[o.orderId]}
+                        onClick={() =>
+                          run(async () => {
+                            await api.post(`/production/orders/${o.orderId}/assign`, { assigneeId: Number(pick[o.orderId]) });
+                            setPick((x) => ({ ...x, [o.orderId]: '' }));
+                            return `${o.orderNo} will be made in-house`;
+                          })
+                        }
+                      >
+                        Assign in-house
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {waitingS.pager}
+        </Card>
+      )}
+
+      <Card
+        title={`Out with suppliers (${atSupplier.length})`}
+        hint="Jobs at a supplier. When they come back, receive them with the units that arrived — they then go to Quality Control (never straight to completed)."
+        actions={
+          data.awaitingQuality > 0 ? (
+            <Link to="/quality" className="btn btn-secondary btn-sm">
+              {data.awaitingQuality} awaiting quality control →
+            </Link>
+          ) : undefined
+        }
+      >
+        {atS.searchBar}
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Sent</th>
+              <th>Customer</th>
+              <th>Items</th>
+              <th style={numStyle}>Units</th>
+              <th>Supplier</th>
+              <th style={{ width: 340 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {atSupplier.length === 0 && (
+              <tr>
+                <td colSpan={7} className="text-muted">
+                  Nothing is out with a supplier.
+                </td>
+              </tr>
+            )}
+            {atSupplier.length > 0 && atS.found.length === 0 && (
+              <tr>
+                <td colSpan={7} className="text-muted">
+                  No job matches that search.
+                </td>
+              </tr>
+            )}
+            {atS.pageRows.map((t) => (
+              <tr key={t.id}>
+                <td>
+                  <strong>{t.orderNo}</strong> {t.isRework && <Tag tone="bad">rework</Tag>}
+                </td>
+                <td className="text-muted">{when(t.startedAt ?? t.assignedAt)}</td>
+                <td>{t.customer}</td>
+                <td className="text-muted" style={{ fontSize: 12 }}>
+                  {itemsText(t.items)}
+                  {t.note && <div className="note">{t.note}</div>}
+                </td>
+                <td style={numStyle}>{t.unitsPlanned}</td>
+                <td>
+                  <Tag>{t.supplierName ?? 'Supplier'}</Tag>
+                </td>
+                <td>
+                  {finishing === t.id ? (
+                    <div style={{ display: 'flex', gap: 'var(--space-1)', flexWrap: 'wrap' }}>
+                      <input className="input" style={{ width: 100 }} inputMode="decimal" value={units} onChange={(e) => setUnits(e.target.value)} placeholder="Units received" autoFocus />
+                      <input className="input" style={{ width: 130 }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" />
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        disabled={busy || units === ''}
+                        onClick={() =>
+                          run(async () => {
+                            await api.post(`/production/tasks/${t.id}/finish`, { unitsCompleted: Number(units), note });
+                            setFinishing(null);
+                            return `${t.orderNo} received from ${t.supplierName} — sent to quality control`;
+                          })
+                        }
+                      >
+                        Receive → QC
+                      </button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFinishing(null)}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => { setFinishing(t.id); setUnits(String(t.unitsPlanned)); setNote(''); }}>
+                      Receive from supplier
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {atS.pager}
+      </Card>
+
+      {seeCosts && <OutsourcedJobs />}
+      {!seeCosts && <p className="note">What the customer pays, what each supplier is owed and the profit on these jobs are shown to people who can see costs.</p>}
     </>
   );
 }

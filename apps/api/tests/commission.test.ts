@@ -237,6 +237,43 @@ describe('staff sales commission', () => {
     assert.equal(await prisma.expense.count({ where: { category: 'Sales Commission', note: { contains: 'amina' } } }), 1);
   });
 
+  it('the month-by-month report shows each person: sales, commission, what was paid and what is still owed', async () => {
+    const year = period.slice(0, 4);
+    assert.equal((await call('amina', 'GET', `/commission/monthly?year=${year}`)).status, 403); // managers only
+    assert.equal((await call('boss', 'GET', '/commission/monthly?year=20x')).status, 400);
+    const r = (await call('boss', 'GET', `/commission/monthly?year=${year}`)).body;
+    assert.equal(r.year, year);
+    assert.ok(r.months.every((m: any) => m.period <= period), 'no month in the future');
+    const month = r.months.find((m: any) => m.period === period);
+    assert.ok(month, 'this month is in the report');
+    assert.equal(month.open, true); // not over yet: figures are what has been earned so far
+
+    // Amina's commission was approved and paid above: it shows as paid, nothing owed
+    const stmt = (await call('boss', 'GET', `/commission/statement?period=${period}`)).body.statements.find((x: any) => x.staffId === ids.amina);
+    const amina = month.rows.find((x: any) => x.staffId === ids.amina);
+    assert.equal(amina.sales, round2(stmt.target.achieved));
+    assert.equal(amina.commission, stmt.total);
+    assert.equal(amina.paid, stmt.total);
+    assert.equal(amina.outstanding, 0);
+    assert.equal(amina.status, 'Paid');
+    assert.equal(amina.provisional, false);
+
+    // anyone approved but not yet paid is still owed their commission
+    for (const row of month.rows.filter((x: any) => x.status === 'Approved')) {
+      assert.equal(row.paid, 0);
+      assert.equal(row.outstanding, row.commission);
+    }
+    // the month's totals add up the rows, and each person's year adds up their months
+    assert.equal(month.totals.commission, round2(month.rows.reduce((a: number, x: any) => a + x.commission, 0)));
+    assert.equal(month.totals.paid, round2(month.rows.reduce((a: number, x: any) => a + x.paid, 0)));
+    const year1 = r.staff.find((x: any) => x.staffId === ids.amina);
+    assert.equal(year1.commission, round2(r.months.reduce((a: number, m: any) => a + (m.rows.find((x: any) => x.staffId === ids.amina)?.commission ?? 0), 0)));
+    assert.equal(r.totals.commission, round2(r.months.reduce((a: number, m: any) => a + m.totals.commission, 0)));
+    // a year with nothing in it is empty, not an error
+    const none = (await call('boss', 'GET', '/commission/monthly?year=2099')).body;
+    assert.deepEqual([none.months.length, none.staff.length, none.totals.commission], [0, 0, 0]);
+  });
+
   it('a client name and phone are optional on a walk-in sale — required only to credit the client to someone', async () => {
     // General order with no name and no phone: recorded as a walk-in, a house order
     const bare = await call('amina', 'POST', '/orders/walkin', { staffId: ids.amina, paymentTiming: 'onCompletion', lineItems: [{ itemType: 'service', serviceId: banner, qty: 1, unitPrice: 1000 }] });

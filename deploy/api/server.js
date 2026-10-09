@@ -78057,6 +78057,58 @@ commissionRouter.get("/statement", manage, async (req, res) => {
     totals: { commission: round2(statements.reduce((a2, s) => a2 + s.total, 0)) }
   });
 });
+commissionRouter.get("/monthly", manage, async (req, res) => {
+  const year = String(req.query.year ?? todayStr().slice(0, 4));
+  if (!/^[0-9]{4}$/.test(year)) return res.status(400).json({ error: "Year must be YYYY" });
+  const current = thisMonth();
+  const periods = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, "0")}`).filter((p) => p <= current);
+  const [built, payouts] = await Promise.all([
+    Promise.all(periods.map((p) => buildStatements(p))),
+    prisma.commissionPayout.findMany({ where: { period: { startsWith: `${year}-` } }, include: { staff: { select: { name: true } } } })
+  ]);
+  const months = periods.map((period, i) => {
+    const statements = built[i].statements;
+    const pays = payouts.filter((x) => x.period === period);
+    const ids = /* @__PURE__ */ new Set([...statements.map((x) => x.staffId), ...pays.map((x) => x.staffId)]);
+    const rows = [...ids].map((staffId) => {
+      const st = statements.find((x) => x.staffId === staffId);
+      const pay = pays.find((x) => x.staffId === staffId);
+      const commission = round2(pay ? pay.amount : st?.total ?? 0);
+      const paid = pay?.status === "Paid" ? round2(pay.amount) : 0;
+      return {
+        staffId,
+        staffName: st?.staffName ?? pay?.staff.name ?? `Staff #${staffId}`,
+        sales: round2(st?.target.achieved ?? 0),
+        target: { applies: !!st?.target.applies, required: round2(st?.target.required ?? 0), met: !!st?.target.met, salaryKnown: st?.target.salaryKnown ?? true },
+        commission,
+        provisional: !pay,
+        paid,
+        outstanding: round2(Math.max(0, commission - paid)),
+        status: pay ? pay.status === "Paid" ? "Paid" : "Approved" : commission > 0 ? "Not approved" : "\u2014",
+        paidOn: pay?.paidOn ?? null
+      };
+    });
+    rows.sort((a2, b) => b.commission - a2.commission || b.sales - a2.sales || a2.staffName.localeCompare(b.staffName));
+    const sum = (f) => round2(rows.reduce((a2, r) => a2 + f(r), 0));
+    return { period, open: period >= current, rows, totals: { sales: sum((r) => r.sales), commission: sum((r) => r.commission), paid: sum((r) => r.paid), outstanding: sum((r) => r.outstanding) } };
+  });
+  const byStaff = /* @__PURE__ */ new Map();
+  for (const m of months) {
+    for (const r of m.rows) {
+      const y = byStaff.get(r.staffId) ?? { staffId: r.staffId, staffName: r.staffName, sales: 0, commission: 0, paid: 0, outstanding: 0, monthsTargetMet: 0, monthsWithTarget: 0 };
+      y.sales = round2(y.sales + r.sales);
+      y.commission = round2(y.commission + r.commission);
+      y.paid = round2(y.paid + r.paid);
+      y.outstanding = round2(y.outstanding + r.outstanding);
+      if (r.target.applies) y.monthsWithTarget++;
+      if (r.target.applies && r.target.met) y.monthsTargetMet++;
+      byStaff.set(r.staffId, y);
+    }
+  }
+  const staff = [...byStaff.values()].sort((a2, b) => b.commission - a2.commission || b.sales - a2.sales || a2.staffName.localeCompare(b.staffName));
+  const total = (f) => round2(months.reduce((a2, m) => a2 + f(m.totals), 0));
+  res.json({ year, months, staff, totals: { sales: total((t) => t.sales), commission: total((t) => t.commission), paid: total((t) => t.paid), outstanding: total((t) => t.outstanding) } });
+});
 var lookupSchema = external_exports.object({
   corporateClientId: external_exports.coerce.number().int().optional(),
   phone: external_exports.string().optional(),

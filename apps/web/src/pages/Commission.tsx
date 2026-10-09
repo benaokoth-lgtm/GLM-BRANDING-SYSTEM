@@ -107,7 +107,32 @@ interface ClientRow {
   note: string;
 }
 
-type Tab = 'mine' | 'team' | 'clients' | 'freelance' | 'rates';
+interface MonthlyRow {
+  staffId: number;
+  staffName: string;
+  sales: number;
+  target: { applies: boolean; required: number; met: boolean; salaryKnown: boolean };
+  commission: number;
+  provisional: boolean;
+  paid: number;
+  outstanding: number;
+  status: 'Paid' | 'Approved' | 'Not approved' | '—';
+  paidOn: string | null;
+}
+interface MonthlyTotals {
+  sales: number;
+  commission: number;
+  paid: number;
+  outstanding: number;
+}
+interface MonthlyData {
+  year: string;
+  months: { period: string; open: boolean; rows: MonthlyRow[]; totals: MonthlyTotals }[];
+  staff: { staffId: number; staffName: string; sales: number; commission: number; paid: number; outstanding: number; monthsTargetMet: number; monthsWithTarget: number }[];
+  totals: MonthlyTotals;
+}
+
+type Tab = 'mine' | 'team' | 'monthly' | 'clients' | 'freelance' | 'rates';
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const pct = (n: number) => `${fmtNum(n, 2).replace(/\.?0+$/, '')}%`;
 
@@ -416,8 +441,9 @@ function TeamTab({ period }: { period: string }) {
             <thead>
               <tr>
                 <th>Staff</th>
-                <th style={numStyle}>Net sales received</th>
-                <th>Sales target</th>
+                <th style={numStyle} title="Sales made so far this month that count towards the target: money received, net of VAT">Current sales</th>
+                <th style={numStyle} title="What they must sell in the month before commission starts: the target multiplier × their gross monthly salary">Sales target</th>
+                <th>Target status</th>
                 <th style={numStyle}>Sourced sales</th>
                 <th style={numStyle}>Film</th>
                 <th style={numStyle}>Artwork</th>
@@ -435,15 +461,14 @@ function TeamTab({ period }: { period: string }) {
                       </button>
                     </td>
                     <td style={numStyle}>{fmtKsh(s.target.achieved)}</td>
+                    <td style={numStyle}>{!s.target.applies ? <span className="text-muted">—</span> : !s.target.salaryKnown ? <Tag tone="bad">salary needed</Tag> : fmtKsh(s.target.required)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      {!s.target.applies ? (
+                      {!s.target.applies || !s.target.salaryKnown ? (
                         <span className="text-muted">—</span>
-                      ) : !s.target.salaryKnown ? (
-                        <Tag tone="bad">salary needed</Tag>
                       ) : s.target.met ? (
-                        <Tag tone="good">met · {fmtKsh(s.target.required)}</Tag>
+                        <Tag tone="good">target met</Tag>
                       ) : (
-                        <span title={s.heldCommission > 0 ? `${fmtKsh(s.heldCommission)} earned on film but not paid: the target was not met` : undefined}>{fmtKsh(s.target.remaining)} to go of {fmtKsh(s.target.required)}</span>
+                        <span title={s.heldCommission > 0 ? `${fmtKsh(s.heldCommission)} earned but not paid: the target was not met` : undefined}>{fmtKsh(s.target.remaining)} to go</span>
                       )}
                     </td>
                     <td style={numStyle}>{fmtKsh(s.general.commission)}</td>
@@ -473,7 +498,7 @@ function TeamTab({ period }: { period: string }) {
                   </tr>
                   {open === s.staffId && (
                     <tr>
-                      <td colSpan={8} style={{ background: 'var(--color-surface-2, transparent)' }}>
+                      <td colSpan={9} style={{ background: 'var(--color-surface-2, transparent)' }}>
                         <div style={{ padding: 'var(--space-3)' }}>
                           <StatementDetail s={s} config={data.config} />
                         </div>
@@ -486,8 +511,154 @@ function TeamTab({ period }: { period: string }) {
           </table>
 </div>
         )}
-        <p className="note">Paying records an expense under Sales Commission, so it reaches the books (and the petty-cash float when paid from petty cash).</p>
+        <p className="note">
+          <b>Current sales</b> are the sales made so far this month that count towards the target (money received, net of VAT); the <b>Sales target</b> is what they must reach before commission starts. Paying records an expense under Sales Commission, so it reaches the books (and the petty-cash float when paid from petty cash).
+        </p>
       </Card>
+    </>
+  );
+}
+
+// ── Month by month ──────────────────────────────────────────────────────────
+const monthName = (period: string) => new Date(`${period}-01T00:00:00`).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' });
+
+function MonthlyTab() {
+  const thisYear = Number(thisMonth().slice(0, 4));
+  const [year, setYear] = useState(String(thisYear));
+  const { data, error, loading } = useLoad<MonthlyData>(`/commission/monthly?year=${year}`);
+  const years = [thisYear, thisYear - 1, thisYear - 2, thisYear - 3].map(String);
+
+  return (
+    <>
+      <div className="no-print" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Year</label>
+          <select className="input" value={year} onChange={(e) => setYear(e.target.value)}>
+            {years.map((y) => (
+              <option key={y}>{y}</option>
+            ))}
+          </select>
+        </div>
+        <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
+          Print / PDF
+        </button>
+        <span className="note" style={{ margin: 0 }}>
+          Sales are money received in the month on what counts towards the target, net of VAT. Commission is what was earned; a month that has been approved shows the amount approved. A month not yet approved, and the current month, show what has been earned so far.
+        </span>
+      </div>
+      {!data ? (
+        <Loading loading={loading} error={error} />
+      ) : data.months.length === 0 ? (
+        <p className="note">Nothing to show for {year}.</p>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+            <Stat label={`Sales ${year}`} value={fmtKsh(data.totals.sales)} />
+            <Stat label="Commission earned" value={fmtKsh(data.totals.commission)} />
+            <Stat label="Commission paid" value={fmtKsh(data.totals.paid)} />
+            <Stat label="Still to pay" value={fmtKsh(data.totals.outstanding)} />
+          </div>
+
+          <Card title={`Each person over ${year}`} hint="Months added up. 'Target met' counts the months they reached their sales target, of the months a target applied.">
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Staff</th>
+                    <th style={numStyle}>Sales</th>
+                    <th style={numStyle}>Commission earned</th>
+                    <th style={numStyle}>Paid</th>
+                    <th style={numStyle}>Still to pay</th>
+                    <th>Target met</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.staff.map((p) => (
+                    <tr key={p.staffId}>
+                      <td>{p.staffName}</td>
+                      <td style={numStyle}>{fmtKsh(p.sales)}</td>
+                      <td style={numStyle}>{fmtKsh(p.commission)}</td>
+                      <td style={numStyle}>{fmtKsh(p.paid)}</td>
+                      <td style={numStyle}>{fmtKsh(p.outstanding)}</td>
+                      <td>{p.monthsWithTarget > 0 ? `${p.monthsTargetMet} of ${p.monthsWithTarget} months` : <span className="text-muted">—</span>}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td><b>Total</b></td>
+                    <td style={numStyle}><b>{fmtKsh(data.totals.sales)}</b></td>
+                    <td style={numStyle}><b>{fmtKsh(data.totals.commission)}</b></td>
+                    <td style={numStyle}><b>{fmtKsh(data.totals.paid)}</b></td>
+                    <td style={numStyle}><b>{fmtKsh(data.totals.outstanding)}</b></td>
+                    <td />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {[...data.months].reverse().map((m) => (
+            <Card key={m.period} title={monthName(m.period)} hint={m.open ? 'This month is not over: figures are what has been earned so far.' : undefined}>
+              {m.rows.length === 0 ? (
+                <p className="note" style={{ margin: 0 }}>No sales credited to staff this month.</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Staff</th>
+                        <th style={numStyle}>Sales</th>
+                        <th style={numStyle}>Sales target</th>
+                        <th style={numStyle}>Commission</th>
+                        <th style={numStyle}>Paid</th>
+                        <th style={numStyle}>Still to pay</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {m.rows.map((r) => (
+                        <tr key={r.staffId}>
+                          <td>{r.staffName}</td>
+                          <td style={numStyle}>{fmtKsh(r.sales)}</td>
+                          <td style={numStyle}>
+                            {!r.target.applies ? (
+                              <span className="text-muted">—</span>
+                            ) : !r.target.salaryKnown ? (
+                              <Tag tone="bad">salary needed</Tag>
+                            ) : (
+                              <>
+                                {fmtKsh(r.target.required)} {r.target.met ? <Tag tone="good">met</Tag> : <Tag>not met</Tag>}
+                              </>
+                            )}
+                          </td>
+                          <td style={numStyle}>
+                            {fmtKsh(r.commission)}
+                            {r.provisional && r.commission > 0 ? <span className="text-muted" title="Not approved yet: what has been earned so far"> *</span> : null}
+                          </td>
+                          <td style={numStyle}>{fmtKsh(r.paid)}</td>
+                          <td style={numStyle}>{fmtKsh(r.outstanding)}</td>
+                          <td style={{ whiteSpace: 'nowrap' }}>
+                            {r.status === 'Paid' ? <Tag tone="good">paid{r.paidOn ? ` ${fmtDate(r.paidOn)}` : ''}</Tag> : r.status === 'Approved' ? <Tag tone="bad">approved, to pay</Tag> : r.status === 'Not approved' ? <Tag>not approved</Tag> : <span className="text-muted">—</span>}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td><b>Month total</b></td>
+                        <td style={numStyle}><b>{fmtKsh(m.totals.sales)}</b></td>
+                        <td />
+                        <td style={numStyle}><b>{fmtKsh(m.totals.commission)}</b></td>
+                        <td style={numStyle}><b>{fmtKsh(m.totals.paid)}</b></td>
+                        <td style={numStyle}><b>{fmtKsh(m.totals.outstanding)}</b></td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+          ))}
+          <p className="note">* Not approved yet: what has been earned so far. Approve the month under Team &amp; payouts. Freelance sales persons are paid weekly from their own accounts (Freelancers), so they are not in this report.</p>
+        </>
+      )}
     </>
   );
 }
@@ -809,7 +980,7 @@ export default function Commission() {
   const [period, setPeriod] = useState(thisMonth());
 
   const tabs: [Tab, string][] = [['mine', 'My commission']];
-  if (manager) tabs.push(['team', 'Team & payouts'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
+  if (manager) tabs.push(['team', 'Team & payouts'], ['monthly', 'Monthly report'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
 
   return (
     <>
@@ -835,6 +1006,7 @@ export default function Commission() {
       </div>
       {tab === 'mine' && <MyTab period={period} />}
       {tab === 'team' && manager && <TeamTab period={period} />}
+      {tab === 'monthly' && manager && <MonthlyTab />}
       {tab === 'clients' && manager && <ClientsTab />}
       {tab === 'freelance' && manager && <FreelancePanel />}
       {tab === 'rates' && manager && <RatesTab />}

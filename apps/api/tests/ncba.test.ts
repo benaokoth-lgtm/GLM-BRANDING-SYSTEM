@@ -251,4 +251,26 @@ describe('NCBA Paybill 880100', () => {
     assert.equal(await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: 'RKH7NOSIG03' } }), null);
     await call('admin', 'PUT', '/ncba/settings', { checkHash: true });
   });
+
+  it("makes the STK push username and secret key for NCBA's request form, apart from the notification set, and keeps the secret out of later reads", async () => {
+    assert.equal((await call('plain', 'POST', '/ncba/credentials/generate-stk')).status, 403);
+    const before = (await call('admin', 'GET', '/ncba/settings')).body;
+    const g = await call('admin', 'POST', '/ncba/credentials/generate-stk');
+    assert.equal(g.status, 200, JSON.stringify(g.body));
+    assert.match(g.body.apiUsername, /^glmstk[0-9a-f]{8}$/);
+    assert.ok(g.body.apiSecret.length >= 32);
+    // two separate sets: the notification set is untouched and different
+    const after = (await call('admin', 'GET', '/ncba/settings')).body;
+    assert.equal(after.apiUsername, g.body.apiUsername);
+    assert.equal(after.hasApiSecret, true);
+    assert.equal(after.pushUser, before.pushUser);
+    assert.notEqual(after.apiUsername, after.pushUser);
+    assert.ok(!JSON.stringify(after).includes(g.body.apiSecret), 'the secret key was sent back');
+    // the system now signs in to NCBA with the made credentials
+    const row = await prisma.ncbaSettings.findUniqueOrThrow({ where: { id: 1 } });
+    assert.equal(row.apiUsername, g.body.apiUsername);
+    assert.equal(row.apiSecret, g.body.apiSecret); // (sealed with DATA_KEY on a real server; plain without one, as here)
+    // put the credentials the stand-in NCBA accepts back
+    await call('admin', 'PUT', '/ncba/settings', { apiUsername: API_USER, apiSecret: API_SECRET });
+  });
 });

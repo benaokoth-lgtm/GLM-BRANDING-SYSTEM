@@ -67,7 +67,8 @@ export default function NcbaSettingsPanel() {
   const { data, error, loading, reload } = useLoad<Settings>('/ncba/settings');
   const log = useLoad<Received[]>('/ncba/notifications');
   const [form, setForm] = useState({ baseUrl: '', apiUsername: '', apiSecret: '', payBillNo: '880100', accountNo: '', publicBaseUrl: '' });
-  const [fresh, setFresh] = useState<{ pushUser: string; pushPassword: string; pushSecret: string } | null>(null);
+  // The credentials just made, shown once: the notification set (NCBA uses it to call us) and the STK push set (we use it to call NCBA).
+  const [fresh, setFresh] = useState<{ push?: { pushUser: string; pushPassword: string; pushSecret: string }; stk?: { apiUsername: string; apiSecret: string } } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -107,13 +108,18 @@ export default function NcbaSettingsPanel() {
       await api.put('/ncba/settings', { ...form, enabled });
       return enabled ? 'NCBA is switched on: STK prompts now go through NCBA' : 'NCBA is switched off: STK prompts go through M-Pesa (Safaricom) again';
     });
-  const generate = () =>
+  // NCBA's request form asks for two separate sets: the API Push Notification credentials (NCBA signs in to us with them) and the STK Push credentials (we sign in to
+  // NCBA with them). Both are made here, together or one at a time, shown once, and kept sealed.
+  const makeCredentials = (which: 'both' | 'push' | 'stk') =>
     run(async () => {
-      if (data?.hasPushCredentials && !window.confirm('Make new notification credentials? The ones NCBA has now stop working until NCBA is given the new ones.')) return 'Nothing changed';
-      await api.put('/ncba/settings', form);
-      const r = await api.post<{ pushUser: string; pushPassword: string; pushSecret: string }>('/ncba/credentials/generate', {});
-      setFresh({ pushUser: r.pushUser, pushPassword: r.pushPassword, pushSecret: r.pushSecret });
-      return 'Made — copy them into the letter to NCBA now; they are not shown again';
+      const replacing = (which !== 'stk' && data?.hasPushCredentials) || (which !== 'push' && data?.hasApiSecret);
+      if (replacing && !window.confirm('Make new credentials? Any set NCBA has already been given stops working until NCBA is given the new one.')) return 'Nothing changed';
+      await api.put('/ncba/settings', { ...form, apiUsername: undefined, apiSecret: undefined });
+      const out: NonNullable<typeof fresh> = {};
+      if (which !== 'stk') out.push = await api.post<{ pushUser: string; pushPassword: string; pushSecret: string }>('/ncba/credentials/generate', {});
+      if (which !== 'push') out.stk = await api.post<{ apiUsername: string; apiSecret: string }>('/ncba/credentials/generate-stk', {});
+      setFresh((f) => ({ ...f, ...out }));
+      return 'Made — copy them onto the NCBA form now; they are not shown again';
     });
   const setCheckHash = (checkHash: boolean) =>
     run(async () => {
@@ -137,18 +143,73 @@ export default function NcbaSettingsPanel() {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)', gap: 'var(--space-4)', alignItems: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
         <Card
+          title="NCBA request form — the details to give NCBA"
+          hint="NCBA's form (Request – STK Push and/or API Push Notification) asks for two separate sets: the API Push Notification set, which NCBA uses to call this system, and the STK Push set, which this system uses to call NCBA. Both are made here; copy them onto the form."
+        >
+          <p className="note" style={{ marginTop: 0 }}>
+            On the form tick <b>STK Push Service</b> and <b>API Push Notification Service</b>, choose <b>JSON</b> as the request format, and give your NCBA account number and your Till / Paybill / Buy Goods numbers (Paybill 880100 is NCBA's own shared Paybill; write your NCBA Till number if you have one).
+          </p>
+          {data.notifyUrl ? <CopyLine label="Form → API Push Notification Configuration → Endpoint / URL" value={data.notifyUrl} /> : <p className="note">Save this system's public web address below first — the Endpoint / URL is built from it.</p>}
+          <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-3)' }}>
+            <button type="button" className="btn btn-primary" disabled={busy || !data.notifyUrl} onClick={() => makeCredentials('both')}>
+              {data.hasPushCredentials && data.hasApiSecret ? 'Make both sets again' : 'Make both sets of credentials'}
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !data.notifyUrl} onClick={() => makeCredentials('push')}>
+              Notification set only
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => makeCredentials('stk')}>
+              STK push set only
+            </button>
+          </div>
+          {fresh && (
+            <div className="blueprint" style={{ padding: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
+              <i className="corner tl"></i>
+              <i className="corner tr"></i>
+              <i className="corner bl"></i>
+              <i className="corner br"></i>
+              <strong>Copy these onto the NCBA form now — they will not be shown again.</strong>
+              {fresh.push && (
+                <>
+                  <div className="card-kicker" style={{ marginTop: 'var(--space-3)' }}>API Push Notification Configuration → Integration Details</div>
+                  <CopyLine label="Username" value={fresh.push.pushUser} />
+                  <CopyLine label="Password" value={fresh.push.pushPassword} />
+                  <CopyLine label="Secret Key" value={fresh.push.pushSecret} />
+                </>
+              )}
+              {fresh.stk && (
+                <>
+                  <div className="card-kicker" style={{ marginTop: 'var(--space-3)' }}>STK Push Credentials</div>
+                  <CopyLine label="Username" value={fresh.stk.apiUsername} />
+                  <CopyLine label="Secret Key" value={fresh.stk.apiSecret} />
+                </>
+              )}
+              <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 'var(--space-3)' }} onClick={() => setFresh(null)}>
+                I have copied them
+              </button>
+            </div>
+          )}
+          {!fresh && (
+            <p className="note" style={{ marginBottom: 0 }}>
+              {data.hasPushCredentials ? `Notification set made (username ${data.pushUser}). ` : 'Notification set not made yet. '}
+              {data.hasApiSecret ? `STK push set made (username ${data.apiUsername}). ` : 'STK push set not made yet. '}
+              Passwords and secret keys are kept sealed and cannot be shown again — make new ones if they are lost, and give NCBA the new ones.
+            </p>
+          )}
+        </Card>
+
+        <Card
           title="NCBA — Paybill 880100"
-          hint="Send the payment prompt (STK push) to the customer's phone through NCBA, and receive NCBA's notification of every payment made to the Paybill. While this is on, the 'Send M-Pesa STK push' buttons use NCBA instead of Safaricom."
+          hint="Send the payment prompt (STK push) to the customer's phone through NCBA. While this is on, the 'Send M-Pesa STK push' buttons use NCBA instead of Safaricom. The STK push credentials are made above; once NCBA has activated them, press Save & test connection."
           actions={<Tag tone={data.enabled ? 'good' : 'neutral'}>{data.enabled ? 'On' : 'Off'}</Tag>}
         >
           <Notice error={err} message={msg} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
             <div className="field">
-              <label>API username (from your signed letter to NCBA)</label>
+              <label>STK push username (the one on your request form to NCBA)</label>
               <input className="input" value={form.apiUsername} onChange={(e) => setForm((f) => ({ ...f, apiUsername: e.target.value }))} autoComplete="off" />
             </div>
             <div className="field">
-              <label>Secret key (API password)</label>
+              <label>STK push secret key</label>
               <input className="input" type="password" value={form.apiSecret} placeholder={needSecretHint} onChange={(e) => setForm((f) => ({ ...f, apiSecret: e.target.value }))} autoComplete="new-password" />
             </div>
             <div className="field">
@@ -180,7 +241,7 @@ export default function NcbaSettingsPanel() {
                 Switch NCBA off
               </button>
             ) : (
-              <button type="button" className="btn btn-secondary" disabled={busy || !complete || !data.hasPushCredentials} title={!data.hasPushCredentials ? 'Make the notification credentials and give them to NCBA first' : undefined} onClick={() => toggle(true)}>
+              <button type="button" className="btn btn-secondary" disabled={busy || !complete || !data.hasPushCredentials} title={!data.hasPushCredentials ? 'Make the credentials and give them to NCBA first' : undefined} onClick={() => toggle(true)}>
                 Switch NCBA on
               </button>
             )}
@@ -199,31 +260,8 @@ export default function NcbaSettingsPanel() {
               {data.activity.rejectedLastWeek > 0 && ` ${data.activity.rejectedLastWeek} refused in the last week (wrong username or password).`}
             </p>
           ) : (
-            <p className="note" style={{ marginTop: 0 }}>To be ready: save this system's public web address above, and make the notification credentials below.</p>
+            <p className="note" style={{ marginTop: 0 }}>To be ready: save this system's public web address, and make the credentials in the request-form card above.</p>
           )}
-          {data.notifyUrl ? <CopyLine label="Give NCBA this address (the notification endpoint)" value={data.notifyUrl} /> : <p className="note">Save this system's public web address above first — the notification address is built from it.</p>}
-          <div style={{ marginTop: 'var(--space-3)' }}>
-            <button type="button" className="btn btn-secondary" disabled={busy} onClick={generate}>
-              {data.hasPushCredentials ? 'Make new notification credentials' : 'Make the notification credentials'}
-            </button>
-            <p className="note">NCBA needs a username, password and secret key to put on each notification. They are made here (so nobody has to invent them) and go into the signed instruction letter. They are shown once and kept sealed.</p>
-          </div>
-          {fresh && (
-            <div className="blueprint" style={{ padding: 'var(--space-3)', marginTop: 'var(--space-2)' }}>
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              <strong>Copy these into the letter to NCBA now — they will not be shown again.</strong>
-              <CopyLine label="Username" value={fresh.pushUser} />
-              <CopyLine label="Password" value={fresh.pushPassword} />
-              <CopyLine label="Secret key" value={fresh.pushSecret} />
-              <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 'var(--space-2)' }} onClick={() => setFresh(null)}>
-                I have copied them
-              </button>
-            </div>
-          )}
-          {data.hasPushCredentials && !fresh && <p className="note">Notification credentials are set (username {data.pushUser}).</p>}
           <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 'var(--space-3)', fontSize: 14 }}>
             <input type="checkbox" checked={data.checkHash} disabled={busy} onChange={(e) => setCheckHash(e.target.checked)} style={{ marginTop: 3 }} />
             <span>

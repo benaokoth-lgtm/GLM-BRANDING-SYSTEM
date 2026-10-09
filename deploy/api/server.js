@@ -75868,6 +75868,13 @@ ncbaRouter.post("/credentials/generate", requireAuth, requireRole("Admin"), asyn
   });
   res.json({ ...creds, settings: await full() });
 });
+ncbaRouter.post("/credentials/generate-stk", requireAuth, requireRole("Admin"), async (_req, res) => {
+  const creds = { apiUsername: `glmstk${newNcbaSecret(4)}`, apiSecret: newNcbaSecret(16) };
+  await getNcbaRow();
+  await prisma.ncbaSettings.update({ where: { id: 1 }, data: { apiUsername: creds.apiUsername, apiSecret: seal(creds.apiSecret) } });
+  resetNcbaToken();
+  res.json({ ...creds, settings: await full() });
+});
 ncbaRouter.get("/notifications", requireAuth, requireRole("Admin"), async (_req, res) => {
   const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: "desc" }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });
   res.json(rows);

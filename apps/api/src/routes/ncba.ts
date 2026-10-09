@@ -141,6 +141,17 @@ ncbaRouter.post('/credentials/generate', requireAuth, requireRole('Admin'), asyn
   res.json({ ...creds, settings: await full() });
 });
 
+// Makes the STK push credentials: the username and secret key this system signs in to NCBA's STK push API with. NCBA's guide has the merchant choose them and
+// give them to the bank in the signed request letter (the "STK Push Credentials" on the form), so they are made here, shown once, and kept sealed. They only work
+// once NCBA has activated the STK push service with them.
+ncbaRouter.post('/credentials/generate-stk', requireAuth, requireRole('Admin'), async (_req, res) => {
+  const creds = { apiUsername: `glmstk${newNcbaSecret(4)}`, apiSecret: newNcbaSecret(16) };
+  await getNcbaRow();
+  await prisma.ncbaSettings.update({ where: { id: 1 }, data: { apiUsername: creds.apiUsername, apiSecret: seal(creds.apiSecret) } });
+  resetNcbaToken();
+  res.json({ ...creds, settings: await full() });
+});
+
 // ── What NCBA has told us ───────────────────────────────────────────────────
 ncbaRouter.get('/notifications', requireAuth, requireRole('Admin'), async (_req, res) => {
   const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: 'desc' }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });

@@ -113,7 +113,6 @@ export default function MasterData() {
   // Someone's name being corrected: the three parts as typed so far.
   const [nameDrafts, setNameDrafts] = useState<Record<number, { first: string; middle: string; last: string }>>({});
   // Someone's role being changed: the role chosen so far.
-  const [roleDrafts, setRoleDrafts] = useState<Record<number, string>>({});
   const [staffNotice, setStaffNotice] = useState<string | null>(null);
   // The person whose PIN is being reset (the dialog sets a new one: typed here, or made, and optionally emailed).
   // The person being edited (name, email, role, order taking) in one window.
@@ -211,47 +210,6 @@ export default function MasterData() {
       loadStaffDetails();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save the email address');
-    }
-  }
-
-  async function saveStaffRole(id: number, name: string, from: string) {
-    const role = roleDrafts[id];
-    if (!role || role === from) {
-      setRoleDrafts((x) => {
-        const { [id]: _drop, ...rest } = x;
-        return rest;
-      });
-      return;
-    }
-    if (!window.confirm(`Change ${name}'s role from ${from} to ${role}? They are signed out straight away and sign in again with what ${role} allows.`)) return;
-    setError(null);
-    setStaffNotice(null);
-    try {
-      const r = await api.put<{ mustChangePin: boolean }>(`/master-data/staff/${id}/role`, { role });
-      setRoleDrafts((x) => {
-        const { [id]: _drop, ...rest } = x;
-        return rest;
-      });
-      setStaffNotice(`${name} is now ${role}. They sign in again to use it${r.mustChangePin ? ', and choose a longer PIN when they do' : ''}.`);
-      catalog.reload();
-      loadStaffDetails();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not change the role');
-    }
-  }
-
-  // Order taking on or off for one sales person (they keep their other duties; the front office captures for them while it is off).
-  async function setOrderTaking(id: number, name: string, on: boolean) {
-    const question = on ? `Let ${name} take orders again? They sign in again to see the order screens.` : `Switch off order taking for ${name}? They are signed out, and sign in again without the order screens. The front office captures orders for them. Production, quality control and their other duties are unaffected.`;
-    if (!window.confirm(question)) return;
-    setError(null);
-    setStaffNotice(null);
-    try {
-      await api.put(`/master-data/staff/${id}/order-taking`, { on });
-      setStaffNotice(on ? `${name} can take orders again.` : `${name} no longer takes orders; the front office captures for them.`);
-      loadStaffDetails();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not change order taking');
     }
   }
 
@@ -702,32 +660,11 @@ export default function MasterData() {
                       )}
                     </td>
                     <td>
-                      {roleDrafts[s.id] !== undefined ? (
-                        <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', flexWrap: 'wrap' }}>
-                          <select className="input" style={{ width: 'auto' }} value={roleDrafts[s.id]} onChange={(e) => setRoleDrafts((x) => ({ ...x, [s.id]: e.target.value }))} autoFocus aria-label={`New role for ${s.name}`}>
-                            {roleNames.map((r) => (
-                              <option key={r} value={r}>
-                                {r}
-                              </option>
-                            ))}
-                          </select>
-                          <button type="button" className="btn btn-secondary btn-sm" onClick={() => saveStaffRole(s.id, s.name, s.role)}>
-                            Save
-                          </button>
-                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRoleDrafts((x) => { const { [s.id]: _d, ...rest } = x; return rest; })}>
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
+                      <span className="tag tag-neutral">{s.role}</span>
+                      {s.id === user?.id && (
                         <>
-                          <span className="tag tag-neutral">{s.role}</span>{' '}
-                          {s.id !== user?.id ? (
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRoleDrafts((x) => ({ ...x, [s.id]: s.role }))}>
-                              Change role
-                            </button>
-                          ) : (
-                            <span className="text-muted" style={{ fontSize: 11 }} title="Another Admin changes your role">(you)</span>
-                          )}
+                          {' '}
+                          <span className="text-muted" style={{ fontSize: 11 }} title="Another Admin changes your role">(you)</span>
                         </>
                       )}
                     </td>
@@ -740,11 +677,6 @@ export default function MasterData() {
                         return (
                           <>
                             <span className={'tag ' + (d?.orderTakingOff ? 'tag-outline' : 'tag-neutral')} style={d?.orderTakingOff ? { borderColor: 'var(--color-error)', color: 'var(--color-error)' } : undefined}>{d?.orderTakingOff ? 'Off' : 'On'}</span>{' '}
-                            {d && (
-                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOrderTaking(s.id, s.name, !!d.orderTakingOff)}>
-                                {d.orderTakingOff ? 'Switch on' : 'Switch off'}
-                              </button>
-                            )}
                           </>
                         );
                       })()}
@@ -894,7 +826,7 @@ export default function MasterData() {
             <input type="checkbox" checked={newStaffEmailPin || (!newStaffPin && !!newStaffEmail.trim())} disabled={!newStaffEmail.trim() || !newStaffPin} onChange={(e) => setNewStaffEmailPin(e.target.checked)} /> Email them their login now{!newStaffPin && newStaffEmail.trim() ? ' (a PIN is made for them)' : ' with this PIN'} — they will be asked to choose their own at first sign-in (set up the mail account under the Email tab first)
           </label>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Roles beyond "Admin" are defined under Roles &amp; Access — add or amend one there before assigning it here. <b>Change role</b> moves someone to another role: they are signed out and sign in again to use it. You cannot change your own role.
+            Roles beyond "Admin" are defined under Roles &amp; Access — add or amend one there before assigning it here. Use <b>Edit</b> on a person's row to move them to another role: they are signed out and sign in again to use it. You cannot change your own role.
           </p>
         </>
       )}

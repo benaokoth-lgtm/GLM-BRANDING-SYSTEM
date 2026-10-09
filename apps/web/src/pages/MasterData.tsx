@@ -7,6 +7,7 @@ import { api } from '../api/client';
 import { useCatalog } from '../hooks/useCatalog';
 import { useAuth } from '../state/AuthContext';
 import MpesaSettingsPanel from '../components/MpesaSettingsPanel';
+import NcbaSettingsPanel from '../components/NcbaSettingsPanel';
 import MailSettingsPanel from '../components/MailSettingsPanel';
 import WhatsappSettingsPanel from '../components/WhatsappSettingsPanel';
 import ResetPinDialog from '../components/ResetPinDialog';
@@ -14,7 +15,7 @@ import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'discount' | 'company' | 'mpesa' | 'email' | 'whatsapp' | 'backup' | 'security' | 'freelancers';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'discount' | 'company' | 'mpesa' | 'ncba' | 'email' | 'whatsapp' | 'backup' | 'security' | 'freelancers';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -26,6 +27,7 @@ const TABS: [MasterTab, string][] = [
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
   ['mpesa', 'M-Pesa'],
+  ['ncba', 'NCBA'],
   ['email', 'Email'],
   ['whatsapp', 'WhatsApp'],
   ['backup', 'Backup & Restore'],
@@ -1368,6 +1370,7 @@ export default function MasterData() {
       )}
 
       {tab === 'mpesa' && <MpesaSettingsPanel />}
+      {tab === 'ncba' && <NcbaSettingsPanel />}
 
       {tab === 'email' && <MailSettingsPanel />}
       {tab === 'whatsapp' && <WhatsappSettingsPanel />}

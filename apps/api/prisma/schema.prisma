@@ -714,6 +714,44 @@ model MpesaTransaction {
   @@index([orderId])
 }
 
+// NCBA Bank Lipa na M-Pesa on Paybill 880100 (Master Data → NCBA): STK prompts through NCBA's API, and NCBA's payment notifications. One row (id = 1).
+// Every secret is sealed with DATA_KEY and never sent back to the browser.
+model NcbaSettings {
+  id             Int      @id @default(1)
+  enabled        Boolean  @default(false) // on = the "Send M-Pesa STK push" button goes through NCBA instead of Safaricom's Daraja
+  baseUrl        String   @default("https://c2bapis.ncbagroup.com")
+  apiUsername    String   @default("") // the user name on the signed instruction letter
+  apiSecret      String   @default("") // the secret key (API password) from the same letter
+  payBillNo      String   @default("880100")
+  accountNo      String   @default("") // the account number / Till short code sent with every prompt
+  network        String   @default("Safaricom")
+  publicBaseUrl  String   @default("") // this server's own https address, which NCBA must be able to reach
+  callbackSecret String   @default("") // random path segment in the address NCBA posts notifications to
+  // What NCBA must send with each notification so we know it is NCBA: made here, given to NCBA in the letter, then used to check every call.
+  pushUser       String   @default("")
+  pushPassword   String   @default("")
+  pushSecret     String   @default("")
+  checkHash      Boolean  @default(true) // check the signature on each notification (a notification that fails is held for an Admin, not booked)
+  updatedAt      DateTime @updatedAt
+}
+
+// Every notification NCBA sent to us, and what was done with it. The notification's own username, password and signature are never kept.
+model NcbaNotification {
+  id         Int      @id @default(autoincrement())
+  receivedAt DateTime @default(now())
+  transId    String   @default("") // the M-Pesa receipt code
+  amount     Float    @default(0)
+  billRef    String   @default("")
+  phone      String   @default("")
+  payerName  String   @default("")
+  outcome    String // Matched (to a prompt we sent) | Received (a payment with no prompt) | Duplicate | Held | Rejected
+  note       String   @default("")
+  rawJson    String   @default("{}")
+
+  @@index([receivedAt])
+  @@index([transId])
+}
+
 // Mail account the system sends email from — login PINs to staff, the Admin's PIN-reset code, invoices. Edited by the Admin under
 // Master Data → Email (one row, id = 1). Laid out like the "mail client settings" cPanel shows for a mailbox. The password is never
 // sent back to the browser once saved. When nothing is saved, the SMTP_* environment variables are still honoured (see mailer.ts).

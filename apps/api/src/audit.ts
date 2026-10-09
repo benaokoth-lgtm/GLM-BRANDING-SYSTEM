@@ -62,7 +62,7 @@ export async function writeAudit(e: AuditEntry): Promise<void> {
 // Reads worth recording: who downloaded a backup, opened the staff identity details, payroll or a P9.
 const AUDITED_READS = [/^\/api\/backup\//, /^\/api\/finance\/(employees|p9|payroll)/, /^\/api\/master-data\/staff-details/, /^\/api\/pricelists\/.*\.xlsx$/];
 // Left to the code that handles them (they are not made by a signed-in person, or are recorded by name with more meaning).
-const SKIPPED = [/^\/api\/auth\/login/, /^\/api\/auth\/forgot-pin/, /^\/api\/auth\/reset-pin/, /^\/api\/mpesa\/(callback|c2b)/, /^\/api\/health/];
+const SKIPPED = [/^\/api\/auth\/login/, /^\/api\/auth\/forgot-pin/, /^\/api\/auth\/reset-pin/, /^\/api\/mpesa\/(callback|c2b)/, /^\/api\/ncba\/notify\//, /^\/api\/health/];
 
 /** Records every successful change, and every refused one (401/403), plus the sensitive reads above. */
 export function auditMiddleware(req: Request, res: Response, next: NextFunction) {

@@ -10,6 +10,7 @@ import { canAccessOrder, canTakePayment, orderInclude, recordOrderPayments, seri
 import { DarajaError, callbackUrls, darajaBaseUrl, darajaTimestamp, getAccessToken, getSettingsRow, isB2cReady, isReady, loadMpesaConfig, newCallbackSecret, parseCertificate, securityCredential } from '../mpesaConfig';
 import { handleB2cResult, handleB2cTimeout } from '../mpesaB2c';
 import type { MpesaConfig } from '../mpesaConfig';
+import { NcbaError, loadNcbaConfig, ncbaInitiate, ncbaQuery, ncbaReady } from '../ncba';
 
 export const mpesaRouter = Router();
 
@@ -181,10 +182,14 @@ const stkPushSchema = z.object({
 // Returns immediately with a checkoutRequestId; the result arrives asynchronously via the callback (needs a public https
 // address) or is confirmed by staff via /:checkoutRequestId/confirm-manually once they've seen the payment SMS.
 mpesaRouter.post('/stkpush', requireAuth, async (req, res) => {
+  // When NCBA is switched on (Master Data → NCBA) the prompt goes through NCBA's API on Paybill 880100; otherwise through Safaricom's Daraja as before.
+  const ncba = await loadNcbaConfig();
+  const viaNcba = ncba.enabled;
+  if (viaNcba && !ncbaReady(ncba)) return res.status(501).json({ error: "NCBA isn't fully set up — an Admin can finish it under Master Data → NCBA" });
   const cfg = await loadMpesaConfig();
-  if (!isReady(cfg)) return res.status(501).json({ error: NOT_SET_UP });
-  const urls = callbackUrls(cfg);
-  if (!urls) return res.status(501).json({ error: 'M-Pesa needs this installation’s public web address — an Admin can add it under Master Data → M-Pesa' });
+  if (!viaNcba && !isReady(cfg)) return res.status(501).json({ error: NOT_SET_UP });
+  const urls = viaNcba ? null : callbackUrls(cfg);
+  if (!viaNcba && !urls) return res.status(501).json({ error: 'M-Pesa needs this installation’s public web address — an Admin can add it under Master Data → M-Pesa' });
   const parsed = stkPushSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
 
@@ -206,6 +211,19 @@ mpesaRouter.post('/stkpush', requireAuth, async (req, res) => {
   if (!phone) return res.status(400).json({ error: 'Enter a valid Kenyan phone number (e.g. 07xx xxx xxx)' });
   if ((await prisma.mpesaTransaction.count({ where: { phone, kind: 'STK', createdAt: { gt: new Date(Date.now() - 10 * 60_000) } } })) >= 3) return res.status(429).json({ error: 'That number has already been sent several prompts in the last few minutes. Ask the customer to check their phone, or wait a little.' });
 
+  if (viaNcba) {
+    try {
+      const sent = await ncbaInitiate(ncba, { phone, amount: parsed.data.amount });
+      const id = `NCBA-${sent.transactionId}`;
+      await prisma.mpesaTransaction.create({
+        data: { checkoutRequestId: id, merchantRequestId: sent.referenceId, phone, amount: parsed.data.amount, accountReference: parsed.data.accountReference, orderId: parsed.data.orderId ?? null, createdByName: req.user!.name },
+      });
+      return res.status(201).json({ checkoutRequestId: id });
+    } catch (err) {
+      return res.status(err instanceof NcbaError ? 502 : 500).json({ error: err instanceof Error ? err.message : 'Failed to reach NCBA' });
+    }
+  }
+
   try {
     const token = await getAccessToken(cfg);
     const timestamp = darajaTimestamp();
@@ -224,7 +242,7 @@ mpesaRouter.post('/stkpush', requireAuth, async (req, res) => {
         PartyA: phone,
         PartyB: cfg.shortCode,
         PhoneNumber: phone,
-        CallBackURL: urls.stk,
+        CallBackURL: urls!.stk,
         AccountReference: parsed.data.accountReference,
         TransactionDesc: parsed.data.description || parsed.data.accountReference,
       }),
@@ -252,7 +270,7 @@ mpesaRouter.post('/stkpush', requireAuth, async (req, res) => {
   }
 });
 
-async function markSuccess(tx: { id: number; orderId: number | null; amount: number }, mpesaReceipt: string | null) {
+export async function markSuccess(tx: { id: number; orderId: number | null; amount: number }, mpesaReceipt: string | null) {
   await prisma.mpesaTransaction.update({
     where: { id: tx.id },
     data: { status: 'Success', resultCode: 0, mpesaReceipt },
@@ -315,11 +333,30 @@ mpesaRouter.post('/callback', async (req, res) => {
   res.json(ACK);
 });
 
+// A prompt sent through NCBA normally ends when NCBA's notification arrives (routes/ncba.ts). If it has not arrived after 20 seconds, NCBA is asked what became
+// of the prompt (at most every 10 seconds per prompt). SUCCESS books the payment now (the receipt code is added when the notification does arrive). FAILED is
+// believed only after two minutes — a prompt still waiting on the phone must not be written off. The answer for a prompt NCBA says failed is final.
+const lastAsked = new Map<number, number>();
+async function askNcba(tx: { id: number; checkoutRequestId: string; orderId: number | null; amount: number; createdAt: Date }) {
+  const age = Date.now() - tx.createdAt.getTime();
+  if (age < 20_000 || age > 2 * 60 * 60_000 || Date.now() - (lastAsked.get(tx.id) ?? 0) < 10_000) return;
+  lastAsked.set(tx.id, Date.now());
+  const cfg = await loadNcbaConfig();
+  if (!ncbaReady(cfg)) return;
+  const answer = await ncbaQuery(cfg, tx.checkoutRequestId.slice('NCBA-'.length));
+  if (answer.status === 'SUCCESS') await markSuccess(tx, null);
+  else if (answer.status === 'FAILED' && age > 120_000) {
+    await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { status: 'Failed', resultDesc: answer.description || 'NCBA says the payment did not go through' } });
+  }
+}
+
 // Polled by the frontend after initiating a push — reflects whatever the callback (or a manual confirm) has recorded so far.
 mpesaRouter.get('/status/:checkoutRequestId', requireAuth, async (req, res) => {
   const tx = await prisma.mpesaTransaction.findUnique({ where: { checkoutRequestId: req.params.checkoutRequestId } });
   if (!tx) return res.status(404).json({ error: 'STK push not found' });
-  res.json({ status: tx.status, amount: tx.amount, mpesaReceipt: tx.mpesaReceipt, resultDesc: tx.resultDesc });
+  if (tx.status === 'Pending' && tx.checkoutRequestId.startsWith('NCBA-')) await askNcba(tx).catch(() => undefined);
+  const now = await prisma.mpesaTransaction.findUnique({ where: { id: tx.id } });
+  res.json({ status: now?.status ?? tx.status, amount: tx.amount, mpesaReceipt: now?.mpesaReceipt ?? tx.mpesaReceipt, resultDesc: now?.resultDesc ?? tx.resultDesc });
 });
 
 // Fallback when no public callback can reach this server (e.g. local development): staff confirms payment really arrived through

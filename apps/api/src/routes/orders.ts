@@ -6,6 +6,7 @@ import { requireAuth, requirePermission } from '../middleware/auth';
 import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
 import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
+import type { CreditLine } from '../commission';
 import { resolveCapture } from '../frontOffice';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
@@ -104,7 +105,8 @@ export function serializeDetail(order: FullOrder, opts: { costs?: boolean } = {}
       id: li.id,
       itemType: li.itemType,
       serviceId: li.serviceId,
-      serviceName: li.service?.name ?? null,
+      // the name as orders and invoices show it: the service, then what this line is for (the embroidery order's design and stitches)
+      serviceName: li.service ? (li.description ? `${li.service.name} — ${li.description}` : li.service.name) : null,
       materialId: li.materialId,
       materialName: li.material?.name ?? null,
       qty: li.qty,
@@ -303,6 +305,8 @@ const lineItemSchema = z
     discountAmt: z.number().min(0).default(0),
     heatPressFee: z.number().nonnegative().nullable().optional(),
     artworkAreaSqm: z.number().positive().nullable().optional(),
+    // What the line is for, shown after its name (the embroidery order uses it for "Left chest logo · 6,000 stitches").
+    description: z.string().trim().max(160).optional(),
     // Outsourced services: the supplier's quote for this job and the mark-up behind the price. Honoured only for people who can see costs.
     supplierName: z.string().trim().max(120).nullable().optional(),
     supplierCost: z.number().min(0).nullable().optional(),
@@ -313,7 +317,7 @@ const lineItemSchema = z
     message: 'A material line needs a material, a service line needs a service',
   });
 
-const walkinSchema = z.object({
+export const walkinSchema = z.object({
   // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
   customerName: z.string().optional(),
   phone: z.string().optional(),
@@ -337,7 +341,21 @@ const walkinSchema = z.object({
 ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, res) => {
   const parsed = walkinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const form = parsed.data;
+  return captureWalkin(req, res, parsed.data);
+});
+
+export type WalkinForm = z.infer<typeof walkinSchema>;
+
+/** How the embroidery order (routes/embroidery.ts) differs from a General Order: its own numbering, the base price each line is measured against for commission, and a hook run inside the same transaction. */
+export interface WalkinExtras {
+  prefix?: string;
+  counter?: 'nextWalkinNo' | 'nextEmbroideryNo';
+  creditLines?: CreditLine[];
+  after?: (tx: Prisma.TransactionClient, order: { id: number; orderNo: string }) => Promise<void>;
+}
+
+/** Captures a walk-in order from a checked form: the sales person and cashier, payments, status, sourcing, numbering and the receipt-ready result. */
+export async function captureWalkin(req: import('express').Request, res: import('express').Response, form: WalkinForm, extra: WalkinExtras = {}) {
   // Who the order is credited to (the sales person) and who keys it (the cashier): decided here, from the person's role and whether their order taking is on.
   const cap = await resolveCapture(req.user!, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
@@ -364,10 +382,11 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
   if (claim) return res.status(400).json({ error: claim });
 
   const order = await prisma.$transaction(async (tx) => {
-    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
+    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: extra.creditLines ?? form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = 'W-' + settings.nextWalkinNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
+    const counter = extra.counter ?? 'nextWalkinNo';
+    const orderNo = (extra.prefix ?? 'W-') + settings[counter];
+    await tx.setting.update({ where: { id: 1 }, data: { [counter]: settings[counter] + 1 } });
 
     const created = await tx.order.create({
       data: {
@@ -390,6 +409,7 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
       },
       include: orderInclude,
     });
+    await extra.after?.(tx, created);
     if (paymentLines.length) {
       await recordOrderPayments(tx, { id: created.id, kind: 'walkin', status, corporateClient: null }, paymentLines, cap.capturedById); // the money is the cashier's
       return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
@@ -398,7 +418,7 @@ ordersRouter.post('/walkin', requirePermission('canCaptureOrders'), async (req, 
   });
 
   res.status(201).json(serializeDetail(order));
-});
+}
 
 const quoteSchema = z.object({
   corporateClientId: z.number().int(),

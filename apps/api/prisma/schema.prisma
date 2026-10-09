@@ -245,6 +245,8 @@ model Setting {
   // Film/Artwork orders are visually distinct in order lists even though
   // they're still kind: 'walkin' under the hood.
   nextDtfNo      Int     @default(3001)
+  // Embroidery orders ("E-" prefix) are numbered on their own so they stand out in the order lists.
+  nextEmbroideryNo Int   @default(5001)
   frontOfficeSeeded Boolean @default(false) // the Front Office role has been offered once (it can then be edited or deleted freely)
 
   // Company profile — used on printed invoices, quotations, and receipts.
@@ -597,6 +599,7 @@ model Order {
   mpesaTransactions MpesaTransaction[]
   dtfFilmSale       DtfFilmSale?
   dtfArtworkJob     DtfArtworkJob?
+  embroideryJob     EmbroideryJob?
   notes             AdjustmentNote[]
   expenses          Expense[]
   productionTasks   ProductionTask[]
@@ -640,6 +643,8 @@ model OrderLineItem {
   // service.price, the Ksh/sqm rate), computed client-side into unitPrice,
   // stored here too for traceability.
   artworkAreaSqm Float?
+  // What the line is for, shown after the service name on orders and invoices ("Left chest logo · 6,000 stitches"). Used by the embroidery order.
+  description String @default("")
   // Outsourced services only: the supplier's quote for THIS job (per unit, VAT included), the mark-up that produced the selling
   // price, and who the supplier is. Visible only to people who can see costs; null until someone costs the job.
   supplierName String?
@@ -712,6 +717,48 @@ model MpesaTransaction {
 
   // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
   @@index([orderId])
+}
+
+// Embroidery pricing (Master Data → Embroidery Pricing): the numbers behind the Embroidery Order calculator. One row (id = 1); `tiers` is JSON
+// ([{ min, rate, floor }]). Every order keeps a snapshot of what it was priced with (EmbroideryJob), so a later change never reprices history.
+model EmbroiderySettings {
+  id             Int      @id @default(1)
+  setupFee       Float    @default(1200)
+  originationFee Float    @default(1500)
+  waiveAtQty     Int      @default(100)
+  tiers          String   @default("[]")
+  updatedByName  String   @default("")
+  updatedAt      DateTime @updatedAt
+}
+
+// A digitized design kept for repeat orders: picking it fills in the stitch count and waives the setup fee.
+model EmbroideryDesign {
+  id            Int      @id @default(autoincrement())
+  name          String
+  clientName    String   @default("")
+  phone         String   @default("")
+  stitches      Int
+  notes         String   @default("")
+  createdByName String   @default("")
+  createdAt     DateTime @default(now())
+  lastUsedOn    String?
+  timesUsed     Int      @default(0)
+
+  @@index([name])
+}
+
+// What an embroidery order was priced with: the designs (stitches, price charged per piece, setup) and a copy of the settings at that moment.
+model EmbroideryJob {
+  id               Int      @id @default(autoincrement())
+  orderId          Int      @unique
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  qty              Int
+  clientSupplied   Boolean  @default(true)
+  designsJson      String   @default("[]")
+  settingsJson     String   @default("{}")
+  belowRecommended Boolean  @default(false) // a manager charged less than the recommended price per piece
+  createdByName    String   @default("")
+  createdAt        DateTime @default(now())
 }
 
 // NCBA Bank Lipa na M-Pesa on Paybill 880100 (Master Data → NCBA): STK prompts through NCBA's API, and NCBA's payment notifications. One row (id = 1).

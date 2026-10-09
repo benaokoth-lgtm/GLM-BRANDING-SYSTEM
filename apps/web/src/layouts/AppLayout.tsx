@@ -28,6 +28,8 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   if (isAdmin || p.canAccessDtf || p.canManageDtf) {
     tabs.push(['/orders/new/film', 'Film Order'], ['/orders/new/artwork', 'Artwork Order']);
   }
+  // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
+  if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/embroidery', 'Embroidery Order']);
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
@@ -67,6 +69,7 @@ const GROUP_OF: Record<string, Group> = {
   '/orders/new/walkin': 'sales',
   '/orders/new/film': 'sales',
   '/orders/new/artwork': 'sales',
+  '/orders/new/embroidery': 'sales',
   '/orders/all': 'sales',
   '/commission': 'sales',
   '/production': 'operations',
@@ -84,6 +87,7 @@ const ICON_OF: Record<string, string> = {
   '/orders/new/walkin': 'order',
   '/orders/new/film': 'film',
   '/orders/new/artwork': 'artwork',
+  '/orders/new/embroidery': 'embroidery',
   '/orders/all': 'orders',
   '/commission': 'commission',
   '/production': 'production',

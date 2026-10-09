@@ -14,3 +14,4 @@ export * from './employee';
 export * from './phone';
 export * from './materials';
 export * from './pin';
+export * from './embroidery';

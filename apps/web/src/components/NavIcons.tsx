@@ -8,6 +8,7 @@ const PATHS: Record<string, string> = {
   // pages
   order: 'M6 3h9l4 4v14H6z M14 3v5h5 M9 13h7 M9 17h5',
   film: 'M4 5h16v14H4z M8 5v14 M16 5v14 M4 9h4 M4 15h4 M16 9h4 M16 15h4',
+  embroidery: 'M5 4l14 14 M19 4L5 18 M12 2v4 M12 18v4 M2 12h4 M18 12h4',
   artwork: 'M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.6 1.8-1.6H17a4 4 0 0 0 4-4C21 7 17 3 12 3z M7.5 11v.01 M10 7.5v.01 M14.5 7.5v.01',
   orders: 'M4 6h16 M4 12h16 M4 18h10',
   commission: 'M19 5L5 19 M7 9a2 2 0 1 0 0-.01 M17 19a2 2 0 1 0 0-.01',

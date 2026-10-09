@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router22 = require_router();
+    var Router23 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router22({
+        this._router = new Router23({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router22 = require_router();
+    var Router23 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router22;
+    exports2.Router = Router23;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express21 = __toESM(require_express2());
+var import_express22 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -66169,6 +66169,57 @@ function pinProblem(pin, role, permissions) {
   return null;
 }
 
+// packages/shared/src/embroidery.ts
+var DEFAULT_EMBROIDERY_SETTINGS = {
+  setupFee: 1200,
+  originationFee: 1500,
+  waiveAtQty: 100,
+  tiers: [
+    { min: 1, rate: 14, floor: 150 },
+    { min: 6, rate: 12, floor: 150 },
+    { min: 12, rate: 10, floor: 120 },
+    { min: 25, rate: 9, floor: 120 },
+    { min: 50, rate: 8, floor: 100 },
+    { min: 100, rate: 7, floor: 100 }
+  ]
+};
+var EMBROIDERY_PIECE_SERVICE = "Embroidery per piece";
+var EMBROIDERY_SETUP_SERVICE = "Embroidery digitizing setup";
+var EMBROIDERY_ORIGINATION_SERVICE = "Design origination";
+var sortedTiers = (tiers) => [...tiers].sort((a2, b) => a2.min - b.min);
+function tierFor(tiers, qty) {
+  const ts = sortedTiers(tiers);
+  let hit = ts[0] ?? { min: 1, rate: 0, floor: 0 };
+  for (const t of ts) if (qty >= t.min) hit = t;
+  return hit;
+}
+function quoteDesign(d, qty, s) {
+  const q = Math.max(1, Math.round(qty) || 1);
+  const tier = tierFor(s.tiers, q);
+  const stitchCost = tier.rate * (Number(d.stitches) || 0) / 1e3;
+  const recommended = Math.ceil(Math.max(stitchCost, tier.floor) - 1e-9);
+  const piece = d.pricePerPiece != null && d.pricePerPiece > 0 ? Math.round(d.pricePerPiece * 100) / 100 : recommended;
+  const setupWaived = !!d.repeat || s.waiveAtQty > 0 && q >= s.waiveAtQty;
+  const setup = setupWaived ? 0 : s.setupFee;
+  return { rate: tier.rate, floor: tier.floor, stitchCost, floored: stitchCost < tier.floor, recommended, piece, pieces: piece * q, setup, setupWaived, subtotal: piece * q + setup };
+}
+function quoteJob(designs, qty, clientSupplies, s) {
+  const q = Math.max(1, Math.round(qty) || 1);
+  const ds = designs.map((d) => quoteDesign(d, q, s));
+  const origination = clientSupplies ? 0 : s.originationFee;
+  return { qty: q, designs: ds, origination, total: ds.reduce((a2, d) => a2 + d.subtotal, 0) + origination };
+}
+function embroiderySettingsProblem(s) {
+  if (!s.tiers.length) return "There must be at least one stitch-rate tier";
+  const mins = s.tiers.map((t) => t.min);
+  if (mins.some((m) => !(m >= 1) || !Number.isFinite(m))) return "Each tier must start at a quantity of 1 or more";
+  if (new Set(mins).size !== mins.length) return "Two tiers start at the same quantity";
+  if (!mins.includes(1) && Math.min(...mins) > 1) return "The first tier must start at quantity 1, so every quantity has a rate";
+  if (s.tiers.some((t) => !(t.rate >= 0) || !(t.floor >= 0))) return "Rates and minimum prices cannot be negative";
+  if (!(s.setupFee >= 0) || !(s.originationFee >= 0) || !(s.waiveAtQty >= 0)) return "Fees and the waiver quantity cannot be negative";
+  return null;
+}
+
 // apps/api/src/pins.ts
 var PIN_ROUNDS = 10;
 var MAX_ATTEMPTS = 5;
@@ -72350,7 +72401,8 @@ function serializeDetail(order, opts = {}) {
       id: li.id,
       itemType: li.itemType,
       serviceId: li.serviceId,
-      serviceName: li.service?.name ?? null,
+      // the name as orders and invoices show it: the service, then what this line is for (the embroidery order's design and stitches)
+      serviceName: li.service ? li.description ? `${li.service.name} \u2014 ${li.description}` : li.service.name : null,
       materialId: li.materialId,
       materialName: li.material?.name ?? null,
       qty: li.qty,
@@ -72488,6 +72540,8 @@ var lineItemSchema = external_exports.object({
   discountAmt: external_exports.number().min(0).default(0),
   heatPressFee: external_exports.number().nonnegative().nullable().optional(),
   artworkAreaSqm: external_exports.number().positive().nullable().optional(),
+  // What the line is for, shown after its name (the embroidery order uses it for "Left chest logo · 6,000 stitches").
+  description: external_exports.string().trim().max(160).optional(),
   // Outsourced services: the supplier's quote for this job and the mark-up behind the price. Honoured only for people who can see costs.
   supplierName: external_exports.string().trim().max(120).nullable().optional(),
   supplierCost: external_exports.number().min(0).nullable().optional(),
@@ -72518,7 +72572,9 @@ var walkinSchema = external_exports.object({
 ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, res) => {
   const parsed = walkinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const form = parsed.data;
+  return captureWalkin(req, res, parsed.data);
+});
+async function captureWalkin(req, res, form, extra = {}) {
   const cap = await resolveCapture(req.user, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const costs = await canSeeCosts(req.user.role);
@@ -72534,10 +72590,11 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
   const claim = await claimProblem(req.user, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
   const order = await prisma.$transaction(async (tx) => {
-    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
+    const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: extra.creditLines ?? form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    const orderNo = "W-" + settings.nextWalkinNo;
-    await tx.setting.update({ where: { id: 1 }, data: { nextWalkinNo: settings.nextWalkinNo + 1 } });
+    const counter = extra.counter ?? "nextWalkinNo";
+    const orderNo = (extra.prefix ?? "W-") + settings[counter];
+    await tx.setting.update({ where: { id: 1 }, data: { [counter]: settings[counter] + 1 } });
     const created = await tx.order.create({
       data: {
         orderNo,
@@ -72559,6 +72616,7 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
       },
       include: orderInclude
     });
+    await extra.after?.(tx, created);
     if (paymentLines.length) {
       await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, cap.capturedById);
       return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
@@ -72566,7 +72624,7 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
     return created;
   });
   res.status(201).json(serializeDetail(order));
-});
+}
 var quoteSchema = external_exports.object({
   corporateClientId: external_exports.number().int(),
   staffId: external_exports.number().int(),
@@ -75777,10 +75835,144 @@ ncbaRouter.post("/notify/:secret", import_express9.default.text({ type: ["text/x
   }
 });
 
-// apps/api/src/routes/assets.ts
+// apps/api/src/routes/embroidery.ts
 var import_express10 = __toESM(require_express2());
+var embroideryRouter = (0, import_express10.Router)();
+embroideryRouter.use(requireAuth);
+async function loadEmbroiderySettings() {
+  const row = await prisma.embroiderySettings.findUnique({ where: { id: 1 } });
+  if (!row) return DEFAULT_EMBROIDERY_SETTINGS;
+  let tiers = DEFAULT_EMBROIDERY_SETTINGS.tiers;
+  try {
+    const parsed = JSON.parse(row.tiers);
+    if (Array.isArray(parsed) && parsed.length) tiers = parsed.map((t) => ({ min: Number(t.min), rate: Number(t.rate), floor: Number(t.floor) }));
+  } catch {
+  }
+  return { setupFee: row.setupFee, originationFee: row.originationFee, waiveAtQty: row.waiveAtQty, tiers };
+}
+var mayQuote = requirePermission("canCaptureOrders");
+var canBelow = async (role) => role === "Admin" || await userHasPermission(role, "canManagePayments");
+embroideryRouter.get("/config", mayQuote, async (req, res) => {
+  res.json({ settings: await loadEmbroiderySettings(), canChargeBelowRecommended: await canBelow(req.user.role) });
+});
+var settingsSchema4 = external_exports.object({
+  setupFee: external_exports.number().min(0),
+  originationFee: external_exports.number().min(0),
+  waiveAtQty: external_exports.number().int().min(0),
+  tiers: external_exports.array(external_exports.object({ min: external_exports.number().min(1), rate: external_exports.number().min(0), floor: external_exports.number().min(0) })).min(1).max(12)
+});
+embroideryRouter.put("/settings", requireRole("Admin"), async (req, res) => {
+  const parsed = settingsSchema4.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const s = { ...parsed.data, tiers: [...parsed.data.tiers].sort((a2, b) => a2.min - b.min) };
+  const problem = embroiderySettingsProblem(s);
+  if (problem) return res.status(400).json({ error: problem });
+  const data = { setupFee: s.setupFee, originationFee: s.originationFee, waiveAtQty: s.waiveAtQty, tiers: JSON.stringify(s.tiers), updatedByName: req.user.name };
+  await prisma.embroiderySettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  res.json(await loadEmbroiderySettings());
+});
+embroideryRouter.get("/designs", mayQuote, async (req, res) => {
+  const q = String(req.query.q ?? "").trim().toLowerCase();
+  const rows = await prisma.embroideryDesign.findMany({ orderBy: [{ id: "desc" }], take: 500 });
+  const hit = rows.filter((d) => !q || d.name.toLowerCase().includes(q) || d.clientName.toLowerCase().includes(q) || d.phone.includes(q));
+  hit.sort((a2, b) => (b.lastUsedOn ?? "").localeCompare(a2.lastUsedOn ?? "") || b.id - a2.id);
+  res.json(hit.slice(0, 30));
+});
+var designSchema = external_exports.object({
+  /** A saved design: its stitch count is the saved one, and it can be a repeat (no setup fee). */
+  designId: external_exports.number().int().optional(),
+  name: external_exports.string().trim().min(1, 'Name each design (for example "Left chest logo")').max(60),
+  stitches: external_exports.number().int().min(1, "Enter the stitch count").max(2e6),
+  repeat: external_exports.boolean().default(false),
+  /** Only to charge something other than the recommended price per piece. */
+  pricePerPiece: external_exports.number().positive().nullable().optional(),
+  /** Keep this design for repeat orders. */
+  save: external_exports.boolean().optional()
+});
+var orderSchema = walkinSchema.omit({ lineItems: true, orderDiscountPct: true, orderDiscountAmt: true, paymentAmount: true, paymentMethod: true }).extend({
+  qty: external_exports.number().int().min(1, "Quantity must be at least 1").max(1e5),
+  clientSupplies: external_exports.boolean(),
+  designs: external_exports.array(designSchema).min(1, "Add at least one design").max(6),
+  /** Blank garments and the like sold with the job, at the price list. */
+  garments: external_exports.array(external_exports.object({ materialId: external_exports.number().int(), qty: external_exports.number().positive() })).max(10).default([])
+});
+async function ensureServices() {
+  const head = await prisma.businessHead.findUnique({ where: { name: "Embroidery" } });
+  const get = async (name2, price) => await prisma.service.findFirst({ where: { name: name2 } }) ?? prisma.service.create({ data: { name: name2, item: name2, unit: "piece", price, businessHeadId: head?.id ?? null, soldViaDtfModule: true } });
+  const s = await loadEmbroiderySettings();
+  return { piece: await get(EMBROIDERY_PIECE_SERVICE, 150), setup: await get(EMBROIDERY_SETUP_SERVICE, s.setupFee), origination: await get(EMBROIDERY_ORIGINATION_SERVICE, s.originationFee) };
+}
+embroideryRouter.post("/orders", mayQuote, async (req, res) => {
+  const parsed = orderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const { qty, clientSupplies, designs: asked, garments, ...form } = parsed.data;
+  const settings = await loadEmbroiderySettings();
+  const saved = new Map((await prisma.embroideryDesign.findMany({ where: { id: { in: asked.map((d) => d.designId).filter((v) => !!v) } } })).map((d) => [d.id, d]));
+  const designs = [];
+  for (const d of asked) {
+    const keep = d.designId ? saved.get(d.designId) : void 0;
+    if (d.designId && !keep) return res.status(400).json({ error: `The saved design for "${d.name}" no longer exists` });
+    if (d.repeat && !keep) return res.status(400).json({ error: `"${d.name}" is marked as a repeat but is not a saved design \u2014 pick it from the saved designs, or untick repeat` });
+    designs.push({ ...d, stitches: keep ? keep.stitches : d.stitches });
+  }
+  const below = await canBelow(req.user.role);
+  const quote = quoteJob(designs, qty, clientSupplies, settings);
+  let belowRecommended = false;
+  for (const [i, d] of designs.entries()) {
+    const q = quote.designs[i];
+    if (d.pricePerPiece != null && d.pricePerPiece < q.recommended - 5e-3) {
+      if (!below) return res.status(403).json({ error: `Only a manager can charge less than the recommended KES ${q.recommended} per piece for "${d.name}"` });
+      belowRecommended = true;
+    }
+  }
+  const svc = await ensureServices();
+  const stitchesText = (n) => n.toLocaleString("en-KE");
+  const lineItems = [];
+  const creditLines = [];
+  const add = (li, baseUnit) => {
+    lineItems.push(li);
+    creditLines.push({ ...li, baseUnit });
+  };
+  for (const [i, d] of designs.entries()) {
+    const q = quote.designs[i];
+    add({ itemType: "service", serviceId: svc.piece.id, materialId: null, qty, unitPrice: q.piece, discountPct: 0, discountAmt: 0, description: `${d.name} \xB7 ${stitchesText(d.stitches)} stitches` }, q.recommended);
+    if (q.setup > 0) add({ itemType: "service", serviceId: svc.setup.id, materialId: null, qty: 1, unitPrice: q.setup, discountPct: 0, discountAmt: 0, description: d.name }, q.setup);
+  }
+  if (quote.origination > 0) add({ itemType: "service", serviceId: svc.origination.id, materialId: null, qty: 1, unitPrice: quote.origination, discountPct: 0, discountAmt: 0 }, quote.origination);
+  for (const g of garments) {
+    const m = await prisma.material.findUnique({ where: { id: g.materialId } });
+    if (!m) return res.status(400).json({ error: "A garment on the order is not in the stock list any more" });
+    add({ itemType: "material", serviceId: null, materialId: m.id, qty: g.qty, unitPrice: m.price, discountPct: 0, discountAmt: 0 });
+  }
+  const walkin = { ...form, lineItems, orderDiscountPct: 0, orderDiscountAmt: 0 };
+  return captureWalkin(req, res, walkin, {
+    prefix: "E-",
+    counter: "nextEmbroideryNo",
+    creditLines,
+    after: async (tx, order) => {
+      await tx.embroideryJob.create({
+        data: {
+          orderId: order.id,
+          qty,
+          clientSupplied: clientSupplies,
+          designsJson: JSON.stringify(designs.map((d, i) => ({ name: d.name, stitches: d.stitches, repeat: !!d.repeat, ...quote.designs[i] }))),
+          settingsJson: JSON.stringify(settings),
+          belowRecommended,
+          createdByName: req.user.name
+        }
+      });
+      for (const d of designs) {
+        if (d.designId) await tx.embroideryDesign.update({ where: { id: d.designId }, data: { lastUsedOn: todayStr(), timesUsed: { increment: 1 } } });
+        else if (d.save) await tx.embroideryDesign.create({ data: { name: d.name, stitches: d.stitches, clientName: (form.customerName ?? "").trim(), phone: (form.phone ?? "").trim(), createdByName: req.user.name, lastUsedOn: todayStr(), timesUsed: 1 } });
+      }
+    }
+  });
+});
+
+// apps/api/src/routes/assets.ts
+var import_express11 = __toESM(require_express2());
 var ASSET_FUNDING2 = ["Bank", "Cash", "M-Pesa", "Owner Capital", "Opening Balance"];
-var assetsRouter = (0, import_express10.Router)();
+var assetsRouter = (0, import_express11.Router)();
 assetsRouter.use(requireAuth, requirePermission("canAccessFinance"));
 assetsRouter.get("/", async (req, res) => {
   const { category, condition } = req.query;
@@ -75892,9 +76084,9 @@ assetsRouter.delete("/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/dtf.ts
-var import_express11 = __toESM(require_express2());
+var import_express12 = __toESM(require_express2());
 var import_client3 = require("@prisma/client");
-var dtfRouter = (0, import_express11.Router)();
+var dtfRouter = (0, import_express12.Router)();
 dtfRouter.use(requireAuth, requirePermission("canAccessDtf", "canManageDtf"));
 var manageOnly = requirePermission("canManageDtf");
 var dateStr2 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
@@ -76037,7 +76229,7 @@ dtfRouter.get("/data", async (req, res) => {
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending" } }) : 0
   });
 });
-var settingsSchema4 = external_exports.object({
+var settingsSchema5 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
   rollWidthCm: external_exports.number().positive(),
   stdPricePerM: external_exports.number().positive(),
@@ -76047,7 +76239,7 @@ var settingsSchema4 = external_exports.object({
   fixedChargePerMetre: external_exports.number().min(0)
 }).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" });
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
-  const parsed = settingsSchema4.safeParse(req.body);
+  const parsed = settingsSchema5.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   await getSettings();
   await prisma.dtfSetting.update({ where: { id: 1 }, data: parsed.data });
@@ -76411,7 +76603,7 @@ dtfRouter.delete("/jobs/:id", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/accounting.ts
-var import_express12 = __toESM(require_express2());
+var import_express13 = __toESM(require_express2());
 
 // apps/api/src/accounting/reconcile.ts
 var key = (source, ref) => `${source}\0${ref}`;
@@ -76821,7 +77013,7 @@ async function depreciationSchedule(from, to, asOf) {
 }
 
 // apps/api/src/routes/accounting.ts
-var accountingRouter = (0, import_express12.Router)();
+var accountingRouter = (0, import_express13.Router)();
 accountingRouter.use(requireAuth);
 var dateStr3 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 var isDate = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
@@ -77161,7 +77353,7 @@ accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => 
 });
 
 // apps/api/src/routes/production.ts
-var import_express13 = __toESM(require_express2());
+var import_express14 = __toESM(require_express2());
 
 // apps/api/src/production.ts
 async function ensureProduction() {
@@ -77229,7 +77421,7 @@ function productionSummary(o) {
 }
 
 // apps/api/src/routes/production.ts
-var productionRouter = (0, import_express13.Router)();
+var productionRouter = (0, import_express14.Router)();
 productionRouter.use(requireAuth, requirePermission("canAccessProduction", "canManageProduction"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -77422,8 +77614,8 @@ productionRouter.get("/productivity", async (req, res) => {
 });
 
 // apps/api/src/routes/quality.ts
-var import_express14 = __toESM(require_express2());
-var qualityRouter = (0, import_express14.Router)();
+var import_express15 = __toESM(require_express2());
+var qualityRouter = (0, import_express15.Router)();
 qualityRouter.use(requireAuth, requirePermission("canAccessQuality"), async (_req, _res, next) => {
   await ensureProductionOnce();
   next();
@@ -77545,8 +77737,8 @@ qualityRouter.post("/orders/:orderId/check", async (req, res) => {
 });
 
 // apps/api/src/routes/commission.ts
-var import_express15 = __toESM(require_express2());
-var commissionRouter = (0, import_express15.Router)();
+var import_express16 = __toESM(require_express2());
+var commissionRouter = (0, import_express16.Router)();
 commissionRouter.use(requireAuth, async (_req, _res, next) => {
   await ensureCommissionAccessOnce();
   next();
@@ -77562,7 +77754,7 @@ commissionRouter.get("/settings", async (_req, res) => {
   res.json(await getCommissionConfig());
 });
 var bandSchema = external_exports.object({ from: external_exports.number().min(0), rate: external_exports.number().min(0).max(100) });
-var settingsSchema5 = external_exports.object({
+var settingsSchema6 = external_exports.object({
   generalBands: external_exports.array(bandSchema).min(1),
   filmBands: external_exports.array(bandSchema).min(1),
   // Freelance sales persons — weekly net sales received at or above base prices → rate
@@ -77579,7 +77771,7 @@ var settingsSchema5 = external_exports.object({
   targetMode: external_exports.enum(TARGET_MODES).optional()
 });
 commissionRouter.put("/settings", manage, async (req, res) => {
-  const parsed = settingsSchema5.safeParse(req.body);
+  const parsed = settingsSchema6.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
   const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null);
@@ -77779,7 +77971,7 @@ commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
 });
 
 // apps/api/src/routes/pricelists.ts
-var import_express16 = __toESM(require_express2());
+var import_express17 = __toESM(require_express2());
 
 // apps/api/src/xlsx.ts
 var import_node_zlib2 = __toESM(require("node:zlib"));
@@ -77956,7 +78148,7 @@ function readXlsx(buf) {
 }
 
 // apps/api/src/routes/pricelists.ts
-var pricelistsRouter = (0, import_express16.Router)();
+var pricelistsRouter = (0, import_express17.Router)();
 pricelistsRouter.use(requireAuth);
 var XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 var MAX_ROWS = 3e3;
@@ -78001,7 +78193,7 @@ var money = (s) => {
   const n = Number(s.replace(/[, ]/g, "").replace(/^ksh/i, ""));
   return Number.isFinite(n) ? n : NaN;
 };
-var rawBody = import_express16.default.raw({ type: () => true, limit: "10mb" });
+var rawBody = import_express17.default.raw({ type: () => true, limit: "10mb" });
 function parseGrid(req) {
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error("Choose an Excel (.xlsx) file to upload");
   const grid = readXlsx(req.body);
@@ -78175,7 +78367,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
 
 // apps/api/src/routes/backup.ts
 var import_node_crypto12 = __toESM(require("node:crypto"));
-var import_express17 = __toESM(require_express2());
+var import_express18 = __toESM(require_express2());
 
 // apps/api/src/backup.ts
 var import_node_fs4 = __toESM(require("node:fs"));
@@ -78458,9 +78650,9 @@ function startBackupScheduler() {
 }
 
 // apps/api/src/routes/backup.ts
-var backupRouter = (0, import_express17.Router)();
+var backupRouter = (0, import_express18.Router)();
 var admin = [requireAuth, requireRole("Admin")];
-var rawBody2 = import_express17.default.raw({ type: () => true, limit: "200mb" });
+var rawBody2 = import_express18.default.raw({ type: () => true, limit: "200mb" });
 var stamp2 = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
 backupRouter.get("/status", ...admin, async (_req, res) => {
   const s = await getBackupSettings();
@@ -78482,7 +78674,7 @@ backupRouter.get("/status", ...admin, async (_req, res) => {
     files: listLocal()
   });
 });
-var settingsSchema6 = external_exports.object({
+var settingsSchema7 = external_exports.object({
   enabled: external_exports.boolean().optional(),
   intervalHours: external_exports.number().int().min(1).max(24 * 31).optional(),
   keepCount: external_exports.number().int().min(1).max(365).optional(),
@@ -78491,7 +78683,7 @@ var settingsSchema6 = external_exports.object({
   driveClientSecret: external_exports.string().trim().max(300).optional()
 });
 backupRouter.put("/settings", ...admin, async (req, res) => {
-  const parsed = settingsSchema6.safeParse(req.body);
+  const parsed = settingsSchema7.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const { driveClientSecret, ...rest } = parsed.data;
   const current = await getBackupSettings();
@@ -78593,7 +78785,7 @@ backupRouter.post("/google/disconnect", ...admin, async (_req, res) => {
 });
 
 // apps/api/src/routes/security.ts
-var import_express18 = __toESM(require_express2());
+var import_express19 = __toESM(require_express2());
 
 // apps/api/src/secrets.ts
 var plain2 = (v) => !!v && !isSealed(v);
@@ -78630,7 +78822,7 @@ async function sealStoredSecrets() {
 }
 
 // apps/api/src/routes/security.ts
-var securityRouter = (0, import_express18.Router)();
+var securityRouter = (0, import_express19.Router)();
 securityRouter.use(requireAuth, requireRole("Admin"));
 securityRouter.get("/status", async (req, res) => {
   const setting = await prisma.setting.findUnique({ where: { id: 1 } });
@@ -78682,8 +78874,8 @@ securityRouter.get("/audit", async (req, res) => {
 });
 
 // apps/api/src/routes/freelance.ts
-var import_express19 = __toESM(require_express2());
-var freelanceRouter = (0, import_express19.Router)();
+var import_express20 = __toESM(require_express2());
+var freelanceRouter = (0, import_express20.Router)();
 freelanceRouter.use(requireAuth, async (_req, res, next) => {
   if (!await commissionEnabled()) return res.status(403).json({ error: "Commission is switched off. An Admin can switch it on in Master Data \u2192 Company Info.", commissionOff: true });
   next();
@@ -79023,7 +79215,7 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
 });
 
 // apps/api/src/routes/whatsapp.ts
-var import_express20 = __toESM(require_express2());
+var import_express21 = __toESM(require_express2());
 
 // apps/api/src/whatsapp.ts
 var base2 = () => process.env.NODE_ENV === "test" && process.env.WHATSAPP_TEST_URL ? process.env.WHATSAPP_TEST_URL : "https://graph.facebook.com";
@@ -79130,7 +79322,7 @@ async function sendInvoiceDocument(cfg, m) {
 }
 
 // apps/api/src/routes/whatsapp.ts
-var whatsappRouter = (0, import_express20.Router)();
+var whatsappRouter = (0, import_express21.Router)();
 whatsappRouter.use(requireAuth);
 var sendLimiter2 = lib_default({
   windowMs: 60 * 60 * 1e3,
@@ -79155,7 +79347,7 @@ var publicView = (row) => ({
 whatsappRouter.get("/settings", requireRole("Admin"), async (_req, res) => {
   res.json(publicView(await prisma.whatsappSettings.findUnique({ where: { id: 1 } })));
 });
-var settingsSchema7 = external_exports.object({
+var settingsSchema8 = external_exports.object({
   enabled: external_exports.boolean().optional(),
   phoneNumberId: external_exports.string().trim().regex(/^\d{5,25}$/, "The Phone number ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
   businessAccountId: external_exports.string().trim().regex(/^\d{5,25}$/, "The WhatsApp Business Account ID is a long number, from WhatsApp \u2192 API Setup in Meta").or(external_exports.literal("")).optional(),
@@ -79166,7 +79358,7 @@ var settingsSchema7 = external_exports.object({
   apiVersion: external_exports.string().trim().regex(/^v\d{1,2}\.\d$/, "The API version looks like v21.0").optional()
 });
 whatsappRouter.put("/settings", requireRole("Admin"), async (req, res) => {
-  const parsed = settingsSchema7.safeParse(req.body);
+  const parsed = settingsSchema8.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const b = parsed.data;
   const row = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
@@ -79250,11 +79442,11 @@ whatsappRouter.get("/log", async (req, res) => {
 
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express21.default)();
+var app = (0, import_express22.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express21.default.json({ limit: "5mb" }));
+app.use(import_express22.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -79284,6 +79476,7 @@ app.use("/api/reports", reportsRouter);
 app.use("/api/email", emailRouter);
 app.use("/api/mpesa", mpesaRouter);
 app.use("/api/ncba", ncbaRouter);
+app.use("/api/embroidery", embroideryRouter);
 app.use("/api/assets", assetsRouter);
 app.use("/api/dtf", dtfRouter);
 app.use("/api/accounting", accountingRouter);

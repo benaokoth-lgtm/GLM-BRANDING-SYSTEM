@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
-import { requireAuth, requirePermission, requireRole, userHasPermission } from '../middleware/auth';
+import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import {
   DEFAULT_EMBROIDERY_SETTINGS,
   EMBROIDERY_ORIGINATION_SERVICE,
@@ -37,11 +37,8 @@ export async function loadEmbroiderySettings(): Promise<EmbroiderySettingsValues
 
 /** Whoever may capture orders sees the numbers (they are the price list); changing them is the Admin's. */
 const mayQuote = requirePermission('canCaptureOrders');
-/** Charging less than the recommended price per piece is for a manager (the Admin, or a role that handles payments). */
-const canBelow = async (role: string) => role === 'Admin' || (await userHasPermission(role, 'canManagePayments'));
-
 embroideryRouter.get('/config', mayQuote, async (req, res) => {
-  res.json({ settings: await loadEmbroiderySettings(), canChargeBelowRecommended: await canBelow(req.user!.role) });
+  res.json({ settings: await loadEmbroiderySettings() });
 });
 
 const settingsSchema = z.object({
@@ -120,15 +117,12 @@ embroideryRouter.post('/orders', mayQuote, async (req, res) => {
     designs.push({ ...d, stitches: keep ? keep.stitches : d.stitches });
   }
 
-  const below = await canBelow(req.user!.role);
   const quote = quoteJob(designs, qty, clientSupplies, settings);
-  let belowRecommended = false;
-  for (const [i, d] of designs.entries()) {
-    const q = quote.designs[i]!;
-    if (d.pricePerPiece != null && d.pricePerPiece < q.recommended - 0.005) {
-      if (!below) return res.status(403).json({ error: `Only a manager can charge less than the recommended KES ${q.recommended} per piece for "${d.name}"` });
-      belowRecommended = true;
-    }
+  // Charging less than the recommended price per piece is allowed, but the job then waits in the price-approval queue (the same one artwork jobs use) and cannot
+  // be paid for or produced until a manager approves it. Charging more is open to everyone.
+  const belowRecommended = designs.some((d, i) => d.pricePerPiece != null && d.pricePerPiece < quote.designs[i]!.recommended - 0.005);
+  if (belowRecommended && form.paymentTiming === 'onAcceptance' && (form.payments?.length ?? 0) > 0) {
+    return res.status(400).json({ error: 'A price below the recommended price needs a manager’s approval first — take the payment once it is approved' });
   }
 
   const svc = await ensureServices();
@@ -167,9 +161,31 @@ embroideryRouter.post('/orders', mayQuote, async (req, res) => {
           designsJson: JSON.stringify(designs.map((d, i) => ({ name: d.name, stitches: d.stitches, repeat: !!d.repeat, ...quote.designs[i]! }))),
           settingsJson: JSON.stringify(settings),
           belowRecommended,
+          approvalStatus: belowRecommended ? 'Pending' : 'Approved',
           createdByName: req.user!.name,
         },
       });
+      if (belowRecommended) {
+        // one request per job: the figures are per garment, summed over its designs
+        const rec = quote.designs.reduce((a, d) => a + d.recommended, 0);
+        const charged = quote.designs.reduce((a, d) => a + d.piece, 0);
+        await tx.priceApproval.create({
+          data: {
+            kind: 'embroidery',
+            orderId: order.id,
+            orderNo: order.orderNo,
+            client: (form.customerName ?? '').trim(),
+            pieces: qty,
+            systemPerPiece: rec,
+            chargedPerPiece: charged,
+            shortfall: Math.round((rec - charged) * qty * 100) / 100,
+            valueAtRecommended: Math.round(rec * qty * 100) / 100,
+            valueAtCharged: Math.round(charged * qty * 100) / 100,
+            requestedById: req.user!.id,
+            requestedByName: req.user!.name,
+          },
+        });
+      }
       for (const d of designs) {
         if (d.designId) await tx.embroideryDesign.update({ where: { id: d.designId }, data: { lastUsedOn: todayStr(), timesUsed: { increment: 1 } } });
         else if (d.save) await tx.embroideryDesign.create({ data: { name: d.name, stitches: d.stitches, clientName: (form.customerName ?? '').trim(), phone: (form.phone ?? '').trim(), createdByName: req.user!.name, lastUsedOn: todayStr(), timesUsed: 1 } });

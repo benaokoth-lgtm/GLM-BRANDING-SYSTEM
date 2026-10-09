@@ -5,14 +5,15 @@ import { useAuth } from '../../state/AuthContext';
 import { Card, Field } from './shared';
 import type { DtfTabProps } from './shared';
 
-// Price approvals: an artwork job charged BELOW the recommended price waits here. It cannot be paid for or produced until a manager
-// approves the price; whoever captured it cannot decide it. Rejecting removes the order and the job (the film goes back on the roll).
+// Price approvals: an artwork job or an embroidery job charged BELOW the recommended price waits here. It cannot be paid for or produced until a manager
+// approves the price; whoever captured it cannot decide it. Rejecting removes the order and the job (an artwork job's film goes back on the roll).
 // For each request the roll's profit is shown as it stands and as it would be if the discount were approved.
 
 interface Approval {
   id: number;
   orderId: number | null;
   orderNo: string;
+  kind?: 'artwork' | 'embroidery';
   rollId: string;
   client: string;
   pieces: number;
@@ -93,21 +94,22 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
         {loading ? (
           <p className="note">Loading…</p>
         ) : pending.length === 0 ? (
-          <p className="note" style={{ margin: 0 }}>Nothing is waiting — every artwork job is priced at or above the recommended price, or has been decided.</p>
+          <p className="note" style={{ margin: 0 }}>Nothing is waiting — every artwork and embroidery job is priced at or above the recommended price, or has been decided.</p>
         ) : (
           <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
             {pending.map((a) => {
-              const imp = rollImpact(a);
+              const emb = a.kind === 'embroidery';
+              const imp = emb ? null : rollImpact(a);
               const own = a.requestedById === user?.id;
               return (
                 <div key={a.id} style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-3)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
                     <div>
                       <div style={{ fontFamily: 'var(--font-heading)', fontSize: 20 }}>
-                        {a.orderNo} <span className="tag tag-outline">{a.rollId}</span>
+                        {a.orderNo} <span className="tag tag-outline">{emb ? 'Embroidery' : a.rollId}</span>
                       </div>
                       <div className="note" style={{ margin: 0 }}>
-                        {a.client} · {fmtNum(a.pieces)} pieces on {fmtNum(a.runningMetres, 2)} m · asked by {a.requestedByName}, {fmtDate(a.requestedAt.slice(0, 10))}
+                        {a.client} · {fmtNum(a.pieces)} pieces{emb ? '' : ` on ${fmtNum(a.runningMetres, 2)} m`} · asked by {a.requestedByName}, {fmtDate(a.requestedAt.slice(0, 10))}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
@@ -118,11 +120,11 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
                   </div>
                   <div style={{ display: 'flex', gap: 'var(--space-5)', flexWrap: 'wrap', margin: 'var(--space-3) 0' }}>
                     <div>
-                      <div className="card-kicker">Recommended / piece</div>
+                      <div className="card-kicker">{emb ? 'Recommended / garment' : 'Recommended / piece'}</div>
                       <b>{fmtKsh(a.systemPerPiece)}</b>
                     </div>
                     <div>
-                      <div className="card-kicker">Charged / piece</div>
+                      <div className="card-kicker">{emb ? 'Charged / garment' : 'Charged / piece'}</div>
                       <b style={{ color: 'var(--color-error)' }}>{fmtKsh(a.chargedPerPiece)}</b>
                     </div>
                     <div>
@@ -180,7 +182,7 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
               <thead>
                 <tr>
                   <th>Order</th>
-                  <th>Roll</th>
+                  <th>Roll / job</th>
                   <th>Client</th>
                   <th style={{ textAlign: 'right' }}>Recommended</th>
                   <th style={{ textAlign: 'right' }}>Charged</th>
@@ -193,7 +195,7 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
                 {decided.map((a) => (
                   <tr key={a.id}>
                     <td>{a.orderNo}</td>
-                    <td>{a.rollId}</td>
+                    <td>{a.kind === 'embroidery' ? 'Embroidery' : a.rollId}</td>
                     <td>{a.client}</td>
                     <td style={{ textAlign: 'right' }}>{fmtNum(a.systemPerPiece, 2)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtNum(a.chargedPerPiece, 2)}</td>

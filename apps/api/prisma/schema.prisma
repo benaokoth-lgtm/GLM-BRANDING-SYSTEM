@@ -159,6 +159,8 @@ model Service {
   // keep grouping by service name correctly. Not exposed as a Master Data
   // toggle — set once via seed, since there are exactly two such rows.
   soldViaDtfModule    Boolean @default(false)
+  // Taken off the price list (it still sells history: orders that used it keep it). Set when a service that has been sold is deleted.
+  retired             Boolean @default(false)
   // Contracted-out services (e.g. eulogy printing, banners, screen printing). The supplier quotes ONE price that includes paper/material
   // and the service, VAT included; we add a mark-up (a percentage, or a fixed amount per unit) to get the selling price (also VAT
   // inclusive). These are defaults — the actual quote is captured per job, on the order line. Cost and mark-up are hidden from anyone
@@ -247,6 +249,8 @@ model Setting {
   nextDtfNo      Int     @default(3001)
   // Embroidery orders ("E-" prefix) are numbered on their own so they stand out in the order lists.
   nextEmbroideryNo Int   @default(5001)
+  // The old per-sqm "Embroidery" service was retired once, when stitch-priced embroidery orders arrived (see embroideryLegacy.ts).
+  embroideryLegacyRetired Boolean @default(false)
   frontOfficeSeeded Boolean @default(false) // the Front Office role has been offered once (it can then be edited or deleted freely)
 
   // Company profile — used on printed invoices, quotations, and receipts.
@@ -756,7 +760,9 @@ model EmbroideryJob {
   clientSupplied   Boolean  @default(true)
   designsJson      String   @default("[]")
   settingsJson     String   @default("{}")
-  belowRecommended Boolean  @default(false) // a manager charged less than the recommended price per piece
+  belowRecommended Boolean  @default(false) // priced below the recommended price per piece
+  // Pending while a manager has not yet approved a below-recommended price (a PriceApproval row, like an artwork job): it cannot be paid for or produced until then.
+  approvalStatus   String   @default("Approved") // Pending | Approved
   createdByName    String   @default("")
   createdAt        DateTime @default(now())
 }
@@ -1316,10 +1322,12 @@ model PriceApproval {
   id               Int      @id @default(autoincrement())
   orderId          Int?     // cleared when a rejection removes the order
   orderNo          String
-  rollId           String
+  // An artwork job: the film roll and the metres. An embroidery job has neither (blank / 0).
+  kind             String   @default("artwork") // artwork | embroidery
+  rollId           String   @default("")
   client           String   @default("")
   pieces           Int
-  runningMetres    Float
+  runningMetres    Float    @default(0)
   systemPerPiece   Float
   chargedPerPiece  Float
   shortfall        Float    // (recommended − charged) × pieces — what is being given away

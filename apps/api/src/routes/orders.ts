@@ -28,8 +28,14 @@ export const orderInclude = Prisma.validator<Prisma.OrderInclude>()({
   lineItems: { include: { service: { include: { businessHead: true } }, material: true } },
   payments: { orderBy: { id: 'asc' } },
   dtfArtworkJob: { select: { approvalStatus: true } },
+  embroideryJob: { select: { approvalStatus: true } },
   dtfFilmSale: { select: { id: true } },
 });
+
+/** An artwork job or an embroidery job priced below the recommended price is on hold until a manager approves it. */
+export function priceApprovalPending(o: { dtfArtworkJob?: { approvalStatus: string } | null; embroideryJob?: { approvalStatus: string } | null }): boolean {
+  return o.dtfArtworkJob?.approvalStatus === 'Pending' || o.embroideryJob?.approvalStatus === 'Pending';
+}
 
 export type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
@@ -79,8 +85,8 @@ export function serializeSummary(order: FullOrder) {
     dueDate: order.dueDate,
     totals,
     overdue,
-    // An artwork job priced below the recommended price is on hold until a manager approves it.
-    priceApproval: order.dtfArtworkJob?.approvalStatus === 'Pending' ? ('Pending' as const) : null,
+    // An artwork or embroidery job priced below the recommended price is on hold until a manager approves it.
+    priceApproval: priceApprovalPending(order) ? ('Pending' as const) : null,
     // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
     dtfKind: order.dtfFilmSale ? ('film' as const) : order.dtfArtworkJob ? ('artwork' as const) : null,
     // The lines of business this order sells (same rule as Sales by Business Head: a service's head, else a name-based default; materials are General Order).
@@ -410,8 +416,8 @@ export async function captureWalkin(req: import('express').Request, res: import(
       include: orderInclude,
     });
     await extra.after?.(tx, created);
-    if (paymentLines.length) {
-      await recordOrderPayments(tx, { id: created.id, kind: 'walkin', status, corporateClient: null }, paymentLines, cap.capturedById); // the money is the cashier's
+    if (paymentLines.length || extra.after) {
+      if (paymentLines.length) await recordOrderPayments(tx, { id: created.id, kind: 'walkin', status, corporateClient: null }, paymentLines, cap.capturedById); // the money is the cashier's
       return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
     }
     return created;
@@ -541,7 +547,7 @@ ordersRouter.post('/:id/payments', async (req, res) => {
     : [{ method: parsed.data.method!, amount: parsed.data.amount!, reference: parsed.data.reference ?? null }];
 
   const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  if (current?.dtfArtworkJob?.approvalStatus === 'Pending') {
+  if (current && priceApprovalPending(current)) {
     return res.status(400).json({ error: 'This job is priced below the recommended price and is waiting for a manager’s approval — payment is taken once it is approved' });
   }
   const before = serializeSummary(current!).totals;

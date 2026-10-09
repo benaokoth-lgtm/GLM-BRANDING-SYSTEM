@@ -4930,24 +4930,24 @@ var require_streams = __commonJS({
     IconvLiteEncoderStream.prototype = Object.create(Transform9.prototype, {
       constructor: { value: IconvLiteEncoderStream }
     });
-    IconvLiteEncoderStream.prototype._transform = function(chunk, encoding, done) {
+    IconvLiteEncoderStream.prototype._transform = function(chunk, encoding, done2) {
       if (typeof chunk != "string")
-        return done(new Error("Iconv encoding stream needs strings as its input."));
+        return done2(new Error("Iconv encoding stream needs strings as its input."));
       try {
         var res = this.conv.write(chunk);
         if (res && res.length) this.push(res);
-        done();
+        done2();
       } catch (e) {
-        done(e);
+        done2(e);
       }
     };
-    IconvLiteEncoderStream.prototype._flush = function(done) {
+    IconvLiteEncoderStream.prototype._flush = function(done2) {
       try {
         var res = this.conv.end();
         if (res && res.length) this.push(res);
-        done();
+        done2();
       } catch (e) {
-        done(e);
+        done2(e);
       }
     };
     IconvLiteEncoderStream.prototype.collect = function(cb) {
@@ -4970,24 +4970,24 @@ var require_streams = __commonJS({
     IconvLiteDecoderStream.prototype = Object.create(Transform9.prototype, {
       constructor: { value: IconvLiteDecoderStream }
     });
-    IconvLiteDecoderStream.prototype._transform = function(chunk, encoding, done) {
+    IconvLiteDecoderStream.prototype._transform = function(chunk, encoding, done2) {
       if (!Buffer3.isBuffer(chunk))
-        return done(new Error("Iconv decoding stream needs buffers as its input."));
+        return done2(new Error("Iconv decoding stream needs buffers as its input."));
       try {
         var res = this.conv.write(chunk);
         if (res && res.length) this.push(res, this.encoding);
-        done();
+        done2();
       } catch (e) {
-        done(e);
+        done2(e);
       }
     };
-    IconvLiteDecoderStream.prototype._flush = function(done) {
+    IconvLiteDecoderStream.prototype._flush = function(done2) {
       try {
         var res = this.conv.end();
         if (res && res.length) this.push(res, this.encoding);
-        done();
+        done2();
       } catch (e) {
-        done(e);
+        done2(e);
       }
     };
     IconvLiteDecoderStream.prototype.collect = function(cb) {
@@ -5331,7 +5331,7 @@ var require_raw_body = __commonJS({
       }
     }
     function getRawBody(stream, options, callback) {
-      var done = callback;
+      var done2 = callback;
       var opts = options || {};
       if (stream === void 0) {
         throw new TypeError("argument stream is required");
@@ -5344,20 +5344,20 @@ var require_raw_body = __commonJS({
         };
       }
       if (typeof options === "function") {
-        done = options;
+        done2 = options;
         opts = {};
       }
-      if (done !== void 0 && typeof done !== "function") {
+      if (done2 !== void 0 && typeof done2 !== "function") {
         throw new TypeError("argument callback must be a function");
       }
-      if (!done && !global.Promise) {
+      if (!done2 && !global.Promise) {
         throw new TypeError("argument callback is required");
       }
       var encoding = opts.encoding !== true ? opts.encoding : "utf-8";
       var limit = bytes.parse(opts.limit);
       var length = opts.length != null && !isNaN(opts.length) ? parseInt(opts.length, 10) : null;
-      if (done) {
-        return readStream(stream, encoding, length, limit, wrap5(done));
+      if (done2) {
+        return readStream(stream, encoding, length, limit, wrap5(done2));
       }
       return new Promise(function executor(resolve3, reject) {
         readStream(stream, encoding, length, limit, function onRead(err, buf) {
@@ -5376,7 +5376,7 @@ var require_raw_body = __commonJS({
       var complete = false;
       var sync = true;
       if (limit !== null && length !== null && length > limit) {
-        return done(createError(413, "request entity too large", {
+        return done2(createError(413, "request entity too large", {
           expected: length,
           length,
           limit,
@@ -5385,12 +5385,12 @@ var require_raw_body = __commonJS({
       }
       var state = stream._readableState;
       if (stream._decoder || state && (state.encoding || state.decoder)) {
-        return done(createError(500, "stream encoding should not be set", {
+        return done2(createError(500, "stream encoding should not be set", {
           type: "stream.encoding.set"
         }));
       }
       if (typeof stream.readable !== "undefined" && !stream.readable) {
-        return done(createError(500, "stream is not readable", {
+        return done2(createError(500, "stream is not readable", {
           type: "stream.not.readable"
         }));
       }
@@ -5399,7 +5399,7 @@ var require_raw_body = __commonJS({
       try {
         decoder = getDecoder(encoding);
       } catch (err) {
-        return done(err);
+        return done2(err);
       }
       var buffer = decoder ? "" : [];
       stream.on("aborted", onAborted);
@@ -5408,7 +5408,7 @@ var require_raw_body = __commonJS({
       stream.on("end", onEnd);
       stream.on("error", onEnd);
       sync = false;
-      function done() {
+      function done2() {
         var args = new Array(arguments.length);
         for (var i = 0; i < args.length; i++) {
           args[i] = arguments[i];
@@ -5429,7 +5429,7 @@ var require_raw_body = __commonJS({
       }
       function onAborted() {
         if (complete) return;
-        done(createError(400, "request aborted", {
+        done2(createError(400, "request aborted", {
           code: "ECONNABORTED",
           expected: length,
           length,
@@ -5441,7 +5441,7 @@ var require_raw_body = __commonJS({
         if (complete) return;
         received += chunk.length;
         if (limit !== null && received > limit) {
-          done(createError(413, "request entity too large", {
+          done2(createError(413, "request entity too large", {
             limit,
             received,
             type: "entity.too.large"
@@ -5454,9 +5454,9 @@ var require_raw_body = __commonJS({
       }
       function onEnd(err) {
         if (complete) return;
-        if (err) return done(err);
+        if (err) return done2(err);
         if (length !== null && received !== length) {
-          done(createError(400, "request size did not match content length", {
+          done2(createError(400, "request size did not match content length", {
             expected: length,
             length,
             received,
@@ -5464,7 +5464,7 @@ var require_raw_body = __commonJS({
           }));
         } else {
           var string = decoder ? buffer + (decoder.end() || "") : Buffer.concat(buffer);
-          done(null, string);
+          done2(null, string);
         }
       }
       function cleanup() {
@@ -5501,7 +5501,7 @@ var require_ee_first = __commonJS({
   "node_modules/ee-first/index.js"(exports2, module2) {
     "use strict";
     module2.exports = first;
-    function first(stuff, done) {
+    function first(stuff, done2) {
       if (!Array.isArray(stuff))
         throw new TypeError("arg must be an array of [ee, events...] arrays");
       var cleanups = [];
@@ -5523,7 +5523,7 @@ var require_ee_first = __commonJS({
       }
       function callback() {
         cleanup();
-        done.apply(null, arguments);
+        done2.apply(null, arguments);
       }
       function cleanup() {
         var x;
@@ -5533,12 +5533,12 @@ var require_ee_first = __commonJS({
         }
       }
       function thunk(fn2) {
-        done = fn2;
+        done2 = fn2;
       }
       thunk.cancel = cleanup;
       return thunk;
     }
-    function listener(event, done) {
+    function listener(event, done2) {
       return function onevent(arg1) {
         var args = new Array(arguments.length);
         var ee = this;
@@ -5546,7 +5546,7 @@ var require_ee_first = __commonJS({
         for (var i = 0; i < args.length; i++) {
           args[i] = arguments[i];
         }
-        done(err, ee, event, args);
+        done2(err, ee, event, args);
       };
     }
   }
@@ -19239,12 +19239,12 @@ var require_route = __commonJS({
       }
       return methods2;
     };
-    Route.prototype.dispatch = function dispatch(req, res, done) {
+    Route.prototype.dispatch = function dispatch(req, res, done2) {
       var idx = 0;
       var stack = this.stack;
       var sync = 0;
       if (stack.length === 0) {
-        return done();
+        return done2();
       }
       var method = typeof req.method === "string" ? req.method.toLowerCase() : req.method;
       if (method === "head" && !this.methods["head"]) {
@@ -19254,17 +19254,17 @@ var require_route = __commonJS({
       next();
       function next(err) {
         if (err && err === "route") {
-          return done();
+          return done2();
         }
         if (err && err === "router") {
-          return done(err);
+          return done2(err);
         }
         if (++sync > 100) {
           return setImmediate(next, err);
         }
         var layer = stack[idx++];
         if (!layer) {
-          return done(err);
+          return done2(err);
         }
         if (layer.method && layer.method !== method) {
           next(err);
@@ -19395,10 +19395,10 @@ var require_router = __commonJS({
       var stack = self2.stack;
       var parentParams = req.params;
       var parentUrl = req.baseUrl || "";
-      var done = restore(out, req, "baseUrl", "next", "params");
+      var done2 = restore(out, req, "baseUrl", "next", "params");
       req.next = next;
       if (req.method === "OPTIONS") {
-        done = wrap5(done, function(old, err) {
+        done2 = wrap5(done2, function(old, err) {
           if (err || options.length === 0) return old(err);
           sendOptionsResponse(res, options, old);
         });
@@ -19418,11 +19418,11 @@ var require_router = __commonJS({
           removed = "";
         }
         if (layerError === "router") {
-          setImmediate(done, null);
+          setImmediate(done2, null);
           return;
         }
         if (idx >= stack.length) {
-          setImmediate(done, layerError);
+          setImmediate(done2, layerError);
           return;
         }
         if (++sync > 100) {
@@ -19430,7 +19430,7 @@ var require_router = __commonJS({
         }
         var path4 = getPathname(req);
         if (path4 == null) {
-          return done(layerError);
+          return done2(layerError);
         }
         var layer;
         var match;
@@ -19462,7 +19462,7 @@ var require_router = __commonJS({
           }
         }
         if (match !== true) {
-          return done(layerError);
+          return done2(layerError);
         }
         if (route) {
           req.route = route;
@@ -19505,11 +19505,11 @@ var require_router = __commonJS({
         }
       }
     };
-    proto.process_params = function process_params(layer, called, req, res, done) {
+    proto.process_params = function process_params(layer, called, req, res, done2) {
       var params = this.params;
       var keys = layer.keys;
       if (!keys || keys.length === 0) {
-        return done();
+        return done2();
       }
       var i = 0;
       var name2;
@@ -19520,10 +19520,10 @@ var require_router = __commonJS({
       var paramCalled;
       function param(err) {
         if (err) {
-          return done(err);
+          return done2(err);
         }
         if (i >= keys.length) {
-          return done();
+          return done2();
         }
         paramIndex = 0;
         key2 = keys[i++];
@@ -22464,16 +22464,16 @@ var require_application = __commonJS({
     };
     app2.handle = function handle(req, res, callback) {
       var router = this._router;
-      var done = callback || finalhandler(req, res, {
+      var done2 = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
       });
       if (!router) {
         debug("no routes defined on app");
-        done();
+        done2();
         return;
       }
-      router.handle(req, res, done);
+      router.handle(req, res, done2);
     };
     app2.use = function use(fn) {
       var offset = 0;
@@ -22604,13 +22604,13 @@ var require_application = __commonJS({
     app2.del = deprecate.function(app2.delete, "app.del: Use app.delete instead");
     app2.render = function render(name2, options, callback) {
       var cache = this.cache;
-      var done = callback;
+      var done2 = callback;
       var engines = this.engines;
       var opts = options;
       var renderOptions = {};
       var view;
       if (typeof options === "function") {
-        done = options;
+        done2 = options;
         opts = {};
       }
       merge(renderOptions, this.locals);
@@ -22635,13 +22635,13 @@ var require_application = __commonJS({
           var dirs = Array.isArray(view.root) && view.root.length > 1 ? 'directories "' + view.root.slice(0, -1).join('", "') + '" or "' + view.root[view.root.length - 1] + '"' : 'directory "' + view.root + '"';
           var err = new Error('Failed to lookup view "' + name2 + '" in views ' + dirs);
           err.view = view;
-          return done(err);
+          return done2(err);
         }
         if (renderOptions.cache) {
           cache[name2] = view;
         }
       }
-      tryRender(view, renderOptions, done);
+      tryRender(view, renderOptions, done2);
     };
     app2.listen = function listen() {
       var server = http2.createServer(this);
@@ -23864,7 +23864,7 @@ var require_response = __commonJS({
       return this.send(body);
     };
     res.sendFile = function sendFile(path5, options, callback) {
-      var done = callback;
+      var done2 = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
@@ -23876,7 +23876,7 @@ var require_response = __commonJS({
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
-        done = options;
+        done2 = options;
         opts = {};
       }
       if (!opts.root && !isAbsolute(path5)) {
@@ -23885,7 +23885,7 @@ var require_response = __commonJS({
       var pathname = encodeURI(path5);
       var file = send2(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
-        if (done) return done(err);
+        if (done2) return done2(err);
         if (err && err.code === "EISDIR") return next();
         if (err && err.code !== "ECONNABORTED" && err.syscall !== "write") {
           next(err);
@@ -23893,18 +23893,18 @@ var require_response = __commonJS({
       });
     };
     res.sendfile = function(path5, options, callback) {
-      var done = callback;
+      var done2 = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
       if (typeof options === "function") {
-        done = options;
+        done2 = options;
         opts = {};
       }
       var file = send2(req, path5, opts);
       sendfile(res2, file, opts, function(err) {
-        if (done) return done(err);
+        if (done2) return done2(err);
         if (err && err.code === "EISDIR") return next();
         if (err && err.code !== "ECONNABORTED" && err.syscall !== "write") {
           next(err);
@@ -23916,15 +23916,15 @@ var require_response = __commonJS({
       "res.sendfile: Use res.sendFile instead"
     );
     res.download = function download(path5, filename, options, callback) {
-      var done = callback;
+      var done2 = callback;
       var name2 = filename;
       var opts = options || null;
       if (typeof filename === "function") {
-        done = filename;
+        done2 = filename;
         name2 = null;
         opts = null;
       } else if (typeof options === "function") {
-        done = options;
+        done2 = options;
         opts = null;
       }
       if (typeof filename === "object" && (typeof options === "function" || options === void 0)) {
@@ -23946,7 +23946,7 @@ var require_response = __commonJS({
       opts = Object.create(opts);
       opts.headers = headers;
       var fullPath = !opts.root ? resolve3(path5) : path5;
-      return this.sendFile(fullPath, opts, done);
+      return this.sendFile(fullPath, opts, done2);
     };
     res.contentType = res.type = function contentType(type) {
       var ct = type.indexOf("/") === -1 ? mime.lookup(type) : type;
@@ -24102,46 +24102,46 @@ var require_response = __commonJS({
     };
     res.render = function render(view, options, callback) {
       var app2 = this.req.app;
-      var done = callback;
+      var done2 = callback;
       var opts = options || {};
       var req = this.req;
       var self2 = this;
       if (typeof options === "function") {
-        done = options;
+        done2 = options;
         opts = {};
       }
       opts._locals = self2.locals;
-      done = done || function(err, str) {
+      done2 = done2 || function(err, str) {
         if (err) return req.next(err);
         self2.send(str);
       };
-      app2.render(view, opts, done);
+      app2.render(view, opts, done2);
     };
     function sendfile(res2, file, options, callback) {
-      var done = false;
+      var done2 = false;
       var streaming;
       function onaborted() {
-        if (done) return;
-        done = true;
+        if (done2) return;
+        done2 = true;
         var err = new Error("Request aborted");
         err.code = "ECONNABORTED";
         callback(err);
       }
       function ondirectory() {
-        if (done) return;
-        done = true;
+        if (done2) return;
+        done2 = true;
         var err = new Error("EISDIR, read");
         err.code = "EISDIR";
         callback(err);
       }
       function onerror(err) {
-        if (done) return;
-        done = true;
+        if (done2) return;
+        done2 = true;
         callback(err);
       }
       function onend() {
-        if (done) return;
-        done = true;
+        if (done2) return;
+        done2 = true;
         callback();
       }
       function onfile() {
@@ -24150,14 +24150,14 @@ var require_response = __commonJS({
       function onfinish(err) {
         if (err && err.code === "ECONNRESET") return onaborted();
         if (err) return onerror(err);
-        if (done) return;
+        if (done2) return;
         setImmediate(function() {
-          if (streaming !== false && !done) {
+          if (streaming !== false && !done2) {
             onaborted();
             return;
           }
-          if (done) return;
-          done = true;
+          if (done2) return;
+          done2 = true;
           callback();
         });
       }
@@ -29390,49 +29390,49 @@ var require_verify = __commonJS({
         options = {};
       }
       options = Object.assign({}, options);
-      let done;
+      let done2;
       if (callback) {
-        done = callback;
+        done2 = callback;
       } else {
-        done = function(err, data) {
+        done2 = function(err, data) {
           if (err) throw err;
           return data;
         };
       }
       if (options.clockTimestamp && typeof options.clockTimestamp !== "number") {
-        return done(new JsonWebTokenError("clockTimestamp must be a number"));
+        return done2(new JsonWebTokenError("clockTimestamp must be a number"));
       }
       if (options.nonce !== void 0 && (typeof options.nonce !== "string" || options.nonce.trim() === "")) {
-        return done(new JsonWebTokenError("nonce must be a non-empty string"));
+        return done2(new JsonWebTokenError("nonce must be a non-empty string"));
       }
       if (options.allowInvalidAsymmetricKeyTypes !== void 0 && typeof options.allowInvalidAsymmetricKeyTypes !== "boolean") {
-        return done(new JsonWebTokenError("allowInvalidAsymmetricKeyTypes must be a boolean"));
+        return done2(new JsonWebTokenError("allowInvalidAsymmetricKeyTypes must be a boolean"));
       }
       const clockTimestamp = options.clockTimestamp || Math.floor(Date.now() / 1e3);
       if (!jwtString) {
-        return done(new JsonWebTokenError("jwt must be provided"));
+        return done2(new JsonWebTokenError("jwt must be provided"));
       }
       if (typeof jwtString !== "string") {
-        return done(new JsonWebTokenError("jwt must be a string"));
+        return done2(new JsonWebTokenError("jwt must be a string"));
       }
       const parts = jwtString.split(".");
       if (parts.length !== 3) {
-        return done(new JsonWebTokenError("jwt malformed"));
+        return done2(new JsonWebTokenError("jwt malformed"));
       }
       let decodedToken;
       try {
         decodedToken = decode3(jwtString, { complete: true });
       } catch (err) {
-        return done(err);
+        return done2(err);
       }
       if (!decodedToken) {
-        return done(new JsonWebTokenError("invalid token"));
+        return done2(new JsonWebTokenError("invalid token"));
       }
       const header = decodedToken.header;
       let getSecret;
       if (typeof secretOrPublicKey === "function") {
         if (!callback) {
-          return done(new JsonWebTokenError("verify must be called asynchronous if secret or public key is provided as a callback"));
+          return done2(new JsonWebTokenError("verify must be called asynchronous if secret or public key is provided as a callback"));
         }
         getSecret = secretOrPublicKey;
       } else {
@@ -29442,17 +29442,17 @@ var require_verify = __commonJS({
       }
       return getSecret(header, function(err, secretOrPublicKey2) {
         if (err) {
-          return done(new JsonWebTokenError("error in secret or public key callback: " + err.message));
+          return done2(new JsonWebTokenError("error in secret or public key callback: " + err.message));
         }
         const hasSignature = parts[2].trim() !== "";
         if (!hasSignature && secretOrPublicKey2) {
-          return done(new JsonWebTokenError("jwt signature is required"));
+          return done2(new JsonWebTokenError("jwt signature is required"));
         }
         if (hasSignature && !secretOrPublicKey2) {
-          return done(new JsonWebTokenError("secret or public key must be provided"));
+          return done2(new JsonWebTokenError("secret or public key must be provided"));
         }
         if (!hasSignature && !options.algorithms) {
-          return done(new JsonWebTokenError('please specify "none" in "algorithms" to verify unsigned tokens'));
+          return done2(new JsonWebTokenError('please specify "none" in "algorithms" to verify unsigned tokens'));
         }
         if (secretOrPublicKey2 != null && !(secretOrPublicKey2 instanceof KeyObject)) {
           try {
@@ -29461,7 +29461,7 @@ var require_verify = __commonJS({
             try {
               secretOrPublicKey2 = createSecretKey(typeof secretOrPublicKey2 === "string" ? Buffer.from(secretOrPublicKey2) : secretOrPublicKey2);
             } catch (_2) {
-              return done(new JsonWebTokenError("secretOrPublicKey is not valid key material"));
+              return done2(new JsonWebTokenError("secretOrPublicKey is not valid key material"));
             }
           }
         }
@@ -29477,44 +29477,44 @@ var require_verify = __commonJS({
           }
         }
         if (options.algorithms.indexOf(decodedToken.header.alg) === -1) {
-          return done(new JsonWebTokenError("invalid algorithm"));
+          return done2(new JsonWebTokenError("invalid algorithm"));
         }
         if (header.alg.startsWith("HS") && secretOrPublicKey2.type !== "secret") {
-          return done(new JsonWebTokenError(`secretOrPublicKey must be a symmetric key when using ${header.alg}`));
+          return done2(new JsonWebTokenError(`secretOrPublicKey must be a symmetric key when using ${header.alg}`));
         } else if (/^(?:RS|PS|ES)/.test(header.alg) && secretOrPublicKey2.type !== "public") {
-          return done(new JsonWebTokenError(`secretOrPublicKey must be an asymmetric key when using ${header.alg}`));
+          return done2(new JsonWebTokenError(`secretOrPublicKey must be an asymmetric key when using ${header.alg}`));
         }
         if (!options.allowInvalidAsymmetricKeyTypes) {
           try {
             validateAsymmetricKey(header.alg, secretOrPublicKey2);
           } catch (e) {
-            return done(e);
+            return done2(e);
           }
         }
         let valid;
         try {
           valid = jws.verify(jwtString, decodedToken.header.alg, secretOrPublicKey2);
         } catch (e) {
-          return done(e);
+          return done2(e);
         }
         if (!valid) {
-          return done(new JsonWebTokenError("invalid signature"));
+          return done2(new JsonWebTokenError("invalid signature"));
         }
         const payload = decodedToken.payload;
         if (typeof payload.nbf !== "undefined" && !options.ignoreNotBefore) {
           if (typeof payload.nbf !== "number") {
-            return done(new JsonWebTokenError("invalid nbf value"));
+            return done2(new JsonWebTokenError("invalid nbf value"));
           }
           if (payload.nbf > clockTimestamp + (options.clockTolerance || 0)) {
-            return done(new NotBeforeError("jwt not active", new Date(payload.nbf * 1e3)));
+            return done2(new NotBeforeError("jwt not active", new Date(payload.nbf * 1e3)));
           }
         }
         if (typeof payload.exp !== "undefined" && !options.ignoreExpiration) {
           if (typeof payload.exp !== "number") {
-            return done(new JsonWebTokenError("invalid exp value"));
+            return done2(new JsonWebTokenError("invalid exp value"));
           }
           if (clockTimestamp >= payload.exp + (options.clockTolerance || 0)) {
-            return done(new TokenExpiredError("jwt expired", new Date(payload.exp * 1e3)));
+            return done2(new TokenExpiredError("jwt expired", new Date(payload.exp * 1e3)));
           }
         }
         if (options.audience) {
@@ -29526,51 +29526,51 @@ var require_verify = __commonJS({
             });
           });
           if (!match) {
-            return done(new JsonWebTokenError("jwt audience invalid. expected: " + audiences.join(" or ")));
+            return done2(new JsonWebTokenError("jwt audience invalid. expected: " + audiences.join(" or ")));
           }
         }
         if (options.issuer) {
           const invalid_issuer = typeof options.issuer === "string" && payload.iss !== options.issuer || Array.isArray(options.issuer) && options.issuer.indexOf(payload.iss) === -1;
           if (invalid_issuer) {
-            return done(new JsonWebTokenError("jwt issuer invalid. expected: " + options.issuer));
+            return done2(new JsonWebTokenError("jwt issuer invalid. expected: " + options.issuer));
           }
         }
         if (options.subject) {
           if (payload.sub !== options.subject) {
-            return done(new JsonWebTokenError("jwt subject invalid. expected: " + options.subject));
+            return done2(new JsonWebTokenError("jwt subject invalid. expected: " + options.subject));
           }
         }
         if (options.jwtid) {
           if (payload.jti !== options.jwtid) {
-            return done(new JsonWebTokenError("jwt jwtid invalid. expected: " + options.jwtid));
+            return done2(new JsonWebTokenError("jwt jwtid invalid. expected: " + options.jwtid));
           }
         }
         if (options.nonce) {
           if (payload.nonce !== options.nonce) {
-            return done(new JsonWebTokenError("jwt nonce invalid. expected: " + options.nonce));
+            return done2(new JsonWebTokenError("jwt nonce invalid. expected: " + options.nonce));
           }
         }
         if (options.maxAge) {
           if (typeof payload.iat !== "number") {
-            return done(new JsonWebTokenError("iat required when maxAge is specified"));
+            return done2(new JsonWebTokenError("iat required when maxAge is specified"));
           }
           const maxAgeTimestamp = timespan(options.maxAge, payload.iat);
           if (typeof maxAgeTimestamp === "undefined") {
-            return done(new JsonWebTokenError('"maxAge" should be a number of seconds or string representing a timespan eg: "1d", "20h", 60'));
+            return done2(new JsonWebTokenError('"maxAge" should be a number of seconds or string representing a timespan eg: "1d", "20h", 60'));
           }
           if (clockTimestamp >= maxAgeTimestamp + (options.clockTolerance || 0)) {
-            return done(new TokenExpiredError("maxAge exceeded", new Date(maxAgeTimestamp * 1e3)));
+            return done2(new TokenExpiredError("maxAge exceeded", new Date(maxAgeTimestamp * 1e3)));
           }
         }
         if (options.complete === true) {
           const signature = decodedToken.signature;
-          return done(null, {
+          return done2(null, {
             header,
             payload,
             signature
           });
         }
-        return done(null, payload);
+        return done2(null, payload);
       });
     };
   }
@@ -56575,10 +56575,10 @@ var Encoder = class extends import_node_stream2.Transform {
     this.outputBytes = 0;
   }
   /** @internal */
-  _transform(chunk, encoding, done) {
+  _transform(chunk, encoding, done2) {
     let buf = encoding !== "buffer" ? Buffer.from(chunk, encoding) : chunk;
     if (!buf || !buf.length) {
-      setImmediate(done);
+      setImmediate(done2);
       return;
     }
     this.inputBytes += buf.length;
@@ -56610,10 +56610,10 @@ var Encoder = class extends import_node_stream2.Transform {
       this.outputBytes += b64.length;
       this.push(Buffer.from(b64, "ascii"));
     }
-    setImmediate(done);
+    setImmediate(done2);
   }
   /** @internal */
-  _flush(done) {
+  _flush(done2) {
     if (this._remainingBytes && this._remainingBytes.length) {
       this._curLine += encode2(this._remainingBytes);
     }
@@ -56623,7 +56623,7 @@ var Encoder = class extends import_node_stream2.Transform {
       this.push(Buffer.from(this._curLine, "ascii"));
       this._curLine = "";
     }
-    done();
+    done2();
   }
 };
 
@@ -56756,13 +56756,13 @@ var Encoder2 = class extends import_node_stream3.Transform {
     this.outputBytes = 0;
   }
   /** @internal */
-  _transform(chunk, encoding, done) {
+  _transform(chunk, encoding, done2) {
     let qp;
     if (encoding !== "buffer") {
       chunk = Buffer.from(chunk, encoding);
     }
     if (!chunk || !chunk.length) {
-      return done();
+      return done2();
     }
     this.inputBytes += chunk.length;
     if (this.options.lineLength) {
@@ -56781,15 +56781,15 @@ var Encoder2 = class extends import_node_stream3.Transform {
       this.outputBytes += qp.length;
       this.push(qp, "ascii");
     }
-    done();
+    done2();
   }
   /** @internal */
-  _flush(done) {
+  _flush(done2) {
     if (this._curLine) {
       this.outputBytes += this._curLine.length;
       this.push(this._curLine, "ascii");
     }
-    done();
+    done2();
   }
 };
 
@@ -57183,7 +57183,7 @@ function foldLines(str, lineLength, afterSpace) {
 }
 function splitMimeEncodedString(str, maxlen) {
   const lines = [];
-  let curLine, fallbackLine, match, chr, done;
+  let curLine, fallbackLine, match, chr, done2;
   maxlen = Math.max(maxlen || 0, 12);
   while (str.length) {
     curLine = str.substr(0, maxlen);
@@ -57191,14 +57191,14 @@ function splitMimeEncodedString(str, maxlen) {
       curLine = curLine.substr(0, match.index);
     }
     fallbackLine = curLine.length ? curLine : str.substr(0, maxlen);
-    done = false;
-    while (!done && curLine.length) {
-      done = true;
+    done2 = false;
+    while (!done2 && curLine.length) {
+      done2 = true;
       if (match = str.substr(curLine.length).match(/^[=]([0-9A-F]{2})/i)) {
         chr = parseInt(match[1], 16);
         if (chr < 194 && chr > 127) {
           curLine = curLine.substr(0, curLine.length - 3);
-          done = false;
+          done2 = false;
         }
       }
     }
@@ -57749,24 +57749,24 @@ var LastNewline = class extends import_node_stream4.Transform {
     this.lastByte = false;
   }
   /** @internal */
-  _transform(chunk, encoding, done) {
+  _transform(chunk, encoding, done2) {
     if (chunk.length) {
       this.lastByte = chunk[chunk.length - 1];
     }
     this.push(chunk);
-    done();
+    done2();
   }
   /** @internal */
-  _flush(done) {
+  _flush(done2) {
     if (this.lastByte === 10) {
-      return done();
+      return done2();
     }
     if (this.lastByte === 13) {
       this.push(Buffer.from("\n"));
-      return done();
+      return done2();
     }
     this.push(Buffer.from("\r\n"));
-    return done();
+    return done2();
   }
 };
 
@@ -57781,7 +57781,7 @@ var LeWindows = class extends import_node_stream5.Transform {
    * Escapes dots
    * @internal
    */
-  _transform(chunk, encoding, done) {
+  _transform(chunk, encoding, done2) {
     let buf;
     let lastPos = 0;
     for (let i = 0, len = chunk.length; i < len; i++) {
@@ -57803,7 +57803,7 @@ var LeWindows = class extends import_node_stream5.Transform {
       this.push(chunk);
     }
     this.lastByte = chunk[chunk.length - 1];
-    done();
+    done2();
   }
 };
 
@@ -57817,7 +57817,7 @@ var LeUnix = class extends import_node_stream6.Transform {
    * Escapes dots
    * @internal
    */
-  _transform(chunk, encoding, done) {
+  _transform(chunk, encoding, done2) {
     let buf;
     let lastPos = 0;
     for (let i = 0, len = chunk.length; i < len; i++) {
@@ -57833,7 +57833,7 @@ var LeUnix = class extends import_node_stream6.Transform {
     } else if (!lastPos) {
       this.push(chunk);
     }
-    done();
+    done2();
   }
 };
 
@@ -58096,7 +58096,7 @@ var MimeNode = class _MimeNode {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done = callback;
+    const done2 = callback;
     const stream = this.createReadStream();
     const buf = [];
     let buflen = 0;
@@ -58113,7 +58113,7 @@ var MimeNode = class _MimeNode {
         return;
       }
       returned = true;
-      return done(err);
+      return done2(err);
     });
     stream.once("end", (chunk) => {
       if (returned) {
@@ -58124,7 +58124,7 @@ var MimeNode = class _MimeNode {
         buf.push(chunk);
         buflen += chunk.length;
       }
-      return done(null, Buffer.concat(buf, buflen));
+      return done2(null, Buffer.concat(buf, buflen));
     });
     return promise;
   }
@@ -58309,7 +58309,7 @@ var MimeNode = class _MimeNode {
   processFunc(processFunc) {
     this._processFuncs.push(processFunc);
   }
-  stream(outputStream, options, done) {
+  stream(outputStream, options, done2) {
     const transferEncoding = this.getTransferEncoding();
     let contentStream;
     let localStream;
@@ -58319,7 +58319,7 @@ var MimeNode = class _MimeNode {
         return;
       }
       returned = true;
-      done(err);
+      done2(err);
     };
     const finalize = () => {
       let childId = 0;
@@ -60002,12 +60002,12 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
     tlsOptions = {};
   }
   tlsOptions = tlsOptions || {};
-  const done = callback;
+  const done2 = callback;
   destinationPort = Number(destinationPort) || 0;
   if (!destinationPort || /[\r\n]/.test(destinationHost)) {
     const err = new Error("Invalid proxy destination");
     err.code = EPROXY;
-    setImmediate(() => done(err));
+    setImmediate(() => done2(err));
     return;
   }
   const proxy = parse(proxyUrl);
@@ -60033,7 +60033,7 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
       socket.destroy();
     } catch (_E) {
     }
-    done(err);
+    done2(err);
   };
   const timeoutErr = () => {
     const err = new Error("Proxy socket timed out");
@@ -60088,12 +60088,12 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
           }
           const err = new Error("Invalid response from proxy" + (match && ": " + match[1] || ""));
           err.code = EPROXY;
-          return done(err);
+          return done2(err);
         }
         socket.removeListener("error", tempSocketErr);
         socket.removeListener("timeout", timeoutErr);
         socket.setTimeout(0);
-        return done(null, socket);
+        return done2(null, socket);
       }
       if (received > MAX_RESPONSE_HEADER_BYTES) {
         socket.removeListener("data", onSocketData);
@@ -60449,7 +60449,7 @@ var Mail = class extends import_node_events.EventEmitter {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done = callback;
+    const done2 = callback;
     if (typeof this.getSocket === "function") {
       this.transporter.getSocket = this.getSocket;
       this.getSocket = false;
@@ -60468,7 +60468,7 @@ var Mail = class extends import_node_events.EventEmitter {
           tnx: "plugin",
           action: "compile"
         }, "PluginCompile Error: %s", err.message);
-        return done(err);
+        return done2(err);
       }
       let recipientCount;
       try {
@@ -60483,7 +60483,7 @@ var Mail = class extends import_node_events.EventEmitter {
           tnx: "transport",
           action: "send"
         }, "Compile Error: %s", err2.message);
-        return done(err2);
+        return done2(err2);
       }
       const maxRecipients = mail.data.maxRecipients === void 0 ? DEFAULT_MAX_RECIPIENTS : mail.data.maxRecipients;
       if (maxRecipients && recipientCount > maxRecipients) {
@@ -60494,7 +60494,7 @@ var Mail = class extends import_node_events.EventEmitter {
           tnx: "transport",
           action: "send"
         }, "Send Error: %s", err2.message);
-        return done(err2);
+        return done2(err2);
       }
       this._processPlugins("stream", mail, (err2) => {
         if (err2) {
@@ -60503,7 +60503,7 @@ var Mail = class extends import_node_events.EventEmitter {
             tnx: "plugin",
             action: "stream"
           }, "PluginStream Error: %s", err2.message);
-          return done(err2);
+          return done2(err2);
         }
         if (mail.data.dkim || this.dkim) {
           mail.message.processFunc((input) => {
@@ -60524,7 +60524,7 @@ var Mail = class extends import_node_events.EventEmitter {
               action: "send"
             }, "Send Error: %s", args[0].message);
           }
-          done(...args);
+          done2(...args);
         });
       });
     });
@@ -60730,13 +60730,13 @@ var DataStream = class extends import_node_stream11.Transform {
    * Escapes dots
    * @internal
    */
-  _transform(chunk, encoding, done) {
+  _transform(chunk, encoding, done2) {
     const chunks = [];
     let chunklen = 0;
     let i, len, lastPos = 0;
     let buf;
     if (!chunk || !chunk.length) {
-      return done();
+      return done2();
     }
     if (typeof chunk === "string") {
       chunk = Buffer.from(chunk);
@@ -60777,13 +60777,13 @@ var DataStream = class extends import_node_stream11.Transform {
       this.push(chunk);
     }
     this.lastByte = chunk[chunk.length - 1];
-    done();
+    done2();
   }
   /**
    * Finalizes the stream with a dot on a single line
    * @internal
    */
-  _flush(done) {
+  _flush(done2) {
     let buf;
     if (this.lastByte === 10) {
       buf = Buffer.from(".\r\n");
@@ -60794,7 +60794,7 @@ var DataStream = class extends import_node_stream11.Transform {
     }
     this.outByteCount += buf.length;
     this.push(buf);
-    done();
+    done2();
   }
 };
 
@@ -61166,11 +61166,11 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
         returned = true;
         callback(this._formatError(err, "EAUTH", lastResponse, "AUTH " + this._authMethod));
       };
-      const sendCommand = (cmd, done) => {
+      const sendCommand = (cmd, done2) => {
         let promise;
-        if (!done) {
+        if (!done2) {
           promise = new Promise((resolve4, reject2) => {
-            done = callbackPromise(resolve4, reject2);
+            done2 = callbackPromise(resolve4, reject2);
           });
         }
         this._responseActions.push((str) => {
@@ -61190,7 +61190,7 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
             data.text = str;
             data.status = 0;
           }
-          done(null, data);
+          done2(null, data);
         });
         setImmediate(() => this._sendCommand(cmd));
         return promise;
@@ -61256,7 +61256,7 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
    * @param message String, Buffer or a Stream
    * @param done Callback to return once sending is completed
    */
-  send(envelope, message, done) {
+  send(envelope, message, done2) {
     let returned = false;
     const callback = (err, info) => {
       if (returned) {
@@ -61266,7 +61266,7 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
       if (this._pendingSend && this._pendingSend.callback === callback) {
         this._pendingSend = false;
       }
-      done(err, info);
+      done2(err, info);
     };
     if (!message) {
       return callback(this._formatError("Empty message", "EMESSAGE", false, "API"));
@@ -62383,9 +62383,9 @@ var XOAuth2 = class extends import_node_stream13.Stream {
    * @param callback Callback function with error object and token string
    */
   getToken(renew, callback) {
-    const done = callback;
+    const done2 = callback;
     if (this.configError) {
-      return done(this.configError);
+      return done2(this.configError);
     }
     if (!renew && this.accessToken && (!this.expires || this.expires > Date.now())) {
       this.logger.debug({
@@ -62411,10 +62411,10 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       }, "Cannot renew access token for %s: No refresh mechanism available", this.options.user);
       const err = new Error("Can't create new access token for user");
       err.code = EOAUTH2;
-      return done(err);
+      return done2(err);
     }
     if (this.renewing) {
-      this.renewalQueue.push({ renew, callback: done });
+      this.renewalQueue.push({ renew, callback: done2 });
       return;
     }
     this.renewing = true;
@@ -62436,7 +62436,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
           action: "renew"
         }, "Generated new Access Token for %s", this.options.user);
       }
-      done(err, accessToken2);
+      done2(err, accessToken2);
     };
     if (this.provisionCallback) {
       this.provisionCallback(this.options.user, !!renew, (err, accessToken2, expires) => {
@@ -62474,7 +62474,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
    * @param callback Callback function with error object and token string
    */
   generateToken(callback) {
-    const done = callback;
+    const done2 = callback;
     let urlOptions;
     let loggedUrlOptions;
     if (this.options.serviceClient) {
@@ -62493,7 +62493,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       } catch (_err) {
         const err = new Error("Can't generate token. Check your auth options");
         err.code = EOAUTH2;
-        return done(err);
+        return done2(err);
       }
       urlOptions = {
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -62507,7 +62507,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       if (!this.options.refreshToken) {
         const err = new Error("Can't create new access token for user");
         err.code = EOAUTH2;
-        return done(err);
+        return done2(err);
       }
       urlOptions = {
         client_id: this.options.clientId || "",
@@ -62532,12 +62532,12 @@ var XOAuth2 = class extends import_node_stream13.Stream {
     this.postRequest(this.options.accessUrl, urlOptions, this.options, (error2, body) => {
       let data;
       if (error2) {
-        return done(error2);
+        return done2(error2);
       }
       try {
         data = JSON.parse(body.toString());
       } catch (E) {
-        return done(E);
+        return done2(E);
       }
       if (!data || typeof data !== "object") {
         this.logger.debug({
@@ -62547,7 +62547,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
         }, "Response: %s", (body || "").toString());
         const err2 = new Error("Invalid authentication response");
         err2.code = EOAUTH2;
-        return done(err2);
+        return done2(err2);
       }
       const logData = Object.assign({}, data);
       if (logData.access_token) {
@@ -62568,7 +62568,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
         }
         const err2 = new Error(errorMessage);
         err2.code = EOAUTH2;
-        return done(err2);
+        return done2(err2);
       }
       if (data.access_token) {
         this.updateToken(data.access_token, data.expires_in);
@@ -62576,7 +62576,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       }
       const err = new Error("No access token");
       err.code = EOAUTH2;
-      return done(err);
+      return done2(err);
     });
   }
   /**
@@ -63969,11 +63969,11 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done = callback;
+    const done2 = callback;
     const auth = new PoolResource(this).auth;
     this.getSocket(this.options, (err, socketOptions) => {
       if (err) {
-        return done(err);
+        return done2(err);
       }
       let options = this.options;
       if (socketOptions && socketOptions.connection) {
@@ -63995,14 +63995,14 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         }
         returned = true;
         connection.close();
-        return done(err2);
+        return done2(err2);
       });
       connection.once("end", () => {
         if (returned) {
           return;
         }
         returned = true;
-        return done(new Error("Connection closed"));
+        return done2(new Error("Connection closed"));
       });
       const finalize = () => {
         if (returned) {
@@ -64010,7 +64010,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         }
         returned = true;
         connection.quit();
-        return done(null, true);
+        return done2(null, true);
       };
       connection.connect((err2) => {
         if (returned) {
@@ -64019,7 +64019,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         if (err2) {
           returned = true;
           connection.close();
-          return done(err2);
+          return done2(err2);
         }
         if (auth && (connection.allowsAuth || options.forceAuth)) {
           connection.login(auth, (err3) => {
@@ -64029,7 +64029,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
             if (err3) {
               returned = true;
               connection.close();
-              return done(err3);
+              return done2(err3);
             }
             finalize();
           });
@@ -64038,7 +64038,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
           err3.code = ENOAUTH;
           returned = true;
           connection.close();
-          return done(err3);
+          return done2(err3);
         } else {
           finalize();
         }
@@ -64261,10 +64261,10 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done = callback;
+    const done2 = callback;
     this.getSocket(this.options, (err, socketOptions) => {
       if (err) {
-        return done(err);
+        return done2(err);
       }
       let options = this.options;
       if (socketOptions && socketOptions.connection) {
@@ -64294,7 +64294,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         returned = true;
         cleanupPerCallAuth();
         connection.close();
-        return done(err2);
+        return done2(err2);
       });
       connection.once("end", () => {
         if (returned) {
@@ -64302,7 +64302,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         }
         returned = true;
         cleanupPerCallAuth();
-        return done(new Error("Connection closed"));
+        return done2(new Error("Connection closed"));
       });
       const finalize = () => {
         if (returned) {
@@ -64311,7 +64311,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         returned = true;
         cleanupPerCallAuth();
         connection.quit();
-        return done(null, true);
+        return done2(null, true);
       };
       connection.connect((err2) => {
         if (returned) {
@@ -64320,7 +64320,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         if (err2) {
           returned = true;
           connection.close();
-          return done(err2);
+          return done2(err2);
         }
         perCallAuth = this.getAuth({});
         if (perCallAuth && (connection.allowsAuth || options.forceAuth)) {
@@ -64332,7 +64332,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
             if (err3) {
               returned = true;
               connection.close();
-              return done(err3);
+              return done2(err3);
             }
             finalize();
           });
@@ -64342,7 +64342,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
           returned = true;
           cleanupPerCallAuth();
           connection.close();
-          return done(err3);
+          return done2(err3);
         } else {
           finalize();
         }
@@ -64394,7 +64394,7 @@ var SendmailTransport = class {
    * @param mail MailComposer object
    * @param done Callback function to run when the sending is completed
    */
-  send(mail, done) {
+  send(mail, done2) {
     mail.message.keepBcc = true;
     const envelope = mail.message.getEnvelope();
     const messageId = mail.message.messageId();
@@ -64403,7 +64403,7 @@ var SendmailTransport = class {
     if (hasInvalidAddresses) {
       const err = new Error("Can not send mail. Invalid envelope addresses.");
       err.code = ESENDMAIL;
-      return done(err);
+      return done2(err);
     }
     const args = this.args ? ["-i"].concat(this.args).concat(envelope.to) : ["-i"].concat(envelope.from ? ["-f", envelope.from] : []).concat(envelope.to);
     const callback = (err) => {
@@ -64411,11 +64411,11 @@ var SendmailTransport = class {
         return;
       }
       returned = true;
-      if (typeof done === "function") {
+      if (typeof done2 === "function") {
         if (err) {
-          return done(err);
+          return done2(err);
         }
-        return done(null, {
+        return done2(null, {
           envelope,
           messageId,
           response: "Messages queued for delivery"
@@ -64515,7 +64515,7 @@ var StreamTransport = class {
    * @param mail MailComposer object
    * @param done Callback function to run when the sending is completed
    */
-  send(mail, done) {
+  send(mail, done2) {
     mail.message.keepBcc = true;
     const envelope = mail.message.getEnvelope();
     const messageId = mail.message.messageId();
@@ -64542,7 +64542,7 @@ var StreamTransport = class {
           tnx: "send",
           messageId
         }, "Creating send stream failed for %s. %s", messageId, E.message);
-        return done(E);
+        return done2(E);
       }
       if (!this.options.buffer) {
         stream.once("error", (err) => {
@@ -64552,7 +64552,7 @@ var StreamTransport = class {
             messageId
           }, "Failed creating message for %s. %s", messageId, err.message);
         });
-        return done(null, {
+        return done2(null, {
           envelope,
           messageId,
           message: stream
@@ -64573,9 +64573,9 @@ var StreamTransport = class {
           tnx: "send",
           messageId
         }, "Failed creating message for %s. %s", messageId, err.message);
-        return done(err);
+        return done2(err);
       });
-      stream.on("end", () => done(null, {
+      stream.on("end", () => done2(null, {
         envelope,
         messageId,
         message: Buffer.concat(chunks, chunklen)
@@ -64602,7 +64602,7 @@ var JSONTransport = class {
    * @param mail MailComposer object
    * @param done Callback function to run when the sending is completed
    */
-  send(mail, done) {
+  send(mail, done2) {
     mail.message.keepBcc = true;
     const envelope = mail.message.getEnvelope();
     const messageId = mail.message.messageId();
@@ -64622,11 +64622,11 @@ var JSONTransport = class {
             tnx: "send",
             messageId
           }, "Failed building JSON structure for %s. %s", messageId, err.message);
-          return done(err);
+          return done2(err);
         }
         delete data.envelope;
         delete data.normalizedHeaders;
-        return done(null, {
+        return done2(null, {
           envelope,
           messageId,
           message: this.options.skipEncoding ? data : JSON.stringify(data)
@@ -64785,12 +64785,12 @@ var SESTransport = class extends import_node_events6.default {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done = callback;
+    const done2 = callback;
     const cb = (err) => {
       if (err && !["InvalidParameterValue", "MessageRejected"].includes(err.code || err.Code || err.name)) {
-        return done(tagSesError(err));
+        return done2(tagSesError(err));
       }
-      return done(null, true);
+      return done2(null, true);
     };
     const sesMessage = {
       Content: {
@@ -64872,9 +64872,9 @@ function createTestAccount(apiUrl, callback) {
       callback = callbackPromise(resolve3, reject);
     });
   }
-  const done = callback;
+  const done2 = callback;
   if (ETHEREAL_CACHE && testAccount) {
-    setImmediate(() => done(null, testAccount));
+    setImmediate(() => done2(null, testAccount));
     return promise;
   }
   apiUrl = apiUrl || ETHEREAL_API;
@@ -64905,21 +64905,21 @@ function createTestAccount(apiUrl, callback) {
       chunklen += chunk.length;
     }
   });
-  req.once("error", (err) => done(err));
+  req.once("error", (err) => done2(err));
   req.once("end", () => {
     const res = Buffer.concat(chunks, chunklen);
     let data;
     try {
       data = JSON.parse(res.toString());
     } catch (E) {
-      return done(E);
+      return done2(E);
     }
     if (data.status !== "success" || data.error) {
-      return done(new Error(data.error || "Request failed"));
+      return done2(new Error(data.error || "Request failed"));
     }
     delete data.status;
     testAccount = data;
-    done(null, testAccount);
+    done2(null, testAccount);
   });
   return promise;
 }
@@ -70964,6 +70964,33 @@ function ensureMaterialItemsOnce() {
   return ensuring2;
 }
 
+// apps/api/src/embroideryLegacy.ts
+async function removeService(id) {
+  const orders = await prisma.orderLineItem.count({ where: { serviceId: id } });
+  if (orders === 0) {
+    try {
+      await prisma.service.delete({ where: { id } });
+      return { deleted: true, retired: false, orders: 0 };
+    } catch {
+    }
+  }
+  await prisma.service.update({ where: { id }, data: { retired: true } });
+  return { deleted: false, retired: true, orders };
+}
+var done = null;
+function retireLegacyEmbroideryOnce() {
+  return done ??= (async () => {
+    const setting = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    if (setting.embroideryLegacyRetired) return;
+    const legacy = await prisma.service.findFirst({ where: { name: "Embroidery", soldViaDtfModule: false, retired: false } });
+    if (legacy) {
+      const r = await removeService(legacy.id);
+      console.log(r.deleted ? 'Removed the old "Embroidery" service (no order had used it).' : `Retired the old "Embroidery" service (${r.orders} order lines keep it).`);
+    }
+    await prisma.setting.update({ where: { id: 1 }, data: { embroideryLegacyRetired: true } });
+  })();
+}
+
 // apps/api/src/staffNames.ts
 async function ensureStaffNames() {
   const users = await prisma.user.findMany({ where: { firstName: "" }, select: { id: true, name: true } });
@@ -71420,8 +71447,15 @@ masterDataRouter.delete("/roles/:id", requireRole("Admin"), async (req, res) => 
 masterDataRouter.get("/services", async (req, res) => {
   await ensureMaterialItemsOnce();
   const costs = await canSeeCosts(req.user.role);
-  const services2 = await prisma.service.findMany({ orderBy: { name: "asc" } });
+  const services2 = await prisma.service.findMany({ where: { retired: false }, orderBy: { name: "asc" } });
   res.json(services2.map(({ markupType, markupValue, defaultSupplierCost, ...s }) => costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s));
+});
+masterDataRouter.delete("/services/:id", requireRole("Admin"), async (req, res) => {
+  const id = Number(req.params.id);
+  const svc = await prisma.service.findUnique({ where: { id } });
+  if (!svc || svc.retired) return res.status(404).json({ error: "Service not found" });
+  if (svc.soldViaDtfModule) return res.status(400).json({ error: `${svc.name} is sold through its own screen, so it cannot be deleted` });
+  res.json({ name: svc.name, ...await removeService(id) });
 });
 var serviceSchema = external_exports.object({
   name: external_exports.string().trim().min(1).max(120),
@@ -72342,8 +72376,12 @@ var orderInclude = import_client2.Prisma.validator()({
   lineItems: { include: { service: { include: { businessHead: true } }, material: true } },
   payments: { orderBy: { id: "asc" } },
   dtfArtworkJob: { select: { approvalStatus: true } },
+  embroideryJob: { select: { approvalStatus: true } },
   dtfFilmSale: { select: { id: true } }
 });
+function priceApprovalPending(o) {
+  return o.dtfArtworkJob?.approvalStatus === "Pending" || o.embroideryJob?.approvalStatus === "Pending";
+}
 function toLineItemInput(li) {
   return {
     itemType: li.itemType,
@@ -72378,8 +72416,8 @@ function serializeSummary(order) {
     dueDate: order.dueDate,
     totals,
     overdue,
-    // An artwork job priced below the recommended price is on hold until a manager approves it.
-    priceApproval: order.dtfArtworkJob?.approvalStatus === "Pending" ? "Pending" : null,
+    // An artwork or embroidery job priced below the recommended price is on hold until a manager approves it.
+    priceApproval: priceApprovalPending(order) ? "Pending" : null,
     // Film orders and artwork jobs are both 'dtf' channel orders; this tells them apart.
     dtfKind: order.dtfFilmSale ? "film" : order.dtfArtworkJob ? "artwork" : null,
     // The lines of business this order sells (same rule as Sales by Business Head: a service's head, else a name-based default; materials are General Order).
@@ -72617,8 +72655,8 @@ async function captureWalkin(req, res, form, extra = {}) {
       include: orderInclude
     });
     await extra.after?.(tx, created);
-    if (paymentLines.length) {
-      await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, cap.capturedById);
+    if (paymentLines.length || extra.after) {
+      if (paymentLines.length) await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, cap.capturedById);
       return tx.order.findUniqueOrThrow({ where: { id: created.id }, include: orderInclude });
     }
     return created;
@@ -72718,7 +72756,7 @@ ordersRouter.post("/:id/payments", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const lines = parsed.data.payments?.length ? parsed.data.payments : [{ method: parsed.data.method, amount: parsed.data.amount, reference: parsed.data.reference ?? null }];
   const current = await prisma.order.findUnique({ where: { id: order.id }, include: orderInclude });
-  if (current?.dtfArtworkJob?.approvalStatus === "Pending") {
+  if (current && priceApprovalPending(current)) {
     return res.status(400).json({ error: "This job is priced below the recommended price and is waiting for a manager\u2019s approval \u2014 payment is taken once it is approved" });
   }
   const before = serializeSummary(current).totals;
@@ -74170,69 +74208,140 @@ reportsRouter.get("/sales-by-category", async (req, res) => {
 reportsRouter.get("/embroidery-profitability", async (req, res) => {
   const range2 = parseRange2(req);
   if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
-  const embroideryService = await prisma.service.findFirst({ where: { name: "Embroidery" } });
-  let revenue = 0;
-  let qtyPieces = 0;
-  if (embroideryService) {
-    const orders = await prisma.order.findMany({
-      where: { OR: [{ kind: "walkin" }, { status: "Invoice" }] },
-      include: { lineItems: { where: { serviceId: embroideryService.id } } }
-    });
-    for (const o of orders) {
-      if (!inRange2(o.createdDate, range2.from, range2.to)) continue;
-      for (const li of o.lineItems) {
-        const lineTotal = buildLineTotal({
-          itemType: li.itemType,
-          serviceId: li.serviceId,
-          materialId: li.materialId,
-          qty: li.qty,
-          unitPrice: li.unitPrice,
-          discountPct: li.discountPct,
-          discountAmt: li.discountAmt,
-          heatPressFee: li.heatPressFee
-        });
-        revenue += lineTotal;
-        qtyPieces += li.qty;
+  await ensureBusinessHeadsOnce();
+  await ensurePurchasesOnce();
+  const round = (n) => Math.round(n * 100) / 100;
+  const orders = await prisma.order.findMany({
+    where: { status: { not: "Quote" }, createdDate: { gte: range2.from, lte: range2.to } },
+    include: { lineItems: { include: { service: { include: { businessHead: true } } } }, embroideryJob: true }
+  });
+  const parts = { pieces: 0, setup: 0, origination: 0, legacy: 0 };
+  const orderIds = /* @__PURE__ */ new Set();
+  let garments = 0;
+  let placements = 0;
+  let stitches = 0;
+  let legacyPieces = 0;
+  let setupCharged = 0;
+  let setupWaived = 0;
+  let originationJobs = 0;
+  let belowJobs = 0;
+  let given = 0;
+  let pendingJobs = 0;
+  let pendingValue = 0;
+  const bands = /* @__PURE__ */ new Map();
+  for (const o of orders) {
+    const inputs = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+    const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
+    const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+    const scale = subtotal > 0 ? grandTotal / subtotal : 0;
+    const isEmb = (li) => !!li.service && (li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name)) === "Embroidery";
+    const net8 = (i) => buildLineTotal(inputs[i]) * scale / (1 + VAT_RATE);
+    const mine = o.lineItems.map((li, i) => ({ li, i })).filter(({ li }) => isEmb(li));
+    if (mine.length === 0) continue;
+    const job = o.embroideryJob;
+    if (job?.approvalStatus === "Pending") {
+      pendingJobs++;
+      pendingValue += mine.reduce((a2, { i }) => a2 + net8(i), 0);
+      continue;
+    }
+    orderIds.add(o.id);
+    let revenue2 = 0;
+    for (const { li, i } of mine) {
+      const v = net8(i);
+      revenue2 += v;
+      const name2 = li.service.name;
+      if (name2 === EMBROIDERY_PIECE_SERVICE) parts.pieces += v;
+      else if (name2 === EMBROIDERY_SETUP_SERVICE) parts.setup += v;
+      else if (name2 === EMBROIDERY_ORIGINATION_SERVICE) parts.origination += v;
+      else {
+        parts.legacy += v;
+        legacyPieces += li.qty;
+      }
+    }
+    if (job) {
+      const designs = JSON.parse(job.designsJson || "[]");
+      garments += job.qty;
+      placements += job.qty * designs.length;
+      stitches += job.qty * designs.reduce((a2, d) => a2 + (Number(d.stitches) || 0), 0);
+      for (const d of designs) {
+        if (d.setupWaived) setupWaived++;
+        else if ((d.setup ?? 0) > 0) setupCharged++;
+        if (d.recommended != null && d.piece != null && d.piece < d.recommended) given += (d.recommended - d.piece) * job.qty;
+      }
+      if (!job.clientSupplied) originationJobs++;
+      if (job.belowRecommended) belowJobs++;
+      let tiers = [];
+      try {
+        tiers = JSON.parse(job.settingsJson || "{}").tiers ?? [];
+      } catch {
+      }
+      if (tiers.length) {
+        const from = tierFor(tiers, job.qty).min;
+        const band = bands.get(from) ?? { jobs: 0, garments: 0, revenue: 0 };
+        band.jobs++;
+        band.garments += job.qty;
+        band.revenue += revenue2;
+        bands.set(from, band);
       }
     }
   }
-  const consumableMaterials = await prisma.material.findMany({
-    where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } }
+  const head = await prisma.businessHead.findUnique({ where: { name: "Embroidery" } });
+  const consumables = await prisma.material.findMany({ where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } }, select: { id: true } });
+  const purchaseLines = await prisma.purchaseLine.findMany({
+    where: {
+      purchase: { status: "Accepted", date: { gte: range2.from, lte: range2.to } },
+      OR: [...head ? [{ businessHeadId: head.id }] : [], ...consumables.length ? [{ materialId: { in: consumables.map((m) => m.id) } }] : []]
+    },
+    include: { material: true }
   });
-  const materialIds = consumableMaterials.map((m) => m.id);
-  await ensurePurchasesOnce();
-  const purchaseLines = materialIds.length ? await prisma.purchaseLine.findMany({ where: { materialId: { in: materialIds }, purchase: { status: "Accepted" } }, include: { material: true, purchase: true } }) : [];
-  const purchases = purchaseLines.map((l) => ({ date: l.purchase.date, material: l.material, qty: l.receivedQty ?? l.qty, totalCost: l.totalCost }));
-  const breakdownMap = /* @__PURE__ */ new Map();
-  let consumablesCost = 0;
-  for (const p of purchases) {
-    if (!inRange2(p.date, range2.from, range2.to)) continue;
-    consumablesCost += p.totalCost;
-    const b = breakdownMap.get(p.material.name) ?? { qty: 0, totalCost: 0 };
-    b.qty += p.qty;
-    b.totalCost += p.totalCost;
-    breakdownMap.set(p.material.name, b);
+  const expenses = head ? await prisma.expense.findMany({ where: { businessHeadId: head.id, date: { gte: range2.from, lte: range2.to }, purchase: { is: null } } }) : [];
+  const byMaterial = /* @__PURE__ */ new Map();
+  let purchases = 0;
+  for (const l of purchaseLines) {
+    purchases += l.totalCost;
+    const m = byMaterial.get(l.material.name) ?? { qty: 0, totalCost: 0 };
+    m.qty += l.receivedQty ?? l.qty;
+    m.totalCost += l.totalCost;
+    byMaterial.set(l.material.name, m);
   }
-  const consumableBreakdown = Array.from(breakdownMap.entries()).map(([materialName2, v]) => ({ materialName: materialName2, qty: v.qty, totalCost: v.totalCost })).sort((a2, b) => b.totalCost - a2.totalCost);
-  const grossProfit = revenue - consumablesCost;
-  const marginPct = revenue > 0 ? grossProfit / revenue * 100 : null;
-  const avgRevenuePerPiece = qtyPieces > 0 ? revenue / qtyPieces : null;
-  const avgCostPerPiece = qtyPieces > 0 ? consumablesCost / qtyPieces : null;
-  const marginPerPiece = avgRevenuePerPiece != null && avgCostPerPiece != null ? avgRevenuePerPiece - avgCostPerPiece : null;
+  const byCategory = /* @__PURE__ */ new Map();
+  let expenseTotal = 0;
+  for (const e of expenses) {
+    expenseTotal += e.amount;
+    byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount);
+  }
+  const revenue = parts.pieces + parts.setup + parts.origination + parts.legacy;
+  const cost = purchases + expenseTotal;
+  const grossProfit = revenue - cost;
+  const perGarment = (v) => garments > 0 ? round(v / garments) : null;
+  const marginPerGarment = garments > 0 ? round((revenue - parts.legacy - cost) / garments) : null;
   res.json({
     fromDate: range2.from,
     toDate: range2.to,
-    serviceFound: !!embroideryService,
-    revenue,
-    qtyPieces,
-    consumablesCost,
-    grossProfit,
-    marginPct,
-    avgRevenuePerPiece,
-    avgCostPerPiece,
-    marginPerPiece,
-    underpriced: marginPerPiece != null && marginPerPiece < 0,
-    consumableBreakdown
+    revenue: round(revenue),
+    revenueByPart: { pieces: round(parts.pieces), setup: round(parts.setup), origination: round(parts.origination), legacy: round(parts.legacy) },
+    orders: orderIds.size,
+    garments,
+    placements,
+    stitches,
+    legacyPieces,
+    avgRevenuePerGarment: perGarment(parts.pieces + parts.setup + parts.origination),
+    revenuePer1000Stitches: stitches > 0 ? round(parts.pieces / stitches * 1e3) : null,
+    avgStitchesPerPlacement: placements > 0 ? Math.round(stitches / placements) : null,
+    setup: { charged: setupCharged, waived: setupWaived },
+    originationJobs,
+    belowRecommended: { jobs: belowJobs, given: round(given) },
+    pendingApproval: { jobs: pendingJobs, value: round(pendingValue) },
+    cost: { purchases: round(purchases), expenses: round(expenseTotal), total: round(cost) },
+    consumableBreakdown: [...byMaterial.entries()].map(([materialName2, v]) => ({ materialName: materialName2, qty: v.qty, totalCost: round(v.totalCost) })).sort((x, y) => y.totalCost - x.totalCost),
+    expenseBreakdown: [...byCategory.entries()].map(([category, amount]) => ({ category, amount: round(amount) })).sort((x, y) => y.amount - x.amount),
+    grossProfit: round(grossProfit),
+    marginPct: revenue > 0 ? round(grossProfit / revenue * 100) : null,
+    costPerGarment: perGarment(cost),
+    costPer1000Stitches: stitches > 0 ? round(cost / stitches * 1e3) : null,
+    marginPerGarment,
+    underpriced: marginPerGarment != null && marginPerGarment < 0,
+    byBand: [...bands.entries()].sort((x, y) => x[0] - y[0]).map(([from, v]) => ({ from, jobs: v.jobs, garments: v.garments, revenue: round(v.revenue), avgPerGarment: v.garments > 0 ? round(v.revenue / v.garments) : null }))
   });
 });
 reportsRouter.get("/sales-by-business-head", async (req, res) => {
@@ -75851,9 +75960,8 @@ async function loadEmbroiderySettings() {
   return { setupFee: row.setupFee, originationFee: row.originationFee, waiveAtQty: row.waiveAtQty, tiers };
 }
 var mayQuote = requirePermission("canCaptureOrders");
-var canBelow = async (role) => role === "Admin" || await userHasPermission(role, "canManagePayments");
 embroideryRouter.get("/config", mayQuote, async (req, res) => {
-  res.json({ settings: await loadEmbroiderySettings(), canChargeBelowRecommended: await canBelow(req.user.role) });
+  res.json({ settings: await loadEmbroiderySettings() });
 });
 var settingsSchema4 = external_exports.object({
   setupFee: external_exports.number().min(0),
@@ -75915,15 +76023,10 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
     if (d.repeat && !keep) return res.status(400).json({ error: `"${d.name}" is marked as a repeat but is not a saved design \u2014 pick it from the saved designs, or untick repeat` });
     designs.push({ ...d, stitches: keep ? keep.stitches : d.stitches });
   }
-  const below = await canBelow(req.user.role);
   const quote = quoteJob(designs, qty, clientSupplies, settings);
-  let belowRecommended = false;
-  for (const [i, d] of designs.entries()) {
-    const q = quote.designs[i];
-    if (d.pricePerPiece != null && d.pricePerPiece < q.recommended - 5e-3) {
-      if (!below) return res.status(403).json({ error: `Only a manager can charge less than the recommended KES ${q.recommended} per piece for "${d.name}"` });
-      belowRecommended = true;
-    }
+  const belowRecommended = designs.some((d, i) => d.pricePerPiece != null && d.pricePerPiece < quote.designs[i].recommended - 5e-3);
+  if (belowRecommended && form.paymentTiming === "onAcceptance" && (form.payments?.length ?? 0) > 0) {
+    return res.status(400).json({ error: "A price below the recommended price needs a manager\u2019s approval first \u2014 take the payment once it is approved" });
   }
   const svc = await ensureServices();
   const stitchesText = (n) => n.toLocaleString("en-KE");
@@ -75958,9 +76061,30 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
           designsJson: JSON.stringify(designs.map((d, i) => ({ name: d.name, stitches: d.stitches, repeat: !!d.repeat, ...quote.designs[i] }))),
           settingsJson: JSON.stringify(settings),
           belowRecommended,
+          approvalStatus: belowRecommended ? "Pending" : "Approved",
           createdByName: req.user.name
         }
       });
+      if (belowRecommended) {
+        const rec = quote.designs.reduce((a2, d) => a2 + d.recommended, 0);
+        const charged = quote.designs.reduce((a2, d) => a2 + d.piece, 0);
+        await tx.priceApproval.create({
+          data: {
+            kind: "embroidery",
+            orderId: order.id,
+            orderNo: order.orderNo,
+            client: (form.customerName ?? "").trim(),
+            pieces: qty,
+            systemPerPiece: rec,
+            chargedPerPiece: charged,
+            shortfall: Math.round((rec - charged) * qty * 100) / 100,
+            valueAtRecommended: Math.round(rec * qty * 100) / 100,
+            valueAtCharged: Math.round(charged * qty * 100) / 100,
+            requestedById: req.user.id,
+            requestedByName: req.user.name
+          }
+        });
+      }
       for (const d of designs) {
         if (d.designId) await tx.embroideryDesign.update({ where: { id: d.designId }, data: { lastUsedOn: todayStr(), timesUsed: { increment: 1 } } });
         else if (d.save) await tx.embroideryDesign.create({ data: { name: d.name, stitches: d.stitches, clientName: (form.customerName ?? "").trim(), phone: (form.phone ?? "").trim(), createdByName: req.user.name, lastUsedOn: todayStr(), timesUsed: 1 } });
@@ -76574,7 +76698,10 @@ dtfRouter.post("/approvals/:id/approve", manageOnly, async (req, res) => {
   if (a2.status !== "Pending") return res.status(400).json({ error: `This request has already been ${a2.status.toLowerCase()}` });
   if (a2.requestedById === req.user.id) return res.status(400).json({ error: "You cannot approve a price you captured yourself" });
   await prisma.$transaction(async (tx) => {
-    if (a2.orderId) await tx.dtfArtworkJob.updateMany({ where: { orderId: a2.orderId }, data: { approvalStatus: "Approved" } });
+    if (a2.orderId) {
+      await tx.dtfArtworkJob.updateMany({ where: { orderId: a2.orderId }, data: { approvalStatus: "Approved" } });
+      await tx.embroideryJob.updateMany({ where: { orderId: a2.orderId }, data: { approvalStatus: "Approved" } });
+    }
     await tx.priceApproval.update({ where: { id: a2.id }, data: { status: "Approved", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() } });
   });
   res.json({ ok: true });
@@ -76589,6 +76716,7 @@ dtfRouter.post("/approvals/:id/reject", manageOnly, async (req, res) => {
   await prisma.$transaction(async (tx) => {
     if (a2.orderId) {
       await tx.dtfArtworkJob.deleteMany({ where: { orderId: a2.orderId } });
+      await tx.embroideryJob.deleteMany({ where: { orderId: a2.orderId } });
       await tx.orderLineItem.deleteMany({ where: { orderId: a2.orderId } });
       await tx.payment.deleteMany({ where: { orderId: a2.orderId } });
       await tx.order.delete({ where: { id: a2.orderId } });
@@ -77382,7 +77510,8 @@ var orderForProductionInclude = {
   payments: true,
   corporateClient: true,
   dtfFilmSale: { select: { id: true } },
-  dtfArtworkJob: { select: { approvalStatus: true } }
+  dtfArtworkJob: { select: { approvalStatus: true } },
+  embroideryJob: { select: { approvalStatus: true } }
 };
 function orderHeadGroup(o) {
   const lines = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee, service: li.service }));
@@ -77455,12 +77584,12 @@ productionRouter.get("/queue", async (req, res) => {
     }),
     manager ? prisma.order.findMany({
       where: { status: { not: "Quote" }, stage: { in: [STAGE_WAITING, STAGE_IN_PRODUCTION] } },
-      include: { ...orderForProductionInclude, productionTasks: { where: { status: { in: ACTIVE_TASK_STATUSES } } }, dtfArtworkJob: { select: { approvalStatus: true } } },
+      include: { ...orderForProductionInclude, productionTasks: { where: { status: { in: ACTIVE_TASK_STATUSES } } } },
       orderBy: { id: "asc" }
     }) : Promise.resolve([]),
     prisma.order.count({ where: { status: { not: "Quote" }, stage: STAGE_QUALITY } })
   ]);
-  const waiting = stageOrders.filter((o) => o.productionTasks.length === 0 && o.dtfArtworkJob?.approvalStatus !== "Pending").map(productionSummary);
+  const waiting = stageOrders.filter((o) => o.productionTasks.length === 0 && !priceApprovalPending(o)).map(productionSummary);
   let staff = [];
   if (manager) {
     const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
@@ -77482,10 +77611,10 @@ productionRouter.post("/orders/:orderId/assign", async (req, res) => {
   if (!await isProductionManager(req.user)) return res.status(403).json({ error: "Only a production manager can assign orders" });
   const parsed = assignSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true, dtfArtworkJob: { select: { approvalStatus: true } } } });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) }, include: { lineItems: true, dtfArtworkJob: { select: { approvalStatus: true } }, embroideryJob: { select: { approvalStatus: true } } } });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (order.status === "Quote") return res.status(400).json({ error: "A quotation has not been accepted yet \u2014 it cannot go into production" });
-  if (order.dtfArtworkJob?.approvalStatus === "Pending") return res.status(400).json({ error: "This job is priced below the recommended price \u2014 a manager has to approve the price before it can go into production" });
+  if (priceApprovalPending(order)) return res.status(400).json({ error: "This job is priced below the recommended price \u2014 a manager has to approve the price before it can go into production" });
   if (order.stage !== STAGE_WAITING && order.stage !== STAGE_IN_PRODUCTION) {
     return res.status(400).json({ error: `This order is already at \u201C${order.stage}\u201D \u2014 it can only be assigned while it is waiting or in production` });
   }
@@ -78162,7 +78291,7 @@ function send(res, filename, sheet, rows, widths) {
 }
 pricelistsRouter.get("/services.xlsx", async (_req, res) => {
   await ensureMaterialItemsOnce();
-  const services2 = await prisma.service.findMany({ include: { businessHead: true }, orderBy: { name: "asc" } });
+  const services2 = await prisma.service.findMany({ where: { retired: false }, include: { businessHead: true }, orderBy: { name: "asc" } });
   const rows = [["Service", "Description", "Size", "Unit", "Price", "Business head"]];
   for (const s of services2) rows.push([s.item || s.name, s.description, s.size, s.unit, s.price, s.businessHead?.name ?? ""]);
   send(res, "service-price-list.xlsx", "Service price list", rows, [34, 36, 12, 10, 12, 26]);
@@ -78211,7 +78340,7 @@ pricelistsRouter.post("/services", requireRole("Admin"), rawBody, async (req, re
   await ensureMaterialItemsOnce();
   await ensureBusinessHeadsOnce();
   const heads = await prisma.businessHead.findMany();
-  const existing = await prisma.service.findMany();
+  const existing = await prisma.service.findMany({ where: { retired: false } });
   const seen = /* @__PURE__ */ new Set();
   const result = { dryRun, total: sheet.rows.length, created: 0, updated: 0, unchanged: 0, errors: [] };
   const ops = [];
@@ -78385,17 +78514,17 @@ function orderedModels() {
   const models = import_client4.Prisma.dmmf.datamodel.models.filter((m) => !EXCLUDED.has(m.name));
   const names = new Set(models.map((m) => m.name));
   const dependsOn = (m) => m.fields.filter((f) => f.relationFromFields && f.relationFromFields.length > 0 && names.has(f.type) && f.type !== m.name).map((f) => f.type);
-  const done = /* @__PURE__ */ new Set();
+  const done2 = /* @__PURE__ */ new Set();
   const out = [];
   let left = [...models];
   while (left.length) {
-    const ready = left.filter((m) => dependsOn(m).every((d) => done.has(d)));
+    const ready = left.filter((m) => dependsOn(m).every((d) => done2.has(d)));
     if (!ready.length) throw new Error(`The tables depend on each other in a circle (${left.map((m) => m.name).join(", ")}) \u2014 backups cannot be ordered`);
     for (const m of ready) {
-      done.add(m.name);
+      done2.add(m.name);
       out.push(m);
     }
-    left = left.filter((m) => !done.has(m.name));
+    left = left.filter((m) => !done2.has(m.name));
   }
   return out;
 }
@@ -79502,5 +79631,5 @@ app.listen(port, () => {
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

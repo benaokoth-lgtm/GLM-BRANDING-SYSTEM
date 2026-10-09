@@ -440,92 +440,148 @@ export default function Reports() {
 
       {tab === 'embroidery' && embroidery && (
         <>
-          {!embroidery.serviceFound && (
-            <p className="note">
-              No "Embroidery" service found in Master Data → Service Price List — add one to enable this report.
-            </p>
-          )}
+          <p className="note" style={{ margin: 0 }}>
+            Revenue is net of VAT and counts approved jobs only. Cost is what was bought for Embroidery in the period (purchases tagged to the Embroidery head or of thread and needles, and expenses tagged to it).
+          </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-3)' }}>
-            <div className="card blueprint elev-sm">
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              <div className="card-kicker">Embroidery revenue</div>
-              <div className="card-title">{fmtKsh(embroidery.revenue)}</div>
-            </div>
-            <div className="card blueprint elev-sm">
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              <div className="card-kicker">Thread &amp; needle cost</div>
-              <div className="card-title">{fmtKsh(embroidery.consumablesCost)}</div>
-            </div>
-            <div className="card blueprint elev-sm">
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              <div className="card-kicker">Gross profit</div>
-              <div className="card-title">{fmtKsh(embroidery.grossProfit)}</div>
-            </div>
-            <div className="card blueprint elev-sm">
-              <i className="corner tl"></i>
-              <i className="corner tr"></i>
-              <i className="corner bl"></i>
-              <i className="corner br"></i>
-              <div className="card-kicker">Gross margin</div>
-              <div className="card-title">{embroidery.marginPct != null ? `${embroidery.marginPct.toFixed(1)}%` : '—'}</div>
-            </div>
+            {[
+              ['Embroidery revenue', fmtKsh(embroidery.revenue)],
+              ['Cost', fmtKsh(embroidery.cost.total)],
+              ['Gross profit', fmtKsh(embroidery.grossProfit)],
+              ['Gross margin', embroidery.marginPct != null ? `${embroidery.marginPct.toFixed(1)}%` : '—'],
+            ].map(([k, v]) => (
+              <div key={k} className="card blueprint elev-sm">
+                <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
+                <div className="card-kicker">{k}</div>
+                <div className="card-title">{v}</div>
+              </div>
+            ))}
           </div>
 
+          {embroidery.pendingApproval.jobs > 0 && (
+            <p className="note" style={{ borderLeft: '2px solid var(--color-error)', paddingLeft: 'var(--space-2)' }}>
+              <b>{embroidery.pendingApproval.jobs} job{embroidery.pendingApproval.jobs === 1 ? '' : 's'} waiting for price approval</b> ({fmtKsh(embroidery.pendingApproval.value)} net) — not counted until a manager approves (DTF → Approvals).
+            </p>
+          )}
+
           <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
-            <i className="corner tl"></i>
-            <i className="corner tr"></i>
-            <i className="corner bl"></i>
-            <i className="corner br"></i>
+            <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
             <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
-              Per piece
+              What was sold
               {embroidery.underpriced && <span className="tag tag-accent" style={{ marginLeft: 8 }}>Underpriced</span>}
             </div>
             <table className="table">
+              <tbody>
+                <tr><td>Pieces — embroidery per piece</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.revenueByPart.pieces)}</td></tr>
+                <tr><td>Digitizing setup</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.revenueByPart.setup)}</td></tr>
+                <tr><td>Design origination</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.revenueByPart.origination)}</td></tr>
+                {embroidery.revenueByPart.legacy > 0 && (
+                  <tr><td>Older per-sqm embroidery ({embroidery.legacyPieces} pieces)</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.revenueByPart.legacy)}</td></tr>
+                )}
+                <tr><td><b>Total</b></td><td style={{ textAlign: 'right' }}><b>{fmtKsh(embroidery.revenue)}</b></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>The work and what it earns</div>
+            <table className="table">
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'right' }}>Pieces sold</th>
-                  <th style={{ textAlign: 'right' }}>Avg revenue/piece</th>
-                  <th style={{ textAlign: 'right' }}>Avg consumable cost/piece</th>
-                  <th style={{ textAlign: 'right' }}>Margin/piece</th>
+                  <th style={{ textAlign: 'right' }}>Jobs</th>
+                  <th style={{ textAlign: 'right' }}>Garments</th>
+                  <th style={{ textAlign: 'right' }}>Placements</th>
+                  <th style={{ textAlign: 'right' }}>Stitches</th>
+                  <th style={{ textAlign: 'right' }}>Avg stitches / placement</th>
                 </tr>
               </thead>
               <tbody>
                 <tr>
-                  <td style={{ textAlign: 'right' }}>{embroidery.qtyPieces}</td>
-                  <td style={{ textAlign: 'right' }}>{embroidery.avgRevenuePerPiece != null ? fmtKsh(embroidery.avgRevenuePerPiece) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{embroidery.avgCostPerPiece != null ? fmtKsh(embroidery.avgCostPerPiece) : '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{embroidery.marginPerPiece != null ? fmtKsh(embroidery.marginPerPiece) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.orders}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.garments.toLocaleString('en-KE')}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.placements.toLocaleString('en-KE')}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.stitches.toLocaleString('en-KE')}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.avgStitchesPerPlacement?.toLocaleString('en-KE') ?? '—'}</td>
+                </tr>
+              </tbody>
+            </table>
+            <table className="table" style={{ marginTop: 'var(--space-3)' }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: 'right' }}>Revenue / garment</th>
+                  <th style={{ textAlign: 'right' }}>Cost / garment</th>
+                  <th style={{ textAlign: 'right' }}>Margin / garment</th>
+                  <th style={{ textAlign: 'right' }}>Revenue / 1,000 stitches</th>
+                  <th style={{ textAlign: 'right' }}>Cost / 1,000 stitches</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'right' }}>{embroidery.avgRevenuePerGarment != null ? fmtKsh(embroidery.avgRevenuePerGarment) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.costPerGarment != null ? fmtKsh(embroidery.costPerGarment) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.marginPerGarment != null ? fmtKsh(embroidery.marginPerGarment) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.revenuePer1000Stitches != null ? fmtKsh(embroidery.revenuePer1000Stitches) : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{embroidery.costPer1000Stitches != null ? fmtKsh(embroidery.costPer1000Stitches) : '—'}</td>
                 </tr>
               </tbody>
             </table>
             <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-              Consumable cost is spread evenly across pieces sold in range as a rough per-piece average — it isn't
-              matched job-by-job (thread/needle usage isn't captured per order), so treat this as a gauge of whether
-              Embroidery's price covers its consumables overall, not an exact per-job cost.
+              Cost is spread evenly over the garments and stitches of the period; it is not matched job by job (thread and needle use is not captured per order), so read it as whether Embroidery's prices cover what it costs overall.
             </p>
           </div>
 
           <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
-            <i className="corner tl"></i>
-            <i className="corner tr"></i>
-            <i className="corner bl"></i>
-            <i className="corner br"></i>
-            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
-              Consumables bought in range
+            <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>Setup fees and discounts</div>
+            <table className="table">
+              <tbody>
+                <tr><td>Setup fee charged (designs)</td><td style={{ textAlign: 'right' }}>{embroidery.setup.charged}</td></tr>
+                <tr><td>Setup waived (repeat of a saved design, or from the waiver quantity)</td><td style={{ textAlign: 'right' }}>{embroidery.setup.waived}</td></tr>
+                <tr><td>Jobs where we created the artwork (design origination)</td><td style={{ textAlign: 'right' }}>{embroidery.originationJobs}</td></tr>
+                <tr><td>Jobs approved below the recommended price</td><td style={{ textAlign: 'right' }}>{embroidery.belowRecommended.jobs}</td></tr>
+                <tr><td>Given away against the recommended price (incl. VAT)</td><td style={{ textAlign: 'right' }}>{fmtKsh(embroidery.belowRecommended.given)}</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          {embroidery.byBand.length > 0 && (
+            <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+              <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
+              <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>By quantity band</div>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>From pieces</th>
+                    <th style={{ textAlign: 'right' }}>Jobs</th>
+                    <th style={{ textAlign: 'right' }}>Garments</th>
+                    <th style={{ textAlign: 'right' }}>Revenue</th>
+                    <th style={{ textAlign: 'right' }}>Revenue / garment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {embroidery.byBand.map((row) => (
+                    <tr key={row.from}>
+                      <td>{row.from}</td>
+                      <td style={{ textAlign: 'right' }}>{row.jobs}</td>
+                      <td style={{ textAlign: 'right' }}>{row.garments}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(row.revenue)}</td>
+                      <td style={{ textAlign: 'right' }}>{row.avgPerGarment != null ? fmtKsh(row.avgPerGarment) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="note">Bands are the quantity tiers each job was priced with. A band whose revenue per garment sits right on the minimum price is one where the minimum, not the stitch rate, sets the price.</p>
             </div>
+          )}
+
+          <div className="card blueprint" style={{ padding: 'var(--space-4)' }}>
+            <i className="corner tl"></i><i className="corner tr"></i><i className="corner bl"></i><i className="corner br"></i>
+            <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>Cost bought for Embroidery in the period</div>
             <table className="table">
               <thead>
                 <tr>
-                  <th>Material</th>
+                  <th>Item</th>
                   <th style={{ textAlign: 'right' }}>Qty</th>
                   <th style={{ textAlign: 'right' }}>Cost</th>
                 </tr>
@@ -538,12 +594,18 @@ export default function Reports() {
                     <td style={{ textAlign: 'right' }}>{fmtKsh(row.totalCost)}</td>
                   </tr>
                 ))}
+                {embroidery.expenseBreakdown.map((row) => (
+                  <tr key={row.category}>
+                    <td>{row.category} <span className="text-muted">(expense)</span></td>
+                    <td style={{ textAlign: 'right' }}>—</td>
+                    <td style={{ textAlign: 'right' }}>{fmtKsh(row.amount)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-            {embroidery.consumableBreakdown.length === 0 && (
+            {embroidery.consumableBreakdown.length === 0 && embroidery.expenseBreakdown.length === 0 && (
               <p className="note">
-                No accepted thread/needle purchases in range — capture them under Stock → Purchases (Material:
-                Embroidery Thread / Embroidery Needles) for this report to pick up their cost.
+                Nothing bought for Embroidery in this period. Capture thread and needle purchases under Stock → Purchases (tagged to the Embroidery head, or the materials Embroidery Thread / Embroidery Needles), and tag expenses to Embroidery, for this report to pick up their cost.
               </p>
             )}
           </div>

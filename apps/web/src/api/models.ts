@@ -590,15 +590,30 @@ export interface EmbroideryConsumableBreakdownRow {
 export interface EmbroideryProfitabilityData {
   fromDate: string;
   toDate: string;
-  serviceFound: boolean;
+  /** Net of VAT, approved jobs only. */
   revenue: number;
-  qtyPieces: number;
-  consumablesCost: number;
+  revenueByPart: { pieces: number; setup: number; origination: number; legacy: number };
+  orders: number;
+  garments: number;
+  placements: number;
+  stitches: number;
+  /** Pieces sold on the older per-sqm Embroidery service (now retired). */
+  legacyPieces: number;
+  avgRevenuePerGarment: number | null;
+  revenuePer1000Stitches: number | null;
+  avgStitchesPerPlacement: number | null;
+  setup: { charged: number; waived: number };
+  originationJobs: number;
+  belowRecommended: { jobs: number; given: number };
+  pendingApproval: { jobs: number; value: number };
+  cost: { purchases: number; expenses: number; total: number };
+  consumableBreakdown: EmbroideryConsumableBreakdownRow[];
+  expenseBreakdown: { category: string; amount: number }[];
   grossProfit: number;
   marginPct: number | null;
-  avgRevenuePerPiece: number | null;
-  avgCostPerPiece: number | null;
-  marginPerPiece: number | null;
+  costPerGarment: number | null;
+  costPer1000Stitches: number | null;
+  marginPerGarment: number | null;
   underpriced: boolean;
-  consumableBreakdown: EmbroideryConsumableBreakdownRow[];
+  byBand: { from: number; jobs: number; garments: number; revenue: number; avgPerGarment: number | null }[];
 }

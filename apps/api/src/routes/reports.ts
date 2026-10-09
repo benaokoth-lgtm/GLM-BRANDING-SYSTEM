@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { buildLineTotal, computeOrderTotals, defaultBusinessHeadName, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, GENERAL_ORDER_HEAD, todayStr, VAT_RATE } from '@glm/shared';
+import { buildLineTotal, computeOrderTotals, defaultBusinessHeadName, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, EMBROIDERY_ORIGINATION_SERVICE, EMBROIDERY_PIECE_SERVICE, EMBROIDERY_SETUP_SERVICE, GENERAL_ORDER_HEAD, tierFor, todayStr, VAT_RATE } from '@glm/shared';
+import type { EmbroideryTier } from '@glm/shared';
 import { ensureBusinessHeadsOnce, ensurePurchasesOnce } from '../purchases';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 
@@ -76,90 +77,157 @@ reportsRouter.get('/sales-by-category', async (req, res) => {
   });
 });
 
-// Gross profitability for the Embroidery service: revenue from Embroidery
-// line items (same accrual basis as sales-by-category) against the cost of
-// its own consumables — thread and needles — bought through the Stock
-// Purchases pipeline (only 'Accepted' purchases count as real, reconciled
-// cost; 'Held'/'Rejected' purchases haven't actually entered the store).
-// Reports revenue-per-piece against cost-per-piece (avgRevenuePerPiece/
-// avgCostPerPiece/marginPerPiece/underpriced), since Embroidery has no
-// roll/usage model of its own to derive it from directly.
+// Embroidery profitability. Embroidery is priced by stitch count (routes/embroidery.ts), so this reports on the jobs themselves: what was sold (pieces, setup,
+// design origination), the garments and stitches behind it, the setup fees charged and waived, the discounts given below the recommended price, and a gross
+// profit against what was bought for Embroidery — purchases tagged to the Embroidery head or of the thread and needle consumables, and expenses tagged to it.
+// Revenue is net of the 16% VAT (like Sales by business head) and counts approved jobs only; a job waiting in the price-approval queue is shown apart. Orders
+// sold on the older per-sqm "Embroidery" service (now retired) are still counted, as their own line, so history is not lost.
 reportsRouter.get('/embroidery-profitability', async (req, res) => {
   const range = parseRange(req);
   if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
+  await ensureBusinessHeadsOnce();
+  await ensurePurchasesOnce();
+  const round = (n: number) => Math.round(n * 100) / 100;
 
-  const embroideryService = await prisma.service.findFirst({ where: { name: 'Embroidery' } });
+  const orders = await prisma.order.findMany({
+    where: { status: { not: 'Quote' }, createdDate: { gte: range.from, lte: range.to } },
+    include: { lineItems: { include: { service: { include: { businessHead: true } } } }, embroideryJob: true },
+  });
 
-  let revenue = 0;
-  let qtyPieces = 0;
-  if (embroideryService) {
-    const orders = await prisma.order.findMany({
-      where: { OR: [{ kind: 'walkin' }, { status: 'Invoice' }] },
-      include: { lineItems: { where: { serviceId: embroideryService.id } } },
-    });
-    for (const o of orders) {
-      if (!inRange(o.createdDate, range.from, range.to)) continue;
-      for (const li of o.lineItems) {
-        const lineTotal = buildLineTotal({
-          itemType: li.itemType as LineItemInput['itemType'],
-          serviceId: li.serviceId,
-          materialId: li.materialId,
-          qty: li.qty,
-          unitPrice: li.unitPrice,
-          discountPct: li.discountPct,
-          discountAmt: li.discountAmt,
-          heatPressFee: li.heatPressFee,
-        });
-        revenue += lineTotal;
-        qtyPieces += li.qty;
+  const parts = { pieces: 0, setup: 0, origination: 0, legacy: 0 };
+  const orderIds = new Set<number>();
+  let garments = 0;
+  let placements = 0;
+  let stitches = 0;
+  let legacyPieces = 0;
+  let setupCharged = 0;
+  let setupWaived = 0;
+  let originationJobs = 0;
+  let belowJobs = 0;
+  let given = 0;
+  let pendingJobs = 0;
+  let pendingValue = 0;
+  const bands = new Map<number, { jobs: number; garments: number; revenue: number }>();
+
+  for (const o of orders) {
+    const inputs: LineItemInput[] = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+    const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
+    const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+    const scale = subtotal > 0 ? grandTotal / subtotal : 0; // what the order-level discount leaves of each line
+    const isEmb = (li: (typeof o.lineItems)[number]) => !!li.service && (li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name)) === 'Embroidery';
+    const net = (i: number) => (buildLineTotal(inputs[i]!) * scale) / (1 + VAT_RATE);
+    const mine = o.lineItems.map((li, i) => ({ li, i })).filter(({ li }) => isEmb(li));
+    if (mine.length === 0) continue;
+
+    const job = o.embroideryJob;
+    if (job?.approvalStatus === 'Pending') {
+      pendingJobs++;
+      pendingValue += mine.reduce((a, { i }) => a + net(i), 0);
+      continue; // counted once approved
+    }
+    orderIds.add(o.id);
+    let revenue = 0;
+    for (const { li, i } of mine) {
+      const v = net(i);
+      revenue += v;
+      const name = li.service!.name;
+      if (name === EMBROIDERY_PIECE_SERVICE) parts.pieces += v;
+      else if (name === EMBROIDERY_SETUP_SERVICE) parts.setup += v;
+      else if (name === EMBROIDERY_ORIGINATION_SERVICE) parts.origination += v;
+      else {
+        parts.legacy += v;
+        legacyPieces += li.qty;
+      }
+    }
+    if (job) {
+      const designs = JSON.parse(job.designsJson || '[]') as { stitches: number; setupWaived?: boolean; setup?: number; recommended?: number; piece?: number }[];
+      garments += job.qty;
+      placements += job.qty * designs.length;
+      stitches += job.qty * designs.reduce((a, d) => a + (Number(d.stitches) || 0), 0);
+      for (const d of designs) {
+        if (d.setupWaived) setupWaived++;
+        else if ((d.setup ?? 0) > 0) setupCharged++;
+        if (d.recommended != null && d.piece != null && d.piece < d.recommended) given += (d.recommended - d.piece) * job.qty;
+      }
+      if (!job.clientSupplied) originationJobs++;
+      if (job.belowRecommended) belowJobs++;
+      // the quantity band, from the tiers the job was priced with
+      let tiers: EmbroideryTier[] = [];
+      try {
+        tiers = (JSON.parse(job.settingsJson || '{}') as { tiers?: EmbroideryTier[] }).tiers ?? [];
+      } catch {
+        /* an unreadable snapshot leaves the job out of the bands */
+      }
+      if (tiers.length) {
+        const from = tierFor(tiers, job.qty).min;
+        const band = bands.get(from) ?? { jobs: 0, garments: 0, revenue: 0 };
+        band.jobs++;
+        band.garments += job.qty;
+        band.revenue += revenue;
+        bands.set(from, band);
       }
     }
   }
 
-  const consumableMaterials = await prisma.material.findMany({
-    where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } },
+  // What was bought for Embroidery: purchases tagged to its head or of its consumables (thread, needles), and the expenses tagged to it.
+  const head = await prisma.businessHead.findUnique({ where: { name: 'Embroidery' } });
+  const consumables = await prisma.material.findMany({ where: { name: { in: [...EMBROIDERY_CONSUMABLE_MATERIAL_NAMES] } }, select: { id: true } });
+  const purchaseLines = await prisma.purchaseLine.findMany({
+    where: {
+      purchase: { status: 'Accepted', date: { gte: range.from, lte: range.to } },
+      OR: [...(head ? [{ businessHeadId: head.id }] : []), ...(consumables.length ? [{ materialId: { in: consumables.map((m) => m.id) } }] : [])],
+    },
+    include: { material: true },
   });
-  const materialIds = consumableMaterials.map((m) => m.id);
-  await ensurePurchasesOnce();
-  const purchaseLines = materialIds.length
-    ? await prisma.purchaseLine.findMany({ where: { materialId: { in: materialIds }, purchase: { status: 'Accepted' } }, include: { material: true, purchase: true } })
-    : [];
-  const purchases = purchaseLines.map((l) => ({ date: l.purchase.date, material: l.material, qty: l.receivedQty ?? l.qty, totalCost: l.totalCost }));
-
-  const breakdownMap = new Map<string, { qty: number; totalCost: number }>();
-  let consumablesCost = 0;
-  for (const p of purchases) {
-    if (!inRange(p.date, range.from, range.to)) continue;
-    consumablesCost += p.totalCost;
-    const b = breakdownMap.get(p.material.name) ?? { qty: 0, totalCost: 0 };
-    b.qty += p.qty;
-    b.totalCost += p.totalCost;
-    breakdownMap.set(p.material.name, b);
+  const expenses = head ? await prisma.expense.findMany({ where: { businessHeadId: head.id, date: { gte: range.from, lte: range.to }, purchase: { is: null } } }) : [];
+  const byMaterial = new Map<string, { qty: number; totalCost: number }>();
+  let purchases = 0;
+  for (const l of purchaseLines) {
+    purchases += l.totalCost;
+    const m = byMaterial.get(l.material.name) ?? { qty: 0, totalCost: 0 };
+    m.qty += l.receivedQty ?? l.qty;
+    m.totalCost += l.totalCost;
+    byMaterial.set(l.material.name, m);
   }
-  const consumableBreakdown = Array.from(breakdownMap.entries())
-    .map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: v.totalCost }))
-    .sort((a, b) => b.totalCost - a.totalCost);
+  const byCategory = new Map<string, number>();
+  let expenseTotal = 0;
+  for (const e of expenses) {
+    expenseTotal += e.amount;
+    byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount);
+  }
 
-  const grossProfit = revenue - consumablesCost;
-  const marginPct = revenue > 0 ? (grossProfit / revenue) * 100 : null;
-  const avgRevenuePerPiece = qtyPieces > 0 ? revenue / qtyPieces : null;
-  const avgCostPerPiece = qtyPieces > 0 ? consumablesCost / qtyPieces : null;
-  const marginPerPiece = avgRevenuePerPiece != null && avgCostPerPiece != null ? avgRevenuePerPiece - avgCostPerPiece : null;
-
+  const revenue = parts.pieces + parts.setup + parts.origination + parts.legacy;
+  const cost = purchases + expenseTotal;
+  const grossProfit = revenue - cost;
+  const perGarment = (v: number) => (garments > 0 ? round(v / garments) : null);
+  const marginPerGarment = garments > 0 ? round((revenue - parts.legacy - cost) / garments) : null;
   res.json({
     fromDate: range.from,
     toDate: range.to,
-    serviceFound: !!embroideryService,
-    revenue,
-    qtyPieces,
-    consumablesCost,
-    grossProfit,
-    marginPct,
-    avgRevenuePerPiece,
-    avgCostPerPiece,
-    marginPerPiece,
-    underpriced: marginPerPiece != null && marginPerPiece < 0,
-    consumableBreakdown,
+    revenue: round(revenue),
+    revenueByPart: { pieces: round(parts.pieces), setup: round(parts.setup), origination: round(parts.origination), legacy: round(parts.legacy) },
+    orders: orderIds.size,
+    garments,
+    placements,
+    stitches,
+    legacyPieces,
+    avgRevenuePerGarment: perGarment(parts.pieces + parts.setup + parts.origination),
+    revenuePer1000Stitches: stitches > 0 ? round((parts.pieces / stitches) * 1000) : null,
+    avgStitchesPerPlacement: placements > 0 ? Math.round(stitches / placements) : null,
+    setup: { charged: setupCharged, waived: setupWaived },
+    originationJobs,
+    belowRecommended: { jobs: belowJobs, given: round(given) },
+    pendingApproval: { jobs: pendingJobs, value: round(pendingValue) },
+    cost: { purchases: round(purchases), expenses: round(expenseTotal), total: round(cost) },
+    consumableBreakdown: [...byMaterial.entries()].map(([materialName, v]) => ({ materialName, qty: v.qty, totalCost: round(v.totalCost) })).sort((x, y) => y.totalCost - x.totalCost),
+    expenseBreakdown: [...byCategory.entries()].map(([category, amount]) => ({ category, amount: round(amount) })).sort((x, y) => y.amount - x.amount),
+    grossProfit: round(grossProfit),
+    marginPct: revenue > 0 ? round((grossProfit / revenue) * 100) : null,
+    costPerGarment: perGarment(cost),
+    costPer1000Stitches: stitches > 0 ? round((cost / stitches) * 1000) : null,
+    marginPerGarment,
+    underpriced: marginPerGarment != null && marginPerGarment < 0,
+    byBand: [...bands.entries()].sort((x, y) => x[0] - y[0]).map(([from, v]) => ({ from, jobs: v.jobs, garments: v.garments, revenue: round(v.revenue), avgPerGarment: v.garments > 0 ? round(v.revenue / v.garments) : null })),
   });
 });
 

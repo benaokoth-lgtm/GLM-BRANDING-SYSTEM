@@ -18,7 +18,6 @@ import type { PaymentRow } from '../components/SplitPayments';
 
 interface Config {
   settings: EmbroiderySettingsValues;
-  canChargeBelowRecommended: boolean;
 }
 interface Saved {
   id: number;
@@ -92,7 +91,7 @@ export default function NewEmbroideryOrder() {
   if (loadError) return <p className="note" style={{ color: 'var(--color-error)' }}>{loadError}</p>;
   if (!config || loading) return <p className="note">Loading…</p>;
 
-  const { settings, canChargeBelowRecommended } = config;
+  const { settings } = config;
   const pieces = Math.max(1, Math.round(num(qty)) || 1);
   const rows = designs.map((d) => ({ ...d, stitchesN: Math.round(num(d.stitches)), priceN: d.price.trim() === '' ? null : num(d.price) }));
   const quote = quoteJob(
@@ -110,9 +109,12 @@ export default function NewEmbroideryOrder() {
   const grandTotal = quote.total + garmentTotal;
 
   const belowFor = (i: number) => rows[i]!.priceN != null && rows[i]!.priceN! < quote.designs[i]!.recommended - 0.005;
-  const designsOk = rows.every((d, i) => d.name.trim() && d.stitchesN > 0 && !(belowFor(i) && !canChargeBelowRecommended));
+  const designsOk = rows.every((d) => d.name.trim() && d.stitchesN > 0);
+  // A price below the recommended one is allowed, but the job then waits for a manager's approval and cannot be paid for or produced until it is given.
+  const needsApproval = rows.some((_, i) => belowFor(i));
   const sourcingIncomplete = sourced && (!phone.trim() || !isNamedClient(customerName));
-  const payProblem = paymentTiming === 'onAcceptance' ? paymentProblem(paymentRows, grandTotal) : null;
+  const payNow = paymentTiming === 'onAcceptance' && !needsApproval;
+  const payProblem = payNow ? paymentProblem(paymentRows, grandTotal) : null;
   const garmentsOk = garmentRows.every((g) => g.m && g.q > 0);
   const canSave = !!staffId && designsOk && garmentsOk && !payProblem && !sourcingIncomplete && !submitting;
 
@@ -143,8 +145,8 @@ export default function NewEmbroideryOrder() {
           staffId: forOthers ? salesPersonId ?? staffId : staffId,
           sourcedBy: sourced ? (forOthers ? salesPersonId : staffId) : null,
           freelanceAgentId: freelanceId,
-          paymentTiming,
-          payments: paymentTiming === 'onAcceptance' ? toApiPayments(paymentRows) : undefined,
+          paymentTiming: needsApproval ? 'onCompletion' : paymentTiming,
+          payments: payNow ? toApiPayments(paymentRows) : undefined,
           qty: pieces,
           clientSupplies,
           designs: rows.map((d) => ({
@@ -249,7 +251,7 @@ export default function NewEmbroideryOrder() {
               </div>
               <div className="field" style={{ margin: 0 }}>
                 <label>Price per piece (blank = {fmtKsh(q.recommended)})</label>
-                <input className="input" inputMode="decimal" value={d.price} onChange={(e) => setDesign(d.key, { price: e.target.value })} placeholder={String(q.recommended)} style={below && !canChargeBelowRecommended ? { borderColor: 'var(--color-error)' } : undefined} />
+                <input className="input" inputMode="decimal" value={d.price} onChange={(e) => setDesign(d.key, { price: e.target.value })} placeholder={String(q.recommended)} style={below ? { borderColor: 'var(--color-error)' } : undefined} />
               </div>
               {designs.length > 1 ? (
                 <button type="button" className="btn btn-ghost btn-sm" aria-label="Remove this design" onClick={() => setDesigns((ds) => ds.filter((x) => x.key !== d.key))}>
@@ -273,7 +275,7 @@ export default function NewEmbroideryOrder() {
             </div>
             {below && (
               <p className="note" style={{ color: 'var(--color-error)', margin: 'var(--space-2) 0 0' }}>
-                {canChargeBelowRecommended ? `Below the recommended ${fmtKsh(q.recommended)} per piece — recorded on the job.` : `Only a manager can charge less than the recommended ${fmtKsh(q.recommended)} per piece.`}
+                Below the recommended {fmtKsh(q.recommended)} per piece — a manager has to approve this price before the job can be paid for or produced.
               </p>
             )}
           </div>
@@ -423,7 +425,12 @@ export default function NewEmbroideryOrder() {
         <p className="note">Totals include setup and, if it applies, design origination.</p>
       </details>
 
-      {paymentTiming === 'onAcceptance' && (
+      {needsApproval && (
+        <p className="note" style={{ marginTop: 'var(--space-4)', borderLeft: '2px solid var(--color-error)', paddingLeft: 'var(--space-2)' }}>
+          <b>Waiting for approval.</b> This job goes to the price-approval queue (DTF → Approvals) when you capture it. Payment is taken once a manager approves the price — it cannot be paid for or produced until then, and the person who captured it cannot approve it.
+        </p>
+      )}
+      {payNow && (
         <div style={{ marginTop: 'var(--space-4)' }}>
           <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
             Payment now — split across cash, M-Pesa, bank or card if the customer likes
@@ -450,7 +457,7 @@ export default function NewEmbroideryOrder() {
           <i className="corner tr"></i>
           <i className="corner bl"></i>
           <i className="corner br"></i>
-          Capture order
+          {needsApproval ? 'Capture and send for approval' : 'Capture order'}
         </button>
       </div>
     </div>

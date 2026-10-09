@@ -6,6 +6,7 @@ import { requireAuth, requirePermission, requireRole } from '../middleware/auth'
 import crypto from 'crypto';
 import { DEFAULT_ROLE_PERMISSIONS, PERMISSION_KEYS, cleanKraPin, composeName, materialName } from '@glm/shared';
 import { ensureMaterialItemsOnce } from '../materials';
+import { removeService } from '../embroideryLegacy';
 import { seal } from '../crypto';
 import { PIN_ROUNDS, pinProblemFor, randomPin, requiredLengthFor } from '../pins';
 import { canCaptureForOthers, salesPeople } from '../frontOffice';
@@ -451,8 +452,18 @@ masterDataRouter.delete('/roles/:id', requireRole('Admin'), async (req, res) => 
 masterDataRouter.get('/services', async (req, res) => {
   await ensureMaterialItemsOnce();
   const costs = await canSeeCosts(req.user!.role);
-  const services = await prisma.service.findMany({ orderBy: { name: 'asc' } });
+  const services = await prisma.service.findMany({ where: { retired: false }, orderBy: { name: 'asc' } });
   res.json(services.map(({ markupType, markupValue, defaultSupplierCost, ...s }) => (costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s)));
+});
+
+// Delete a service from the price list. One that no order has ever used is removed outright; one that has been sold is only retired — taken off the price
+// list and the order screens — because the orders that used it must keep it. A service sold through its own screen (DTF, embroidery) cannot be deleted.
+masterDataRouter.delete('/services/:id', requireRole('Admin'), async (req, res) => {
+  const id = Number(req.params.id);
+  const svc = await prisma.service.findUnique({ where: { id } });
+  if (!svc || svc.retired) return res.status(404).json({ error: 'Service not found' });
+  if (svc.soldViaDtfModule) return res.status(400).json({ error: `${svc.name} is sold through its own screen, so it cannot be deleted` });
+  res.json({ name: svc.name, ...(await removeService(id)) });
 });
 
 const serviceSchema = z.object({

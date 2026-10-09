@@ -624,7 +624,10 @@ dtfRouter.post('/approvals/:id/approve', manageOnly, async (req, res) => {
   if (a.status !== 'Pending') return res.status(400).json({ error: `This request has already been ${a.status.toLowerCase()}` });
   if (a.requestedById === req.user!.id) return res.status(400).json({ error: 'You cannot approve a price you captured yourself' });
   await prisma.$transaction(async (tx) => {
-    if (a.orderId) await tx.dtfArtworkJob.updateMany({ where: { orderId: a.orderId }, data: { approvalStatus: 'Approved' } });
+    if (a.orderId) {
+      await tx.dtfArtworkJob.updateMany({ where: { orderId: a.orderId }, data: { approvalStatus: 'Approved' } });
+      await tx.embroideryJob.updateMany({ where: { orderId: a.orderId }, data: { approvalStatus: 'Approved' } });
+    }
     await tx.priceApproval.update({ where: { id: a.id }, data: { status: 'Approved', decidedByName: req.user!.name, decidedAt: new Date() } });
   });
   res.json({ ok: true });
@@ -641,6 +644,7 @@ dtfRouter.post('/approvals/:id/reject', manageOnly, async (req, res) => {
   await prisma.$transaction(async (tx) => {
     if (a.orderId) {
       await tx.dtfArtworkJob.deleteMany({ where: { orderId: a.orderId } });
+      await tx.embroideryJob.deleteMany({ where: { orderId: a.orderId } });
       await tx.orderLineItem.deleteMany({ where: { orderId: a.orderId } });
       await tx.payment.deleteMany({ where: { orderId: a.orderId } });
       await tx.order.delete({ where: { id: a.orderId } });

@@ -29,7 +29,7 @@ function send(res: express.Response, filename: string, sheet: string, rows: Cell
 // ── Download ─────────────────────────────────────────────────────────────────
 pricelistsRouter.get('/services.xlsx', async (_req, res) => {
   await ensureMaterialItemsOnce();
-  const services = await prisma.service.findMany({ include: { businessHead: true }, orderBy: { name: 'asc' } });
+  const services = await prisma.service.findMany({ where: { retired: false }, include: { businessHead: true }, orderBy: { name: 'asc' } });
   const rows: Cell[][] = [['Service', 'Description', 'Size', 'Unit', 'Price', 'Business head']];
   for (const s of services) rows.push([s.item || s.name, s.description, s.size, s.unit, s.price, s.businessHead?.name ?? '']);
   send(res, 'service-price-list.xlsx', 'Service price list', rows, [34, 36, 12, 10, 12, 26]);
@@ -101,7 +101,7 @@ pricelistsRouter.post('/services', requireRole('Admin'), rawBody, async (req, re
   await ensureMaterialItemsOnce();
   await ensureBusinessHeadsOnce();
   const heads = await prisma.businessHead.findMany();
-  const existing = await prisma.service.findMany();
+  const existing = await prisma.service.findMany({ where: { retired: false } });
   const seen = new Set<string>();
   const result: Result = { dryRun, total: sheet.rows.length, created: 0, updated: 0, unchanged: 0, errors: [] };
   const ops: (() => Prisma.PrismaPromise<unknown>)[] = [];

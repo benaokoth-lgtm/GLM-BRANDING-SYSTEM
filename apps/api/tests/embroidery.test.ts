@@ -99,8 +99,6 @@ describe('embroidery orders', () => {
     const cfg = await call('sales', 'GET', '/embroidery/config');
     assert.equal(cfg.status, 200);
     assert.equal(cfg.body.settings.tiers.length, 6);
-    assert.equal(cfg.body.canChargeBelowRecommended, false);
-    assert.equal((await call('manager', 'GET', '/embroidery/config')).body.canChargeBelowRecommended, true);
 
     assert.equal((await call('manager', 'PUT', '/embroidery/settings', cfg.body.settings)).status, 403);
     assert.equal((await call('admin', 'PUT', '/embroidery/settings', { ...cfg.body.settings, tiers: [{ min: 5, rate: 10, floor: 100 }] })).status, 400);
@@ -160,18 +158,29 @@ describe('embroidery orders', () => {
     assert.equal((await prisma.embroideryDesign.findUniqueOrThrow({ where: { id: saved[0].id } })).timesUsed >= 2, true);
   });
 
-  it('charging more than recommended is open to everyone; charging less is for a manager, and is recorded', async () => {
+  it('charging more than recommended is open to everyone; charging less sends the job to the price-approval queue', async () => {
     const more = await order('sales', { clientSupplies: true, designs: [{ name: 'Premium', stitches: 6000, pricePerPiece: 150 }] });
     assert.equal(more.status, 201);
     assert.equal((more.body.lineItems as any[]).find((l) => l.serviceName.startsWith('Embroidery per piece')).unitPrice, 150);
+    assert.equal(more.body.priceApproval, null);
 
-    const refused = await order('sales', { designs: [{ name: 'Cheap', stitches: 6000, pricePerPiece: 100 }] });
-    assert.equal(refused.status, 403);
-    assert.match(refused.body.error, /manager/);
+    // anyone may ask for a lower price; it waits for a manager, like an artwork job
+    const cheap = await order('sales', { clientSupplies: true, designs: [{ name: 'Cheap', stitches: 6000, pricePerPiece: 100 }] });
+    assert.equal(cheap.status, 201, JSON.stringify(cheap.body));
+    assert.equal(cheap.body.priceApproval, 'Pending');
+    const job = await prisma.embroideryJob.findUniqueOrThrow({ where: { orderId: cheap.body.id } });
+    assert.equal(job.approvalStatus, 'Pending');
+    assert.equal(job.belowRecommended, true);
+    const ask = await prisma.priceApproval.findFirstOrThrow({ where: { orderId: cheap.body.id } });
+    assert.equal(ask.kind, 'embroidery');
+    assert.equal(ask.systemPerPiece, 120);
+    assert.equal(ask.chargedPerPiece, 100);
+    assert.equal(ask.shortfall, 240); // (120 − 100) × 12 pieces
 
-    const ok = await order('manager', { clientSupplies: true, designs: [{ name: 'Cheap', stitches: 6000, pricePerPiece: 100 }] });
-    assert.equal(ok.status, 201, JSON.stringify(ok.body));
-    assert.equal((await prisma.embroideryJob.findUniqueOrThrow({ where: { orderId: ok.body.id } })).belowRecommended, true);
+    // it cannot be paid for at capture while the price waits
+    const paid = await order('sales', { paymentTiming: 'onAcceptance', payments: [{ method: 'Cash', amount: 500 }], designs: [{ name: 'Cheap again', stitches: 6000, pricePerPiece: 100 }] });
+    assert.equal(paid.status, 400);
+    assert.match(paid.body.error, /approval/);
   });
 
   it('waives the setup fee from the waiver quantity, and prices several placements on one garment', async () => {

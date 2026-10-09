@@ -312,6 +312,19 @@ export default function MasterData() {
   }
 
   // Contracted-out services: a generic in-place edit of the outsourced fields.
+  // Delete a service from the price list. One no order has used goes outright; one that has been sold is only retired (the orders that used it keep it).
+  async function deleteService(serviceId: number, name: string) {
+    if (!window.confirm(`Delete "${name}" from the price list?\n\nIf no order has ever used it, it is removed. If it has been sold, it is taken off the price list and the order screens but stays on the orders that used it.`)) return;
+    setError(null);
+    try {
+      const r = await api.del<{ deleted: boolean; retired: boolean; orders: number }>(`/master-data/services/${serviceId}`);
+      setPriceNotice(r.deleted ? `${name} was deleted` : `${name} was taken off the price list (${r.orders} order line${r.orders === 1 ? '' : 's'} keep it)`);
+      catalog.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete the service');
+    }
+  }
+
   async function saveServiceFields(serviceId: number, patch: Record<string, unknown>) {
     setError(null);
     try {
@@ -1081,9 +1094,19 @@ export default function MasterData() {
                         </button>
                       </>
                     ) : (
+                      <>
                       <button type="button" className="btn btn-secondary btn-sm" disabled={!!bulkPrices} title="Change this line's name, description, size, unit and price" onClick={() => setSvcEdit((x) => ({ ...x, [sv.id]: { item: sv.item || sv.name, description: sv.description ?? '', size: sv.size ?? '', unit: sv.unit, price: String(sv.price) } }))}>
                         Edit
                       </button>
+                      {!sv.soldViaDtfModule && (
+                        <>
+                          {' '}
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} disabled={!!bulkPrices} title="Delete this service from the price list" onClick={() => deleteService(sv.id, sv.item ? `${sv.item}${sv.size ? ' — ' + sv.size : ''}` : sv.name)}>
+                            Delete
+                          </button>
+                        </>
+                      )}
+                      </>
                     )}
                   </td>
                 </tr>

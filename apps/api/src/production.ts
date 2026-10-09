@@ -39,6 +39,7 @@ export const orderForProductionInclude = {
   corporateClient: true,
   dtfFilmSale: { select: { id: true } },
   dtfArtworkJob: { select: { approvalStatus: true } },
+  embroideryJob: { select: { approvalStatus: true } },
 } as const;
 
 type OrderWithLines = {
@@ -58,6 +59,7 @@ type OrderWithLines = {
   payments: { date: string; amount: number; method: string }[];
   dtfFilmSale?: { id: number } | null;
   dtfArtworkJob?: { approvalStatus: string } | null;
+  embroideryJob?: { approvalStatus: string } | null;
 };
 
 /** The heading an order is worked under in Production and Quality control: its business head, with DTF Printing split into film and artwork sales. */

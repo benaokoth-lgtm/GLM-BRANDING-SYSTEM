@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
 import ChangePinDialog from '../components/ChangePinDialog';
-import { THEMES, useTheme, type Theme } from '../hooks/useTheme';
+import { useTheme, type Theme } from '../hooks/useTheme';
+import Icon from '../components/NavIcons';
 import type { CurrentUser } from '../state/AuthContext';
 
 // Built from the logged-in user's permissions rather than a hardcoded map
@@ -53,74 +54,156 @@ import { useBranding } from '../hooks/useBranding';
 import { SubNavProvider, useSubNav } from '../state/SubNavContext';
 import { useFeatures } from '../hooks/useFeatures';
 
+// The sidebar. A slim rail on the left holds the module groups (Sales, Operations, Money, Admin), the colour scheme, Change PIN and Log out; the panel beside it lists
+// the modules of the chosen group. The group follows the page being worked on, and a click on another group's icon shows that group without leaving the page.
+type Group = 'sales' | 'operations' | 'money' | 'admin';
+const GROUPS: [Group, string][] = [
+  ['sales', 'Sales'],
+  ['operations', 'Operations'],
+  ['money', 'Money'],
+  ['admin', 'Admin'],
+];
+const GROUP_OF: Record<string, Group> = {
+  '/orders/new/walkin': 'sales',
+  '/orders/new/film': 'sales',
+  '/orders/new/artwork': 'sales',
+  '/orders/all': 'sales',
+  '/commission': 'sales',
+  '/production': 'operations',
+  '/quality': 'operations',
+  '/stock': 'operations',
+  '/dtf': 'operations',
+  '/finance': 'money',
+  '/compliance': 'money',
+  '/accounting': 'money',
+  '/payments': 'money',
+  '/reports': 'money',
+  '/master-data': 'admin',
+};
+const ICON_OF: Record<string, string> = {
+  '/orders/new/walkin': 'order',
+  '/orders/new/film': 'film',
+  '/orders/new/artwork': 'artwork',
+  '/orders/all': 'orders',
+  '/commission': 'commission',
+  '/production': 'production',
+  '/quality': 'quality',
+  '/stock': 'stock',
+  '/dtf': 'dtf',
+  '/finance': 'finance',
+  '/compliance': 'compliance',
+  '/accounting': 'accounting',
+  '/payments': 'payments',
+  '/reports': 'reports',
+  '/master-data': 'masterdata',
+};
+const groupOf = (path: string): Group => GROUP_OF[path] ?? 'sales';
+const THEME_ICONS: [Theme, string, string][] = [
+  ['organic', 'sun', 'Organic'],
+  ['nocturne', 'moon', 'Nocturne'],
+  ['ivory', 'ivory', 'Ivory'],
+];
+
 function AppLayoutInner() {
   const branding = useBranding();
   const subNav = useSubNav();
-  const [overModules, setOverModules] = useState(false);
   const { user, logout, clearMustChangePin } = useAuth();
   const [changingPin, setChangingPin] = useState(false);
   const features = useFeatures();
   const { theme, choose } = useTheme();
+  const { pathname } = useLocation();
+  const [open, setOpen] = useState(false); // the drawer, on a narrow screen
   const tabs = user ? buildTabs(user, !!features?.commission) : [];
 
+  // The group on show follows the page; clicking another group's icon shows that group until the page changes.
+  const current = (tabs.find(([path]) => pathname === path || pathname.startsWith(path + '/')) ?? tabs[0])?.[0];
+  const pageGroup = current ? groupOf(current) : 'sales';
+  const [picked, setPicked] = useState<Group | null>(null);
+  useEffect(() => {
+    setPicked(null);
+    setOpen(false);
+  }, [pathname]);
+  const shown = picked ?? pageGroup;
+  const present = GROUPS.filter(([g]) => tabs.some(([path]) => groupOf(path) === g));
+  const list = tabs.filter(([path]) => groupOf(path) === shown);
+  const canCapture = !!user && (user.role === 'Admin' || user.permissions.canCaptureOrders);
+  const initials = (branding?.companyName || branding?.systemName || 'GLM').split(/\s+/).map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <nav className="nav no-print" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: 'var(--space-3)' }}>
-        <span className="nav-brand" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          {branding?.logoDataUrl && <img src={branding.logoDataUrl} alt={branding.companyName} style={{ height: 40, maxWidth: 140, objectFit: 'contain' }} />}
-          <span>{branding?.systemName ?? ''}</span>
-        </span>
-        <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center' }}>
-          {user && (
-            <span className="text-muted" style={{ fontSize: 13 }}>
-              {user.name} · {user.role}
-            </span>
-          )}
-          <select className="input" style={{ width: 'auto', minHeight: 32 }} aria-label="Colour scheme" title="Colour scheme" value={theme} onChange={(e) => choose(e.target.value as Theme)}>
-            {THEMES.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="btn btn-secondary" onClick={() => setChangingPin(true)}>
-            Change PIN
+    <div className="shell">
+      <div className={'scrim no-print' + (open ? ' open' : '')} onClick={() => setOpen(false)} />
+      <aside className={'sidebar no-print' + (open ? ' open' : '')} aria-label="Main menu">
+        <div className="rail">
+          <div className="rail-mark" title={branding?.systemName ?? ''}>{initials}</div>
+          {present.map(([g, label]) => (
+            <button key={g} type="button" className={'rail-btn' + (g === shown ? ' active' : '')} title={label} aria-label={label} aria-pressed={g === shown} onClick={() => setPicked(g)}>
+              <Icon name={g} size={20} />
+            </button>
+          ))}
+          <div className="rail-spacer" />
+          <button type="button" className="rail-btn" title="Change PIN" aria-label="Change PIN" onClick={() => setChangingPin(true)}>
+            <Icon name="key" size={20} />
           </button>
-          <button type="button" className="btn btn-secondary" onClick={logout}>
-            Log out
+          <div className="rail-themes" role="group" aria-label="Colour scheme">
+            {THEME_ICONS.map(([id, icon, label]) => (
+              <button key={id} type="button" className={'rail-btn' + (theme === id ? ' active' : '')} title={label + ' colours'} aria-label={label + ' colours'} aria-pressed={theme === id} onClick={() => choose(id)}>
+                <Icon name={icon} size={16} />
+              </button>
+            ))}
+          </div>
+          <button type="button" className="rail-btn" title="Log out" aria-label="Log out" onClick={logout}>
+            <Icon name="logout" size={20} />
           </button>
         </div>
-      </nav>
 
-      {/* The modules. While someone is working in one of a module's sub-items this row is dimmed — still visible and clickable, full strength
-          under the mouse — and clicking a module brings it back and returns that module to its starting view. */}
-      <div
-        className="no-print"
-        onMouseEnter={() => setOverModules(true)}
-        onMouseLeave={() => setOverModules(false)}
-        onFocus={() => setOverModules(true)}
-        onBlur={() => setOverModules(false)}
-        style={{ display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-4) var(--space-6) 0', flexWrap: 'wrap', opacity: subNav.dim && !overModules ? 0.5 : 1, transition: 'opacity 0.2s ease' }}
-      >
-        {tabs.map(([path, label]) => (
-          <NavLink
-            key={path}
-            to={path}
-            onClick={subNav.goHome}
-            className={({ isActive }) => 'btn blueprint ' + (isActive ? 'btn-primary' : 'btn-secondary')}
-          >
-            <i className="corner tl"></i>
-            <i className="corner tr"></i>
-            <i className="corner bl"></i>
-            <i className="corner br"></i>
-            {label}
-          </NavLink>
-        ))}
+        <div className="panel">
+          {branding?.logoDataUrl && <img className="panel-logo" src={branding.logoDataUrl} alt={branding.companyName} />}
+          <div className="panel-org" title={branding?.systemName ?? ''}>
+            <span>{branding?.systemName || branding?.companyName || ''}</span>
+            {canCapture && (
+              <Link className="plus" to="/orders/new/walkin" title="New order" aria-label="New order" onClick={subNav.goHome}>
+                <Icon name="plus" size={14} />
+              </Link>
+            )}
+          </div>
+          <div className="panel-title">{GROUPS.find(([g]) => g === shown)?.[1]}</div>
+          {/* While someone is working in one of a module's sub-items, a click on the module here returns that module to its starting view. */}
+          <nav className="panel-nav">
+            {list.map(([path, label]) => (
+              <NavLink key={path} to={path} onClick={subNav.goHome} className={({ isActive }) => 'panel-link' + (isActive ? ' active' : '')}>
+                <Icon name={ICON_OF[path] ?? 'orders'} size={18} />
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+          {user && (
+            <div className="panel-user">
+              <div className="who">
+                <b>{user.name}</b>
+                <span className="text-muted">{user.role}</span>
+              </div>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => setChangingPin(true)}>
+                <Icon name="key" size={14} /> Change PIN
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={logout}>
+                <Icon name="logout" size={14} /> Log out
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <div className="content">
+        <div className="topbar no-print">
+          <button type="button" className="btn btn-secondary btn-icon" aria-label="Open the menu" onClick={() => setOpen(true)}>
+            <Icon name="menu" size={20} />
+          </button>
+          <strong style={{ fontFamily: 'var(--font-heading)' }}>{branding?.systemName ?? ''}</strong>
+        </div>
+        <main style={{ flex: 1, padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 1280, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+          <Outlet />
+        </main>
       </div>
-
-      <main style={{ flex: 1, padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 1280, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-        <Outlet />
-      </main>
       {(changingPin || user?.mustChangePin) && <ChangePinDialog forced={!!user?.mustChangePin} onClose={() => setChangingPin(false)} onChanged={clearMustChangePin} />}
     </div>
   );

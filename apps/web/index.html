@@ -12,12 +12,13 @@
     <meta name="theme-color" content="#F6F1EA" />
     <title>Loading…</title>
     <script>
-      // Organic is the default; the header picker saves Nocturne or Ivory instead.
+      // Organic is the default; the sidebar saves Industrial or Nocturne instead.
       (function () {
-        var bars = { organic: '#F1EDE0', nocturne: '#0E1014', ivory: '#F6F1EA' };
+        var bars = { organic: '#F1EDE0', nocturne: '#0E1014', industrial: '#F6F1EA' };
         var t = 'organic';
         try {
           var saved = localStorage.getItem('glm_theme');
+          if (saved === 'ivory') saved = 'industrial'; // its earlier name
           if (saved && bars[saved]) t = saved;
         } catch (e) {}
         document.documentElement.setAttribute('data-theme', t);

@@ -101,7 +101,7 @@ const groupOf = (path: string): Group => GROUP_OF[path] ?? 'sales';
 const THEME_ICONS: [Theme, string, string][] = [
   ['organic', 'sun', 'Organic'],
   ['nocturne', 'moon', 'Nocturne'],
-  ['ivory', 'ivory', 'Ivory'],
+  ['industrial', 'production', 'Industrial'],
 ];
 const COLLAPSE_KEY = 'glm_sidebar';
 

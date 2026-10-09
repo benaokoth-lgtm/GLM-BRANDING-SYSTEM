@@ -57,6 +57,9 @@ export function tierFor(tiers: EmbroideryTier[], qty: number): EmbroideryTier {
   return hit;
 }
 
+/** Up to how many stitches the tier's minimum price per piece is what is charged (above it the stitch rate takes over). Infinity when the rate is 0. */
+export const floorCoversStitches = (t: EmbroideryTier): number => (t.rate > 0 ? Math.floor((t.floor * 1000) / t.rate) : Infinity);
+
 export interface EmbroideryDesignInput {
   /** What it is, for the order: "Left chest logo". */
   name: string;

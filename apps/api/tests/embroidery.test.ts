@@ -4,7 +4,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DEFAULT_EMBROIDERY_SETTINGS, embroiderySettingsProblem, quoteDesign, quoteJob, tierFor } from '@glm/shared';
+import { DEFAULT_EMBROIDERY_SETTINGS, embroiderySettingsProblem, floorCoversStitches, quoteDesign, quoteJob, tierFor } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -22,6 +22,16 @@ describe('embroidery pricing arithmetic', () => {
     assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 1, S).recommended, 150);
     assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 12, S).recommended, 120);
     assert.equal(quoteDesign({ name: 'x', stitches: 6000 }, 100, S).recommended, 100);
+  });
+
+  it('the stitch count changes the price only above the stitches the minimum covers', () => {
+    const t = tierFor(S.tiers, 12); // rate 10, minimum 120
+    assert.equal(floorCoversStitches(t), 12000);
+    const price = (stitches: number) => quoteDesign({ name: 'x', stitches }, 12, S).recommended;
+    assert.equal(price(4000), price(12000)); // the same minimum price all the way up to 12,000 stitches
+    assert.equal(price(14000), 140); // then each extra 1,000 stitches adds the rate (10)
+    assert.equal(price(15000), 150);
+    assert.equal(floorCoversStitches({ min: 1, rate: 0, floor: 100 }), Infinity);
   });
 
   it('rounds a stitch cost above the minimum up to the whole shilling', () => {

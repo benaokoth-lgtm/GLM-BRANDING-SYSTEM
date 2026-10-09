@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { quoteDesign } from '@glm/shared';
+import { floorCoversStitches, quoteDesign } from '@glm/shared';
 import type { EmbroiderySettingsValues } from '@glm/shared';
 import { api } from '../api/client';
 import { fmtKsh } from '@glm/shared';
@@ -84,6 +84,7 @@ export default function EmbroiderySettingsPanel() {
               <th>From pieces</th>
               <th>KES / 1,000 stitches</th>
               <th>Minimum per piece</th>
+              <th title="Up to this many stitches the minimum is what is charged; the stitch count only changes the price above it">Minimum covers up to</th>
               <th />
             </tr>
           </thead>
@@ -98,6 +99,9 @@ export default function EmbroiderySettingsPanel() {
                 </td>
                 <td>
                   <input className="input" inputMode="numeric" value={t.floor} onChange={(e) => setTier(i, { floor: e.target.value })} />
+                </td>
+                <td className="text-muted" style={{ whiteSpace: 'nowrap' }}>
+                  {n(t.rate) > 0 ? `${floorCoversStitches({ min: n(t.min), rate: n(t.rate), floor: n(t.floor) }).toLocaleString('en-KE')} stitches` : '—'}
                 </td>
                 <td>
                   {tiers.length > 1 && (
@@ -118,7 +122,7 @@ export default function EmbroiderySettingsPanel() {
             Save
           </button>
         </div>
-        <p className="note">The first tier must start at 1 piece. Set the same minimum on every tier for one flat minimum price per piece.</p>
+        <p className="note">The first tier must start at 1 piece. Set the same minimum on every tier for one flat minimum price per piece. <b>Below the “covers up to” stitch count the stitch count does not change the price</b> — lower the minimum (or raise the rate) if smaller logos should cost less than bigger ones.</p>
       </Card>
 
       <Card title="Try it" hint="What the numbers above give for one design, before you save.">

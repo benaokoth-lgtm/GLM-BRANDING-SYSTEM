@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WALK_IN_CLIENT, fmtKsh, isNamedClient, quoteJob } from '@glm/shared';
+import { WALK_IN_CLIENT, floorCoversStitches, fmtKsh, isNamedClient, quoteJob, tierFor } from '@glm/shared';
 import type { EmbroiderySettingsValues } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
@@ -270,7 +270,7 @@ export default function NewEmbroideryOrder() {
                 </label>
               )}
               <span className="note" style={{ margin: 0 }}>
-                {rows[i]!.stitchesN > 0 ? `${q.rate} per 1,000 stitches → ${fmtKsh(q.stitchCost)}${q.floored ? `, lifted to the ${fmtKsh(q.floor)} minimum` : ''}` : 'Enter the stitch count to price it'}
+                {rows[i]!.stitchesN > 0 ? `${q.rate} per 1,000 stitches → ${fmtKsh(q.stitchCost)}${q.floored ? `, so the ${fmtKsh(q.floor)} minimum applies — it covers up to ${floorCoversStitches(tierFor(settings.tiers, pieces)).toLocaleString('en-KE')} stitches; above that each extra 1,000 stitches adds ${fmtKsh(q.rate)}` : ''}` : 'Enter the stitch count to price it'}
               </span>
             </div>
             {below && (

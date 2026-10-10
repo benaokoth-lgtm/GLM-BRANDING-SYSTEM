@@ -1,6 +1,12 @@
 import { Prisma } from '@prisma/client';
 import {
   DEFAULT_ARTWORK_RATE_PCT,
+  DEFAULT_GENERAL_MODE,
+  DEFAULT_PAY_STEPS,
+  DEFAULT_PERFORMANCE_FLOOR,
+  GENERAL_MODES,
+  payStepsProblem,
+  stepPosition,
   DEFAULT_FILM_BANDS,
   DEFAULT_GENERAL_BANDS,
   DEFAULT_FREELANCE_BANDS,
@@ -32,7 +38,7 @@ import {
   systemJobCalc,
   todayStr,
 } from '@glm/shared';
-import type { Band, FreelanceSplit, LineItemInput, SalesTarget, TargetMode } from '@glm/shared';
+import type { Band, FreelanceSplit, GeneralMode, LineItemInput, PayStep, SalesTarget, TargetMode } from '@glm/shared';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
 import { canCaptureForOthers } from './frontOffice';
@@ -88,6 +94,12 @@ export interface CommissionConfig {
   /** Times their gross monthly salary a person must sell before commission starts; 0 = no target. */
   targetMultiplier: number;
   targetMode: TargetMode;
+  /** How general sales are paid: fixed payouts by band ('steps') or a percentage of the slices ('percent'). */
+  generalMode: GeneralMode;
+  /** The pay bands for 'steps': the month's net sales → a fixed payout. */
+  payBands: PayStep[];
+  /** Sales below this in a month need performance improvement. */
+  performanceFloor: number;
 }
 
 function readBands(json: string | null | undefined, fallback: Band[]): Band[] {
@@ -98,6 +110,16 @@ function readBands(json: string | null | undefined, fallback: Band[]): Band[] {
     /* fall through to the defaults */
   }
   return fallback;
+}
+
+function readSteps(json: string | null | undefined): PayStep[] {
+  try {
+    const v = JSON.parse(json ?? '');
+    if (Array.isArray(v) && !payStepsProblem(v, 'bands')) return v.map((b) => ({ from: Number(b.from), payout: Number(b.payout) })).sort((a, b) => a.from - b.from);
+  } catch {
+    /* fall through to the defaults */
+  }
+  return DEFAULT_PAY_STEPS;
 }
 
 /** The saved settings, or the defaults until someone saves some. Only reads, so it is safe inside a transaction. */
@@ -115,6 +137,9 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     freelanceWhtRate: row?.freelanceWhtRate ?? DEFAULT_FREELANCE_WHT_RATE,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
     targetMode: (TARGET_MODES as readonly string[]).includes(row?.targetMode ?? '') ? (row!.targetMode as TargetMode) : DEFAULT_TARGET_MODE,
+    generalMode: (GENERAL_MODES as readonly string[]).includes(row?.generalMode ?? '') ? (row!.generalMode as GeneralMode) : DEFAULT_GENERAL_MODE,
+    payBands: readSteps(row?.payBandsJson),
+    performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
   };
 }
 
@@ -360,6 +385,14 @@ export interface StaffStatement {
   target: SalesTarget;
   /** What would have been paid on the month's sales had the target been met (shown, never paid, and not carried into the next month). Artwork is never held: it is earned whether or not the target is met. */
   heldCommission: number;
+  /** How the month's general sales were paid, where the person stands in the pay bands, and whether the month is below the performance floor. */
+  scheme: {
+    mode: GeneralMode;
+    sales: number;
+    floor: number;
+    belowFloor: boolean;
+    step: { index: number; from: number; payout: number; nextFrom: number | null; nextPayout: number | null; toNext: number | null } | null;
+  };
   general: {
     received: number; // money received this month on orders credited to this person (VAT included), less refunds of what had been paid
     netSales: number; // the same with the VAT taken out — what the bands apply to
@@ -397,6 +430,7 @@ export function blankStatement(staffId: number, staffName = '', target?: SalesTa
     total: 0,
     target: target ?? salesTarget({ multiplier: DEFAULT_TARGET_MULTIPLIER, mode: DEFAULT_TARGET_MODE, salary: null, achieved: 0 }),
     heldCommission: 0,
+    scheme: { mode: DEFAULT_GENERAL_MODE, sales: 0, floor: DEFAULT_PERFORMANCE_FLOOR, belowFloor: false, step: null },
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
@@ -546,6 +580,20 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       salary: salaries.get(st.staffId) ?? null,
       achieved: st.general.netSales + (dtfNet.get(st.staffId) ?? 0),
     });
+    const sales = round2(st.general.netSales + (dtfNet.get(st.staffId) ?? 0));
+    if (config.generalMode === 'steps') {
+      // Fixed payout by band: the payout of the band the month's sales reached (a step, not a slice). The salary-multiple target is not used — the performance
+      // floor stands in for it, so nothing is held; film and artwork premiums are paid as earned.
+      const step = stepPosition(config.payBands, sales);
+      const floor = config.performanceFloor;
+      st.target = { applies: floor > 0, multiplier: 0, mode: 'all', salary: salaries.get(st.staffId) ?? null, salaryKnown: true, achieved: sales, required: floor, met: sales >= floor, remaining: round2(Math.max(0, floor - sales)), eligibleSales: sales, held: false };
+      st.scheme = { mode: 'steps', sales, floor, belowFloor: floor > 0 && sales < floor, step };
+      st.general.commission = step.payout;
+      st.general.band = { rate: 0, nextFrom: step.nextFrom, nextRate: null, toNext: step.toNext };
+      st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+      continue;
+    }
+    st.scheme = { mode: 'percent', sales, floor: config.performanceFloor, belowFloor: false, step: null };
     st.target = target;
     const filmFull = st.film.commission;
     const artFull = st.artwork.commission;

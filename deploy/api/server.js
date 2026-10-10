@@ -65985,6 +65985,39 @@ function freelanceSplit(lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
   const qualifying = share(base3 + premium);
   return { qualifying, base: Math.min(qualifying, share(base3)), low: Math.min(share(low), share(base3)), premium: Math.min(qualifying, share(premium)) };
 }
+var GENERAL_MODES = ["steps", "percent"];
+var DEFAULT_GENERAL_MODE = "steps";
+var DEFAULT_PAY_STEPS = [
+  { from: 0, payout: 0 },
+  { from: 3e4, payout: 12e3 },
+  { from: 6e4, payout: 18e3 },
+  { from: 9e4, payout: 24e3 },
+  { from: 12e4, payout: 3e4 },
+  { from: 15e4, payout: 36e3 },
+  { from: 18e4, payout: 42e3 },
+  { from: 21e4, payout: 48e3 }
+];
+var DEFAULT_PERFORMANCE_FLOOR = 12e4;
+function payStepsProblem(steps, what) {
+  if (!Array.isArray(steps) || steps.length === 0) return `${what}: add at least one band`;
+  const sorted = [...steps].sort((a2, b) => a2.from - b.from);
+  if (sorted[0].from !== 0) return `${what}: the first band must start at 0`;
+  for (let i = 0; i < sorted.length; i++) {
+    const b = sorted[i];
+    if (!Number.isFinite(b.from) || b.from < 0) return `${what}: a band starts below 0`;
+    if (!Number.isFinite(b.payout) || b.payout < 0) return `${what}: a payout cannot be negative`;
+    if (i > 0 && b.from === sorted[i - 1].from) return `${what}: two bands start at the same amount`;
+  }
+  return null;
+}
+function stepPosition(steps, amount) {
+  const sorted = [...steps].sort((a2, b) => a2.from - b.from);
+  let idx = 0;
+  for (let i = 0; i < sorted.length; i++) if (amount >= sorted[i].from) idx = i;
+  const cur = sorted[idx] ?? { from: 0, payout: 0 };
+  const next = sorted[idx + 1];
+  return { index: idx, from: cur.from, payout: r22(cur.payout), nextFrom: next ? next.from : null, nextPayout: next ? r22(next.payout) : null, toNext: next ? r22(Math.max(0, next.from - amount)) : null };
+}
 
 // packages/shared/src/purchasing.ts
 var r23 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -66381,6 +66414,14 @@ function readBands(json, fallback) {
   }
   return fallback;
 }
+function readSteps(json) {
+  try {
+    const v = JSON.parse(json ?? "");
+    if (Array.isArray(v) && !payStepsProblem(v, "bands")) return v.map((b) => ({ from: Number(b.from), payout: Number(b.payout) })).sort((a2, b) => a2.from - b.from);
+  } catch {
+  }
+  return DEFAULT_PAY_STEPS;
+}
 async function getCommissionConfig(db = prisma) {
   const row = await db.commissionSettings.findUnique({ where: { id: 1 } });
   return {
@@ -66394,7 +66435,10 @@ async function getCommissionConfig(db = prisma) {
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceWhtRate: row?.freelanceWhtRate ?? DEFAULT_FREELANCE_WHT_RATE,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
-    targetMode: TARGET_MODES.includes(row?.targetMode ?? "") ? row.targetMode : DEFAULT_TARGET_MODE
+    targetMode: TARGET_MODES.includes(row?.targetMode ?? "") ? row.targetMode : DEFAULT_TARGET_MODE,
+    generalMode: GENERAL_MODES.includes(row?.generalMode ?? "") ? row.generalMode : DEFAULT_GENERAL_MODE,
+    payBands: readSteps(row?.payBandsJson),
+    performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR
   };
 }
 async function freelanceShare(db, lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
@@ -66523,6 +66567,7 @@ function blankStatement(staffId, staffName = "", target) {
     total: 0,
     target: target ?? salesTarget({ multiplier: DEFAULT_TARGET_MULTIPLIER, mode: DEFAULT_TARGET_MODE, salary: null, achieved: 0 }),
     heldCommission: 0,
+    scheme: { mode: DEFAULT_GENERAL_MODE, sales: 0, floor: DEFAULT_PERFORMANCE_FLOOR, belowFloor: false, step: null },
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
@@ -66649,6 +66694,18 @@ async function buildStatements(period, only) {
       salary: salaries.get(st.staffId) ?? null,
       achieved: st.general.netSales + (dtfNet.get(st.staffId) ?? 0)
     });
+    const sales = round2(st.general.netSales + (dtfNet.get(st.staffId) ?? 0));
+    if (config.generalMode === "steps") {
+      const step = stepPosition(config.payBands, sales);
+      const floor2 = config.performanceFloor;
+      st.target = { applies: floor2 > 0, multiplier: 0, mode: "all", salary: salaries.get(st.staffId) ?? null, salaryKnown: true, achieved: sales, required: floor2, met: sales >= floor2, remaining: round2(Math.max(0, floor2 - sales)), eligibleSales: sales, held: false };
+      st.scheme = { mode: "steps", sales, floor: floor2, belowFloor: floor2 > 0 && sales < floor2, step };
+      st.general.commission = step.payout;
+      st.general.band = { rate: 0, nextFrom: step.nextFrom, nextRate: null, toNext: step.toNext };
+      st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+      continue;
+    }
+    st.scheme = { mode: "percent", sales, floor: config.performanceFloor, belowFloor: false, step: null };
     st.target = target;
     const filmFull = st.film.commission;
     const artFull = st.artwork.commission;
@@ -78299,6 +78356,7 @@ commissionRouter.get("/settings", async (_req, res) => {
   res.json(await getCommissionConfig());
 });
 var bandSchema = external_exports.object({ from: external_exports.number().min(0), rate: external_exports.number().min(0).max(100) });
+var payBandSchema = external_exports.object({ from: external_exports.number().min(0), payout: external_exports.number().min(0).max(1e9) });
 var settingsSchema7 = external_exports.object({
   generalBands: external_exports.array(bandSchema).min(1),
   filmBands: external_exports.array(bandSchema).min(1),
@@ -78313,13 +78371,17 @@ var settingsSchema7 = external_exports.object({
   freelanceLowMarginPct: external_exports.number().min(0).max(100).optional(),
   // The sales target: times their gross monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: external_exports.number().min(0).max(20).optional(),
-  targetMode: external_exports.enum(TARGET_MODES).optional()
+  targetMode: external_exports.enum(TARGET_MODES).optional(),
+  // How general sales are paid, the fixed-payout pay bands, and the monthly sales below which performance improvement is required.
+  generalMode: external_exports.enum(GENERAL_MODES).optional(),
+  payBands: external_exports.array(payBandSchema).min(1).optional(),
+  performanceFloor: external_exports.number().min(0).max(1e9).optional()
 });
 commissionRouter.put("/settings", manage, async (req, res) => {
   const parsed = settingsSchema7.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null);
+  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null) ?? (d.payBands ? payStepsProblem(d.payBands, "Pay bands") : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b) => [...b].sort((x, y) => x.from - y.from);
   const data = {
@@ -78334,6 +78396,9 @@ commissionRouter.put("/settings", manage, async (req, res) => {
     ...d.freelanceLowMarginPct !== void 0 ? { freelanceLowMarginPct: d.freelanceLowMarginPct } : {},
     ...d.targetMultiplier !== void 0 ? { targetMultiplier: d.targetMultiplier } : {},
     ...d.targetMode !== void 0 ? { targetMode: d.targetMode } : {},
+    ...d.generalMode !== void 0 ? { generalMode: d.generalMode } : {},
+    ...d.payBands ? { payBandsJson: JSON.stringify([...d.payBands].sort((x, y) => x.from - y.from)) } : {},
+    ...d.performanceFloor !== void 0 ? { performanceFloor: d.performanceFloor } : {},
     updatedByName: req.user.name
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -78395,6 +78460,8 @@ commissionRouter.get("/monthly", manage, async (req, res) => {
         staffName: st?.staffName ?? pay?.staff.name ?? `Staff #${staffId}`,
         sales: round2(st?.target.achieved ?? 0),
         target: { applies: !!st?.target.applies, required: round2(st?.target.required ?? 0), met: !!st?.target.met, salaryKnown: st?.target.salaryKnown ?? true },
+        belowFloor: !!st?.scheme.belowFloor,
+        band: st?.scheme.step ? st.scheme.step.index : null,
         commission,
         provisional: !pay,
         paid,

@@ -341,3 +341,65 @@ export function freelanceSplit(lines: BaseCheckLine[], orderDiscountPct = 0, ord
   const qualifying = share(base + premium);
   return { qualifying, base: Math.min(qualifying, share(base)), low: Math.min(share(low), share(base)), premium: Math.min(qualifying, share(premium)) };
 }
+
+// ── Pay bands: fixed payouts by the month's sales ───────────────────────────
+// An alternative to the percentage bands for general sales (Commission → Rates → "How general sales are paid"). Each band is a step: a person whose
+// month's sales (net of VAT, money received, everything credited to them) reach a band's `from` is paid that band's fixed `payout`. It is a step, not
+// a slice — the payout of the band they are in is the whole amount, and it only changes when they cross into the next band: staying in a band keeps
+// the same payout, and crossing into the next one moves it up to the new band's payout. Film and artwork premiums are paid on top.
+// A month below `performanceFloor` is flagged for performance improvement.
+
+export interface PayStep {
+  /** The month's sales at which this band starts. The first band starts at 0. */
+  from: number;
+  /** What a person in this band is paid. */
+  payout: number;
+}
+
+export const GENERAL_MODES = ['steps', 'percent'] as const;
+export type GeneralMode = (typeof GENERAL_MODES)[number];
+export const DEFAULT_GENERAL_MODE: GeneralMode = 'steps';
+
+/** Monthly net sales → fixed payout. Band 4 (120,000 → 30,000) is the anchor, and the performance floor. */
+export const DEFAULT_PAY_STEPS: PayStep[] = [
+  { from: 0, payout: 0 },
+  { from: 30000, payout: 12000 },
+  { from: 60000, payout: 18000 },
+  { from: 90000, payout: 24000 },
+  { from: 120000, payout: 30000 },
+  { from: 150000, payout: 36000 },
+  { from: 180000, payout: 42000 },
+  { from: 210000, payout: 48000 },
+];
+
+/** Sales below this in a month need performance improvement. */
+export const DEFAULT_PERFORMANCE_FLOOR = 120000;
+
+/** Returns an error message for a bad list of pay bands, or null when it is fine. */
+export function payStepsProblem(steps: PayStep[], what: string): string | null {
+  if (!Array.isArray(steps) || steps.length === 0) return `${what}: add at least one band`;
+  const sorted = [...steps].sort((a, b) => a.from - b.from);
+  if (sorted[0]!.from !== 0) return `${what}: the first band must start at 0`;
+  for (let i = 0; i < sorted.length; i++) {
+    const b = sorted[i]!;
+    if (!Number.isFinite(b.from) || b.from < 0) return `${what}: a band starts below 0`;
+    if (!Number.isFinite(b.payout) || b.payout < 0) return `${what}: a payout cannot be negative`;
+    if (i > 0 && b.from === sorted[i - 1]!.from) return `${what}: two bands start at the same amount`;
+  }
+  return null;
+}
+
+/** The payout for a month's sales: that of the highest band they have reached. */
+export function stepPayout(steps: PayStep[], amount: number): number {
+  return stepPosition(steps, amount).payout;
+}
+
+/** Which band a month's sales are in (0-based), what it pays, and what the next one needs and pays. */
+export function stepPosition(steps: PayStep[], amount: number): { index: number; from: number; payout: number; nextFrom: number | null; nextPayout: number | null; toNext: number | null } {
+  const sorted = [...steps].sort((a, b) => a.from - b.from);
+  let idx = 0;
+  for (let i = 0; i < sorted.length; i++) if (amount >= sorted[i]!.from) idx = i;
+  const cur = sorted[idx] ?? { from: 0, payout: 0 };
+  const next = sorted[idx + 1];
+  return { index: idx, from: cur.from, payout: r2(cur.payout), nextFrom: next ? next.from : null, nextPayout: next ? r2(next.payout) : null, toNext: next ? r2(Math.max(0, next.from - amount)) : null };
+}

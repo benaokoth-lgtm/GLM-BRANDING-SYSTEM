@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { EXPENSE_METHODS, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
+import { EXPENSE_METHODS, GENERAL_MODES, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
@@ -31,6 +31,7 @@ commissionRouter.get('/settings', async (_req, res) => {
 });
 
 const bandSchema = z.object({ from: z.number().min(0), rate: z.number().min(0).max(100) });
+const payBandSchema = z.object({ from: z.number().min(0), payout: z.number().min(0).max(1e9) });
 const settingsSchema = z.object({
   generalBands: z.array(bandSchema).min(1),
   filmBands: z.array(bandSchema).min(1),
@@ -46,13 +47,17 @@ const settingsSchema = z.object({
   // The sales target: times their gross monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: z.number().min(0).max(20).optional(),
   targetMode: z.enum(TARGET_MODES).optional(),
+  // How general sales are paid, the fixed-payout pay bands, and the monthly sales below which performance improvement is required.
+  generalMode: z.enum(GENERAL_MODES).optional(),
+  payBands: z.array(payBandSchema).min(1).optional(),
+  performanceFloor: z.number().min(0).max(1e9).optional(),
 });
 
 commissionRouter.put('/settings', manage, async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands') ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, 'Freelance bands') : null);
+  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands') ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, 'Freelance bands') : null) ?? (d.payBands ? payStepsProblem(d.payBands, 'Pay bands') : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b: { from: number; rate: number }[]) => [...b].sort((x, y) => x.from - y.from);
   const data = {
@@ -67,6 +72,9 @@ commissionRouter.put('/settings', manage, async (req, res) => {
     ...(d.freelanceLowMarginPct !== undefined ? { freelanceLowMarginPct: d.freelanceLowMarginPct } : {}),
     ...(d.targetMultiplier !== undefined ? { targetMultiplier: d.targetMultiplier } : {}),
     ...(d.targetMode !== undefined ? { targetMode: d.targetMode } : {}),
+    ...(d.generalMode !== undefined ? { generalMode: d.generalMode } : {}),
+    ...(d.payBands ? { payBandsJson: JSON.stringify([...d.payBands].sort((x, y) => x.from - y.from)) } : {}),
+    ...(d.performanceFloor !== undefined ? { performanceFloor: d.performanceFloor } : {}),
     updatedByName: req.user!.name,
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -122,7 +130,7 @@ commissionRouter.get('/monthly', manage, async (req, res) => {
     prisma.commissionPayout.findMany({ where: { period: { startsWith: `${year}-` } }, include: { staff: { select: { name: true } } } }),
   ]);
 
-  type Row = { staffId: number; staffName: string; sales: number; target: { applies: boolean; required: number; met: boolean; salaryKnown: boolean }; commission: number; provisional: boolean; paid: number; outstanding: number; status: 'Paid' | 'Approved' | 'Not approved' | '—'; paidOn: string | null };
+  type Row = { staffId: number; staffName: string; sales: number; target: { applies: boolean; required: number; met: boolean; salaryKnown: boolean }; belowFloor: boolean; band: number | null; commission: number; provisional: boolean; paid: number; outstanding: number; status: 'Paid' | 'Approved' | 'Not approved' | '—'; paidOn: string | null };
   const months = periods.map((period, i) => {
     const statements = built[i]!.statements;
     const pays = payouts.filter((x) => x.period === period);
@@ -137,6 +145,8 @@ commissionRouter.get('/monthly', manage, async (req, res) => {
         staffName: st?.staffName ?? pay?.staff.name ?? `Staff #${staffId}`,
         sales: round2(st?.target.achieved ?? 0),
         target: { applies: !!st?.target.applies, required: round2(st?.target.required ?? 0), met: !!st?.target.met, salaryKnown: st?.target.salaryKnown ?? true },
+        belowFloor: !!st?.scheme.belowFloor,
+        band: st?.scheme.step ? st.scheme.step.index : null,
         commission,
         provisional: !pay,
         paid,

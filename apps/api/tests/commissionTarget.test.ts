@@ -46,7 +46,7 @@ describe('commission needs the sales target first', () => {
     // carol has no salary on her record, but has been paid through payroll: 30,000 a month
     await prisma.payrollEntry.create({ data: { date: '2026-01-31', staffId: ids.carol!, employeeType: 'Employee', grossPay: 30000, paymentSource: 'Bank/Cheque' } });
     // (another test file leaves the target switched off in the shared settings row, so say what is wanted)
-    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, targetMultiplier: 3, targetMode: 'above' }, create: { id: 1, enabled: true, targetMultiplier: 3, targetMode: 'above' } });
+    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, targetMultiplier: 3, targetMode: 'above', generalMode: 'percent' }, create: { id: 1, enabled: true, targetMultiplier: 3, targetMode: 'above', generalMode: 'percent' } });
     banner = (await prisma.service.create({ data: { name: 'Banner (target test)', unit: 'piece', price: 1000 } })).id;
     for (const [name, unit, price] of [['DTF Sheet (per metre)', 'metre', 500], ['DTF Printing', 'piece', 70]] as const) {
       if (!(await prisma.service.findFirst({ where: { name } }))) await prisma.service.create({ data: { name, unit, price } });

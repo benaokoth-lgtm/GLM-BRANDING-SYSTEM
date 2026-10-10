@@ -1240,6 +1240,11 @@ model CommissionSettings {
   // is earned. 0 = no target. 'above' = the bands start at the target; 'all' = once met, the bands apply to all sales (see shared/commission.ts).
   targetMultiplier Float    @default(3)
   targetMode       String   @default("above")
+  // How general sales are paid: 'steps' = a fixed payout by the month's sales band (payBandsJson: [{from, payout}]); 'percent' = the marginal bands above.
+  // In 'steps' the salary-multiple target is not used: sales below performanceFloor are flagged for performance improvement instead.
+  generalMode      String   @default("steps")
+  payBandsJson     String   @default("[{\"from\":0,\"payout\":0},{\"from\":30000,\"payout\":12000},{\"from\":60000,\"payout\":18000},{\"from\":90000,\"payout\":24000},{\"from\":120000,\"payout\":30000},{\"from\":150000,\"payout\":36000},{\"from\":180000,\"payout\":42000},{\"from\":210000,\"payout\":48000}]")
+  performanceFloor Float    @default(120000)
   updatedByName    String   @default("")
   updatedAt        DateTime @updatedAt
 }

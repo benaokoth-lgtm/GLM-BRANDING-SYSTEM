@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
-import { EXPENSE_METHODS, bandsProblem, fmtDate, fmtKsh, fmtNum } from '@glm/shared';
+import { EXPENSE_METHODS, bandsProblem, fmtDate, fmtKsh, fmtNum, payStepsProblem } from '@glm/shared';
 import type { Band } from '@glm/shared';
 import { api } from '../api/client';
 import { useSubTab } from '../state/SubNavContext';
@@ -31,6 +31,18 @@ interface Config {
   /** Times their gross monthly salary a person must sell before commission starts (0 = no target). */
   targetMultiplier: number;
   targetMode: 'above' | 'all';
+  /** How general sales are paid: a fixed payout by band ('steps') or a percentage of slices ('percent'). */
+  generalMode: 'steps' | 'percent';
+  payBands: { from: number; payout: number }[];
+  /** Sales below this in a month need performance improvement. */
+  performanceFloor: number;
+}
+interface Scheme {
+  mode: 'steps' | 'percent';
+  sales: number;
+  floor: number;
+  belowFloor: boolean;
+  step: { index: number; from: number; payout: number; nextFrom: number | null; nextPayout: number | null; toNext: number | null } | null;
 }
 interface Target {
   applies: boolean;
@@ -52,6 +64,7 @@ interface Statement {
   target: Target;
   /** Earned on the month's sales but held back until the target is met. */
   heldCommission: number;
+  scheme: Scheme;
   general: {
     received: number;
     netSales: number;
@@ -112,6 +125,8 @@ interface MonthlyRow {
   staffName: string;
   sales: number;
   target: { applies: boolean; required: number; met: boolean; salaryKnown: boolean };
+  belowFloor: boolean;
+  band: number | null;
   commission: number;
   provisional: boolean;
   paid: number;
@@ -142,6 +157,56 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
       <div className="card-kicker">{label}</div>
       <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>{value}</div>
       {sub && <div className="note" style={{ margin: 0 }}>{sub}</div>}
+    </div>
+  );
+}
+
+const FLOOR_WARNING = (floor: number) => `Sales below ${fmtKsh(floor)} a month require performance improvement.`;
+
+/** Pay bands: where the person is on the ladder, what the band pays, what the next one needs — and the performance warning. */
+function PayBandCard({ s, config, you, open }: { s: Statement; config: Config; you?: boolean; open?: boolean }) {
+  const sc = s.scheme;
+  const st = sc.step;
+  if (!st) return null;
+  const who = you ? 'You' : s.staffName;
+  return (
+    <div>
+      <div className="card-kicker">Pay band {st.index} — {fmtKsh(st.payout)}</div>
+      {sc.belowFloor && (
+        <p className="note" style={{ margin: '0 0 var(--space-2)', padding: 'var(--space-2) var(--space-3)', border: '1px solid var(--color-error)', color: 'var(--color-error)' }}>
+          <b>{FLOOR_WARNING(sc.floor)}</b> {who} {you ? 'have' : 'has'} sold {fmtKsh(sc.sales)} {open ? 'so far this month' : 'this month'}
+          {open ? <> — {fmtKsh(Math.max(0, sc.floor - sc.sales))} more reaches {fmtKsh(sc.floor)}.</> : '.'}
+        </p>
+      )}
+      <p className="note" style={{ marginTop: 0 }}>
+        {who} {you ? 'have' : 'has'} brought in <b>{fmtKsh(sc.sales)}</b> in net sales (VAT out) received this month, which pays <b>{fmtKsh(st.payout)}</b>. The payout stays the same until the next band is reached, then it moves up to the new band's payout.
+        {st.toNext != null && st.nextPayout != null && (
+          <>
+            {' '}
+            {fmtKsh(st.toNext)} more takes {you ? 'you' : 'them'} to band {st.index + 1} at <b>{fmtKsh(st.nextPayout)}</b>.
+          </>
+        )}
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="table" style={{ maxWidth: 520 }}>
+          <thead>
+            <tr>
+              <th>Band</th>
+              <th>Monthly sales</th>
+              <th style={numStyle}>Payout</th>
+            </tr>
+          </thead>
+          <tbody>
+            {config.payBands.map((b, i) => (
+              <tr key={b.from} style={i === st.index ? { fontWeight: 700, background: 'var(--color-surface-2, transparent)' } : undefined}>
+                <td>{i === st.index ? `▸ ${i}` : i}</td>
+                <td>{i === 0 ? `Below ${fmtKsh(config.payBands[1]?.from ?? 0)}` : config.payBands[i + 1] ? `${fmtKsh(b.from)} – ${fmtKsh(config.payBands[i + 1]!.from - 1)}` : `${fmtKsh(b.from)} and above`}{b.from === config.performanceFloor ? ' (the floor)' : ''}</td>
+                <td style={numStyle}>{fmtKsh(b.payout)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -186,23 +251,23 @@ function TargetCard({ s, you }: { s: Statement; you?: boolean }) {
 }
 
 /** How a month's figure was made up — shown to the staff member themselves and to managers. */
-function StatementDetail({ s, config, you }: { s: Statement; config: Config; you?: boolean }) {
+function StatementDetail({ s, config, you, open }: { s: Statement; config: Config; you?: boolean; open?: boolean }) {
   const p = s.productivity;
   const who = you ? 'you' : s.staffName;
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
-      <TargetCard s={s} you={you} />
+      {s.scheme.mode === 'steps' ? <PayBandCard s={s} config={config} you={you} open={open} /> : <TargetCard s={s} you={you} />}
       <div>
         <div className="card-kicker">Sales {you ? 'you' : 'they'} sourced — {fmtKsh(s.general.commission)}</div>
         <p className="note" style={{ marginTop: 0 }}>
-          Money received this month on orders credited to {who}: {fmtKsh(s.general.received)} (VAT included) = <b>{fmtKsh(s.general.netSales)}</b> net. {you ? 'You are' : s.staffName + ' is'} in the <b>{pct(s.general.band.rate)}</b> band
-          {s.general.band.toNext != null && s.general.band.nextRate != null && (
+          Money received this month on orders credited to {who}: {fmtKsh(s.general.received)} (VAT included) = <b>{fmtKsh(s.general.netSales)}</b> net. {s.scheme.mode === 'steps' ? <>The month's sales count in full towards the pay bands.</> : <>{you ? 'You are' : s.staffName + ' is'} in the <b>{pct(s.general.band.rate)}</b> band</>}
+          {s.scheme.mode !== 'steps' && s.general.band.toNext != null && s.general.band.nextRate != null && (
             <>
               {' '}
               — {fmtKsh(s.general.band.toNext)} more in net sales takes the next slice to {pct(s.general.band.nextRate)}
             </>
           )}
-          .
+          {s.scheme.mode === 'steps' ? '' : '.'}
         </p>
         {s.general.orders.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
@@ -316,6 +381,27 @@ function StatementDetail({ s, config, you }: { s: Statement; config: Config; you
 }
 
 function SchemeNote({ config }: { config: Config }) {
+  if (config.generalMode === 'steps') {
+    return (
+      <ul className="note" style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>
+        <li>
+          <b>Pay bands:</b> your pay for the month is a fixed amount set by the net sales (VAT out) <i>received</i> in the month from clients credited to you —{' '}
+          {config.payBands.map((b, i) => `${i === 0 ? 'below ' + fmtKsh(config.payBands[1]?.from ?? 0) : 'from ' + fmtKsh(b.from)} pays ${fmtKsh(b.payout)}`).join(' · ')}. The payout of your band stays the same until you reach the next band, then it moves up to the new band's payout. A client you bring in stays yours for {config.ownershipMonths} months.
+        </li>
+        <li>
+          <b>Performance:</b> {FLOOR_WARNING(config.performanceFloor)} Prices are never relaxed to help reach a band: the minimum prices at order taking stay as they are.
+        </li>
+        <li>
+          <b>Film:</b> everything you charge above the base price per metre earns a share of that extra, with no ceiling —{' '}
+          {config.filmBands.map((b, i) => `${i === config.filmBands.length - 1 ? `over ${b.from}` : `${b.from}–${config.filmBands[i + 1]!.from}`} above base: ${pct(b.rate)}`).join(' · ')}.
+        </li>
+        <li>
+          <b>Artwork:</b> you may charge more than the system’s recommended price; you earn {pct(config.artworkRatePct)} of the amount above it, and nothing on the recommended price itself.
+        </li>
+        <li>Film and artwork commission is earned as the customer pays — a half-paid order earns half — and is paid on top of the band payout.</li>
+      </ul>
+    );
+  }
   return (
     <ul className="note" style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>
       {config.targetMultiplier > 0 && (
@@ -345,15 +431,22 @@ function MyTab({ period }: { period: string }) {
   const { data, error, loading } = useLoad<MyData>(`/commission/my?period=${period}`);
   if (!data) return <Loading loading={loading} error={error} />;
   const s = data.statement;
+  const steps = s.scheme.mode === 'steps';
+  const open = period >= thisMonth();
   return (
     <>
+      {steps && s.scheme.belowFloor && (
+        <p className="note" style={{ margin: 0, padding: 'var(--space-3)', border: '1px solid var(--color-error)', color: 'var(--color-error)' }}>
+          <b>{FLOOR_WARNING(s.scheme.floor)}</b> You have sold {fmtKsh(s.scheme.sales)} {open ? 'so far this month' : 'this month'}.
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
         <Stat label="Your commission" value={fmtKsh(s.total)} sub={data.payout ? `${data.payout.status}${data.payout.paidOn ? ' on ' + fmtDate(data.payout.paidOn) : ''}` : 'not yet approved'} />
-        <Stat label="Sales you sourced" value={fmtKsh(s.general.commission)} sub={s.target.held ? `${fmtKsh(s.general.netSales)} net received · below your sales target` : `${fmtKsh(s.general.netSales)} net received · ${pct(s.general.band.rate)} band`} />
+        <Stat label="Sales you sourced" value={fmtKsh(s.general.commission)} sub={steps ? `${fmtKsh(s.scheme.sales)} net received · pay band ${s.scheme.step?.index ?? 0}` : s.target.held ? `${fmtKsh(s.general.netSales)} net received · below your sales target` : `${fmtKsh(s.general.netSales)} net received · ${pct(s.general.band.rate)} band`} />
         <Stat label="Film" value={fmtKsh(s.film.commission)} />
         <Stat label="Artwork" value={fmtKsh(s.artwork.commission)} />
       </div>
-      {s.target.applies && (
+      {!steps && s.target.applies && (
         <Card title="Your sales target" hint="Sell this much in the month and commission starts.">
           <TargetCard s={s} you />
         </Card>
@@ -362,7 +455,7 @@ function MyTab({ period }: { period: string }) {
         <SchemeNote config={data.config} />
       </Card>
       <Card title="This month in detail">
-        <StatementDetail s={s} config={data.config} you />
+        <StatementDetail s={s} config={data.config} you open={open} />
       </Card>
       <Card title="Clients credited to you" hint="Every order from these clients counts towards your commission until the date shown.">
         {data.clients.length === 0 ? (
@@ -442,7 +535,7 @@ function TeamTab({ period }: { period: string }) {
               <tr>
                 <th>Staff</th>
                 <th style={numStyle} title="Sales made so far this month that count towards the target: money received, net of VAT">Current sales</th>
-                <th style={numStyle} title="What they must sell in the month before commission starts: the target multiplier × their gross monthly salary">Sales target</th>
+                <th style={numStyle} title={data.config.generalMode === 'steps' ? `Sales below this in a month require performance improvement` : 'What they must sell in the month before commission starts: the target multiplier × their gross monthly salary'}>{data.config.generalMode === 'steps' ? 'Performance floor' : 'Sales target'}</th>
                 <th>Target status</th>
                 <th style={numStyle}>Sourced sales</th>
                 <th style={numStyle}>Film</th>
@@ -468,7 +561,11 @@ function TeamTab({ period }: { period: string }) {
                       ) : s.target.met ? (
                         <Tag tone="good">target met</Tag>
                       ) : (
-                        <span title={s.heldCommission > 0 ? `${fmtKsh(s.heldCommission)} earned but not paid: the target was not met` : undefined}>{fmtKsh(s.target.remaining)} to go</span>
+                        s.scheme.mode === 'steps' && !data.open ? (
+                          <Tag tone="bad">needs improvement</Tag>
+                        ) : (
+                          <span title={s.heldCommission > 0 ? `${fmtKsh(s.heldCommission)} earned but not paid: the target was not met` : undefined}>{fmtKsh(s.target.remaining)} to go</span>
+                        )
                       )}
                     </td>
                     <td style={numStyle}>{fmtKsh(s.general.commission)}</td>
@@ -500,7 +597,7 @@ function TeamTab({ period }: { period: string }) {
                     <tr>
                       <td colSpan={9} style={{ background: 'var(--color-surface-2, transparent)' }}>
                         <div style={{ padding: 'var(--space-3)' }}>
-                          <StatementDetail s={s} config={data.config} />
+                          <StatementDetail s={s} config={data.config} open={data.open} />
                         </div>
                       </td>
                     </tr>
@@ -512,7 +609,7 @@ function TeamTab({ period }: { period: string }) {
 </div>
         )}
         <p className="note">
-          <b>Current sales</b> are the sales made so far this month that count towards the target (money received, net of VAT); the <b>Sales target</b> is what they must reach before commission starts. Paying records an expense under Sales Commission, so it reaches the books (and the petty-cash float when paid from petty cash).
+          <b>Current sales</b> are the sales made so far this month (money received, net of VAT); {data.config.generalMode === 'steps' ? <>the <b>Performance floor</b> is {fmtKsh(data.config.performanceFloor)} — a closed month below it is marked for performance improvement.</> : <>the <b>Sales target</b> is what they must reach before commission starts.</>} Paying records an expense under Sales Commission, so it reaches the books (and the petty-cash float when paid from petty cash).
         </p>
       </Card>
     </>
@@ -626,7 +723,7 @@ function MonthlyTab() {
                               <Tag tone="bad">salary needed</Tag>
                             ) : (
                               <>
-                                {fmtKsh(r.target.required)} {r.target.met ? <Tag tone="good">met</Tag> : <Tag>not met</Tag>}
+                                {fmtKsh(r.target.required)} {r.target.met ? <Tag tone="good">met</Tag> : r.belowFloor && !m.open ? <Tag tone="bad">needs improvement</Tag> : <Tag>not met</Tag>}
                               </>
                             )}
                           </td>
@@ -835,8 +932,47 @@ function BandEditor({ title, hint, unit, bands, onChange }: { title: string; hin
   );
 }
 
+function PayBandEditor({ bands, onChange }: { bands: { from: string; payout: string }[]; onChange: (b: { from: string; payout: string }[]) => void }) {
+  return (
+    <div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="table" style={{ maxWidth: 480 }}>
+          <thead>
+            <tr>
+              <th>Band</th>
+              <th>From (Ksh net sales a month)</th>
+              <th>Payout (Ksh)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {bands.map((b, i) => (
+              <tr key={i}>
+                <td>{i}</td>
+                <td>
+                  <input className="input" inputMode="decimal" value={b.from} disabled={i === 0} onChange={(e) => onChange(bands.map((x, j) => (j === i ? { ...x, from: e.target.value } : x)))} />
+                </td>
+                <td>
+                  <input className="input" inputMode="decimal" value={b.payout} onChange={(e) => onChange(bands.map((x, j) => (j === i ? { ...x, payout: e.target.value } : x)))} />
+                </td>
+                <td>{i > 0 && <button type="button" className="btn btn-ghost btn-sm" onClick={() => onChange(bands.filter((_, j) => j !== i))}>✕</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange([...bands, { from: '', payout: '' }])}>
+        + Add band
+      </button>
+    </div>
+  );
+}
+
 function RatesTab() {
   const { data, error, loading, reload } = useLoad<Config>('/commission/settings');
+  const [genMode, setGenMode] = useState<'steps' | 'percent'>('steps');
+  const [payBands, setPayBands] = useState<{ from: string; payout: string }[]>([]);
+  const [floor, setFloor] = useState('');
   const [general, setGeneral] = useState<{ from: string; rate: string }[]>([]);
   const [film, setFilm] = useState<{ from: string; rate: string }[]>([]);
   const [freelance, setFreelance] = useState<{ from: string; rate: string }[]>([]);
@@ -865,18 +1001,22 @@ function RatesTab() {
     setFlLow(String(data.freelanceLowMarginPct ?? 50));
     setMultiplier(String(data.targetMultiplier));
     setMode(data.targetMode);
+    setGenMode(data.generalMode ?? 'steps');
+    setPayBands((data.payBands ?? []).map((b) => ({ from: String(b.from), payout: String(b.payout) })));
+    setFloor(String(data.performanceFloor ?? 120000));
   }, [data]);
 
   if (!data) return <Loading loading={loading} error={error} />;
   const toBands = (rows: { from: string; rate: string }[]): Band[] => rows.map((r) => ({ from: Number(r.from), rate: Number(r.rate) }));
-  const problem = bandsProblem(toBands(general), 'Sales bands') ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands');
+  const toSteps = payBands.map((r) => ({ from: Number(r.from), payout: Number(r.payout) }));
+  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null);
 
   async function save() {
     setBusy(true);
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor) });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -890,6 +1030,30 @@ function RatesTab() {
     <Card title="Commission rates" hint="Placeholders to start with — adjust them as you learn what a good month looks like.">
       <Notice error={err} message={msg} />
       <div style={{ display: 'grid', gap: 'var(--space-5)' }}>
+        <div>
+          <div className="card-kicker">How sales you source are paid</div>
+          <div className="field" style={{ margin: 0, maxWidth: 420 }}>
+            <select className="input" value={genMode} onChange={(e) => setGenMode(e.target.value as 'steps' | 'percent')}>
+              <option value="steps">A fixed payout by the month's sales band (pay bands)</option>
+              <option value="percent">A percentage of the sales, in slices, after a salary-multiple target</option>
+            </select>
+          </div>
+        </div>
+        {genMode === 'steps' && (
+          <div>
+            <div className="card-kicker">Pay bands</div>
+            <p className="note" style={{ marginTop: 0 }}>
+              A person is paid the fixed payout of the highest band their month's net sales (VAT out, money received, on everything credited to them) have reached. It is a step, not a slice: the payout stays the same until the next band is reached, then it moves up to that band's payout. Film and artwork extras are paid on top. Changes apply straight away to any month not yet approved.
+            </p>
+            <PayBandEditor bands={payBands} onChange={setPayBands} />
+            <div className="field" style={{ marginTop: 'var(--space-3)', maxWidth: 320 }}>
+              <label>Performance floor — monthly sales below this need improvement (Ksh)</label>
+              <input className="input" inputMode="decimal" value={floor} onChange={(e) => setFloor(e.target.value)} />
+              <p className="note" style={{ margin: 0 }}>Staff are warned on their own screen, and the month is flagged in Team &amp; payouts and the monthly report.</p>
+            </div>
+          </div>
+        )}
+        {genMode === 'percent' && (
         <div>
           <div className="card-kicker">Sales target before commission</div>
           <p className="note" style={{ marginTop: 0 }}>
@@ -910,6 +1074,8 @@ function RatesTab() {
           </div>
           {mode === 'above' && Number(multiplier) > 0 && <p className="note">With “only the sales above the target”, the first band below starts at the target itself — so a first band of 0 to 150,000 at 0% would mean nothing is paid until 150,000 <i>past</i> the target. Set the first band's rate to what should be paid just past the target.</p>}
         </div>
+        )}
+        {genMode === 'percent' && (
         <BandEditor
           title="Sales you source"
           hint="Marginal bands on a staff member’s monthly NET sales received from clients credited to them: each rate applies only to the slice of the month that falls inside its band."
@@ -917,6 +1083,7 @@ function RatesTab() {
           bands={general}
           onChange={setGeneral}
         />
+        )}
         <BandEditor
           title="Film sold above the base price"
           hint="Ksh per metre charged above the base price (the DTF minimum price) → the share of that slice that is paid. The last band has no upper limit: there is no ceiling price."

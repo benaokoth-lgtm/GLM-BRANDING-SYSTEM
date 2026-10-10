@@ -46,7 +46,7 @@ describe('staff sales commission', () => {
     tokens.admin = signToken({ id: admin.id, name: admin.name, role: 'Admin' });
     // The scheme is switched off until an Admin starts it; these tests are about the scheme itself, so it is on.
     // (The sales target — 3 × basic salary before commission starts — has its own tests in commissionTarget.test.ts; here it is off, so these tests stay about the bands.)
-    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, targetMultiplier: 0 }, create: { id: 1, enabled: true, targetMultiplier: 0 } });
+    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, targetMultiplier: 0, generalMode: 'percent' }, create: { id: 1, enabled: true, targetMultiplier: 0, generalMode: 'percent' } });
     banner = (await prisma.service.create({ data: { name: 'Banner (commission test)', unit: 'piece', price: 1000 } })).id;
     await prisma.service.create({ data: { name: 'DTF Sheet (per metre)', unit: 'metre', price: 500 } });
     await prisma.service.create({ data: { name: 'DTF Printing', unit: 'piece', price: 70 } });

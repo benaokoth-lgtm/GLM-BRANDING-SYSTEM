@@ -65998,6 +65998,12 @@ var DEFAULT_PAY_STEPS = [
   { from: 21e4, payout: 48e3 }
 ];
 var DEFAULT_PERFORMANCE_FLOOR = 12e4;
+var DEFAULT_MINIMUM_WAGE = 16113.75;
+function salesPay(earned, minimumWage) {
+  const e = r22(Math.max(0, earned));
+  const amount = Math.max(e, r22(Math.max(0, minimumWage)));
+  return { amount, topUp: r22(amount - e) };
+}
 function payStepsProblem(steps, what) {
   if (!Array.isArray(steps) || steps.length === 0) return `${what}: add at least one band`;
   const sorted = [...steps].sort((a2, b) => a2.from - b.from);
@@ -66438,7 +66444,8 @@ async function getCommissionConfig(db = prisma) {
     targetMode: TARGET_MODES.includes(row?.targetMode ?? "") ? row.targetMode : DEFAULT_TARGET_MODE,
     generalMode: GENERAL_MODES.includes(row?.generalMode ?? "") ? row.generalMode : DEFAULT_GENERAL_MODE,
     payBands: readSteps(row?.payBandsJson),
-    performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR
+    performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
+    minimumWage: row?.minimumWage ?? DEFAULT_MINIMUM_WAGE
   };
 }
 async function freelanceShare(db, lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
@@ -66567,6 +66574,7 @@ function blankStatement(staffId, staffName = "", target) {
     total: 0,
     target: target ?? salesTarget({ multiplier: DEFAULT_TARGET_MULTIPLIER, mode: DEFAULT_TARGET_MODE, salary: null, achieved: 0 }),
     heldCommission: 0,
+    pay: { onBands: false, minimumWage: 0, amount: 0, topUp: 0 },
     scheme: { mode: DEFAULT_GENERAL_MODE, sales: 0, floor: DEFAULT_PERFORMANCE_FLOOR, belowFloor: false, step: null },
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
@@ -66685,6 +66693,15 @@ async function buildStatements(period, only) {
     p.filmAvgPricePerM = p.filmMetres > 0 ? round2(b.filmRevenue / p.filmMetres) : null;
     p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
   }
+  const [py, pm] = period.split("-").map(Number);
+  const bandUsers = config.generalMode === "steps" ? await prisma.user.findMany({ where: { paidOnBands: true, active: true, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, select: { id: true } }) : [];
+  const bandSet = new Set(bandUsers.map((u) => u.id));
+  for (const id of bandSet) who(id);
+  const payFor = (st) => {
+    const onBands = bandSet.has(st.staffId);
+    const pp = onBands ? salesPay(st.total, config.minimumWage) : { amount: st.total, topUp: 0 };
+    st.pay = { onBands, minimumWage: onBands ? config.minimumWage : 0, amount: pp.amount, topUp: pp.topUp };
+  };
   const salaries = await salariesFor([...people.keys()], end);
   for (const st of people.values()) {
     st.general.netSales = round2(Math.max(0, st.general.received) / (1 + VAT_RATE));
@@ -66703,6 +66720,7 @@ async function buildStatements(period, only) {
       st.general.commission = step.payout;
       st.general.band = { rate: 0, nextFrom: step.nextFrom, nextRate: null, toNext: step.toNext };
       st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+      payFor(st);
       continue;
     }
     st.scheme = { mode: "percent", sales, floor: config.performanceFloor, belowFloor: false, step: null };
@@ -66718,6 +66736,7 @@ async function buildStatements(period, only) {
     }
     st.general.band = bandPosition(config.generalBands, target.eligibleSales);
     st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+    payFor(st);
   }
   const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
   const names = new Map(users.map((u) => [u.id, u.name]));
@@ -73686,14 +73705,16 @@ financeRouter.get("/statutory-due", async (req, res) => {
 financeRouter.get("/employees", async (_req, res) => {
   await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary, paidOnBands: u.paidOnBands })));
 });
 var employeeSchema = external_exports.object({
   nationalId: external_exports.string().max(40).optional().default(""),
   kraPin: external_exports.string().max(40).optional().default(""),
   shifNumber: external_exports.string().max(60).optional().default(""),
   // Their gross monthly salary (Ksh; the column is still called basicSalary): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
-  basicSalary: external_exports.number().min(0).max(1e8).nullable().optional()
+  basicSalary: external_exports.number().min(0).max(1e8).nullable().optional(),
+  // Paid on the sales pay bands: their monthly pay is the band payout (at least the minimum wage), put into payroll when the month is approved in Commission.
+  paidOnBands: external_exports.boolean().optional()
 });
 financeRouter.put("/employees/:id", async (req, res) => {
   const parsed = employeeSchema.safeParse(req.body);
@@ -73715,9 +73736,9 @@ financeRouter.put("/employees/:id", async (req, res) => {
   }
   const u = await prisma.user.update({
     where: { id },
-    data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value, ...parsed.data.basicSalary !== void 0 ? { basicSalary: parsed.data.basicSalary && parsed.data.basicSalary > 0 ? parsed.data.basicSalary : null } : {} }
+    data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value, ...parsed.data.paidOnBands !== void 0 ? { paidOnBands: parsed.data.paidOnBands } : {}, ...parsed.data.basicSalary !== void 0 ? { basicSalary: parsed.data.basicSalary && parsed.data.basicSalary > 0 ? parsed.data.basicSalary : null } : {} }
   });
-  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary });
+  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary, paidOnBands: u.paidOnBands });
 });
 financeRouter.get("/p9", async (req, res) => {
   const year = String(req.query.year || "");
@@ -73784,6 +73805,9 @@ financeRouter.post("/payroll", async (req, res) => {
   const data = parsed.data;
   const staff = await prisma.user.findUnique({ where: { id: data.staffId } });
   if (!staff) return res.status(400).json({ error: "Selected staff member not found" });
+  if (data.employeeType === "Employee" && staff.paidOnBands && (await getCommissionConfig()).generalMode === "steps") {
+    return res.status(400).json({ error: `${staff.name} is paid on the sales pay bands: their monthly pay goes into payroll automatically when the month is approved in Commission \u2192 Team & payouts. Do not enter a salary by hand.` });
+  }
   const grossPay = data.employeeType === "Employee" ? data.grossPay : data.daysWorked * data.rate;
   const netPay = computePay(grossPay, data.employeeType, data.date).netPay;
   const check = await pettyCashShortfall(netPay, data.date);
@@ -78375,7 +78399,9 @@ var settingsSchema7 = external_exports.object({
   // How general sales are paid, the fixed-payout pay bands, and the monthly sales below which performance improvement is required.
   generalMode: external_exports.enum(GENERAL_MODES).optional(),
   payBands: external_exports.array(payBandSchema).min(1).optional(),
-  performanceFloor: external_exports.number().min(0).max(1e9).optional()
+  performanceFloor: external_exports.number().min(0).max(1e9).optional(),
+  // The least a person on the pay bands is paid for a month (a band payout below it is topped up to it).
+  minimumWage: external_exports.number().min(0).max(1e9).optional()
 });
 commissionRouter.put("/settings", manage, async (req, res) => {
   const parsed = settingsSchema7.safeParse(req.body);
@@ -78399,6 +78425,7 @@ commissionRouter.put("/settings", manage, async (req, res) => {
     ...d.generalMode !== void 0 ? { generalMode: d.generalMode } : {},
     ...d.payBands ? { payBandsJson: JSON.stringify([...d.payBands].sort((x, y) => x.from - y.from)) } : {},
     ...d.performanceFloor !== void 0 ? { performanceFloor: d.performanceFloor } : {},
+    ...d.minimumWage !== void 0 ? { minimumWage: d.minimumWage } : {},
     updatedByName: req.user.name
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -78453,7 +78480,7 @@ commissionRouter.get("/monthly", manage, async (req, res) => {
     const rows = [...ids].map((staffId) => {
       const st = statements.find((x) => x.staffId === staffId);
       const pay = pays.find((x) => x.staffId === staffId);
-      const commission = round2(pay ? pay.amount : st?.total ?? 0);
+      const commission = round2(pay ? pay.amount : st?.pay.amount ?? 0);
       const paid = pay?.status === "Paid" ? round2(pay.amount) : 0;
       return {
         staffId,
@@ -78579,6 +78606,10 @@ commissionRouter.post("/payouts/approve", manage, async (req, res) => {
   const { statements } = await buildStatements(period.data);
   const out = [];
   for (const s of statements) {
+    if (s.pay.onBands) {
+      out.push(await putInPayroll(s, period.data, req.user.name));
+      continue;
+    }
     if (s.total <= 0) continue;
     const existing = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: s.staffId } } });
     if (existing?.status === "Paid") {
@@ -78600,6 +78631,42 @@ commissionRouter.post("/payouts/approve", manage, async (req, res) => {
   }
   res.json({ period: period.data, payouts: out });
 });
+var monthEnd2 = (period) => {
+  const [y, m] = period.split("-").map(Number);
+  return `${period}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+};
+async function putInPayroll(s, period, byName) {
+  const base3 = { staffId: s.staffId, staffName: s.staffName, amount: s.pay.amount, inPayroll: true, topUp: s.pay.topUp };
+  const existing = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period, staffId: s.staffId } } });
+  if (existing?.status === "Paid") return { ...base3, amount: existing.amount, status: "Paid" };
+  if (period >= thisMonth()) return { ...base3, status: "Waiting", note: "the month is not over yet" };
+  if (!(s.pay.amount > 0)) return { ...base3, status: "Nothing to pay", note: "no minimum wage is set" };
+  const date = monthEnd2(period);
+  const net8 = computePay(s.pay.amount, "Employee", date).netPay;
+  const check = await pettyCashShortfall(net8, date);
+  if (check.short) return { ...base3, status: "Petty cash short", note: `petty cash cannot cover the net pay of Ksh ${Math.round(net8).toLocaleString("en-KE")} (Ksh ${Math.round(check.available).toLocaleString("en-KE")} available)` };
+  const today = todayStr();
+  const data = {
+    generalAmount: s.general.commission,
+    filmAmount: s.film.commission,
+    artworkAmount: s.artwork.commission,
+    amount: s.pay.amount,
+    detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, scheme: s.scheme, pay: s.pay }),
+    status: "Paid",
+    approvedByName: byName,
+    approvedAt: /* @__PURE__ */ new Date(),
+    paidOn: today,
+    paidMethod: "Payroll",
+    paidByName: byName
+  };
+  await prisma.$transaction(async (tx) => {
+    const entry = await tx.payrollEntry.findFirst({ where: { staffId: s.staffId, salesPeriod: period } });
+    if (entry) await tx.payrollEntry.update({ where: { id: entry.id }, data: { grossPay: s.pay.amount } });
+    else await tx.payrollEntry.create({ data: { date, staffId: s.staffId, employeeType: "Employee", department: "", grossPay: s.pay.amount, paymentSource: PETTY_CASH_METHOD, capturedByName: byName, salesPeriod: period } });
+    await tx.commissionPayout.upsert({ where: { period_staffId: { period, staffId: s.staffId } }, update: data, create: { period, staffId: s.staffId, ...data } });
+  });
+  return { ...base3, status: "Paid" };
+}
 commissionRouter.get("/payouts", manage, async (req, res) => {
   const where = typeof req.query.period === "string" ? { period: req.query.period } : {};
   const rows = await prisma.commissionPayout.findMany({ where, include: { staff: { select: { name: true } } }, orderBy: [{ period: "desc" }, { id: "asc" }], take: 300 });

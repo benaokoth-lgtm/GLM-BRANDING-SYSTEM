@@ -319,6 +319,19 @@ export default function Compliance() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, p9Year]);
 
+  async function setPaidOnBands(id: number, value: boolean) {
+    setError(null);
+    setBusy(true);
+    try {
+      await api.put(`/finance/employees/${id}`, { paidOnBands: value });
+      loadEmployees();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveEmployee(id: number) {
     const d = empDrafts[id];
     if (!d) return;
@@ -855,13 +868,14 @@ export default function Compliance() {
                 <th>KRA PIN</th>
                 <th>SHIF No.</th>
                 <th title="Gross monthly salary before deductions (basic plus fixed allowances). Sets the sales target for commission: 3 × this, by default">Gross salary (Ksh / month)</th>
+                <th title="Their monthly pay is the sales pay-band payout (never below the minimum wage), put into payroll automatically when the month is approved in Commission → Team & payouts">Paid on sales bands</th>
                 <th style={{ width: 150 }}></th>
               </tr>
             </thead>
             <tbody>
               {employees.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="text-muted">
+                  <td colSpan={8} className="text-muted">
                     No staff yet.
                   </td>
                 </tr>
@@ -892,6 +906,9 @@ export default function Compliance() {
                           <input className="input" style={{ width: 120 }} inputMode="decimal" value={draft.basicSalary} onChange={(e) => setEmpDrafts((x) => ({ ...x, [u.id]: { ...x[u.id]!, basicSalary: e.target.value } }))} placeholder="e.g. 40000" />
                         </td>
                         <td>
+                          <input type="checkbox" checked={!!u.paidOnBands} disabled={busy} onChange={(e) => setPaidOnBands(u.id, e.target.checked)} aria-label={`${u.name} is paid on the sales bands`} />
+                        </td>
+                        <td>
                           <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                             <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => saveEmployee(u.id)}>
                               Save
@@ -908,6 +925,9 @@ export default function Compliance() {
                         <td>{u.kraPin ?? <span className="text-muted">—</span>}</td>
                         <td>{u.shifNumber ?? <span className="text-muted">—</span>}</td>
                         <td>{u.basicSalary ? u.basicSalary.toLocaleString('en-KE') : <span className="text-muted">—</span>}</td>
+                        <td>
+                          <input type="checkbox" checked={!!u.paidOnBands} disabled={busy} onChange={(e) => setPaidOnBands(u.id, e.target.checked)} aria-label={`${u.name} is paid on the sales bands`} />
+                        </td>
                         <td>
                           <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEmpDrafts((x) => ({ ...x, [u.id]: { nationalId: u.nationalId ?? '', kraPin: u.kraPin ?? '', shifNumber: u.shifNumber ?? '', basicSalary: u.basicSalary ? String(u.basicSalary) : '' } }))}>
                             {incomplete ? 'Add details' : 'Edit'}

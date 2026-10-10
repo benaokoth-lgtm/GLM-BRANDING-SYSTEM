@@ -239,6 +239,8 @@ export interface EmployeeRow {
   shifNumber: string | null;
   /** Gross monthly salary (Ksh): basic plus fixed allowances, before deductions. The sales target for commission is a multiple of it. */
   basicSalary: number | null;
+  /** Paid on the sales pay bands: their monthly pay (never below the minimum wage) goes into payroll when the month is approved in Commission. */
+  paidOnBands?: boolean;
 }
 
 export interface P9Month {

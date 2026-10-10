@@ -20,6 +20,7 @@ import {
 } from '@glm/shared';
 import { ensureStaffNamesOnce } from '../staffNames';
 import { incomeTaxByMonth, loadTaxConfig } from '../incomeTax';
+import { getCommissionConfig } from '../commission';
 import type { LineItemInput } from '@glm/shared';
 import { ensureChartOnce, accountIdForNewExpenseHead } from '../accounting/chart';
 import { loadLedger, pettyCashBalance, pettyCashShortfall } from '../accounting/ledger';
@@ -219,7 +220,7 @@ financeRouter.get('/statutory-due', async (req, res) => {
 financeRouter.get('/employees', async (_req, res) => {
   await ensureStaffNamesOnce();
   const users = await prisma.user.findMany({ orderBy: { name: 'asc' } });
-  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary })));
+  res.json(users.map((u) => ({ id: u.id, name: u.name, firstName: u.firstName, middleName: u.middleName, lastName: u.lastName, role: u.role, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary, paidOnBands: u.paidOnBands })));
 });
 
 const employeeSchema = z.object({
@@ -228,6 +229,8 @@ const employeeSchema = z.object({
   shifNumber: z.string().max(60).optional().default(''),
   // Their gross monthly salary (Ksh; the column is still called basicSalary): the sales target for commission is a multiple of it. Blank/null clears it; left out = unchanged.
   basicSalary: z.number().min(0).max(100_000_000).nullable().optional(),
+  // Paid on the sales pay bands: their monthly pay is the band payout (at least the minimum wage), put into payroll when the month is approved in Commission.
+  paidOnBands: z.boolean().optional(),
 });
 
 financeRouter.put('/employees/:id', async (req, res) => {
@@ -250,9 +253,9 @@ financeRouter.put('/employees/:id', async (req, res) => {
   }
   const u = await prisma.user.update({
     where: { id },
-    data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value, ...(parsed.data.basicSalary !== undefined ? { basicSalary: parsed.data.basicSalary && parsed.data.basicSalary > 0 ? parsed.data.basicSalary : null } : {}) },
+    data: { nationalId: nationalId.value, kraPin: kraPin.value, shifNumber: shif.value, ...(parsed.data.paidOnBands !== undefined ? { paidOnBands: parsed.data.paidOnBands } : {}), ...(parsed.data.basicSalary !== undefined ? { basicSalary: parsed.data.basicSalary && parsed.data.basicSalary > 0 ? parsed.data.basicSalary : null } : {}) },
   });
-  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary });
+  res.json({ id: u.id, name: u.name, nationalId: u.nationalId, kraPin: u.kraPin, shifNumber: u.shifNumber, basicSalary: u.basicSalary, paidOnBands: u.paidOnBands });
 });
 
 // ── P9 (tax deduction card) ───────────────────────────────────────────────
@@ -332,6 +335,9 @@ financeRouter.post('/payroll', async (req, res) => {
 
   const staff = await prisma.user.findUnique({ where: { id: data.staffId } });
   if (!staff) return res.status(400).json({ error: 'Selected staff member not found' });
+  if (data.employeeType === 'Employee' && staff.paidOnBands && (await getCommissionConfig()).generalMode === 'steps') {
+    return res.status(400).json({ error: `${staff.name} is paid on the sales pay bands: their monthly pay goes into payroll automatically when the month is approved in Commission → Team & payouts. Do not enter a salary by hand.` });
+  }
 
   const grossPay = data.employeeType === 'Employee' ? data.grossPay : data.daysWorked * data.rate;
 

@@ -375,6 +375,16 @@ export const DEFAULT_PAY_STEPS: PayStep[] = [
 /** Sales below this in a month need performance improvement. */
 export const DEFAULT_PERFORMANCE_FLOOR = 120000;
 
+/** Placeholder minimum monthly wage (the general-labourer rate in the cities) — confirm the rate that applies to the job. */
+export const DEFAULT_MINIMUM_WAGE = 16113.75;
+
+/** A person paid on the pay bands: what they earned becomes their pay, but never less than the minimum wage. `topUp` is what was added to reach it. */
+export function salesPay(earned: number, minimumWage: number): { amount: number; topUp: number } {
+  const e = r2(Math.max(0, earned));
+  const amount = Math.max(e, r2(Math.max(0, minimumWage)));
+  return { amount, topUp: r2(amount - e) };
+}
+
 /** Returns an error message for a bad list of pay bands, or null when it is fine. */
 export function payStepsProblem(steps: PayStep[], what: string): string | null {
   if (!Array.isArray(steps) || steps.length === 0) return `${what}: add at least one band`;

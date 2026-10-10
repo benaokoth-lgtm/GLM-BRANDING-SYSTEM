@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { EXPENSE_METHODS, GENERAL_MODES, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
+import { EXPENSE_METHODS, GENERAL_MODES, computePay, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
 import { pettyCashShortfall } from '../accounting/ledger';
+import type { StaffStatement } from '../commission';
 import { activeFreelanceOwner, activeOwner, blankStatement, buildStatements, canManageCommission, commissionEnabled, ensureCommissionAccessOnce, getCommissionConfig, targetFor } from '../commission';
 
 // Staff sales commission. Everyone who captures orders can see their own statement and the scheme they are paid under;
@@ -51,6 +52,8 @@ const settingsSchema = z.object({
   generalMode: z.enum(GENERAL_MODES).optional(),
   payBands: z.array(payBandSchema).min(1).optional(),
   performanceFloor: z.number().min(0).max(1e9).optional(),
+  // The least a person on the pay bands is paid for a month (a band payout below it is topped up to it).
+  minimumWage: z.number().min(0).max(1e9).optional(),
 });
 
 commissionRouter.put('/settings', manage, async (req, res) => {
@@ -75,6 +78,7 @@ commissionRouter.put('/settings', manage, async (req, res) => {
     ...(d.generalMode !== undefined ? { generalMode: d.generalMode } : {}),
     ...(d.payBands ? { payBandsJson: JSON.stringify([...d.payBands].sort((x, y) => x.from - y.from)) } : {}),
     ...(d.performanceFloor !== undefined ? { performanceFloor: d.performanceFloor } : {}),
+    ...(d.minimumWage !== undefined ? { minimumWage: d.minimumWage } : {}),
     updatedByName: req.user!.name,
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -138,7 +142,7 @@ commissionRouter.get('/monthly', manage, async (req, res) => {
     const rows: Row[] = [...ids].map((staffId) => {
       const st = statements.find((x) => x.staffId === staffId);
       const pay = pays.find((x) => x.staffId === staffId);
-      const commission = round2(pay ? pay.amount : st?.total ?? 0);
+      const commission = round2(pay ? pay.amount : st?.pay.amount ?? 0);
       const paid = pay?.status === 'Paid' ? round2(pay.amount) : 0;
       return {
         staffId,
@@ -275,8 +279,13 @@ commissionRouter.post('/payouts/approve', manage, async (req, res) => {
   const period = periodSchema.safeParse((req.body as { period?: string }).period);
   if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
   const { statements } = await buildStatements(period.data);
-  const out: { staffId: number; staffName: string; amount: number; status: string }[] = [];
+  const out: { staffId: number; staffName: string; amount: number; status: string; inPayroll?: boolean; topUp?: number; note?: string }[] = [];
   for (const s of statements) {
+    // Someone paid on the pay bands: their pay (never below the minimum wage) goes into payroll, which is how they are paid — no separate commission payment.
+    if (s.pay.onBands) {
+      out.push(await putInPayroll(s, period.data, req.user!.name));
+      continue;
+    }
     if (s.total <= 0) continue;
     const existing = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: s.staffId } } });
     if (existing?.status === 'Paid') {
@@ -298,6 +307,50 @@ commissionRouter.post('/payouts/approve', manage, async (req, res) => {
   }
   res.json({ period: period.data, payouts: out });
 });
+
+/** Last day of a 'YYYY-MM' month. */
+const monthEnd = (period: string) => {
+  const [y, m] = period.split('-').map(Number) as [number, number];
+  return `${period}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+};
+
+/**
+ * Puts a month's pay for someone on the pay bands into payroll, once the month is over: one payroll entry dated the last day of the sales month (so its PAYE, NSSF, SHIF
+ * and housing levy fall in that month's Payments due), for what they earned or the minimum wage if that is more. Wages leave petty cash like every payroll entry, so
+ * the float has to cover the net pay. The commission payout is recorded as paid through payroll. Safe to repeat: a month already in payroll is left alone.
+ */
+async function putInPayroll(s: StaffStatement, period: string, byName: string) {
+  const base = { staffId: s.staffId, staffName: s.staffName, amount: s.pay.amount, inPayroll: true, topUp: s.pay.topUp };
+  const existing = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period, staffId: s.staffId } } });
+  if (existing?.status === 'Paid') return { ...base, amount: existing.amount, status: 'Paid' };
+  if (period >= thisMonth()) return { ...base, status: 'Waiting', note: 'the month is not over yet' };
+  if (!(s.pay.amount > 0)) return { ...base, status: 'Nothing to pay', note: 'no minimum wage is set' };
+  const date = monthEnd(period);
+  const net = computePay(s.pay.amount, 'Employee', date).netPay;
+  const check = await pettyCashShortfall(net, date);
+  if (check.short) return { ...base, status: 'Petty cash short', note: `petty cash cannot cover the net pay of Ksh ${Math.round(net).toLocaleString('en-KE')} (Ksh ${Math.round(check.available).toLocaleString('en-KE')} available)` };
+  const today = todayStr();
+  const data = {
+    generalAmount: s.general.commission,
+    filmAmount: s.film.commission,
+    artworkAmount: s.artwork.commission,
+    amount: s.pay.amount,
+    detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, scheme: s.scheme, pay: s.pay }),
+    status: 'Paid',
+    approvedByName: byName,
+    approvedAt: new Date(),
+    paidOn: today,
+    paidMethod: 'Payroll',
+    paidByName: byName,
+  };
+  await prisma.$transaction(async (tx) => {
+    const entry = await tx.payrollEntry.findFirst({ where: { staffId: s.staffId, salesPeriod: period } });
+    if (entry) await tx.payrollEntry.update({ where: { id: entry.id }, data: { grossPay: s.pay.amount } });
+    else await tx.payrollEntry.create({ data: { date, staffId: s.staffId, employeeType: 'Employee', department: '', grossPay: s.pay.amount, paymentSource: PETTY_CASH_METHOD, capturedByName: byName, salesPeriod: period } });
+    await tx.commissionPayout.upsert({ where: { period_staffId: { period, staffId: s.staffId } }, update: data, create: { period, staffId: s.staffId, ...data } });
+  });
+  return { ...base, status: 'Paid' };
+}
 
 commissionRouter.get('/payouts', manage, async (req, res) => {
   const where = typeof req.query.period === 'string' ? { period: req.query.period } : {};

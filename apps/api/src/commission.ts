@@ -4,6 +4,8 @@ import {
   DEFAULT_GENERAL_MODE,
   DEFAULT_PAY_STEPS,
   DEFAULT_PERFORMANCE_FLOOR,
+  DEFAULT_MINIMUM_WAGE,
+  salesPay,
   GENERAL_MODES,
   payStepsProblem,
   stepPosition,
@@ -100,6 +102,8 @@ export interface CommissionConfig {
   payBands: PayStep[];
   /** Sales below this in a month need performance improvement. */
   performanceFloor: number;
+  /** The least a person on the pay bands is paid for a month. */
+  minimumWage: number;
 }
 
 function readBands(json: string | null | undefined, fallback: Band[]): Band[] {
@@ -140,6 +144,7 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     generalMode: (GENERAL_MODES as readonly string[]).includes(row?.generalMode ?? '') ? (row!.generalMode as GeneralMode) : DEFAULT_GENERAL_MODE,
     payBands: readSteps(row?.payBandsJson),
     performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
+    minimumWage: row?.minimumWage ?? DEFAULT_MINIMUM_WAGE,
   };
 }
 
@@ -385,6 +390,8 @@ export interface StaffStatement {
   target: SalesTarget;
   /** What would have been paid on the month's sales had the target been met (shown, never paid, and not carried into the next month). Artwork is never held: it is earned whether or not the target is met. */
   heldCommission: number;
+  /** What the person is paid for the month. For someone paid on the pay bands (`onBands`) it is what they earned, topped up to the minimum wage if it falls short, and it goes into payroll; for anyone else it is the commission earned. */
+  pay: { onBands: boolean; minimumWage: number; amount: number; topUp: number };
   /** How the month's general sales were paid, where the person stands in the pay bands, and whether the month is below the performance floor. */
   scheme: {
     mode: GeneralMode;
@@ -430,6 +437,7 @@ export function blankStatement(staffId: number, staffName = '', target?: SalesTa
     total: 0,
     target: target ?? salesTarget({ multiplier: DEFAULT_TARGET_MULTIPLIER, mode: DEFAULT_TARGET_MODE, salary: null, achieved: 0 }),
     heldCommission: 0,
+    pay: { onBands: false, minimumWage: 0, amount: 0, topUp: 0 },
     scheme: { mode: DEFAULT_GENERAL_MODE, sales: 0, floor: DEFAULT_PERFORMANCE_FLOOR, belowFloor: false, step: null },
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
@@ -571,6 +579,16 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
 
   // The bands, once each person's month is known — behind the sales target. Nothing is earned until a person has sold `multiplier` × their basic
   // salary in the month (net of VAT, money received); then the bands start at the target ('above') or apply to everything ('all').
+  // People paid on the pay bands are in every month, even one with no sales — their pay is at least the minimum wage — and are measured against the performance floor.
+  const [py, pm] = period.split('-').map(Number) as [number, number];
+  const bandUsers = config.generalMode === 'steps' ? await prisma.user.findMany({ where: { paidOnBands: true, active: true, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, select: { id: true } }) : [];
+  const bandSet = new Set(bandUsers.map((u) => u.id));
+  for (const id of bandSet) who(id);
+  const payFor = (st: StaffStatement) => {
+    const onBands = bandSet.has(st.staffId);
+    const pp = onBands ? salesPay(st.total, config.minimumWage) : { amount: st.total, topUp: 0 };
+    st.pay = { onBands, minimumWage: onBands ? config.minimumWage : 0, amount: pp.amount, topUp: pp.topUp };
+  };
   const salaries = await salariesFor([...people.keys()], end);
   for (const st of people.values()) {
     st.general.netSales = round2(Math.max(0, st.general.received) / (1 + VAT_RATE));
@@ -591,6 +609,7 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       st.general.commission = step.payout;
       st.general.band = { rate: 0, nextFrom: step.nextFrom, nextRate: null, toNext: step.toNext };
       st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+      payFor(st);
       continue;
     }
     st.scheme = { mode: 'percent', sales, floor: config.performanceFloor, belowFloor: false, step: null };
@@ -609,6 +628,7 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     }
     st.general.band = bandPosition(config.generalBands, target.eligibleSales);
     st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+    payFor(st);
   }
 
   const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });

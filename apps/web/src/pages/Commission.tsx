@@ -36,6 +36,14 @@ interface Config {
   payBands: { from: number; payout: number }[];
   /** Sales below this in a month need performance improvement. */
   performanceFloor: number;
+  /** The least a person paid on the pay bands is paid for a month. */
+  minimumWage: number;
+}
+interface Pay {
+  onBands: boolean;
+  minimumWage: number;
+  amount: number;
+  topUp: number;
 }
 interface Scheme {
   mode: 'steps' | 'percent';
@@ -64,6 +72,7 @@ interface Statement {
   target: Target;
   /** Earned on the month's sales but held back until the target is met. */
   heldCommission: number;
+  pay: Pay;
   scheme: Scheme;
   general: {
     received: number;
@@ -441,7 +450,12 @@ function MyTab({ period }: { period: string }) {
         </p>
       )}
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-        <Stat label="Your commission" value={fmtKsh(s.total)} sub={data.payout ? `${data.payout.status}${data.payout.paidOn ? ' on ' + fmtDate(data.payout.paidOn) : ''}` : 'not yet approved'} />
+        <Stat
+          label={s.pay.onBands ? 'Your pay' : 'Your commission'}
+          value={fmtKsh(s.pay.amount)}
+          sub={data.payout ? `${data.payout.status === 'Paid' && s.pay.onBands ? 'in payroll' : data.payout.status}${data.payout.paidOn ? ' on ' + fmtDate(data.payout.paidOn) : ''}` : s.pay.onBands ? 'goes into payroll when the month is approved' : 'not yet approved'}
+        />
+        {s.pay.onBands && s.pay.topUp > 0 && <Stat label="Minimum wage" value={fmtKsh(s.pay.minimumWage)} sub={`your band pays ${fmtKsh(s.total)}, so ${fmtKsh(s.pay.topUp)} is added to reach it`} />}
         <Stat label="Sales you sourced" value={fmtKsh(s.general.commission)} sub={steps ? `${fmtKsh(s.scheme.sales)} net received · pay band ${s.scheme.step?.index ?? 0}` : s.target.held ? `${fmtKsh(s.general.netSales)} net received · below your sales target` : `${fmtKsh(s.general.netSales)} net received · ${pct(s.general.band.rate)} band`} />
         <Stat label="Film" value={fmtKsh(s.film.commission)} />
         <Stat label="Artwork" value={fmtKsh(s.artwork.commission)} />
@@ -511,7 +525,7 @@ function TeamTab({ period }: { period: string }) {
   }
 
   if (!data) return <Loading loading={loading} error={error} />;
-  const approvable = data.statements.some((s) => s.total > 0 && s.payout?.status !== 'Paid');
+  const approvable = data.statements.some((s) => (s.pay.amount > 0 || s.total > 0) && s.payout?.status !== 'Paid');
 
   return (
     <>
@@ -519,9 +533,15 @@ function TeamTab({ period }: { period: string }) {
       {data.open && <p className="note">This month is not over, so more money may still come in. Approve it once the month has closed.</p>}
       <Card
         title={`Commission for ${period}`}
-        hint={`${fmtKsh(data.totals.commission)} in total, on money received this month.`}
+        hint={`${fmtKsh(data.statements.reduce((a, s) => a + s.pay.amount, 0))} in total, on money received this month. People on the pay bands are paid through payroll, at least the minimum wage.`}
         actions={
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !approvable} onClick={() => run(async () => { await api.post('/commission/payouts/approve', { period }); return `Commission for ${period} approved`; })}>
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !approvable} onClick={() => run(async () => {
+            const r = await api.post<{ payouts: { staffName: string; status: string; inPayroll?: boolean; note?: string }[] }>('/commission/payouts/approve', { period });
+            const payroll = r.payouts.filter((p) => p.inPayroll);
+            const done = payroll.filter((p) => p.status === 'Paid').length;
+            const stuck = payroll.filter((p) => p.status !== 'Paid' && p.status !== 'Nothing to pay');
+            return `Commission for ${period} approved${payroll.length ? ` — ${done} of ${payroll.length} in payroll` : ''}${stuck.length ? `. Not in payroll: ${stuck.map((p) => `${p.staffName} (${p.note ?? p.status})`).join('; ')}` : ''}`;
+          })}>
             Approve month
           </button>
         }
@@ -571,9 +591,12 @@ function TeamTab({ period }: { period: string }) {
                     <td style={numStyle}>{fmtKsh(s.general.commission)}</td>
                     <td style={numStyle}>{fmtKsh(s.film.commission)}</td>
                     <td style={numStyle}>{fmtKsh(s.artwork.commission)}</td>
-                    <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(s.total)}</td>
+                    <td style={{ ...numStyle, fontWeight: 700 }} title={s.pay.topUp > 0 ? `Earned ${fmtKsh(s.total)}; topped up to the minimum wage of ${fmtKsh(s.pay.minimumWage)}` : undefined}>
+                      {fmtKsh(s.pay.amount)}
+                      {s.pay.topUp > 0 && <span className="text-muted" style={{ fontSize: 11, fontWeight: 400 }}> min wage</span>}
+                    </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      {!s.payout && s.total > 0 && <Tag>not approved</Tag>}
+                      {!s.payout && s.pay.amount > 0 && <Tag>{s.pay.onBands ? 'not in payroll' : 'not approved'}</Tag>}
                       {s.payout?.status === 'Approved' && (
                         <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
                           <Tag tone="bad">approved</Tag>
@@ -590,7 +613,7 @@ function TeamTab({ period }: { period: string }) {
                           </button>
                         </span>
                       )}
-                      {s.payout?.status === 'Paid' && <Tag tone="good">paid {s.payout.paidOn ? fmtDate(s.payout.paidOn) : ''} · {s.payout.paidMethod}</Tag>}
+                      {s.payout?.status === 'Paid' && (s.payout.paidMethod === 'Payroll' ? <Tag tone="good">in payroll {s.payout.paidOn ? fmtDate(s.payout.paidOn) : ''}</Tag> : <Tag tone="good">paid {s.payout.paidOn ? fmtDate(s.payout.paidOn) : ''} · {s.payout.paidMethod}</Tag>)}
                     </td>
                   </tr>
                   {open === s.staffId && (
@@ -973,6 +996,7 @@ function RatesTab() {
   const [genMode, setGenMode] = useState<'steps' | 'percent'>('steps');
   const [payBands, setPayBands] = useState<{ from: string; payout: string }[]>([]);
   const [floor, setFloor] = useState('');
+  const [minWage, setMinWage] = useState('');
   const [general, setGeneral] = useState<{ from: string; rate: string }[]>([]);
   const [film, setFilm] = useState<{ from: string; rate: string }[]>([]);
   const [freelance, setFreelance] = useState<{ from: string; rate: string }[]>([]);
@@ -1004,19 +1028,20 @@ function RatesTab() {
     setGenMode(data.generalMode ?? 'steps');
     setPayBands((data.payBands ?? []).map((b) => ({ from: String(b.from), payout: String(b.payout) })));
     setFloor(String(data.performanceFloor ?? 120000));
+    setMinWage(String(data.minimumWage ?? 16113.75));
   }, [data]);
 
   if (!data) return <Loading loading={loading} error={error} />;
   const toBands = (rows: { from: string; rate: string }[]): Band[] => rows.map((r) => ({ from: Number(r.from), rate: Number(r.rate) }));
   const toSteps = payBands.map((r) => ({ from: Number(r.from), payout: Number(r.payout) }));
-  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null);
+  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null) ?? (genMode === 'steps' && !(Number(minWage) >= 0) ? 'Enter the minimum wage' : null);
 
   async function save() {
     setBusy(true);
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor) });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor), minimumWage: Number(minWage) });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -1050,6 +1075,11 @@ function RatesTab() {
               <label>Performance floor — monthly sales below this need improvement (Ksh)</label>
               <input className="input" inputMode="decimal" value={floor} onChange={(e) => setFloor(e.target.value)} />
               <p className="note" style={{ margin: 0 }}>Staff are warned on their own screen, and the month is flagged in Team &amp; payouts and the monthly report.</p>
+            </div>
+            <div className="field" style={{ maxWidth: 320 }}>
+              <label>Minimum monthly wage (Ksh)</label>
+              <input className="input" inputMode="decimal" value={minWage} onChange={(e) => setMinWage(e.target.value)} />
+              <p className="note" style={{ margin: 0 }}>For employees ticked “Paid on sales bands” (Compliance → Employees), the band payout is their pay for the month; if it falls below this, this is paid instead. Approving a closed month in Team &amp; payouts puts it into payroll automatically. 16,113.75 is a placeholder — confirm the figure that applies with your accountant.</p>
             </div>
           </div>
         )}

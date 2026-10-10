@@ -73911,10 +73911,12 @@ financeRouter.get("/expenses", async (req, res) => {
     include: { payments: true, notes: true },
     orderBy: { date: "desc" }
   });
+  const orderIds = [...new Set(rows.map((r) => r.orderId).filter((id) => id != null))];
+  const orderNos = new Map((orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, select: { id: true, orderNo: true } }) : []).map((o) => [o.id, o.orderNo]));
   const out = rows.map(({ payments, notes, ...e }) => {
     const paidAmount = e.paid ? e.amount : payments.reduce((a2, p) => a2 + p.amount, 0);
     const credited = notes.filter((n) => n.type === "SupplierDebit").reduce((a2, n) => a2 + n.total, 0);
-    return { ...e, paidAmount, credited, outstanding: e.paid ? 0 : Math.max(0, Math.round((e.amount - paidAmount - credited) * 100) / 100), payments };
+    return { ...e, orderNo: e.orderId != null ? orderNos.get(e.orderId) ?? null : null, paidAmount, credited, outstanding: e.paid ? 0 : Math.max(0, Math.round((e.amount - paidAmount - credited) * 100) / 100), payments };
   });
   const totalExpenses = rows.reduce((a2, e) => a2 + e.amount, 0);
   res.json({ fromDate: range2.from, toDate: range2.to, rows: out, totalExpenses, expenseCategories: await expenseHeadNames(), expenseMethods: EXPENSE_METHODS });

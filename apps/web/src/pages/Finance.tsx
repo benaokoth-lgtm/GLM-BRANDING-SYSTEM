@@ -545,7 +545,7 @@ export default function Finance() {
                   <th>Date</th>
                   <th>Category</th>
                   <th>Business head</th>
-                  <th>Note</th>
+                  <th>Order</th>
                   <th>Invoice #</th>
                   <th>Supplier</th>
                   <th style={{ textAlign: 'right' }}>Amount</th>
@@ -580,7 +580,7 @@ export default function Finance() {
                           ))}
                         </select>
                       </td>
-                      <td className="text-muted">{e.note}</td>
+                      <td className="text-muted" title={e.note || undefined}>{e.orderNo || '—'}</td>
                       <td className="text-muted">{e.invoiceNumber || '—'}</td>
                       <td className="text-muted">{e.supplier || '—'}</td>
                       <td style={{ textAlign: 'right' }}>{fmtKsh(e.amount)}</td>
@@ -590,7 +590,7 @@ export default function Finance() {
                       <td className="text-muted">{e.capturedByName || '—'}</td>
                       <td style={{ display: 'flex', gap: 'var(--space-1)' }}>
                         {e.outstanding > 0 && (
-                          <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => { setPayingId(e.id); setPayDraft({ date: today, amount: String(e.outstanding), method: 'Bank Transfer' }); setError(null); }} disabled={busy}>
+                          <button type="button" className="btn btn-primary" style={{ fontSize: 'inherit' }} onClick={() => { setPayingId(e.id); setPayDraft({ date: today, amount: String(e.outstanding), method: 'Bank Transfer' }); setError(null); }} disabled={busy}>
                             Pay
                           </button>
                         )}

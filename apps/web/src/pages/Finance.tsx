@@ -594,7 +594,7 @@ export default function Finance() {
                             Pay
                           </button>
                         )}
-                        <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => startAmend(e)} disabled={busy}>
+                        <button type="button" className="btn btn-secondary" style={{ fontSize: 'inherit' }} onClick={() => startAmend(e)} disabled={busy}>
                           Amend
                         </button>
                         {pendingDeletionFor('Expense', e.id) ? (

@@ -569,12 +569,19 @@ financeRouter.get('/expenses', async (req, res) => {
     include: { payments: true, notes: true },
     orderBy: { date: 'desc' },
   });
+  // The order a bill belongs to: the linked order, or — for a bill that was typed in without the link — an order number at the start of its note ("W-1020 — …").
   const orderIds = [...new Set(rows.map((r) => r.orderId).filter((id): id is number => id != null))];
   const orderNos = new Map((orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, select: { id: true, orderNo: true } }) : []).map((o) => [o.id, o.orderNo]));
+  const noted = new Map<number, string>();
+  for (const r of rows) {
+    const m = r.orderId == null ? /^\s*([A-Za-z]{1,6}-\d{1,8})\b/.exec(r.note) : null;
+    if (m) noted.set(r.id, m[1]!.toUpperCase());
+  }
+  const knownNos = new Set((noted.size ? await prisma.order.findMany({ where: { orderNo: { in: [...new Set(noted.values())] } }, select: { orderNo: true } }) : []).map((o) => o.orderNo));
   const out = rows.map(({ payments, notes, ...e }) => {
     const paidAmount = e.paid ? e.amount : payments.reduce((a, p) => a + p.amount, 0);
     const credited = notes.filter((n) => n.type === 'SupplierDebit').reduce((a, n) => a + n.total, 0);
-    return { ...e, orderNo: e.orderId != null ? orderNos.get(e.orderId) ?? null : null, paidAmount, credited, outstanding: e.paid ? 0 : Math.max(0, Math.round((e.amount - paidAmount - credited) * 100) / 100), payments };
+    return { ...e, orderNo: e.orderId != null ? orderNos.get(e.orderId) ?? null : knownNos.has(noted.get(e.id) ?? '') ? noted.get(e.id)! : null, paidAmount, credited, outstanding: e.paid ? 0 : Math.max(0, Math.round((e.amount - paidAmount - credited) * 100) / 100), payments };
   });
   const totalExpenses = rows.reduce((a, e) => a + e.amount, 0);
 

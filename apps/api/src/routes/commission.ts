@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { EXPENSE_METHODS, GENERAL_MODES, computePay, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
-import { requireAuth, requirePermission } from '../middleware/auth';
+import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
 import { pettyCashShortfall } from '../accounting/ledger';
 import type { StaffStatement } from '../commission';
@@ -56,7 +56,8 @@ const settingsSchema = z.object({
   minimumWage: z.number().min(0).max(1e9).optional(),
 });
 
-commissionRouter.put('/settings', manage, async (req, res) => {
+// The rates — the pay bands, minimum wage, percentages, ownership periods — are set by an Admin only. Managers and staff can read them (everyone sees the scheme they are paid under).
+commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;

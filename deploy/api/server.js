@@ -78403,7 +78403,7 @@ var settingsSchema7 = external_exports.object({
   // The least a person on the pay bands is paid for a month (a band payout below it is topped up to it).
   minimumWage: external_exports.number().min(0).max(1e9).optional()
 });
-commissionRouter.put("/settings", manage, async (req, res) => {
+commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   const parsed = settingsSchema7.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;

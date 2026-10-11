@@ -992,6 +992,8 @@ function PayBandEditor({ bands, onChange }: { bands: { from: string; payout: str
 }
 
 function RatesTab() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'Admin';
   const { data, error, loading, reload } = useLoad<Config>('/commission/settings');
   const [genMode, setGenMode] = useState<'steps' | 'percent'>('steps');
   const [payBands, setPayBands] = useState<{ from: string; payout: string }[]>([]);
@@ -1054,6 +1056,8 @@ function RatesTab() {
   return (
     <Card title="Commission rates" hint="Placeholders to start with — adjust them as you learn what a good month looks like.">
       <Notice error={err} message={msg} />
+      {!isAdmin && <p className="note" style={{ margin: '0 0 var(--space-3)' }}><b>Only an Admin can change the rates.</b> You can see the scheme as it stands; ask an Admin if a figure needs to change.</p>}
+      <fieldset disabled={!isAdmin} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div style={{ display: 'grid', gap: 'var(--space-5)' }}>
         <div>
           <div className="card-kicker">How sales you source are paid</div>
@@ -1166,6 +1170,7 @@ function RatesTab() {
           </button>
         </div>
       </div>
+      </fieldset>
     </Card>
   );
 }

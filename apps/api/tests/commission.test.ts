@@ -182,6 +182,7 @@ describe('staff sales commission', () => {
   it('only managers see everyone, change the rates, and handle ownership', async () => {
     assert.equal((await call('amina', 'GET', `/commission/statement?period=${period}`)).status, 403);
     assert.equal((await call('amina', 'PUT', '/commission/settings', {})).status, 403);
+    assert.equal((await call('boss', 'PUT', '/commission/settings', {})).status, 403); // a manager reads the rates, only an Admin changes them
     assert.equal((await call('amina', 'GET', '/commission/clients')).status, 403);
     // everyone can read the scheme they are paid under
     assert.equal((await call('amina', 'GET', '/commission/settings')).status, 200);
@@ -190,7 +191,7 @@ describe('staff sales commission', () => {
     assert.equal(all.status, 200);
     assert.deepEqual(all.body.statements.map((s: any) => s.staffName).sort(), ['amina (commission test)', 'brian (commission test)']);
 
-    const bad = await call('boss', 'PUT', '/commission/settings', { generalBands: [{ from: 10, rate: 1 }], filmBands: [{ from: 0, rate: 5 }], artworkRatePct: 50, ownershipMonths: 12 });
+    const bad = await call('admin', 'PUT', '/commission/settings', { generalBands: [{ from: 10, rate: 1 }], filmBands: [{ from: 0, rate: 5 }], artworkRatePct: 50, ownershipMonths: 12 });
     assert.equal(bad.status, 400);
     assert.match(bad.body.error, /start at 0/);
 

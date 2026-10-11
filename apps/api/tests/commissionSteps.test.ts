@@ -38,6 +38,9 @@ describe('commission paid by pay bands', () => {
     await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, generalMode: 'steps' }, create: { id: 1, enabled: true, generalMode: 'steps' } });
     banner = (await prisma.service.create({ data: { name: 'Banner (steps test)', unit: 'piece', price: 1000 } })).id;
     await ensureChartOfAccounts();
+    // rates are changed by an Admin only
+    const adminUser = await prisma.user.create({ data: { name: 'admin (commissionSteps test)', role: 'Admin', pinHash: 'x' } });
+    tokens.admin = signToken({ id: adminUser.id, name: adminUser.name, role: 'Admin' });
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
@@ -114,17 +117,17 @@ describe('commission paid by pay bands', () => {
   it('only a manager changes the bands; they are checked, and can be switched back to percentages', async () => {
     assert.equal((await call('zed', 'PUT', '/commission/settings', {})).status, 403);
     const base = { generalBands: [{ from: 0, rate: 2 }], filmBands: [{ from: 0, rate: 10 }], artworkRatePct: 50, ownershipMonths: 12 };
-    assert.equal((await call('boss', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 10, payout: 5 }] })).status, 400); // must start at 0
-    assert.equal((await call('boss', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 0, payout: 0 }, { from: 5000, payout: -1 }] })).status, 400);
-    const saved = await call('boss', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 50000, payout: 9000 }, { from: 0, payout: 0 }], performanceFloor: 80000 });
+    assert.equal((await call('admin', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 10, payout: 5 }] })).status, 400); // must start at 0
+    assert.equal((await call('admin', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 0, payout: 0 }, { from: 5000, payout: -1 }] })).status, 400);
+    const saved = await call('admin', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 50000, payout: 9000 }, { from: 0, payout: 0 }], performanceFloor: 80000 });
     assert.equal(saved.status, 200);
     assert.deepEqual(saved.body.payBands, [{ from: 0, payout: 0 }, { from: 50000, payout: 9000 }]);
     assert.equal(saved.body.performanceFloor, 80000);
     assert.equal((await mine('zed')).general.commission, 9000); // the new bands apply straight away
-    const back = await call('boss', 'PUT', '/commission/settings', { ...base, generalMode: 'percent', payBands: [...saved.body.payBands], performanceFloor: 120000 });
+    const back = await call('admin', 'PUT', '/commission/settings', { ...base, generalMode: 'percent', payBands: [...saved.body.payBands], performanceFloor: 120000 });
     assert.equal(back.body.generalMode, 'percent');
     assert.equal((await mine('zed')).scheme.mode, 'percent');
     // leave the shared settings as this file found them
-    await call('boss', 'PUT', '/commission/settings', { ...base, generalMode: 'steps', payBands: [{ from: 0, payout: 0 }, { from: 30000, payout: 12000 }, { from: 60000, payout: 18000 }, { from: 90000, payout: 24000 }, { from: 120000, payout: 30000 }, { from: 150000, payout: 36000 }, { from: 180000, payout: 42000 }, { from: 210000, payout: 48000 }] });
+    await call('admin', 'PUT', '/commission/settings', { ...base, generalMode: 'steps', payBands: [{ from: 0, payout: 0 }, { from: 30000, payout: 12000 }, { from: 60000, payout: 18000 }, { from: 90000, payout: 24000 }, { from: 120000, payout: 30000 }, { from: 150000, payout: 36000 }, { from: 180000, payout: 42000 }, { from: 210000, payout: 48000 }] });
   });
 });

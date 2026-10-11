@@ -62,6 +62,9 @@ describe('pay-band staff go into payroll automatically', () => {
       });
     }
     await ensureChartOfAccounts();
+    // rates are changed by an Admin only
+    const adminUser = await prisma.user.create({ data: { name: 'admin (commissionPayroll test)', role: 'Admin', pinHash: 'x' } });
+    tokens.admin = signToken({ id: adminUser.id, name: adminUser.name, role: 'Admin' });
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
@@ -156,9 +159,9 @@ describe('pay-band staff go into payroll automatically', () => {
 
   it('the minimum wage is a setting', async () => {
     const base = { generalBands: [{ from: 0, rate: 2 }], filmBands: [{ from: 0, rate: 10 }], artworkRatePct: 50, ownershipMonths: 12 };
-    const r = await call('boss', 'PUT', '/commission/settings', { ...base, minimumWage: 20000 });
+    const r = await call('admin', 'PUT', '/commission/settings', { ...base, minimumWage: 20000 });
     assert.equal(r.body.minimumWage, 20000);
-    assert.equal((await call('boss', 'PUT', '/commission/settings', { ...base, minimumWage: -1 })).status, 400);
-    await call('boss', 'PUT', '/commission/settings', { ...base, minimumWage: MIN });
+    assert.equal((await call('admin', 'PUT', '/commission/settings', { ...base, minimumWage: -1 })).status, 400);
+    await call('admin', 'PUT', '/commission/settings', { ...base, minimumWage: MIN });
   });
 });

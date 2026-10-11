@@ -61,6 +61,9 @@ describe('freelance sales persons', () => {
     }
     await prisma.dtfRoll.create({ data: { id: 'ROLL-FL', installedOn: '2026-01-01', createdByName: 'test', rollLengthM: 200 } });
     await ensureChartOfAccounts();
+    // rates are changed by an Admin only
+    const adminUser = await prisma.user.create({ data: { name: 'admin (freelance test)', role: 'Admin', pinHash: 'x' } });
+    tokens.admin = signToken({ id: adminUser.id, name: adminUser.name, role: 'Admin' });
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
@@ -300,13 +303,13 @@ describe('freelance sales persons', () => {
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
       assert.deepEqual([cfg.freelancePremiumPct, cfg.freelanceLowMarginPct], [30, 50]);
       const base = { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12 };
-      const put = await call('boss', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 20, freelanceLowMarginPct: 100 });
+      const put = await call('admin', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 20, freelanceLowMarginPct: 100 });
       assert.equal(put.status, 200);
       assert.deepEqual([put.body.freelancePremiumPct, put.body.freelanceLowMarginPct], [20, 100]);
       const s = await stmt('premium');
       assert.equal(s.premiumCommission, 400); // the week is recalculated at 20% of 2,000
-      assert.equal((await call('boss', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 101 })).status, 400);
-      await call('boss', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 30, freelanceLowMarginPct: 50 });
+      assert.equal((await call('admin', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 101 })).status, 400);
+      await call('admin', 'PUT', '/commission/settings', { ...base, freelancePremiumPct: 30, freelanceLowMarginPct: 50 });
     });
   });
 
@@ -366,11 +369,11 @@ describe('freelance sales persons', () => {
       assert.equal(empty.statements.length, 0);
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
       assert.deepEqual(cfg.freelanceBands, [{ from: 0, rate: 2 }, { from: 50000, rate: 3 }, { from: 150000, rate: 4 }]);
-      const put = await call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: [{ from: 0, rate: 4 }] });
+      const put = await call('admin', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: [{ from: 0, rate: 4 }] });
       assert.equal(put.status, 200);
       assert.deepEqual(put.body.freelanceBands, [{ from: 0, rate: 4 }]);
-      assert.equal((await call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: [{ from: 10, rate: 4 }] })).status, 400); // must start at 0
-      await call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: cfg.freelanceBands });
+      assert.equal((await call('admin', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: [{ from: 10, rate: 4 }] })).status, 400); // must start at 0
+      await call('admin', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: cfg.freelanceBands });
     });
   });
 
@@ -430,7 +433,7 @@ describe('freelance sales persons', () => {
     it('how long is a manager setting; a suspended freelancer\'s clients are not credited to them; a manager can release a client', async () => {
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
       assert.equal(cfg.freelanceOwnershipMonths, 12);
-      const save = (months: number) => call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceOwnershipMonths: months });
+      const save = (months: number) => call('admin', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceOwnershipMonths: months });
       assert.equal((await save(3)).body.freelanceOwnershipMonths, 3);
       const row = (await owned())!; // Owner Two's
       await prisma.freelanceClient.update({ where: { id: row.id }, data: { lastOrderDate: monthsAgo(4) } });
@@ -565,7 +568,7 @@ describe('freelance sales persons', () => {
       assert.deepEqual([by(byStaff).whtRate, by(byStaff).withholdingTax], [5, 125]);
 
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
-      const save = (rate: number) => call('boss', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceWhtRate: rate });
+      const save = (rate: number) => call('admin', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceWhtRate: rate });
       assert.equal((await save(3)).body.freelanceWhtRate, 3);
       assert.equal((await call('boss', 'GET', `/freelance/statement?week=${todayStr()}`)).body.statements.find((x: any) => x.agentId === byStaff).withholdingTax, 75); // 3% of 2,500
       assert.equal((await save(0)).status, 200); // none at all

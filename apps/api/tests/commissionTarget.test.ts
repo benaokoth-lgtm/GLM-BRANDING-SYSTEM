@@ -32,7 +32,7 @@ const BANDS = [
   { from: 100000, rate: 4 },
 ];
 const settings = (extra: Record<string, unknown>) =>
-  call('boss', 'PUT', '/commission/settings', { generalBands: BANDS, filmBands: [{ from: 0, rate: 10 }, { from: 25, rate: 25 }], artworkRatePct: 50, ownershipMonths: 12, ...extra });
+  call('admin', 'PUT', '/commission/settings', { generalBands: BANDS, filmBands: [{ from: 0, rate: 10 }, { from: 25, rate: 25 }], artworkRatePct: 50, ownershipMonths: 12, ...extra });
 
 describe('commission needs the sales target first', () => {
   before(async () => {
@@ -53,6 +53,9 @@ describe('commission needs the sales target first', () => {
     }
     await prisma.dtfRoll.create({ data: { id: 'ROLL-TGT', installedOn: '2026-01-01', createdByName: 'test', rollLengthM: 100 } });
     await ensureChartOfAccounts();
+    // rates are changed by an Admin only
+    const adminUser = await prisma.user.create({ data: { name: 'admin (commissionTarget test)', role: 'Admin', pinHash: 'x' } });
+    tokens.admin = signToken({ id: adminUser.id, name: adminUser.name, role: 'Admin' });
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });

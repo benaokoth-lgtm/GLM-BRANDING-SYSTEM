@@ -76827,7 +76827,11 @@ dtfRouter.get("/data", async (req, res) => {
       status: r.status,
       filmCost: canManage ? r.filmCost : 0,
       inkPowderCost: canManage ? r.inkPowderCost : 0,
-      rollLengthM: r.rollLengthM
+      rollLengthM: r.rollLengthM,
+      closeKind: r.closeKind,
+      closeNote: r.closeNote,
+      closedByName: r.closedByName,
+      writtenOffM: r.writtenOffM
     })),
     sales: sales.map((s) => ({
       id: s.id,
@@ -76871,28 +76875,56 @@ dtfRouter.put("/settings", manageOnly, async (req, res) => {
   await prisma.dtfSetting.update({ where: { id: 1 }, data: parsed.data });
   res.json(parsed.data);
 });
+var noteSchema = external_exports.string().trim().min(3, "Say why the roll is being terminated").max(300);
 var rollSchema = external_exports.object({
   installedOn: dateStr2.optional(),
   filmCost: external_exports.number().min(0).default(0),
-  inkPowderCost: external_exports.number().min(0).default(0)
+  inkPowderCost: external_exports.number().min(0).default(0),
+  // Rolls that have physically run out but still show a balance on the system: closed at this roll's install date, the balance written off as waste.
+  terminate: external_exports.array(external_exports.object({ rollId: external_exports.string().min(1), note: noteSchema })).max(10).optional()
 });
+var RollError = class extends Error {
+};
+async function terminateRoll(db, rollId, cutOff, note, byName) {
+  const roll = await db.dtfRoll.findUnique({ where: { id: rollId } });
+  if (!roll) throw new RollError(`Roll ${rollId} was not found`);
+  if (roll.status !== "open") throw new RollError(`${rollId} is already closed`);
+  const [sales, jobs] = await Promise.all([db.dtfFilmSale.findMany({ where: { rollId } }), db.dtfArtworkJob.findMany({ where: { rollId } })]);
+  if (jobs.some((j) => j.approvalStatus === "Pending")) throw new RollError(`${rollId} has artwork jobs waiting for price approval \u2014 decide those first`);
+  if (roll.installedOn && cutOff < roll.installedOn) throw new RollError(`The cut-off cannot be before ${rollId} was installed (${roll.installedOn})`);
+  if (cutOff > todayStr()) throw new RollError("The cut-off date cannot be in the future");
+  const after = sales.filter((s) => s.soldOn > cutOff).length + jobs.filter((j) => j.jobOn > cutOff).length;
+  if (after > 0) throw new RollError(`${rollId} has ${after} sale${after === 1 ? "" : "s"} or job${after === 1 ? "" : "s"} recorded after ${cutOff}, so it cannot be cut off then`);
+  const settings = await db.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  const used = sales.reduce((a2, s) => a2 + s.metres, 0) + jobs.reduce((a2, j) => a2 + j.runningMetres, 0);
+  const remaining = Math.max(0, Math.round(((roll.rollLengthM || settings.rollLengthM) - used) * 1e3) / 1e3);
+  return db.dtfRoll.update({ where: { id: rollId }, data: { status: "closed", finishedOn: cutOff, closeKind: "terminated", closeNote: note, closedByName: byName, writtenOffM: remaining } });
+}
 dtfRouter.post("/rolls", manageOnly, async (req, res) => {
   const parsed = rollSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const settings = await getSettings();
-  const existing = await prisma.dtfRoll.findMany({ select: { id: true } });
-  const roll = await prisma.dtfRoll.create({
-    data: {
-      id: nextRollId(existing),
-      installedOn: parsed.data.installedOn ?? todayStr(),
-      filmCost: parsed.data.filmCost,
-      inkPowderCost: parsed.data.inkPowderCost,
-      rollLengthM: settings.rollLengthM,
-      createdByName: req.user.name
-    }
-  }).catch(() => null);
-  if (!roll) return res.status(409).json({ error: "Another roll was just installed \u2014 try again" });
-  res.status(201).json(roll);
+  const installedOn = parsed.data.installedOn ?? todayStr();
+  try {
+    const roll = await prisma.$transaction(async (tx) => {
+      for (const t of parsed.data.terminate ?? []) await terminateRoll(tx, t.rollId, installedOn, t.note, req.user.name);
+      const existing = await tx.dtfRoll.findMany({ select: { id: true } });
+      return tx.dtfRoll.create({
+        data: {
+          id: nextRollId(existing),
+          installedOn,
+          filmCost: parsed.data.filmCost,
+          inkPowderCost: parsed.data.inkPowderCost,
+          rollLengthM: settings.rollLengthM,
+          createdByName: req.user.name
+        }
+      });
+    });
+    res.status(201).json(roll);
+  } catch (e) {
+    if (e instanceof RollError) return res.status(400).json({ error: e.message });
+    res.status(409).json({ error: "Another roll was just installed \u2014 try again" });
+  }
 });
 var rollUpdateSchema = external_exports.object({ installedOn: dateStr2, filmCost: external_exports.number().min(0), inkPowderCost: external_exports.number().min(0) }).partial().refine((o) => Object.keys(o).length > 0, { message: "No fields to update" });
 dtfRouter.put("/rolls/:id", manageOnly, async (req, res) => {
@@ -76906,13 +76938,25 @@ dtfRouter.post("/rolls/:id/close", manageOnly, async (req, res) => {
   const roll = await prisma.dtfRoll.findUnique({ where: { id: String(req.params.id) } });
   if (!roll) return res.status(404).json({ error: "Roll not found" });
   if (roll.status === "closed") return res.status(400).json({ error: "Roll is already closed" });
-  res.json(await prisma.dtfRoll.update({ where: { id: roll.id }, data: { status: "closed", finishedOn: todayStr() } }));
+  res.json(await prisma.dtfRoll.update({ where: { id: roll.id }, data: { status: "closed", finishedOn: todayStr(), closeKind: "", closeNote: "", closedByName: req.user.name, writtenOffM: 0 } }));
+});
+var terminateSchema = external_exports.object({ cutOff: dateStr2.optional(), note: noteSchema });
+dtfRouter.post("/rolls/:id/terminate", manageOnly, async (req, res) => {
+  const parsed = terminateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  try {
+    const roll = await prisma.$transaction((tx) => terminateRoll(tx, String(req.params.id), parsed.data.cutOff ?? todayStr(), parsed.data.note, req.user.name));
+    res.json(roll);
+  } catch (e) {
+    if (e instanceof RollError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 dtfRouter.post("/rolls/:id/reopen", manageOnly, async (req, res) => {
   const roll = await prisma.dtfRoll.findUnique({ where: { id: String(req.params.id) } });
   if (!roll) return res.status(404).json({ error: "Roll not found" });
   if (roll.status === "open") return res.status(400).json({ error: "Roll is already open" });
-  res.json(await prisma.dtfRoll.update({ where: { id: roll.id }, data: { status: "open", finishedOn: null } }));
+  res.json(await prisma.dtfRoll.update({ where: { id: roll.id }, data: { status: "open", finishedOn: null, closeKind: "", closeNote: "", closedByName: "", writtenOffM: 0 } }));
 });
 async function openRoll(rollId) {
   const roll = await prisma.dtfRoll.findUnique({ where: { id: rollId } });

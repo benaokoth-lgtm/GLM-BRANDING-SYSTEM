@@ -16,7 +16,7 @@ export default function DtfDashboard({ data, go }: { data: DtfData; go: (tab: 's
     ['Net profit · Ksh', fmtKsh(d.netProfit), `Revenue ${fmtKsh(d.revenue)} − roll costs ${fmtKsh(d.totalCost)}`],
     ['Profit per closed roll', ksh(d.profitPerClosedRoll), `${d.closedCount} closed of ${d.startedCount} rolls`],
     ['Metres used', `${fmtNum(d.usedM, 1)} m`, `of ${fmtNum(d.installedM)} m installed`],
-    ['Wastage', `${fmtNum(d.wastageM, 1)} m`, `${fmtKsh(d.wastageKes)} · tolerance ${settings.wastageTolerancePct}%`],
+    ['Wastage', `${fmtNum(d.wastageM, 1)} m`, `${fmtKsh(d.wastageKes)} · tolerance ${settings.wastageTolerancePct}%${d.writtenOffM > 0 ? ` · ${fmtNum(d.writtenOffM, 1)} m written off at termination` : ''}`],
   ];
   const rows: [string, string, string][] = [
     ['Metres used', `${fmtNum(d.filmM, 1)} m`, `${fmtNum(d.artM, 1)} m`],

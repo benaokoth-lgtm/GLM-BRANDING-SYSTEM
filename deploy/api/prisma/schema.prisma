@@ -1132,6 +1132,12 @@ model DtfRoll {
   rollLengthM   Float // snapshot of Setup at install
   createdByName String   @default("")
   createdAt     DateTime @default(now())
+  // How the roll was closed: "" = closed as finished in the normal way; "terminated" = the roll was physically finished while the system still showed a balance, which was
+  // written off as waste at the cut-off date (finishedOn). The note says why, writtenOffM is the balance written off, closedByName who did it.
+  closeKind     String   @default("")
+  closeNote     String   @default("")
+  closedByName  String   @default("")
+  writtenOffM   Float    @default(0)
 
   filmSales   DtfFilmSale[]
   artworkJobs DtfArtworkJob[]

@@ -38,6 +38,11 @@ export interface DtfRoll {
   inkPowderCost: number;
   /** Roll length snapshotted at install so later Setup changes don't rewrite history. */
   rollLengthM: number;
+  /** "terminated" when the roll was physically finished and the balance the system still showed was written off as waste at the cut-off date. */
+  closeKind?: string;
+  closeNote?: string;
+  closedByName?: string;
+  writtenOffM?: number;
 }
 
 export interface DtfFilmSale {
@@ -171,6 +176,8 @@ export interface RollSummary {
   wastagePct: number;
   wastageKes: number;
   overTolerance: boolean;
+  /** Closed by "terminate roll": the balance still shown was written off as waste at the cut-off date. */
+  terminated: boolean;
   filmRev: number;
   artRev: number;
   revenue: number;
@@ -237,6 +244,7 @@ export function summariseRoll(
     wastagePct,
     wastageKes,
     overTolerance: closed && wastagePct > s.wastageTolerancePct,
+    terminated: closed && roll.closeKind === 'terminated',
     filmRev,
     artRev,
     revenue,
@@ -282,6 +290,9 @@ export interface DtfDashboard {
   profitPerClosedRoll: number | null;
   wastageM: number;
   wastageKes: number;
+  /** Of the wastage, the metres written off when rolls were terminated (physically finished, balance still on the system). */
+  writtenOffM: number;
+  terminatedCount: number;
   discountGiven: number;
   premiumEarned: number;
   profitBeforeDiscounts: number;
@@ -333,6 +344,8 @@ export function dtfDashboard(
     profitPerClosedRoll: closed.length ? closed.reduce((a, r) => a + r.profit, 0) / closed.length : null,
     wastageM: closed.reduce((a, r) => a + r.wastageM, 0),
     wastageKes: closed.reduce((a, r) => a + r.wastageKes, 0),
+    writtenOffM: closed.filter((r) => r.terminated).reduce((a, r) => a + r.wastageM, 0),
+    terminatedCount: closed.filter((r) => r.terminated).length,
     discountGiven: r2(started.reduce((a, r) => a + r.discountGiven, 0)),
     premiumEarned: r2(started.reduce((a, r) => a + r.premiumEarned, 0)),
     profitBeforeDiscounts: r2(started.reduce((a, r) => a + r.profitBeforeDiscounts, 0)),

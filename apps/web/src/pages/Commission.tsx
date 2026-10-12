@@ -158,7 +158,8 @@ interface MonthlyData {
 
 type Tab = 'mine' | 'team' | 'monthly' | 'clients' | 'freelance' | 'rates';
 const thisMonth = () => new Date().toISOString().slice(0, 7);
-const pct = (n: number) => `${fmtNum(n, 2).replace(/\.?0+$/, '')}%`;
+// up to two decimals, no trailing zeros: 10 → "10%", 3.5 → "3.5%" (stripping zeros from a whole number would turn 10 into 1)
+const pct = (n: number) => `${parseFloat(Number(n).toFixed(2))}%`;
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (

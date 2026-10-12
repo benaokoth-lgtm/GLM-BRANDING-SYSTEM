@@ -319,7 +319,7 @@ function StatementDetail({ s, config, you, open }: { s: Statement; config: Confi
         <div>
           <div className="card-kicker">Outsourced jobs — {fmtKsh(s.outsourced.commission)}</div>
           <p className="note" style={{ marginTop: 0 }}>
-            A share of each job's <b>net gross profit</b> — sales without output VAT, less cost without the input VAT that can be claimed back — earned as the customer pays. The share steps up with the job's margin (
+            A share of each job's <b>net gross profit</b> — sales without output VAT, less cost without the input VAT that can be claimed back — earned only on what the client has paid <b>directly to the company</b> (money paid to the supplier does not count). The share steps up with the job's margin (
             {[...config.outsourcedBands].sort((a, b) => a.from - b.from).map((b) => `from ${b.from}% margin: ${pct(b.rate)}`).join(' · ')}).
           </p>
           <div style={{ overflowX: 'auto' }}>
@@ -461,7 +461,7 @@ function SchemeNote({ config }: { config: Config }) {
           <b>Artwork:</b> you may charge more than the system’s recommended price; you earn {pct(config.artworkRatePct)} of the amount above it, and nothing on the recommended price itself.
         </li>
         <li>
-          <b>Outsourced jobs:</b> work a supplier makes and you sell on is paid on its <b>gross profit</b>, not its sales — {[...config.outsourcedBands].sort((a, b) => a.from - b.from).map((b) => `from ${b.from}% margin ${pct(b.rate)}`).join(' · ')} of the profit.
+          <b>Outsourced jobs:</b> work a supplier makes and you sell on is paid on its <b>gross profit</b>, not its sales — {[...config.outsourcedBands].sort((a, b) => a.from - b.from).map((b) => `from ${b.from}% margin ${pct(b.rate)}`).join(' · ')} of the profit — and only on what the client pays directly to the company.
         </li>
         <li>Film, artwork and outsourced-job commission is earned as the customer pays — a half-paid order earns half — and is paid on top of the band payout.</li>
       </ul>
@@ -1190,7 +1190,7 @@ function RatesTab() {
         )}
         <BandEditor
           title="Outsourced jobs — share of the gross profit"
-          hint="Work a supplier makes and the sales person sells on (Sales → Outsourced Order) is paid a share of its NET gross profit: sales without output VAT, less cost without the input VAT that can be claimed back. The share depends on the job's margin: a job earns the 'Pays' share of its profit once its margin reaches the 'From' figure (a step, not a slice), so a thin-margin job earns little or nothing. It is earned as the customer pays. Withholding VAT and withholding tax held by a customer do not change the profit."
+          hint="Work a supplier makes and the sales person sells on (Sales → Outsourced Order) is paid a share of its NET gross profit: sales without output VAT, less cost without the input VAT that can be claimed back. The share depends on the job's margin: a job earns the 'Pays' share of its profit once its margin reaches the 'From' figure (a step, not a slice), so a thin-margin job earns little or nothing. It is earned only on what the client pays directly to the company, as it is paid. Withholding VAT and withholding tax held by a customer do not change the profit."
           unit="% margin on net sales"
           bands={outsrc}
           onChange={setOutsrc}

@@ -166,6 +166,24 @@ describe('the Outsourced Order', () => {
     assert.equal((await mine('other')).outsourced.commission, 1600 + 840);
   });
 
+  it('only what the client pays directly to the company counts: an unpaid job earns nothing, and commission follows the money received', async () => {
+    const unpaid = await job('seller', 2320, 1160, true, 10); // the client has paid the company nothing (say they pay the supplier directly)
+    assert.equal(unpaid.status, 201);
+    const row = async () => (await mine('seller')).outsourced.jobs.find((j: any) => j.orderNo === unpaid.body.orderNo);
+    const before = (await mine('seller')).outsourced.commission;
+    assert.equal(await row(), undefined); // a 10,000 profit, but nothing received by the company → it is not in the statement at all
+    let r: any;
+    const paid = await call('seller', 'POST', `/orders/${unpaid.body.id}/payments`, { amount: 11600, method: 'M-Pesa', reference: 'ABC123' });
+    assert.equal(paid.status, 200, JSON.stringify(paid.body));
+    r = await row();
+    assert.deepEqual([r.moneyIn, r.commission], [11600, 1000]); // half paid to the company → half of the 2,000
+    assert.equal((await mine('seller')).outsourced.commission, before + 1000);
+    // the company paying its supplier is not money from the client, and changes nothing about what was received
+    const bill = await call('mgr', 'POST', `/orders/${unpaid.body.id}/supplier-bills`, { supplierName: 'Print House', amount: 1160, paidNow: 1160, method: 'Bank Transfer' });
+    assert.equal(bill.status, 201, JSON.stringify(bill.body));
+    assert.equal((await row()).moneyIn, 11600);
+  });
+
   it('only an Admin sets the scale, and it is checked', async () => {
     const base = { generalBands: [{ from: 0, rate: 2 }], filmBands: [{ from: 0, rate: 10 }], artworkRatePct: 50, ownershipMonths: 12 };
     assert.equal((await call('mgr', 'PUT', '/commission/settings', { ...base, outsourcedBands: [{ from: 0, rate: 5 }] })).status, 403);

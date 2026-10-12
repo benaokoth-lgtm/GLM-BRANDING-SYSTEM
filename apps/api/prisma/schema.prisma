@@ -1149,6 +1149,9 @@ model DtfRoll {
   closeNote     String   @default("")
   closedByName  String   @default("")
   writtenOffM   Float    @default(0)
+  // A roll installed part-used (starting the system with a roll still in use): the metres already used before it was recorded. The roll is then tracked from the metres left —
+  // rollLengthM is that length, and filmCost / inkPowderCost are the cost of those metres only.
+  carriedInUsedM Float   @default(0)
 
   filmSales   DtfFilmSale[]
   artworkJobs DtfArtworkJob[]

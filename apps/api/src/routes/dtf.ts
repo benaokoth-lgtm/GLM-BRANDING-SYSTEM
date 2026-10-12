@@ -194,6 +194,7 @@ dtfRouter.get('/data', async (req, res) => {
       closeNote: r.closeNote,
       closedByName: r.closedByName,
       writtenOffM: r.writtenOffM,
+      carriedInUsedM: r.carriedInUsedM,
     })),
     sales: sales.map((s) => ({
       id: s.id,
@@ -249,6 +250,9 @@ const rollSchema = z.object({
   installedOn: dateStr.optional(),
   filmCost: z.number().min(0).default(0),
   inkPowderCost: z.number().min(0).default(0),
+  // A roll that is already part-used (the system is starting up, or the roll was begun before it was recorded): the metres LEFT on it. The costs sent are then the whole roll's,
+  // and the system keeps only the share that matches the metres left.
+  metresLeft: z.number().positive().optional(),
   // Rolls that have physically run out but still show a balance on the system: closed at this roll's install date, the balance written off as waste.
   terminate: z.array(z.object({ rollId: z.string().min(1), note: noteSchema })).max(10).optional(),
 });
@@ -281,6 +285,10 @@ dtfRouter.post('/rolls', manageOnly, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const settings = await getSettings();
   const installedOn = parsed.data.installedOn ?? todayStr();
+  const fullLen = settings.rollLengthM;
+  const left = parsed.data.metresLeft;
+  if (left !== undefined && left >= fullLen) return res.status(400).json({ error: `A part-used roll has less than a full roll left (${fullLen} m) — leave the box unticked to install a new full roll` });
+  const part = left !== undefined ? left / fullLen : 1;
   try {
     // terminating the old rolls and installing the new one happen together: if any roll cannot be terminated, nothing is installed
     const roll = await prisma.$transaction(async (tx) => {
@@ -290,9 +298,10 @@ dtfRouter.post('/rolls', manageOnly, async (req, res) => {
         data: {
           id: nextRollId(existing),
           installedOn,
-          filmCost: parsed.data.filmCost,
-          inkPowderCost: parsed.data.inkPowderCost,
-          rollLengthM: settings.rollLengthM,
+          filmCost: Math.round(parsed.data.filmCost * part * 100) / 100,
+          inkPowderCost: Math.round(parsed.data.inkPowderCost * part * 100) / 100,
+          rollLengthM: left ?? fullLen,
+          carriedInUsedM: left !== undefined ? Math.round((fullLen - left) * 1000) / 1000 : 0,
           createdByName: req.user!.name,
         },
       });
@@ -305,14 +314,33 @@ dtfRouter.post('/rolls', manageOnly, async (req, res) => {
 });
 
 const rollUpdateSchema = z
-  .object({ installedOn: dateStr, filmCost: z.number().min(0), inkPowderCost: z.number().min(0) })
+  .object({ installedOn: dateStr, filmCost: z.number().min(0), inkPowderCost: z.number().min(0), metresLeft: z.number().positive() })
   .partial()
   .refine((o) => Object.keys(o).length > 0, { message: 'No fields to update' });
 
 dtfRouter.put('/rolls/:id', manageOnly, async (req, res) => {
   const parsed = rollUpdateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const roll = await prisma.dtfRoll.update({ where: { id: String(req.params.id) }, data: parsed.data }).catch(() => null);
+  const { metresLeft, ...fields } = parsed.data;
+  const data: Prisma.DtfRollUpdateInput = { ...fields };
+  if (metresLeft !== undefined) {
+    // Correcting the metres left on a roll that was installed part-used: allowed while the roll still has room for what has been recorded against it.
+    // The costs (as sent, or as stored) are for the current metres and are rescaled to the new ones.
+    const cur = await prisma.dtfRoll.findUnique({ where: { id: String(req.params.id) } });
+    if (!cur) return res.status(404).json({ error: 'Roll not found' });
+    if (!(cur.carriedInUsedM > 0)) return res.status(400).json({ error: 'The metres left can only be corrected on a roll that was installed part-used' });
+    const fullLen = cur.rollLengthM + cur.carriedInUsedM;
+    if (metresLeft >= fullLen) return res.status(400).json({ error: `A part-used roll has less than the full ${fullLen} m left` });
+    const [sales, jobs] = await Promise.all([prisma.dtfFilmSale.findMany({ where: { rollId: cur.id } }), prisma.dtfArtworkJob.findMany({ where: { rollId: cur.id } })]);
+    const used = sales.reduce((a, x) => a + x.metres, 0) + jobs.reduce((a, x) => a + x.runningMetres, 0);
+    if (metresLeft < used) return res.status(400).json({ error: `${used} m have already been sold or used on this roll, so fewer than that cannot have been left` });
+    const k = metresLeft / cur.rollLengthM;
+    data.rollLengthM = metresLeft;
+    data.carriedInUsedM = Math.round((fullLen - metresLeft) * 1000) / 1000;
+    data.filmCost = Math.round((fields.filmCost ?? cur.filmCost) * k * 100) / 100;
+    data.inkPowderCost = Math.round((fields.inkPowderCost ?? cur.inkPowderCost) * k * 100) / 100;
+  }
+  const roll = await prisma.dtfRoll.update({ where: { id: String(req.params.id) }, data }).catch(() => null);
   if (!roll) return res.status(404).json({ error: 'Roll not found' });
   res.json(roll);
 });

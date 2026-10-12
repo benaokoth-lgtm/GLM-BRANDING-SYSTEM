@@ -12,12 +12,22 @@ interface Draft {
   /** Installing a new roll: open rolls that are physically finished, to terminate (balance written off as waste) as the new one goes in. */
   terminate: Record<string, boolean>;
   terminateNote: string;
+  /** Installing a roll that is already part-used: tick this and say how many metres are left on it. The costs are then the whole roll's. */
+  partUsed: boolean;
+  metresLeft: string;
 }
 
 interface Terminating {
   id: string;
   cutOff: string;
   note: string;
+}
+
+function previewPart(d: Draft, full: number) {
+  const left = num(d.metresLeft);
+  const share = full > 0 ? left / full : 0;
+  const problem = d.metresLeft.trim() === '' || left <= 0 ? 'Enter the metres left on the roll.' : left >= full ? `A part-used roll has less than a full roll (${fmtNum(full, 1)} m) left — untick the box to install a new full roll.` : null;
+  return { left, share, film: Math.round(num(d.filmCost) * share * 100) / 100, ink: Math.round(num(d.inkPowderCost) * share * 100) / 100, problem };
 }
 
 export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
@@ -35,6 +45,9 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
   const openRolls = rolls.filter((r) => r.started && !r.closed);
   const rollLen = (r: (typeof rolls)[number]) => r.roll.rollLengthM || settings.rollLengthM;
   const wasteKes = (r: (typeof rolls)[number]) => (r.remainingM * r.rollCost) / rollLen(r);
+
+  // what a part-used roll will carry: the metres left, and the share of the whole roll's cost that matches them
+  const partPreview = draft && !draft.id && draft.partUsed ? previewPart(draft, settings.rollLengthM) : null;
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -55,9 +68,14 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
   function saveDraft() {
     if (!draft) return;
     const body = { installedOn: draft.installedOn, filmCost: num(draft.filmCost), inkPowderCost: num(draft.inkPowderCost) };
+    // a part-used roll is sent with the metres left; the server keeps only that share of the costs
+    const part = !draft.id && draft.partUsed ? { metresLeft: num(draft.metresLeft) } : {};
     // rolls ticked as physically finished are terminated at the new roll's install date, in the same step
     const terminate = Object.entries(draft.terminate).filter(([, on]) => on).map(([rollId]) => ({ rollId, note: draft.terminateNote.trim() || 'Physically finished — replaced by a new roll' }));
-    return run(() => (draft.id ? api.put(`/dtf/rolls/${draft.id}`, body) : api.post('/dtf/rolls', { ...body, ...(terminate.length ? { terminate } : {}) })));
+    // correcting the metres left on a part-used roll rescales its costs to them
+    const editing = draft.id ? rolls.find((x) => x.roll.id === draft.id) : undefined;
+    const metresChanged = !!editing && (editing.roll.carriedInUsedM ?? 0) > 0 && draft.metresLeft.trim() !== '' && num(draft.metresLeft) !== editing.roll.rollLengthM;
+    return run(() => (draft.id ? api.put(`/dtf/rolls/${draft.id}`, metresChanged ? { ...body, metresLeft: num(draft.metresLeft) } : body) : api.post('/dtf/rolls', { ...body, ...part, ...(terminate.length ? { terminate } : {}) })));
   }
 
   return (
@@ -66,13 +84,13 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
         <button
           type="button"
           className="btn btn-primary blueprint"
-          onClick={() => setDraft({ id: null, installedOn: todayStr(), filmCost: '', inkPowderCost: '', terminate: {}, terminateNote: '' })}
+          onClick={() => setDraft({ id: null, installedOn: todayStr(), filmCost: '', inkPowderCost: '', terminate: {}, terminateNote: '', partUsed: false, metresLeft: '' })}
         >
           <Corners />+ Install new roll
         </button>
       </div>
 
-      {rolls.length === 0 && <p className="note">No rolls yet — install your first roll.</p>}
+      {rolls.length === 0 && <p className="note">No rolls yet — install your first roll. Starting the system with a roll that is already part-used? Choose <b>Install new roll</b> and tick <b>This roll is already partly used</b>.</p>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 380px), 1fr))', gap: 'var(--space-6)' }}>
         {rolls.map((r) => {
@@ -103,6 +121,11 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
                 {r.usedM > len && ' · over roll length!'}
               </div>
 
+              {(r.roll.carriedInUsedM ?? 0) > 0 && (
+                <p className="note" style={{ margin: '0 0 var(--space-3)' }}>
+                  <b>Installed part-used:</b> {fmtNum(r.roll.carriedInUsedM ?? 0, 1)} m were already used before it was recorded, so the system tracks the {fmtNum(len, 1)} m that were left, and the roll cost is the cost of those metres.
+                </p>
+              )}
               {r.terminated && (
                 <p className="note" style={{ margin: '0 0 var(--space-3)' }}>
                   <b>Terminated {fmtDate(r.roll.finishedOn)}</b> — the roll was physically finished while the system still showed {fmtNum(r.wastageM, 1)} m, which was written off as waste{r.roll.closedByName ? ` by ${r.roll.closedByName}` : ''}. “{r.roll.closeNote}”
@@ -125,7 +148,7 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={() => setDraft({ id: r.roll.id, installedOn: r.roll.installedOn ?? todayStr(), filmCost: String(r.roll.filmCost), inkPowderCost: String(r.roll.inkPowderCost), terminate: {}, terminateNote: '' })}
+                  onClick={() => setDraft({ id: r.roll.id, installedOn: r.roll.installedOn ?? todayStr(), filmCost: String(r.roll.filmCost), inkPowderCost: String(r.roll.inkPowderCost), terminate: {}, terminateNote: '', partUsed: false, metresLeft: (r.roll.carriedInUsedM ?? 0) > 0 ? String(r.roll.rollLengthM) : '' })}
                 >
                   Edit costs
                 </button>
@@ -153,12 +176,40 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
             <Field label="Date installed">
               <input className="input" type="date" value={draft.installedOn} onChange={(e) => setDraft({ ...draft, installedOn: e.target.value })} />
             </Field>
-            <Field label="Film cost (Ksh)">
+            {!draft.id && (
+              <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start', fontWeight: 400 }}>
+                <input type="checkbox" style={{ marginTop: 3 }} checked={draft.partUsed} onChange={(e) => setDraft({ ...draft, partUsed: e.target.checked })} />
+                <span>
+                  <b>This roll is already partly used</b> — for example you are starting the system with a roll that is still on the machine. You say how many metres are left and the system tracks from there.
+                </span>
+              </label>
+            )}
+            {draft.id && (rolls.find((x) => x.roll.id === draft.id)?.roll.carriedInUsedM ?? 0) > 0 && (
+              <Field label="Metres left when it was installed">
+                <input className="input" inputMode="decimal" value={draft.metresLeft} onChange={(e) => setDraft({ ...draft, metresLeft: e.target.value })} />
+                <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Correct it if it was entered wrongly: the costs below are then re-scaled to the new metres.</p>
+              </Field>
+            )}
+            {!draft.id && draft.partUsed && (
+              <Field label={`Metres left on the roll now (a full roll is ${fmtNum(settings.rollLengthM, 1)} m)`}>
+                <input className="input" inputMode="decimal" value={draft.metresLeft} onChange={(e) => setDraft({ ...draft, metresLeft: e.target.value })} placeholder="Measure what is left" autoFocus />
+              </Field>
+            )}
+            <Field label={!draft.id && draft.partUsed ? 'Film cost of the WHOLE roll (Ksh)' : draft.id && (rolls.find((x) => x.roll.id === draft.id)?.roll.carriedInUsedM ?? 0) > 0 ? 'Film cost of the metres left (Ksh)' : 'Film cost (Ksh)'}>
               <input className="input" inputMode="decimal" value={draft.filmCost} onChange={(e) => setDraft({ ...draft, filmCost: e.target.value })} />
             </Field>
-            <Field label="Ink / powder cost (Ksh)">
+            <Field label={!draft.id && draft.partUsed ? 'Ink / powder cost of the WHOLE roll (Ksh)' : draft.id && (rolls.find((x) => x.roll.id === draft.id)?.roll.carriedInUsedM ?? 0) > 0 ? 'Ink / powder cost of the metres left (Ksh)' : 'Ink / powder cost (Ksh)'}>
               <input className="input" inputMode="decimal" value={draft.inkPowderCost} onChange={(e) => setDraft({ ...draft, inkPowderCost: e.target.value })} />
             </Field>
+            {!draft.id && draft.partUsed && partPreview && (
+              <p className="note" style={{ margin: 0 }}>
+                {partPreview.problem ?? (
+                  <>
+                    {fmtNum(settings.rollLengthM - partPreview.left, 1)} m already used before the system; <b>{fmtNum(partPreview.left, 1)} m</b> will be tracked. The roll will carry <b>{fmtKsh(partPreview.film)}</b> film and <b>{fmtKsh(partPreview.ink)}</b> ink / powder — {fmtNum(partPreview.share * 100, 1)}% of the whole roll's cost, the share for the metres left.
+                  </>
+                )}
+              </p>
+            )}
             {!draft.id && openRolls.length > 0 && (
               <div style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-3)' }}>
                 <div className="card-kicker">Rolls still open on the system</div>
@@ -182,7 +233,7 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
             )}
             <div className="dialog-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setDraft(null)}>Cancel</button>
-              <button type="button" className="btn btn-primary blueprint" disabled={busy || !draft.installedOn} onClick={saveDraft}>
+              <button type="button" className="btn btn-primary blueprint" disabled={busy || !draft.installedOn || (!draft.id && draft.partUsed && (!partPreview || !!partPreview.problem))} onClick={saveDraft}>
                 <Corners />
                 {draft.id ? 'Save' : 'Install roll'}
               </button>

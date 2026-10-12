@@ -43,6 +43,8 @@ export interface DtfRoll {
   closeNote?: string;
   closedByName?: string;
   writtenOffM?: number;
+  /** Installed part-used: metres already used before the roll was recorded. The roll is tracked from the metres left (rollLengthM), and its costs are those metres' share. */
+  carriedInUsedM?: number;
 }
 
 export interface DtfFilmSale {

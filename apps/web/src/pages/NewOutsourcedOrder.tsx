@@ -87,7 +87,8 @@ export default function NewOutsourcedOrder() {
     filled.map((r) => ({ qty: num(r.qty), unitCost: num(r.supplierCost), vatClaimable: r.vatClaimable })),
     vat,
   );
-  const credited = sourced || (forOthers ? !!salesPersonId : false);
+  // The commission goes to the order's staff member: the person capturing it, or the sales person chosen when capturing for others.
+  const creditedTo = forOthers && salesPersonId ? salesPeople.find((p) => p.id === salesPersonId)?.name ?? 'the sales person' : user?.name ?? 'you';
   const est = outsourcedCommission(total, catalog.commission.bands, 1);
   const grandTotal = total.saleIncl;
 
@@ -232,7 +233,7 @@ export default function NewOutsourcedOrder() {
               </div>
             )}
             {picked && (
-              <div style={{ display: 'flex', gap: 'var(--space-5)', flexWrap: 'wrap', alignItems: 'center', marginTop: 'var(--space-2)' }}>
+              <div style={{ display: 'flex', columnGap: 'var(--space-5)', rowGap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center', marginTop: 'var(--space-2)' }}>
                 <div className="field" style={{ margin: 0, minWidth: 200 }}>
                   <input className="input" value={r.supplierName} onChange={(e) => update(r.key, { supplierName: e.target.value })} placeholder="Supplier" aria-label="Supplier" />
                 </div>
@@ -240,7 +241,7 @@ export default function NewOutsourcedOrder() {
                   <input type="checkbox" checked={r.vatClaimable} onChange={(e) => update(r.key, { vatClaimable: e.target.checked })} />
                   Supplier gives a KRA tax invoice (VAT claimable)
                 </label>
-                <span className="note" style={{ margin: 0 }}>
+                <span className="note" style={{ margin: 0, flexBasis: '100%' }}>
                   Sale <b>{fmtKsh(f.saleIncl)}</b> · cost <b>{fmtKsh(f.costIncl)}</b> · gross profit <b style={{ color: marginColor(f.marginPct) }}>{fmtKsh(f.grossProfit)}</b> ({pct(f.marginPct)})
                 </span>
                 {rows.length > 1 && (
@@ -298,15 +299,13 @@ export default function NewOutsourcedOrder() {
         </table>
         {catalog.commission.enabled && (
           <p className="note" style={{ margin: 0 }}>
-            {!credited ? (
-              <>This order is not credited to a sales person, so it earns no commission.</>
-            ) : total.grossProfit <= 0 ? (
+            {total.grossProfit <= 0 ? (
               <>A job with no profit earns no commission.</>
             ) : est.ratePct === 0 ? (
               <>At a margin of {pct(total.marginPct)} this job earns <b>no commission</b> — the scale starts at {catalog.commission.bands.find((b) => b.rate > 0)?.from ?? 0}% margin.</>
             ) : (
               <>
-                Your commission on this job: <b>{fmtKsh(est.full)}</b> — {est.ratePct}% of the gross profit, earned as the customer pays.
+                {forOthers ? `Commission for ${creditedTo}` : 'Your commission'} on this job: <b>{fmtKsh(est.full)}</b> — {est.ratePct}% of the gross profit, earned as the customer pays.
               </>
             )}
           </p>

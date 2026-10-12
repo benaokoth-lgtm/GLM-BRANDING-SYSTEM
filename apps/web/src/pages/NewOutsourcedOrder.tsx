@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { WALK_IN_CLIENT, fmtKsh, isNamedClient, outsourcedCommission, outsourcedFigures } from '@glm/shared';
+import { WALK_IN_CLIENT, fmtKsh, isNamedClient, outsourcedFigures } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
@@ -87,9 +87,6 @@ export default function NewOutsourcedOrder() {
     filled.map((r) => ({ qty: num(r.qty), unitCost: num(r.supplierCost), vatClaimable: r.vatClaimable })),
     vat,
   );
-  // The commission goes to the order's staff member: the person capturing it, or the sales person chosen when capturing for others.
-  const creditedTo = forOthers && salesPersonId ? salesPeople.find((p) => p.id === salesPersonId)?.name ?? 'the sales person' : user?.name ?? 'you';
-  const est = outsourcedCommission(total, catalog.commission.bands, 1);
   const grandTotal = total.saleIncl;
 
   const rowProblem = (r: Row): string | null => {
@@ -242,7 +239,7 @@ export default function NewOutsourcedOrder() {
                   Supplier gives a KRA tax invoice (VAT claimable)
                 </label>
                 <span className="note" style={{ margin: 0, flexBasis: '100%' }}>
-                  Sale <b>{fmtKsh(f.saleIncl)}</b> · cost <b>{fmtKsh(f.costIncl)}</b> · gross profit <b style={{ color: marginColor(f.marginPct) }}>{fmtKsh(f.grossProfit)}</b> ({pct(f.marginPct)})
+                  Gross profit <b style={{ color: marginColor(f.marginPct) }}>{fmtKsh(f.grossProfit)}</b> ({pct(f.marginPct)})
                 </span>
                 {rows.length > 1 && (
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
@@ -261,55 +258,12 @@ export default function NewOutsourcedOrder() {
 
       <div className="card" style={{ marginTop: 'var(--space-5)', padding: 'var(--space-4)' }}>
         <div className="card-kicker">Gross margin on this job</div>
-        <table className="table" style={{ maxWidth: 560, margin: 'var(--space-2) 0' }}>
-          <tbody>
-            <tr>
-              <td>The customer pays (VAT included)</td>
-              <td style={{ textAlign: 'right' }}>{fmtKsh(total.saleIncl)}</td>
-            </tr>
-            <tr>
-              <td className="text-muted">less output VAT — owed to KRA, not income</td>
-              <td style={{ textAlign: 'right' }}>({fmtKsh(total.outputVat)})</td>
-            </tr>
-            <tr style={{ fontWeight: 700 }}>
-              <td>Net sales</td>
-              <td style={{ textAlign: 'right' }}>{fmtKsh(total.netSales)}</td>
-            </tr>
-            <tr>
-              <td>The supplier charges you (VAT included)</td>
-              <td style={{ textAlign: 'right' }}>{fmtKsh(total.costIncl)}</td>
-            </tr>
-            <tr>
-              <td className="text-muted">less input VAT you claim back</td>
-              <td style={{ textAlign: 'right' }}>({fmtKsh(total.inputVatClaimed)})</td>
-            </tr>
-            <tr style={{ fontWeight: 700 }}>
-              <td>Net cost{total.vatInCost > 0 ? ` (includes ${fmtKsh(total.vatInCost)} VAT you cannot claim)` : ''}</td>
-              <td style={{ textAlign: 'right' }}>{fmtKsh(total.netCost)}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr style={{ fontFamily: 'var(--font-heading)', fontSize: 18 }}>
-              <td>Gross profit · margin</td>
-              <td style={{ textAlign: 'right', color: marginColor(total.marginPct) }}>
-                {fmtKsh(total.grossProfit)} · {pct(total.marginPct)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-        {catalog.commission.enabled && (
-          <p className="note" style={{ margin: 0 }}>
-            {total.grossProfit <= 0 ? (
-              <>A job with no profit earns no commission.</>
-            ) : est.ratePct === 0 ? (
-              <>At a margin of {pct(total.marginPct)} this job earns <b>no commission</b> — the scale starts at {catalog.commission.bands.find((b) => b.rate > 0)?.from ?? 0}% margin.</>
-            ) : (
-              <>
-                {forOthers ? `Commission for ${creditedTo}` : 'Your commission'} on this job: <b>{fmtKsh(est.full)}</b> — {est.ratePct}% of the gross profit, earned as the customer pays.
-              </>
-            )}
-          </p>
-        )}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-3)', flexWrap: 'wrap', margin: 'var(--space-2) 0 0', fontFamily: 'var(--font-heading)', fontSize: 22 }}>
+          <span>Gross profit · margin</span>
+          <span style={{ color: marginColor(total.marginPct) }}>
+            {fmtKsh(total.grossProfit)} · {pct(total.marginPct)}
+          </span>
+        </div>
       </div>
 
       {paymentTiming === 'onAcceptance' && (

@@ -247,6 +247,8 @@ model Setting {
   nextDtfNo      Int     @default(3001)
   // Embroidery orders ("E-" prefix) are numbered on their own so they stand out in the order lists.
   nextEmbroideryNo Int   @default(5001)
+  // Outsourced Orders (contracted-out jobs captured by the sales person with their own buying price): O-7001…
+  nextOutsourcedNo Int   @default(7001)
   // The old per-sqm "Embroidery" service was retired once, when stitch-priced embroidery orders arrived (see embroideryLegacy.ts).
   embroideryLegacyRetired Boolean @default(false)
   frontOfficeSeeded Boolean @default(false) // the Front Office role has been offered once (it can then be edited or deleted freely)
@@ -656,6 +658,8 @@ model OrderLineItem {
   supplierCost Float?
   markupType   String?
   markupValue  Float?
+  // The supplier gave a valid KRA tax invoice (eTIMS), so the VAT in supplierCost is claimable as input VAT and is not a cost. Used by the margin and commission on outsourced orders.
+  supplierVatClaimable Boolean @default(false)
 
   // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
   @@index([orderId])
@@ -1254,6 +1258,10 @@ model CommissionSettings {
   minimumWage      Float    @default(16113.75)
   // The day of the month staff on the pay bands are paid, for the month before (shown on the pay guide).
   payday           Int      @default(5)
+  // Outsourced Orders: commission is a share of the job's NET gross profit (sales without output VAT, less cost without claimable input VAT). The share steps up with the job's
+  // margin: [{from: margin %, rate: % of gross profit}]. outsourcedBandWeightPct: how much of an outsourced job's sales also counts towards the pay bands / floor (0 = none, because it is paid on profit).
+  outsourcedBandsJson String  @default("[{\"from\":0,\"rate\":0},{\"from\":10,\"rate\":10},{\"from\":20,\"rate\":15},{\"from\":30,\"rate\":20}]")
+  outsourcedBandWeightPct Float @default(0)
   updatedByName    String   @default("")
   updatedAt        DateTime @updatedAt
 }

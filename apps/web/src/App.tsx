@@ -13,6 +13,7 @@ import Payments from './pages/Payments';
 import MasterData from './pages/MasterData';
 import Finance from './pages/Finance';
 import NewEmbroideryOrder from './pages/NewEmbroideryOrder';
+import NewOutsourcedOrder from './pages/NewOutsourcedOrder';
 import Compliance from './pages/Compliance';
 import Accounting from './pages/Accounting';
 import Production from './pages/Production';
@@ -60,6 +61,14 @@ export default function App() {
           element={
             <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
               <NewFilmOrder />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/orders/new/outsourced"
+          element={
+            <RequirePermission keys={['canCaptureOrders']}>
+              <NewOutsourcedOrder />
             </RequirePermission>
           }
         />

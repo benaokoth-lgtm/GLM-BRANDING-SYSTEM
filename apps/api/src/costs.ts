@@ -28,12 +28,14 @@ export interface CostFields {
   supplierCost?: number | null;
   markupType?: string | null;
   markupValue?: number | null;
+  supplierVatClaimable?: boolean;
 }
 
 /** The cost fields to store for a line: kept for people who can see costs, on service lines only; dropped for everyone else. */
 export function costFieldsFor(li: CostFields & { itemType: string }, allowed: boolean): Required<CostFields> {
-  if (!allowed || li.itemType === 'material') return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
+  if (!allowed || li.itemType === 'material') return { supplierName: null, supplierCost: null, markupType: null, markupValue: null, supplierVatClaimable: false };
   return {
+    supplierVatClaimable: !!li.supplierVatClaimable,
     supplierName: li.supplierName?.trim() || null,
     supplierCost: li.supplierCost != null && li.supplierCost >= 0 ? li.supplierCost : null,
     markupType: li.markupType === 'amount' ? 'amount' : li.supplierCost != null || li.markupValue != null ? 'percent' : null,

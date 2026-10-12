@@ -22,11 +22,19 @@ interface Guide {
     filmBands: Rate[];
     artworkRatePct: number;
     ownershipMonths: number;
+    outsourcedBands: Rate[];
+    outsourcedBandWeightPct: number;
   };
   vatRate: number;
   examples: { gross: number; label: string; nssf: number; shif: number; housingLevy: number; paye: number; net: number }[];
   film: { base: number; metres: number; highPrice: number; highEarns: number; lowPrice: number; lowEarns: number };
   artwork: { pieces: number; recommended: number; charged: number; earns: number };
+  outsourced: {
+    saleIncl: number;
+    costIncl: number;
+    claimable: { netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; full: number };
+    notClaimable: { netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; full: number };
+  };
 }
 
 const money = (n: number) => n.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -37,7 +45,7 @@ const pctText = (n: number) => `${parseFloat(Number(n).toFixed(2))}%`;
 export default function PayGuide() {
   const { data, error, loading } = useLoad<Guide>('/commission/pay-guide');
   if (!data) return <Loading loading={loading} error={error} />;
-  const { config: c, examples, film, artwork } = data;
+  const { config: c, examples, film, artwork, outsourced } = data;
   const bands = [...c.payBands].sort((a, b) => a.from - b.from);
   const steps = c.generalMode === 'steps';
   const top = bands[bands.length - 1]?.payout ?? 0;
@@ -241,6 +249,39 @@ export default function PayGuide() {
         <p className="note">
           <b>DTF artwork, per piece.</b> If you charge more than the system's recommended price you earn <b>{pctText(c.artworkRatePct)}</b> of the extra (VAT out), and nothing on the recommended price itself. <b>Example:</b> {artwork.pieces} pieces, recommended KES {artwork.recommended}, charged KES {artwork.charged}: about <b>KES {money(Math.round(artwork.earns))}</b>. Charging less is a discount: no extra is earned and a manager must approve it first.
         </p>
+      </Card>
+
+      <Card title="Outsourced jobs — paid on the gross profit" hint="Work a supplier makes and you sell on (Sales → Outsourced Order). Paid on top of your pay, as the customer pays.">
+        <p className="note" style={{ marginTop: 0 }}>
+          Here you are paid a share of the <b>profit</b>, not of the sale. The profit is worked out <b>without VAT</b>: the sale without the {vatPct}% output VAT, less what the supplier charged — also without VAT <b>when you hold a valid tax invoice from them</b> (then the VAT comes back to the company). If the supplier gave no tax invoice, their VAT is a real cost and the profit is lower. The share depends on the job's margin (profit ÷ sales without VAT):
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ maxWidth: 420 }}>
+            <thead>
+              <tr>
+                <th>Job margin</th>
+                <th style={numStyle}>Share of the profit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...c.outsourcedBands].sort((a, b) => a.from - b.from).map((b, i, all) => (
+                <tr key={b.from}>
+                  <td>{i === all.length - 1 ? `${b.from}% and above` : `${b.from}% to under ${all[i + 1]!.from}%`}</td>
+                  <td style={numStyle}>{pctText(b.rate)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="note">
+          <b>Example:</b> a job sold for KES {money(outsourced.saleIncl)} (with VAT) that the supplier charges KES {money(outsourced.costIncl)} for. With a tax invoice: sales KES {money(outsourced.claimable.netSales)} − cost KES {money(outsourced.claimable.netCost)} = profit KES {money(outsourced.claimable.grossProfit)}, a margin of {outsourced.claimable.marginPct == null ? '—' : pctText(outsourced.claimable.marginPct)}, so you earn {pctText(outsourced.claimable.ratePct)} = <b>KES {money(Math.round(outsourced.claimable.full))}</b>. Without a tax invoice the cost is KES {money(outsourced.notClaimable.netCost)}, the profit KES {money(outsourced.notClaimable.grossProfit)} ({outsourced.notClaimable.marginPct == null ? '—' : pctText(outsourced.notClaimable.marginPct)}) and you earn <b>KES {money(Math.round(outsourced.notClaimable.full))}</b> — so ask the supplier for a tax invoice.
+        </p>
+        <ul className="note" style={{ margin: 0, paddingLeft: '1.2em' }}>
+          <li>A job sold at a loss, or with a margin below the first step, earns nothing — there is no profit to share.</li>
+          <li>If the supplier's final bill is more than the quote, the bill is used, so the profit (and your share) falls.</li>
+          <li>VAT a customer holds back for the tax authority (withholding VAT) or tax withheld on the payment does not reduce the profit; it is only a delay in the cash.</li>
+          <li>{c.outsourcedBandWeightPct > 0 ? `${pctText(c.outsourcedBandWeightPct)} of an outsourced job's sales also counts towards your pay band.` : 'These jobs are paid on their profit, so their sales do not also count towards your pay band.'}</li>
+        </ul>
       </Card>
 
       <Card title="From your pay to what you take home" hint="Statutory deductions come off before you are paid; the company pays its own matching NSSF and housing-levy contributions on top.">

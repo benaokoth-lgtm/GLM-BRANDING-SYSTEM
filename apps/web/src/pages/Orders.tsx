@@ -352,7 +352,7 @@ export default function Orders() {
                   {row.priceApproval === 'Pending' && <div><span className="tag tag-outline">Awaiting price approval</span></div>}
                 </td>
                 <td className="text-muted">{fmtDate(row.createdDate)}</td>
-                <td>{row.kind === 'corporate' ? 'Corporate' : row.dtfKind === 'film' ? 'Film' : row.dtfKind === 'artwork' ? 'Artwork' : row.channel === 'dtf' ? 'Film/Artwork' : 'Walk-in'}</td>
+                <td>{row.kind === 'corporate' ? 'Corporate' : row.dtfKind === 'film' ? 'Film' : row.dtfKind === 'artwork' ? 'Artwork' : row.channel === 'dtf' ? 'Film/Artwork' : row.channel === 'outsourced' ? 'Outsourced' : 'Walk-in'}</td>
                 <td>{row.kind === 'corporate' ? row.corporateClient?.name ?? '—' : row.customerName ?? '—'}</td>
                 <td>{row.staff.name}</td>
                 <td>

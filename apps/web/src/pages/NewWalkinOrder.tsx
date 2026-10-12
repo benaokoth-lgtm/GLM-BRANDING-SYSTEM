@@ -18,7 +18,8 @@ export default function NewWalkinOrder() {
   // DTF Printing / DTF Sheet are sold exclusively through the DTF Sales &
   // Roll Tracker's own "Record sale"/"Record job" order popup (see
   // components/dtf/DtfOrderDialog.tsx) — not picked as a line item here.
-  const services = allServices.filter((s) => !s.soldViaDtfModule);
+  // Contracted-out services have their own order (Outsourced Order), where the sales person costs the job and sees the margin.
+  const services = allServices.filter((s) => !s.soldViaDtfModule && !s.outsourced);
   const { user } = useAuth();
   const navigate = useNavigate();
 

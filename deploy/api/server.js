@@ -65985,6 +65985,54 @@ function freelanceSplit(lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
   const qualifying = share(base3 + premium);
   return { qualifying, base: Math.min(qualifying, share(base3)), low: Math.min(share(low), share(base3)), premium: Math.min(qualifying, share(premium)) };
 }
+var DEFAULT_OUTSOURCED_BANDS = [
+  { from: 0, rate: 0 },
+  { from: 10, rate: 10 },
+  { from: 20, rate: 15 },
+  { from: 30, rate: 20 }
+];
+function outsourcedRate(bands, marginPct) {
+  const sorted = [...bands].sort((a2, b) => a2.from - b.from);
+  let rate = 0;
+  for (const b of sorted) if (marginPct >= b.from) rate = b.rate;
+  return rate;
+}
+function outsourcedFigures(saleIncl, lines, vatRate) {
+  const sale = r22(Math.max(0, saleIncl));
+  const netSales = r22(sale / (1 + vatRate));
+  let costIncl = 0;
+  let netCost = 0;
+  let inputVatClaimed = 0;
+  let vatInCost = 0;
+  for (const l of lines) {
+    const c = (Number(l.qty) || 0) * (Number(l.unitCost) || 0);
+    costIncl += c;
+    if (l.vatClaimable) {
+      netCost += c / (1 + vatRate);
+      inputVatClaimed += c - c / (1 + vatRate);
+    } else {
+      netCost += c;
+      vatInCost += c - c / (1 + vatRate);
+    }
+  }
+  const grossProfit = r22(netSales - netCost);
+  return {
+    saleIncl: sale,
+    netSales,
+    outputVat: r22(sale - netSales),
+    costIncl: r22(costIncl),
+    netCost: r22(netCost),
+    inputVatClaimed: r22(inputVatClaimed),
+    vatInCost: r22(vatInCost),
+    grossProfit,
+    marginPct: netSales > 0 ? r22(grossProfit / netSales * 100) : null
+  };
+}
+function outsourcedCommission(f, bands, share) {
+  const ratePct = f.marginPct == null ? 0 : outsourcedRate(bands, f.marginPct);
+  const full2 = f.grossProfit > 0 ? r22(f.grossProfit * ratePct / 100) : 0;
+  return { ratePct, full: full2, earned: r22(full2 * Math.min(1, Math.max(0, share))) };
+}
 var GENERAL_MODES = ["steps", "percent"];
 var DEFAULT_GENERAL_MODE = "steps";
 var DEFAULT_PAY_STEPS = [
@@ -66450,7 +66498,9 @@ async function getCommissionConfig(db = prisma) {
     payBands: readSteps(row?.payBandsJson),
     performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
     minimumWage: row?.minimumWage ?? DEFAULT_MINIMUM_WAGE,
-    payday: row?.payday ?? DEFAULT_PAYDAY
+    payday: row?.payday ?? DEFAULT_PAYDAY,
+    outsourcedBands: readBands(row?.outsourcedBandsJson, DEFAULT_OUTSOURCED_BANDS),
+    outsourcedBandWeightPct: row?.outsourcedBandWeightPct ?? 0
   };
 }
 async function freelanceShare(db, lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
@@ -66571,6 +66621,14 @@ var toInput = (li) => ({
   heatPressFee: li.heatPressFee ?? null
 });
 var orderTotal = (o) => computeOrderTotals({ lineItems: o.lineItems.map(toInput), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
+function outsourcedJobFigures(o, billedIncl = 0) {
+  const sale = orderTotal(o);
+  const quoted = o.lineItems.filter((li) => li.supplierCost != null).map((li) => ({ qty: li.qty, unitCost: li.supplierCost ?? 0, vatClaimable: li.supplierVatClaimable }));
+  const quoteTotal = quoted.reduce((a2, l) => a2 + l.qty * l.unitCost, 0);
+  const claimableShare = quoteTotal > 0 ? quoted.filter((l) => l.vatClaimable).reduce((a2, l) => a2 + l.qty * l.unitCost, 0) / quoteTotal : 0;
+  const lines = billedIncl > quoteTotal + 5e-3 ? [...quoted, { qty: 1, unitCost: billedIncl - quoteTotal, vatClaimable: claimableShare >= 0.5 }] : quoted;
+  return { sale, figures: outsourcedFigures(sale, lines, VAT_RATE), quoteTotal, billedIncl };
+}
 var customerOf = (o) => o.corporateClient?.name || o.customerName || "Walk-in customer";
 function blankStatement(staffId, staffName = "", target) {
   return {
@@ -66582,6 +66640,7 @@ function blankStatement(staffId, staffName = "", target) {
     pay: { onBands: false, minimumWage: 0, amount: 0, topUp: 0 },
     scheme: { mode: DEFAULT_GENERAL_MODE, sales: 0, floor: DEFAULT_PERFORMANCE_FLOOR, belowFloor: false, step: null },
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
+    outsourced: { commission: 0, jobs: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
     productivity: { ordersCaptured: 0, ordersSourced: 0, sourcedValue: 0, filmSales: 0, filmMetres: 0, filmAvgPricePerM: null, filmAvgPremiumPerM: null, artworkJobs: 0, artworkPieces: 0, artworkExtraCharged: 0 }
@@ -66623,6 +66682,9 @@ async function buildStatements(period, only) {
   for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
   const orderIds = [...flows.keys()];
   const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
+  const outsourcedIds = flowOrders.filter((o) => o.channel === "outsourced").map((o) => o.id);
+  const billedRows = outsourcedIds.length ? await prisma.expense.groupBy({ by: ["orderId"], where: { orderId: { in: outsourcedIds } }, _sum: { amount: true } }) : [];
+  const billed = new Map(billedRows.map((r) => [r.orderId, r._sum.amount ?? 0]));
   const dtfNet = /* @__PURE__ */ new Map();
   const addDtfNet = (id, net8) => dtfNet.set(id, (dtfNet.get(id) ?? 0) + net8 / (1 + VAT_RATE));
   const people = /* @__PURE__ */ new Map();
@@ -66661,6 +66723,13 @@ async function buildStatements(period, only) {
         addDtfNet(o.staffId, net8);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net8), commission: c });
       }
+    } else if (o.channel === "outsourced") {
+      const job = outsourcedJobFigures(o, billed.get(o.id) ?? 0);
+      const oc = outsourcedCommission(job.figures, config.outsourcedBands, share);
+      const st = who(o.staffId);
+      st.outsourced.commission = round2(st.outsourced.commission + oc.earned);
+      st.outsourced.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), netSales: job.figures.netSales, netCost: job.figures.netCost, grossProfit: job.figures.grossProfit, marginPct: job.figures.marginPct, ratePct: oc.ratePct, orderTotal: round2(total), moneyIn: round2(net8), commission: oc.earned });
+      if (config.outsourcedBandWeightPct > 0) st.general.received = round2(st.general.received + net8 * config.outsourcedBandWeightPct / 100);
     } else if (o.channel !== "dtf" && o.sourcedByStaffId && o.status !== "Quote") {
       const st = who(o.sourcedByStaffId);
       st.general.received = round2(st.general.received + net8);
@@ -66724,7 +66793,7 @@ async function buildStatements(period, only) {
       st.scheme = { mode: "steps", sales, floor: floor2, belowFloor: floor2 > 0 && sales < floor2, step };
       st.general.commission = step.payout;
       st.general.band = { rate: 0, nextFrom: step.nextFrom, nextRate: null, toNext: step.toNext };
-      st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+      st.total = round2(st.general.commission + st.film.commission + st.artwork.commission + st.outsourced.commission);
       payFor(st);
       continue;
     }
@@ -66740,7 +66809,7 @@ async function buildStatements(period, only) {
       st.general.commission = bandedAmount(config.generalBands, target.eligibleSales);
     }
     st.general.band = bandPosition(config.generalBands, target.eligibleSales);
-    st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
+    st.total = round2(st.general.commission + st.film.commission + st.artwork.commission + st.outsourced.commission);
     payFor(st);
   }
   const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
@@ -71133,8 +71202,9 @@ function ensureCostAccessOnce() {
   return ensuring4;
 }
 function costFieldsFor(li, allowed) {
-  if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
+  if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null, supplierVatClaimable: false };
   return {
+    supplierVatClaimable: !!li.supplierVatClaimable,
     supplierName: li.supplierName?.trim() || null,
     supplierCost: li.supplierCost != null && li.supplierCost >= 0 ? li.supplierCost : null,
     markupType: li.markupType === "amount" ? "amount" : li.supplierCost != null || li.markupValue != null ? "percent" : null,
@@ -72723,7 +72793,7 @@ ordersRouter.get("/:id", async (req, res) => {
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
   const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
   const freelancer = order.freelanceAgentId ? await prisma.freelanceAgent.findUnique({ where: { id: order.freelanceAgentId }, select: { name: true } }) : null;
-  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user.role) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user, order) });
+  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user.role) || ownsOutsourced(req.user, order) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user, order) });
 });
 var lineItemSchema = external_exports.object({
   itemType: external_exports.enum(["material", "service", "per-metre"]),
@@ -72734,6 +72804,7 @@ var lineItemSchema = external_exports.object({
   discountPct: external_exports.number().min(0).max(100).default(0),
   discountAmt: external_exports.number().min(0).default(0),
   heatPressFee: external_exports.number().nonnegative().nullable().optional(),
+  supplierVatClaimable: external_exports.boolean().optional(),
   artworkAreaSqm: external_exports.number().positive().nullable().optional(),
   // What the line is for, shown after its name (the embroidery order uses it for "Left chest logo · 6,000 stitches").
   description: external_exports.string().trim().max(160).optional(),
@@ -72772,7 +72843,7 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
 async function captureWalkin(req, res, form, extra = {}) {
   const cap = await resolveCapture(req.user, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const costs = await canSeeCosts(req.user.role);
+  const costs = extra.keepCosts ? true : await canSeeCosts(req.user.role);
   const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
   const totals = computeOrderTotals(
     { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
@@ -72794,6 +72865,7 @@ async function captureWalkin(req, res, form, extra = {}) {
       data: {
         orderNo,
         kind: "walkin",
+        ...extra.channel ? { channel: extra.channel } : {},
         customerName: form.customerName?.trim() || WALK_IN_CLIENT,
         phone: form.phone?.trim() || null,
         staffId: cap.staffId,
@@ -72818,8 +72890,105 @@ async function captureWalkin(req, res, form, extra = {}) {
     }
     return created;
   });
-  res.status(201).json(serializeDetail(order));
+  res.status(201).json(serializeDetail(order, { costs: !!extra.keepCosts }));
 }
+var CUSTOM_OUTSOURCED = "Outsourced service (custom)";
+var OUTSOURCED_UNITS = ["piece", "sqm", "metre", "set", "job"];
+function ownsOutsourced(user, order) {
+  return order.channel === "outsourced" && (order.staffId === user.id || order.sourcedByStaffId === user.id || order.capturedById === user.id);
+}
+async function customOutsourcedService() {
+  const found = await prisma.service.findFirst({ where: { name: CUSTOM_OUTSOURCED } });
+  if (found) return found;
+  return prisma.service.create({ data: { name: CUSTOM_OUTSOURCED, item: CUSTOM_OUTSOURCED, unit: "piece", price: 0, outsourced: true, soldViaDtfModule: true } });
+}
+ordersRouter.get("/outsourced/catalog", requirePermission("canCaptureOrders"), async (_req, res) => {
+  const services2 = await prisma.service.findMany({ where: { outsourced: true, retired: false, soldViaDtfModule: false }, orderBy: { name: "asc" } });
+  const config = await getCommissionConfig();
+  res.json({
+    vatRate: VAT_RATE,
+    units: OUTSOURCED_UNITS,
+    services: services2.map((s) => ({
+      id: s.id,
+      name: s.name,
+      unit: s.unit,
+      price: s.price,
+      supplierName: s.supplierName,
+      defaultSupplierCost: s.defaultSupplierCost,
+      markupType: s.markupType,
+      markupValue: s.markupValue
+    })),
+    // what a job earns the sales person: only while commission is switched on
+    commission: { enabled: await commissionEnabled(), bands: config.outsourcedBands }
+  });
+});
+var outsourcedLineSchema = external_exports.object({
+  serviceId: external_exports.number().int().nullable().optional(),
+  // when the item is not in the price list: what it is, and its unit
+  name: external_exports.string().trim().max(120).optional(),
+  unit: external_exports.string().trim().max(20).optional(),
+  qty: external_exports.number().positive("Enter the quantity"),
+  unitPrice: external_exports.number().positive("Enter the unit selling price"),
+  supplierCost: external_exports.number().min(0, "Enter the unit purchasing price"),
+  supplierName: external_exports.string().trim().max(120).optional(),
+  supplierVatClaimable: external_exports.boolean().default(false)
+}).refine((l) => !!l.serviceId || (l.name ?? "").length >= 2, { message: "Pick the service from the price list, or name the item" });
+var outsourcedSchema = walkinSchema.omit({ lineItems: true, orderDiscountPct: true, orderDiscountAmt: true, paymentAmount: true, paymentMethod: true }).extend({ lines: external_exports.array(outsourcedLineSchema).min(1, "Add at least one item").max(30) });
+ordersRouter.post("/outsourced", requirePermission("canCaptureOrders"), async (req, res) => {
+  const parsed = outsourcedSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const { lines, ...rest } = parsed.data;
+  const ids = [...new Set(lines.map((l) => l.serviceId).filter((v) => !!v))];
+  const services2 = new Map((ids.length ? await prisma.service.findMany({ where: { id: { in: ids } } }) : []).map((s) => [s.id, s]));
+  const custom2 = lines.some((l) => !l.serviceId) ? await customOutsourcedService() : null;
+  const lineItems = [];
+  for (const l of lines) {
+    const sv = l.serviceId ? services2.get(l.serviceId) : null;
+    if (l.serviceId && !sv) return res.status(400).json({ error: "A chosen service was not found" });
+    if (sv && !sv.outsourced) return res.status(400).json({ error: `${sv.name} is not an outsourced service \u2014 the Outsourced Order is only for contracted-out work` });
+    const label = sv ? sv.name : l.name;
+    if (l.unitPrice < l.supplierCost) return res.status(400).json({ error: `${label} is priced below what the supplier charges (selling ${l.unitPrice}, purchasing ${l.supplierCost}) \u2014 raise the selling price` });
+    lineItems.push({
+      itemType: "service",
+      serviceId: (sv ?? custom2).id,
+      materialId: null,
+      qty: l.qty,
+      unitPrice: l.unitPrice,
+      discountPct: 0,
+      discountAmt: 0,
+      description: sv ? "" : `${l.name}${l.unit ? ` (${l.unit})` : ""}`,
+      supplierName: l.supplierName || sv?.supplierName || null,
+      supplierCost: l.supplierCost,
+      supplierVatClaimable: l.supplierVatClaimable
+    });
+  }
+  const form = { ...rest, lineItems, orderDiscountPct: 0, orderDiscountAmt: 0 };
+  return captureWalkin(req, res, form, { prefix: "O-", counter: "nextOutsourcedNo", channel: "outsourced", keepCosts: true });
+});
+ordersRouter.get("/:id/margin", async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { ...orderInclude } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  if (!await canSeeCosts(req.user.role) && !ownsOutsourced(req.user, order)) return res.status(403).json({ error: "The cost of this job is shown to the sales person it is for and to people who can see costs" });
+  const costed = order.lineItems.filter((li) => li.supplierCost != null);
+  if (!costed.length) return res.status(404).json({ error: "No purchasing price has been entered on this order" });
+  const billed = (await prisma.expense.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0;
+  const job = outsourcedJobFigures(order, billed);
+  const totals = serializeSummary(order).totals;
+  const share = totals.grandTotal > 0 ? Math.min(1, totals.paidTotal / totals.grandTotal) : 0;
+  const config = await getCommissionConfig();
+  const oc = outsourcedCommission(job.figures, config.outsourcedBands, share);
+  res.json({
+    ...job.figures,
+    quoted: job.quoteTotal,
+    billed,
+    lines: costed.map((li) => {
+      const f = outsourcedFigures(li.qty * li.unitPrice, [{ qty: li.qty, unitCost: li.supplierCost ?? 0, vatClaimable: li.supplierVatClaimable }], VAT_RATE);
+      return { name: li.service ? li.description ? `${li.service.name} \u2014 ${li.description}` : li.service.name : "Item", qty: li.qty, unitPrice: li.unitPrice, unitCost: li.supplierCost, supplierName: li.supplierName, vatClaimable: li.supplierVatClaimable, ...f };
+    }),
+    commission: { enabled: await commissionEnabled(), ratePct: oc.ratePct, fullAmount: oc.full, earnedSoFar: oc.earned, paidShare: Math.round(share * 1e4) / 1e4 }
+  });
+});
 var quoteSchema = external_exports.object({
   corporateClientId: external_exports.number().int(),
   staffId: external_exports.number().int(),
@@ -78452,13 +78621,16 @@ var settingsSchema7 = external_exports.object({
   // The least a person on the pay bands is paid for a month (a band payout below it is topped up to it).
   minimumWage: external_exports.number().min(0).max(1e9).optional(),
   // The day of the month people on the pay bands are paid, for the month before (1–28 so it exists in every month).
-  payday: external_exports.number().int().min(1).max(28).optional()
+  payday: external_exports.number().int().min(1).max(28).optional(),
+  // Outsourced orders: margin % of the job → % of its net gross profit paid; and how much of the sale also counts towards the pay bands / floor.
+  outsourcedBands: external_exports.array(bandSchema).min(1).optional(),
+  outsourcedBandWeightPct: external_exports.number().min(0).max(100).optional()
 });
 commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   const parsed = settingsSchema7.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null) ?? (d.payBands ? payStepsProblem(d.payBands, "Pay bands") : null);
+  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null) ?? (d.payBands ? payStepsProblem(d.payBands, "Pay bands") : null) ?? (d.outsourcedBands ? bandsProblem(d.outsourcedBands, "Outsourced commission bands") : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b) => [...b].sort((x, y) => x.from - y.from);
   const data = {
@@ -78478,6 +78650,8 @@ commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
     ...d.performanceFloor !== void 0 ? { performanceFloor: d.performanceFloor } : {},
     ...d.minimumWage !== void 0 ? { minimumWage: d.minimumWage } : {},
     ...d.payday !== void 0 ? { payday: d.payday } : {},
+    ...d.outsourcedBands ? { outsourcedBandsJson: JSON.stringify(sort(d.outsourcedBands)) } : {},
+    ...d.outsourcedBandWeightPct !== void 0 ? { outsourcedBandWeightPct: d.outsourcedBandWeightPct } : {},
     updatedByName: req.user.name
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -78507,7 +78681,15 @@ commissionRouter.get("/pay-guide", async (_req, res) => {
     lowEarns: filmPremiumCommission(filmMetres, filmBase + 50, filmBase, config.filmBands, VAT_RATE)
   };
   const artwork = { pieces: 100, recommended: 40, charged: 45, earns: artworkPremiumCommission(100, 45, 40, config.artworkRatePct, VAT_RATE) };
-  res.json({ config, vatRate: VAT_RATE, examples, film, artwork });
+  const sample = outsourcedFigures(11600, [{ qty: 1, unitCost: 6960, vatClaimable: true }], VAT_RATE);
+  const sampleNotClaimable = outsourcedFigures(11600, [{ qty: 1, unitCost: 6960, vatClaimable: false }], VAT_RATE);
+  const outsourced = {
+    saleIncl: sample.saleIncl,
+    costIncl: sample.costIncl,
+    claimable: { netSales: sample.netSales, netCost: sample.netCost, grossProfit: sample.grossProfit, marginPct: sample.marginPct, ...outsourcedCommission(sample, config.outsourcedBands, 1) },
+    notClaimable: { netSales: sampleNotClaimable.netSales, netCost: sampleNotClaimable.netCost, grossProfit: sampleNotClaimable.grossProfit, marginPct: sampleNotClaimable.marginPct, ...outsourcedCommission(sampleNotClaimable, config.outsourcedBands, 1) }
+  };
+  res.json({ config, vatRate: VAT_RATE, examples, film, artwork, outsourced });
 });
 commissionRouter.get("/my", async (req, res) => {
   const period = periodSchema.safeParse(req.query.period ?? thisMonth());

@@ -342,6 +342,98 @@ export function freelanceSplit(lines: BaseCheckLine[], orderDiscountPct = 0, ord
   return { qualifying, base: Math.min(qualifying, share(base)), low: Math.min(share(low), share(base)), premium: Math.min(qualifying, share(premium)) };
 }
 
+// ── Outsourced orders: commission from the gross profit ─────────────────────
+// A contracted-out job is bought from a supplier and sold on. The sales person captures the unit selling price and the unit purchasing price, sees the margin, and is paid a share
+// of the job's NET gross profit — never of the sale:
+//   • Output VAT is KRA's money, not income: sales are counted without it (÷ 1.16).
+//   • Input VAT is a cost only when it cannot be claimed. When the supplier gave a valid tax invoice (eTIMS) the VAT in their price comes back, so the cost is counted without it;
+//     when not, the VAT is a real cost and the profit is lower — which rewards buying from compliant suppliers.
+//   • Withholding VAT (2% of the VAT-exclusive value, held by an appointed agent customer) and withholding tax are credits, not costs: they never change the profit. They only delay the
+//     cash, and commission is earned as the customer's money arrives.
+// The share steps up with the margin the job earns (a step, not a slice), so a thin-margin job earns a small share or none.
+
+export const DEFAULT_OUTSOURCED_BANDS: Band[] = [
+  { from: 0, rate: 0 },
+  { from: 10, rate: 10 },
+  { from: 20, rate: 15 },
+  { from: 30, rate: 20 },
+];
+
+/** The share (% of gross profit) paid for a job with this margin %: the rate of the highest band whose `from` the margin reaches. */
+export function outsourcedRate(bands: Band[], marginPct: number): number {
+  const sorted = [...bands].sort((a, b) => a.from - b.from);
+  let rate = 0;
+  for (const b of sorted) if (marginPct >= b.from) rate = b.rate;
+  return rate;
+}
+
+export interface OutsourcedCostLine {
+  qty: number;
+  /** What the supplier charges per unit, VAT included as quoted. */
+  unitCost: number;
+  /** The supplier's VAT is claimable (a valid tax invoice): it comes back and is not a cost. */
+  vatClaimable: boolean;
+}
+
+export interface OutsourcedFigures {
+  /** What the customer pays, VAT included. */
+  saleIncl: number;
+  /** The sale without output VAT. */
+  netSales: number;
+  outputVat: number;
+  /** What the supplier charges, VAT included as quoted. */
+  costIncl: number;
+  /** The cost to the business: without VAT where it is claimable, with it where it is not. */
+  netCost: number;
+  /** Input VAT that comes back on the VAT return. */
+  inputVatClaimed: number;
+  /** VAT paid to suppliers that cannot be claimed, so it sits in the cost. */
+  vatInCost: number;
+  grossProfit: number;
+  /** Net gross profit as a % of net sales. */
+  marginPct: number | null;
+}
+
+/** The sale's and the cost's VAT treated as above. `saleIncl` is the order total after any discount. */
+export function outsourcedFigures(saleIncl: number, lines: OutsourcedCostLine[], vatRate: number): OutsourcedFigures {
+  const sale = r2(Math.max(0, saleIncl));
+  const netSales = r2(sale / (1 + vatRate));
+  let costIncl = 0;
+  let netCost = 0;
+  let inputVatClaimed = 0;
+  let vatInCost = 0;
+  for (const l of lines) {
+    const c = (Number(l.qty) || 0) * (Number(l.unitCost) || 0);
+    costIncl += c;
+    if (l.vatClaimable) {
+      netCost += c / (1 + vatRate);
+      inputVatClaimed += c - c / (1 + vatRate);
+    } else {
+      netCost += c;
+      vatInCost += c - c / (1 + vatRate);
+    }
+  }
+  const grossProfit = r2(netSales - netCost);
+  return {
+    saleIncl: sale,
+    netSales,
+    outputVat: r2(sale - netSales),
+    costIncl: r2(costIncl),
+    netCost: r2(netCost),
+    inputVatClaimed: r2(inputVatClaimed),
+    vatInCost: r2(vatInCost),
+    grossProfit,
+    marginPct: netSales > 0 ? r2((grossProfit / netSales) * 100) : null,
+  };
+}
+
+/** Commission on one outsourced job: the share for its margin, of its gross profit, earned as the customer's money comes in (`share` 0..1 of the order paid). */
+export function outsourcedCommission(f: OutsourcedFigures, bands: Band[], share: number): { ratePct: number; full: number; earned: number } {
+  const ratePct = f.marginPct == null ? 0 : outsourcedRate(bands, f.marginPct);
+  const full = f.grossProfit > 0 ? r2((f.grossProfit * ratePct) / 100) : 0;
+  return { ratePct, full, earned: r2(full * Math.min(1, Math.max(0, share))) };
+}
+
 // ── Pay bands: fixed payouts by the month's sales ───────────────────────────
 // An alternative to the percentage bands for general sales (Commission → Rates → "How general sales are paid"). Each band is a step: a person whose
 // month's sales (net of VAT, money received, everything credited to them) reach a band's `from` is paid that band's fixed `payout`. It is a step, not

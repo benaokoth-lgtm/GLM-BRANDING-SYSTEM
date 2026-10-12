@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { EXPENSE_METHODS, GENERAL_MODES, VAT_RATE, artworkPremiumCommission, computePay, filmPremiumCommission, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
+import { EXPENSE_METHODS, GENERAL_MODES, VAT_RATE, artworkPremiumCommission, computePay, filmPremiumCommission, outsourcedCommission, outsourcedFigures, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
@@ -56,6 +56,9 @@ const settingsSchema = z.object({
   minimumWage: z.number().min(0).max(1e9).optional(),
   // The day of the month people on the pay bands are paid, for the month before (1–28 so it exists in every month).
   payday: z.number().int().min(1).max(28).optional(),
+  // Outsourced orders: margin % of the job → % of its net gross profit paid; and how much of the sale also counts towards the pay bands / floor.
+  outsourcedBands: z.array(bandSchema).min(1).optional(),
+  outsourcedBandWeightPct: z.number().min(0).max(100).optional(),
 });
 
 // The rates — the pay bands, minimum wage, percentages, ownership periods — are set by an Admin only. Managers and staff can read them (everyone sees the scheme they are paid under).
@@ -63,7 +66,7 @@ commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands') ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, 'Freelance bands') : null) ?? (d.payBands ? payStepsProblem(d.payBands, 'Pay bands') : null);
+  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands') ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, 'Freelance bands') : null) ?? (d.payBands ? payStepsProblem(d.payBands, 'Pay bands') : null) ?? (d.outsourcedBands ? bandsProblem(d.outsourcedBands, 'Outsourced commission bands') : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b: { from: number; rate: number }[]) => [...b].sort((x, y) => x.from - y.from);
   const data = {
@@ -83,6 +86,8 @@ commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
     ...(d.performanceFloor !== undefined ? { performanceFloor: d.performanceFloor } : {}),
     ...(d.minimumWage !== undefined ? { minimumWage: d.minimumWage } : {}),
     ...(d.payday !== undefined ? { payday: d.payday } : {}),
+    ...(d.outsourcedBands ? { outsourcedBandsJson: JSON.stringify(sort(d.outsourcedBands)) } : {}),
+    ...(d.outsourcedBandWeightPct !== undefined ? { outsourcedBandWeightPct: d.outsourcedBandWeightPct } : {}),
     updatedByName: req.user!.name,
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -116,7 +121,16 @@ commissionRouter.get('/pay-guide', async (_req, res) => {
     lowEarns: filmPremiumCommission(filmMetres, filmBase + 50, filmBase, config.filmBands, VAT_RATE),
   };
   const artwork = { pieces: 100, recommended: 40, charged: 45, earns: artworkPremiumCommission(100, 45, 40, config.artworkRatePct, VAT_RATE) };
-  res.json({ config, vatRate: VAT_RATE, examples, film, artwork });
+  // An outsourced job, worked through: sold for 11,600 with the supplier charging 6,960 (both VAT-inclusive, the supplier's VAT claimable).
+  const sample = outsourcedFigures(11600, [{ qty: 1, unitCost: 6960, vatClaimable: true }], VAT_RATE);
+  const sampleNotClaimable = outsourcedFigures(11600, [{ qty: 1, unitCost: 6960, vatClaimable: false }], VAT_RATE);
+  const outsourced = {
+    saleIncl: sample.saleIncl,
+    costIncl: sample.costIncl,
+    claimable: { netSales: sample.netSales, netCost: sample.netCost, grossProfit: sample.grossProfit, marginPct: sample.marginPct, ...outsourcedCommission(sample, config.outsourcedBands, 1) },
+    notClaimable: { netSales: sampleNotClaimable.netSales, netCost: sampleNotClaimable.netCost, grossProfit: sampleNotClaimable.grossProfit, marginPct: sampleNotClaimable.marginPct, ...outsourcedCommission(sampleNotClaimable, config.outsourcedBands, 1) },
+  };
+  res.json({ config, vatRate: VAT_RATE, examples, film, artwork, outsourced });
 });
 
 // ── Statements ──────────────────────────────────────────────────────────────

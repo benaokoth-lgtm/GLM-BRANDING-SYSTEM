@@ -119,6 +119,12 @@ describe('commission paid by pay bands', () => {
     let g = await guide('zed'); // any employee can read it
     assert.deepEqual(g.config.payBands.map((b: any) => [b.from, b.payout]), [[0, 0], [30000, 12000], [60000, 18000], [90000, 24000], [120000, 35000], [180000, 38000], [240000, 42000], [300000, 48000], [360000, 54000], [400000, 58000], [500000, 60000]]);
     assert.equal(g.config.payday, 5);
+    // the outsourced-jobs example: 11,600 sold for 6,960 bought — VAT claimable (40% margin → 20%) or not (30.4% → 20% of a smaller profit)
+    assert.deepEqual(g.config.outsourcedBands.map((b: any) => [b.from, b.rate]), [[0, 0], [10, 10], [20, 15], [30, 20]]);
+    assert.equal(g.outsourced.claimable.grossProfit, 4000);
+    assert.equal(g.outsourced.claimable.full, 800);
+    assert.equal(g.outsourced.notClaimable.grossProfit, 3040);
+    assert.equal(g.outsourced.notClaimable.full, 608);
     // take-home examples: the minimum wage first, then each higher pay level, each worked out by the payroll's own rules
     assert.equal(g.examples[0].label, 'Minimum wage');
     assert.equal(g.examples[0].gross, 16113.75);

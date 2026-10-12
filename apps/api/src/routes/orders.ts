@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
+import { getCommissionConfig, commissionEnabled, outsourcedJobFigures } from '../commission';
+import { outsourcedCommission, outsourcedFigures } from '@glm/shared';
 import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import type { CreditLine } from '../commission';
@@ -294,7 +296,7 @@ ordersRouter.get('/:id', async (req, res) => {
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
   const freelancer = order.freelanceAgentId ? await prisma.freelanceAgent.findUnique({ where: { id: order.freelanceAgentId }, select: { name: true } }) : null;
-  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user!.role) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user!, order) });
+  res.json({ ...serializeDetail(order, { costs: (await canSeeCosts(req.user!.role)) || ownsOutsourced(req.user!, order) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user!, order) });
 });
 
 // A line is either a material sale ('material': materialId set, no service)
@@ -310,6 +312,7 @@ const lineItemSchema = z
     discountPct: z.number().min(0).max(100).default(0),
     discountAmt: z.number().min(0).default(0),
     heatPressFee: z.number().nonnegative().nullable().optional(),
+    supplierVatClaimable: z.boolean().optional(),
     artworkAreaSqm: z.number().positive().nullable().optional(),
     // What the line is for, shown after its name (the embroidery order uses it for "Left chest logo · 6,000 stitches").
     description: z.string().trim().max(160).optional(),
@@ -355,7 +358,11 @@ export type WalkinForm = z.infer<typeof walkinSchema>;
 /** How the embroidery order (routes/embroidery.ts) differs from a General Order: its own numbering, the base price each line is measured against for commission, and a hook run inside the same transaction. */
 export interface WalkinExtras {
   prefix?: string;
-  counter?: 'nextWalkinNo' | 'nextEmbroideryNo';
+  counter?: 'nextWalkinNo' | 'nextEmbroideryNo' | 'nextOutsourcedNo';
+  /** The order's channel ('outsourced' for the Outsourced Order); the default is a general order. */
+  channel?: string;
+  /** Keep the supplier cost fields whoever captures (the Outsourced Order is for the sales person to cost their own job). */
+  keepCosts?: boolean;
   creditLines?: CreditLine[];
   after?: (tx: Prisma.TransactionClient, order: { id: number; orderNo: string }) => Promise<void>;
 }
@@ -365,7 +372,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
   // Who the order is credited to (the sales person) and who keys it (the cashier): decided here, from the person's role and whether their order taking is on.
   const cap = await resolveCapture(req.user!, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const costs = await canSeeCosts(req.user!.role);
+  const costs = extra.keepCosts ? true : await canSeeCosts(req.user!.role);
 
   // Payments taken at capture: the new list form, or the older single amount + method.
   const paymentLines: PaymentLine[] =
@@ -398,6 +405,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
       data: {
         orderNo,
         kind: 'walkin',
+        ...(extra.channel ? { channel: extra.channel } : {}),
         customerName: form.customerName?.trim() || WALK_IN_CLIENT,
         phone: form.phone?.trim() || null,
         staffId: cap.staffId,
@@ -423,8 +431,125 @@ export async function captureWalkin(req: import('express').Request, res: import(
     return created;
   });
 
-  res.status(201).json(serializeDetail(order));
+  res.status(201).json(serializeDetail(order, { costs: !!extra.keepCosts }));
 }
+
+// ── Outsourced Order: a contracted-out job the sales person buys and sells on ──────────────────────────────────────────────────────────────
+// The sales person enters, per item, what it is, how many, the unit SELLING price and the unit PURCHASING price (both VAT included, as quoted and as charged). They see the
+// gross margin and what it earns them. The job's cost and margin stay visible to them and to people who can see costs; everyone else is shown selling prices only.
+const CUSTOM_OUTSOURCED = 'Outsourced service (custom)';
+const OUTSOURCED_UNITS = ['piece', 'sqm', 'metre', 'set', 'job'] as const;
+
+/** The outsourced order's own costs are the capturing sales person's to see: whoever it is for, who sourced the client, or who keyed it. */
+function ownsOutsourced(user: { id: number }, order: { channel: string; staffId: number; sourcedByStaffId: number | null; capturedById?: number | null }): boolean {
+  return order.channel === 'outsourced' && (order.staffId === user.id || order.sourcedByStaffId === user.id || order.capturedById === user.id);
+}
+
+async function customOutsourcedService() {
+  const found = await prisma.service.findFirst({ where: { name: CUSTOM_OUTSOURCED } });
+  if (found) return found;
+  // sold only through the Outsourced Order (like the embroidery lines are through theirs), so it is kept out of the General Order list
+  return prisma.service.create({ data: { name: CUSTOM_OUTSOURCED, item: CUSTOM_OUTSOURCED, unit: 'piece', price: 0, outsourced: true, soldViaDtfModule: true } });
+}
+
+ordersRouter.get('/outsourced/catalog', requirePermission('canCaptureOrders'), async (_req, res) => {
+  const services = await prisma.service.findMany({ where: { outsourced: true, retired: false, soldViaDtfModule: false }, orderBy: { name: 'asc' } });
+  const config = await getCommissionConfig();
+  res.json({
+    vatRate: VAT_RATE,
+    units: OUTSOURCED_UNITS,
+    services: services.map((s) => ({
+      id: s.id,
+      name: s.name,
+      unit: s.unit,
+      price: s.price,
+      supplierName: s.supplierName,
+      defaultSupplierCost: s.defaultSupplierCost,
+      markupType: s.markupType,
+      markupValue: s.markupValue,
+    })),
+    // what a job earns the sales person: only while commission is switched on
+    commission: { enabled: await commissionEnabled(), bands: config.outsourcedBands },
+  });
+});
+
+const outsourcedLineSchema = z
+  .object({
+    serviceId: z.number().int().nullable().optional(),
+    // when the item is not in the price list: what it is, and its unit
+    name: z.string().trim().max(120).optional(),
+    unit: z.string().trim().max(20).optional(),
+    qty: z.number().positive('Enter the quantity'),
+    unitPrice: z.number().positive('Enter the unit selling price'),
+    supplierCost: z.number().min(0, 'Enter the unit purchasing price'),
+    supplierName: z.string().trim().max(120).optional(),
+    supplierVatClaimable: z.boolean().default(false),
+  })
+  .refine((l) => !!l.serviceId || (l.name ?? '').length >= 2, { message: 'Pick the service from the price list, or name the item' });
+
+const outsourcedSchema = walkinSchema
+  .omit({ lineItems: true, orderDiscountPct: true, orderDiscountAmt: true, paymentAmount: true, paymentMethod: true })
+  .extend({ lines: z.array(outsourcedLineSchema).min(1, 'Add at least one item').max(30) });
+
+ordersRouter.post('/outsourced', requirePermission('canCaptureOrders'), async (req, res) => {
+  const parsed = outsourcedSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const { lines, ...rest } = parsed.data;
+
+  const ids = [...new Set(lines.map((l) => l.serviceId).filter((v): v is number => !!v))];
+  const services = new Map((ids.length ? await prisma.service.findMany({ where: { id: { in: ids } } }) : []).map((s) => [s.id, s]));
+  const custom = lines.some((l) => !l.serviceId) ? await customOutsourcedService() : null;
+  const lineItems = [];
+  for (const l of lines) {
+    const sv = l.serviceId ? services.get(l.serviceId) : null;
+    if (l.serviceId && !sv) return res.status(400).json({ error: 'A chosen service was not found' });
+    if (sv && !sv.outsourced) return res.status(400).json({ error: `${sv.name} is not an outsourced service — the Outsourced Order is only for contracted-out work` });
+    const label = sv ? sv.name : l.name!;
+    // a job sold for less than the supplier charges is a loss before any VAT: refused
+    if (l.unitPrice < l.supplierCost) return res.status(400).json({ error: `${label} is priced below what the supplier charges (selling ${l.unitPrice}, purchasing ${l.supplierCost}) — raise the selling price` });
+    lineItems.push({
+      itemType: 'service' as const,
+      serviceId: (sv ?? custom)!.id,
+      materialId: null,
+      qty: l.qty,
+      unitPrice: l.unitPrice,
+      discountPct: 0,
+      discountAmt: 0,
+      description: sv ? '' : `${l.name}${l.unit ? ` (${l.unit})` : ''}`,
+      supplierName: l.supplierName || sv?.supplierName || null,
+      supplierCost: l.supplierCost,
+      supplierVatClaimable: l.supplierVatClaimable,
+    });
+  }
+  const form = { ...rest, lineItems, orderDiscountPct: 0, orderDiscountAmt: 0 } as WalkinForm;
+  return captureWalkin(req, res, form, { prefix: 'O-', counter: 'nextOutsourcedNo', channel: 'outsourced', keepCosts: true });
+});
+
+// The margin on an outsourced order: what it sells for, what it costs, the VAT in each, the gross profit and — while commission is on — what it earns the sales person.
+ordersRouter.get('/:id/margin', async (req, res) => {
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { ...orderInclude } });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
+  if (!(await canSeeCosts(req.user!.role)) && !ownsOutsourced(req.user!, order)) return res.status(403).json({ error: 'The cost of this job is shown to the sales person it is for and to people who can see costs' });
+  const costed = order.lineItems.filter((li) => li.supplierCost != null);
+  if (!costed.length) return res.status(404).json({ error: 'No purchasing price has been entered on this order' });
+  const billed = (await prisma.expense.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0;
+  const job = outsourcedJobFigures(order as never, billed);
+  const totals = serializeSummary(order).totals;
+  const share = totals.grandTotal > 0 ? Math.min(1, totals.paidTotal / totals.grandTotal) : 0;
+  const config = await getCommissionConfig();
+  const oc = outsourcedCommission(job.figures, config.outsourcedBands, share);
+  res.json({
+    ...job.figures,
+    quoted: job.quoteTotal,
+    billed,
+    lines: costed.map((li) => {
+      const f = outsourcedFigures(li.qty * li.unitPrice, [{ qty: li.qty, unitCost: li.supplierCost ?? 0, vatClaimable: li.supplierVatClaimable }], VAT_RATE);
+      return { name: li.service ? (li.description ? `${li.service.name} — ${li.description}` : li.service.name) : 'Item', qty: li.qty, unitPrice: li.unitPrice, unitCost: li.supplierCost, supplierName: li.supplierName, vatClaimable: li.supplierVatClaimable, ...f };
+    }),
+    commission: { enabled: await commissionEnabled(), ratePct: oc.ratePct, fullAmount: oc.full, earnedSoFar: oc.earned, paidShare: Math.round(share * 10000) / 10000 },
+  });
+});
 
 const quoteSchema = z.object({
   corporateClientId: z.number().int(),

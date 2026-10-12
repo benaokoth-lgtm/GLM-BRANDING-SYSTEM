@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import { DTF_PRINT_DEFAULT_RATE_PER_SQM, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -9,6 +9,7 @@ import { permissionsForRole } from '../permissions';
 import { claimProblem, resolveSourcing } from '../commission';
 import { resolveCapture } from '../frontOffice';
 import { WALK_IN_CLIENT } from '@glm/shared';
+import { DTF_HEAD } from '../orderHeads';
 import { paymentLineSchema, recordOrderPayments, PaymentError, orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
 import type { PaymentLine } from './orders';
 
@@ -157,6 +158,34 @@ async function createDtfOrder(
   }
 
   return order;
+}
+
+/**
+ * The price-list service a DTF film sale ("DTF Sheet (per metre)") or artwork job ("DTF Printing") is recorded against. Found by its name, or — if it was renamed in
+ * Master Data — as the DTF service of that kind; and created when the price list has none (a database that was never seeded), so a sale never stops for a missing row.
+ */
+async function dtfService(tx: Prisma.TransactionClient, kind: 'film' | 'artwork') {
+  const name = kind === 'film' ? 'DTF Sheet (per metre)' : 'DTF Printing';
+  const unit = kind === 'film' ? 'metre' : 'sqm';
+  const found = (await tx.service.findFirst({ where: { name } })) ?? (await tx.service.findFirst({ where: { soldViaDtfModule: true, unit }, orderBy: { id: 'asc' } }));
+  if (found) {
+    // taken off the price list, or no longer marked as a DTF service: put right, since the DTF screens depend on it
+    if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
+    return found;
+  }
+  const head = await tx.businessHead.findFirst({ where: { name: DTF_HEAD } });
+  const settings = await tx.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  return tx.service.create({
+    data: {
+      name,
+      item: name,
+      unit,
+      price: kind === 'film' ? settings.stdPricePerM : DTF_PRINT_DEFAULT_RATE_PER_SQM,
+      soldViaDtfModule: true,
+      chargesPressingFee: kind === 'artwork',
+      businessHeadId: head?.id ?? null,
+    },
+  });
 }
 
 // The full data set the tracker's calculations run on. Users without
@@ -425,8 +454,7 @@ dtfRouter.post('/sales', async (req, res) => {
 
   try {
     const { sale, order } = await prisma.$transaction(async (tx) => {
-      const service = await tx.service.findFirst({ where: { name: 'DTF Sheet (per metre)' } });
-      if (!service) throw new Error('The "DTF Sheet (per metre)" service is missing from Master Data — cannot generate an order for this sale.');
+      const service = await dtfService(tx, 'film');
       const order = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
@@ -557,8 +585,7 @@ dtfRouter.post('/jobs', async (req, res) => {
 
   try {
     const { job, order } = await prisma.$transaction(async (tx) => {
-      const service = await tx.service.findFirst({ where: { name: 'DTF Printing' } });
-      if (!service) throw new Error('The "DTF Printing" service is missing from Master Data — cannot generate an order for this job.');
+      const service = await dtfService(tx, 'artwork');
       const order = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),

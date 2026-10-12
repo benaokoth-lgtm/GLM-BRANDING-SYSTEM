@@ -65368,6 +65368,7 @@ var EXPENSE_CATEGORIES = [
   "Freelance Commission"
 ];
 var PETTY_CASH_SOURCES = ["Bank Withdrawal", "Cash Sales Allocation", "Owner Injection"];
+var DTF_PRINT_DEFAULT_RATE_PER_SQM = 750;
 var WALKIN_INVOICE_DUE_DAYS = 7;
 var ASSET_CATEGORIES = [
   "Printing Equipment",
@@ -76976,6 +76977,28 @@ async function createDtfOrder(tx, opts) {
   }
   return order;
 }
+async function dtfService(tx, kind) {
+  const name2 = kind === "film" ? "DTF Sheet (per metre)" : "DTF Printing";
+  const unit = kind === "film" ? "metre" : "sqm";
+  const found = await tx.service.findFirst({ where: { name: name2 } }) ?? await tx.service.findFirst({ where: { soldViaDtfModule: true, unit }, orderBy: { id: "asc" } });
+  if (found) {
+    if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
+    return found;
+  }
+  const head = await tx.businessHead.findFirst({ where: { name: DTF_HEAD } });
+  const settings = await tx.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  return tx.service.create({
+    data: {
+      name: name2,
+      item: name2,
+      unit,
+      price: kind === "film" ? settings.stdPricePerM : DTF_PRINT_DEFAULT_RATE_PER_SQM,
+      soldViaDtfModule: true,
+      chargesPressingFee: kind === "artwork",
+      businessHeadId: head?.id ?? null
+    }
+  });
+}
 dtfRouter.get("/data", async (req, res) => {
   const perms = await permissionsForRole(req.user.role);
   const canManage = perms.canManageDtf;
@@ -77203,8 +77226,7 @@ dtfRouter.post("/sales", async (req, res) => {
   if (paid > c.total) return res.status(400).json({ error: "Amount paid cannot exceed the sale total" });
   try {
     const { sale, order } = await prisma.$transaction(async (tx) => {
-      const service = await tx.service.findFirst({ where: { name: "DTF Sheet (per metre)" } });
-      if (!service) throw new Error('The "DTF Sheet (per metre)" service is missing from Master Data \u2014 cannot generate an order for this sale.');
+      const service = await dtfService(tx, "film");
       const order2 = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
@@ -77311,8 +77333,7 @@ dtfRouter.post("/jobs", async (req, res) => {
   if (needsApproval && paid > 0) return res.status(400).json({ error: "A price below the recommended price needs a manager\u2019s approval first \u2014 take the payment once it is approved" });
   try {
     const { job, order } = await prisma.$transaction(async (tx) => {
-      const service = await tx.service.findFirst({ where: { name: "DTF Printing" } });
-      if (!service) throw new Error('The "DTF Printing" service is missing from Master Data \u2014 cannot generate an order for this job.');
+      const service = await dtfService(tx, "artwork");
       const order2 = await createDtfOrder(tx, {
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),

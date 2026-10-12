@@ -34,7 +34,7 @@ interface AuthContextValue {
   user: CurrentUser | null;
   loginError: string | null;
   /** True when the PIN was right — signed in, or waiting for the emailed code (see codeStep). */
-  login: (userId: number, pin: string) => Promise<boolean>;
+  login: (who: number | { email: string }, pin: string) => Promise<boolean>;
   codeStep: CodeStep | null;
   submitCode: (code: string) => Promise<boolean>;
   cancelCode: () => void;
@@ -56,10 +56,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!getToken()) setUser(null);
   }, []);
 
-  const login = useCallback(async (userId: number, pin: string) => {
+  const login = useCallback(async (who: number | { email: string }, pin: string) => {
     setLoginError(null);
     try {
-      const res = await api.post<{ token?: string; user?: CurrentUser; codeRequired?: boolean; challenge?: string; sentTo?: string }>('/auth/login', { userId, pin });
+      const res = await api.post<{ token?: string; user?: CurrentUser; codeRequired?: boolean; challenge?: string; sentTo?: string }>('/auth/login', typeof who === 'number' ? { userId: who, pin } : { email: who.email, pin });
       if (res.codeRequired && res.challenge) {
         setCodeStep({ challenge: res.challenge, sentTo: res.sentTo ?? '' });
         return true;

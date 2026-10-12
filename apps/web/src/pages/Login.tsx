@@ -26,15 +26,31 @@ export default function Login() {
   const [shake, setShake] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [forgot, setForgot] = useState(false);
+  /** Why the list of names could not be loaded (it is empty otherwise), and whether the person has chosen to sign in with their email instead. */
+  const [listError, setListError] = useState<string | null>(null);
+  const [byEmail, setByEmail] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailPin, setEmailPin] = useState('');
   const pinLength = users.find((u) => u.id === selectedId)?.pinLength ?? 4;
 
   useEffect(() => {
     if (user) navigate('/', { replace: true });
   }, [user, navigate]);
 
-  useEffect(() => {
-    api.get<SelectableUser[]>('/auth/users').then(setUsers).catch(() => setUsers([]));
-  }, []);
+  function loadUsers() {
+    setListError(null);
+    api
+      .get<SelectableUser[]>('/auth/users')
+      .then((list) => {
+        setUsers(list);
+        if (list.length === 0) setListError('The list of staff is empty.');
+      })
+      .catch((e) => {
+        setUsers([]);
+        setListError(e instanceof Error && e.message ? e.message : 'The list of staff could not be loaded.');
+      });
+  }
+  useEffect(loadUsers, []);
 
   useEffect(() => {
     if (pin.length === pinLength && selectedId && !submitting) {
@@ -60,6 +76,18 @@ export default function Login() {
   function selectUser(id: number) {
     setSelectedId(id);
     setPin('');
+  }
+
+  async function signInWithEmail() {
+    if (submitting || !email.trim() || !emailPin) return;
+    setSubmitting(true);
+    const ok = await login({ email: email.trim() }, emailPin);
+    setSubmitting(false);
+    if (!ok) {
+      setShake(true);
+      setEmailPin('');
+      setTimeout(() => setShake(false), 300);
+    }
   }
 
   if (forgot) return <ForgotPin onDone={() => setForgot(false)} />;
@@ -117,6 +145,11 @@ export default function Login() {
           <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
             Who's working?
           </div>
+          {listError && (
+            <div className="note" style={{ color: 'var(--color-error)', margin: '0 0 var(--space-2)' }}>
+              <b>Your name is not showing?</b> {listError.replace(/\.?$/, '.')} Check your connection, then <button type="button" className="btn btn-ghost btn-sm" onClick={loadUsers}>try again</button>. If it still does not show — some browsers' ad or tracker blockers, VPNs and data-saving modes stop it — switch the blocker off for this site, or sign in with your email below.
+            </div>
+          )}
           {users.map((u) => (
             <button
               key={u.id}
@@ -149,6 +182,24 @@ export default function Login() {
               </button>
             ))}
           </div>
+          <button type="button" className="btn btn-ghost" style={{ marginTop: 'var(--space-3)', width: '100%' }} onClick={() => setByEmail((v) => !v)}>
+            {byEmail ? 'Hide email sign-in' : 'Sign in with my email instead'}
+          </button>
+          {byEmail && (
+            <form
+              style={{ display: 'grid', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void signInWithEmail();
+              }}
+            >
+              <input className="input" type="email" autoComplete="username" placeholder="The email address your login was sent to" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input className={'input' + (shake ? ' shake' : '')} type="password" inputMode="numeric" autoComplete="current-password" placeholder="Your PIN" value={emailPin} onChange={(e) => setEmailPin(e.target.value.replace(/D/g, '').slice(0, 6))} />
+              <button type="submit" className="btn btn-primary" disabled={submitting || !email.trim() || emailPin.length < 4}>
+                Sign in
+              </button>
+            </form>
+          )}
           <button
             type="button"
             className="btn btn-ghost"

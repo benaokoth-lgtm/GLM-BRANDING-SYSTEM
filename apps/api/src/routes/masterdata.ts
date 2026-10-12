@@ -93,7 +93,7 @@ async function emailPin(name: string, to: string, pin: string, opts: { reset?: b
     const info = await mailer.sendMail({
       to,
       subject: opts.reset ? `Your ${company} PIN was reset` : `Your ${company} login`,
-      text: `Hello ${name},\n\n${opts.reset ? `Your PIN for the ${company} system has been reset.` : `You can now sign in to the ${company} system.`}\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\n${mustChange ? 'You will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.' : 'Please delete this email once you have signed in.'}\n\nIf you were not expecting this message, tell your manager.`,
+      text: `Hello ${name},\n\n${opts.reset ? `Your PIN for the ${company} system has been reset.` : `You can now sign in to the ${company} system.`}\n${url}\nChoose your name on the sign-in screen and enter this PIN:\n\n    ${pin}\n\nIf your name does not show on the screen, press "Sign in with my email instead" and use this email address (${to}) with the same PIN.\n\n${mustChange ? 'You will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards.' : 'Please delete this email once you have signed in.'}\n\nIf you were not expecting this message, tell your manager.`,
     });
     const refused = refusal(info, to);
     if (refused) return { ok: false, error: refused };

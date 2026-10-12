@@ -17,6 +17,8 @@ export const authRouter = Router();
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, standardHeaders: true, legacyHeaders: false });
 
 const changePinLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `pin-${(req as { user?: { id: number } }).user?.id ?? 'anon'}`, validate: false });
+// A real hash to check against when no one matches, so a missing account takes as long to refuse as a wrong PIN.
+const DUMMY_HASH = bcrypt.hashSync('not-a-real-pin', PIN_ROUNDS);
 const CODE_MINUTES = 10;
 const CODE_MAX_ATTEMPTS = 5;
 
@@ -67,11 +69,16 @@ async function completeLogin(req: import('express').Request, res: import('expres
 }
 
 authRouter.post('/login', loginLimiter, async (req, res) => {
-  const { userId, pin } = req.body as { userId?: number; pin?: string };
-  if (!userId || !pin || typeof pin !== 'string') return res.status(400).json({ error: 'userId and pin are required' });
+  // Signed in by picking a name on the sign-in screen (userId), or — for someone whose screen cannot show the names — by the email address their login was sent to.
+  const { userId, email, pin } = req.body as { userId?: number; email?: string; pin?: string };
+  const byEmail = !userId && typeof email === 'string' && email.trim() !== '';
+  if ((!userId && !byEmail) || !pin || typeof pin !== 'string') return res.status(400).json({ error: byEmail || !userId ? 'Enter your email address and PIN' : 'userId and pin are required' });
 
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
-  if (!user) return res.status(401).json({ error: 'Invalid PIN' });
+  const user = byEmail ? await prisma.user.findUnique({ where: { email: String(email).trim().toLowerCase() } }) : await prisma.user.findUnique({ where: { id: Number(userId) } });
+  if (!user) {
+    await bcrypt.compare(pin, DUMMY_HASH); // the same work as a real check, so the reply does not tell an email that exists from one that does not
+    return res.status(401).json({ error: byEmail ? 'That email address and PIN do not match' : 'Invalid PIN' });
+  }
   const who = { userId: user.id, userName: user.name, role: user.role, method: 'AUTH', ip: ipOf(req) };
   if (!user.active) {
     await writeAudit({ ...who, action: 'LOGIN REFUSED — sign-in is switched off' });
@@ -88,7 +95,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   if (!ok) {
     const r = await registerFailedPin(user, ipOf(req));
     await writeAudit({ ...who, action: 'LOGIN FAILED — wrong PIN' });
-    return res.status(401).json({ error: 'Invalid PIN', ...(r.lockedMinutes ? { lockedMinutes: r.lockedMinutes } : {}) });
+    return res.status(401).json({ error: byEmail ? 'That email address and PIN do not match' : 'Invalid PIN', ...(r.lockedMinutes ? { lockedMinutes: r.lockedMinutes } : {}) });
   }
   await clearPinFailures(user.id);
 

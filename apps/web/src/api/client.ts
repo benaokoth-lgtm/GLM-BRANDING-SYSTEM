@@ -12,7 +12,8 @@ export function clearToken() {
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  // Only a request with a body says it is JSON: a plain GET then needs no cross-origin "preflight" check first, which some browsers' blockers refuse (and which the public sign-in name list should not depend on).
+  const headers: Record<string, string> = body !== undefined ? { 'Content-Type': 'application/json' } : {};
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 

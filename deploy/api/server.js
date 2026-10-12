@@ -66889,6 +66889,7 @@ async function systemName() {
 var authRouter = (0, import_express.Router)();
 var loginLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 30, standardHeaders: true, legacyHeaders: false });
 var changePinLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => `pin-${req.user?.id ?? "anon"}`, validate: false });
+var DUMMY_HASH = import_bcryptjs.default.hashSync("not-a-real-pin", PIN_ROUNDS);
 var CODE_MINUTES = 10;
 var CODE_MAX_ATTEMPTS = 5;
 function initials(name2) {
@@ -66923,10 +66924,14 @@ async function completeLogin(req, res, user) {
   res.json({ token, user: { ...authedUser, permissions, mustChangePin, pinLength: user.pinLength, pinNeeds: need } });
 }
 authRouter.post("/login", loginLimiter, async (req, res) => {
-  const { userId, pin } = req.body;
-  if (!userId || !pin || typeof pin !== "string") return res.status(400).json({ error: "userId and pin are required" });
-  const user = await prisma.user.findUnique({ where: { id: Number(userId) } });
-  if (!user) return res.status(401).json({ error: "Invalid PIN" });
+  const { userId, email, pin } = req.body;
+  const byEmail = !userId && typeof email === "string" && email.trim() !== "";
+  if (!userId && !byEmail || !pin || typeof pin !== "string") return res.status(400).json({ error: byEmail || !userId ? "Enter your email address and PIN" : "userId and pin are required" });
+  const user = byEmail ? await prisma.user.findUnique({ where: { email: String(email).trim().toLowerCase() } }) : await prisma.user.findUnique({ where: { id: Number(userId) } });
+  if (!user) {
+    await import_bcryptjs.default.compare(pin, DUMMY_HASH);
+    return res.status(401).json({ error: byEmail ? "That email address and PIN do not match" : "Invalid PIN" });
+  }
   const who = { userId: user.id, userName: user.name, role: user.role, method: "AUTH", ip: ipOf(req) };
   if (!user.active) {
     await writeAudit({ ...who, action: "LOGIN REFUSED \u2014 sign-in is switched off" });
@@ -66941,7 +66946,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   if (!ok) {
     const r = await registerFailedPin(user, ipOf(req));
     await writeAudit({ ...who, action: "LOGIN FAILED \u2014 wrong PIN" });
-    return res.status(401).json({ error: "Invalid PIN", ...r.lockedMinutes ? { lockedMinutes: r.lockedMinutes } : {} });
+    return res.status(401).json({ error: byEmail ? "That email address and PIN do not match" : "Invalid PIN", ...r.lockedMinutes ? { lockedMinutes: r.lockedMinutes } : {} });
   }
   await clearPinFailures(user.id);
   const setting = await prisma.setting.findUnique({ where: { id: 1 } });
@@ -71330,6 +71335,8 @@ ${url}
 Choose your name on the sign-in screen and enter this PIN:
 
     ${pin}
+
+If your name does not show on the screen, press "Sign in with my email instead" and use this email address (${to}) with the same PIN.
 
 ${mustChange ? "You will be asked to choose your own PIN the first time you sign in. Please do that straight away, and delete this email afterwards." : "Please delete this email once you have signed in."}
 

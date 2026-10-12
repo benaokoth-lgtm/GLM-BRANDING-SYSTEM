@@ -6,6 +6,7 @@ import { requireAuth, requirePermission, requireRole } from '../middleware/auth'
 import { ensureChartOnce } from '../accounting/chart';
 import { pettyCashShortfall } from '../accounting/ledger';
 import type { StaffStatement } from '../commission';
+import { canSeeCosts } from '../costs';
 import { activeFreelanceOwner, activeOwner, blankStatement, buildStatements, canManageCommission, commissionEnabled, ensureCommissionAccessOnce, getCommissionConfig, targetFor } from '../commission';
 
 // Staff sales commission. Everyone who captures orders can see their own statement and the scheme they are paid under;
@@ -134,6 +135,13 @@ commissionRouter.get('/pay-guide', async (_req, res) => {
 });
 
 // ── Statements ──────────────────────────────────────────────────────────────
+/** An outsourced job's cost, gross profit and margin are for people who can see costs; everyone else's statement shows the job, what the client has paid and the commission it earned. */
+async function redactOutsourced<T extends StaffStatement>(role: string, s: T): Promise<T & { outsourced: { detail: boolean } }> {
+  if (await canSeeCosts(role)) return { ...s, outsourced: { ...s.outsourced, detail: true } };
+  const jobs = s.outsourced.jobs.map((j) => ({ orderNo: j.orderNo, customer: j.customer, orderTotal: j.orderTotal, moneyIn: j.moneyIn, commission: j.commission, netSales: null, netCost: null, grossProfit: null, marginPct: null, ratePct: null }));
+  return { ...s, outsourced: { commission: s.outsourced.commission, jobs: jobs as never, detail: false } };
+}
+
 commissionRouter.get('/my', async (req, res) => {
   const period = periodSchema.safeParse(req.query.period ?? thisMonth());
   if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
@@ -144,7 +152,7 @@ commissionRouter.get('/my', async (req, res) => {
   res.json({
     period: period.data,
     config,
-    statement: mine,
+    statement: await redactOutsourced(req.user!.role, mine),
     payout: payout ? { status: payout.status, amount: payout.amount, paidOn: payout.paidOn } : null,
     clients: clients.map((c) => ({ id: c.id, name: c.clientName, startDate: c.startDate, endDate: c.endDate })),
   });
@@ -156,11 +164,12 @@ commissionRouter.get('/statement', manage, async (req, res) => {
   const { config, statements } = await buildStatements(period.data);
   const payouts = await prisma.commissionPayout.findMany({ where: { period: period.data } });
   const byStaff = new Map(payouts.map((p) => [p.staffId, p]));
+  const shown = await Promise.all(statements.map((s) => redactOutsourced(req.user!.role, s)));
   res.json({
     period: period.data,
     open: period.data >= thisMonth(), // the month is not over, so more money may still arrive
     config,
-    statements: statements.map((s) => {
+    statements: shown.map((s) => {
       const p = byStaff.get(s.staffId);
       return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
     }),

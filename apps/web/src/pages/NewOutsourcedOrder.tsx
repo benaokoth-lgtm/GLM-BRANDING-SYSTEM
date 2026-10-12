@@ -47,6 +47,8 @@ const pct = (n: number | null) => (n == null ? '—' : `${parseFloat(n.toFixed(1
 
 export default function NewOutsourcedOrder() {
   const { user } = useAuth();
+  // The job's gross profit and margin are for Finance, the General Manager and Admin (whoever may see costs) — the sales person enters the prices but is not shown the margin.
+  const seesMargin = user?.role === 'Admin' || !!user?.permissions.canSeeCosts;
   const navigate = useNavigate();
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -149,7 +151,7 @@ export default function NewOutsourcedOrder() {
       <div className="card-kicker">Contracted-out work</div>
       <div className="card-title">New Outsourced Order</div>
       <p className="note" style={{ marginTop: 0 }}>
-        For jobs a supplier makes and you sell on. Enter what the supplier charges you and what you charge the customer, both with VAT included; the margin is worked out as you type. Only outsourced services can be captured here.
+        For jobs a supplier makes and you sell on. Enter what the supplier charges you and what you charge the customer, both with VAT included.{seesMargin ? ' The margin is worked out as you type.' : ''} Only outsourced services can be captured here.
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
@@ -238,9 +240,11 @@ export default function NewOutsourcedOrder() {
                   <input type="checkbox" checked={r.vatClaimable} onChange={(e) => update(r.key, { vatClaimable: e.target.checked })} />
                   Supplier gives a KRA tax invoice (VAT claimable)
                 </label>
-                <span className="note" style={{ margin: 0, flexBasis: '100%' }}>
-                  Gross profit <b style={{ color: marginColor(f.marginPct) }}>{fmtKsh(f.grossProfit)}</b> ({pct(f.marginPct)})
-                </span>
+                {seesMargin && (
+                  <span className="note" style={{ margin: 0, flexBasis: '100%' }}>
+                    Gross profit <b style={{ color: marginColor(f.marginPct) }}>{fmtKsh(f.grossProfit)}</b> ({pct(f.marginPct)})
+                  </span>
+                )}
                 {rows.length > 1 && (
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
                     Remove
@@ -256,6 +260,7 @@ export default function NewOutsourcedOrder() {
         + Add item
       </button>
 
+      {seesMargin && (
       <div className="card" style={{ marginTop: 'var(--space-5)', padding: 'var(--space-4)' }}>
         <div className="card-kicker">Gross margin on this job</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-3)', flexWrap: 'wrap', margin: 'var(--space-2) 0 0', fontFamily: 'var(--font-heading)', fontSize: 22 }}>
@@ -265,6 +270,7 @@ export default function NewOutsourcedOrder() {
           </span>
         </div>
       </div>
+      )}
 
       {paymentTiming === 'onAcceptance' && (
         <div style={{ marginTop: 'var(--space-4)' }}>

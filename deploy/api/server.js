@@ -72823,7 +72823,7 @@ ordersRouter.get("/:id", async (req, res) => {
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
   const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
   const freelancer = order.freelanceAgentId ? await prisma.freelanceAgent.findUnique({ where: { id: order.freelanceAgentId }, select: { name: true } }) : null;
-  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user.role) || ownsOutsourced(req.user, order) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user, order) });
+  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user.role) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user, order) });
 });
 var lineItemSchema = external_exports.object({
   itemType: external_exports.enum(["material", "service", "per-metre"]),
@@ -72873,7 +72873,8 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
 async function captureWalkin(req, res, form, extra = {}) {
   const cap = await resolveCapture(req.user, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const costs = extra.keepCosts ? true : await canSeeCosts(req.user.role);
+  const sees = await canSeeCosts(req.user.role);
+  const costs = extra.keepCosts ? true : sees;
   const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
   const totals = computeOrderTotals(
     { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
@@ -72920,13 +72921,10 @@ async function captureWalkin(req, res, form, extra = {}) {
     }
     return created;
   });
-  res.status(201).json(serializeDetail(order, { costs: !!extra.keepCosts }));
+  res.status(201).json(serializeDetail(order, { costs: sees }));
 }
 var CUSTOM_OUTSOURCED = "Outsourced service (custom)";
 var OUTSOURCED_UNITS = ["piece", "sqm", "metre", "set", "job"];
-function ownsOutsourced(user, order) {
-  return order.channel === "outsourced" && (order.staffId === user.id || order.sourcedByStaffId === user.id || order.capturedById === user.id);
-}
 async function customOutsourcedService() {
   const found = await prisma.service.findFirst({ where: { name: CUSTOM_OUTSOURCED } });
   if (found) return found;
@@ -72999,7 +72997,7 @@ ordersRouter.get("/:id/margin", async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { ...orderInclude } });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
-  if (!await canSeeCosts(req.user.role) && !ownsOutsourced(req.user, order)) return res.status(403).json({ error: "The cost of this job is shown to the sales person it is for and to people who can see costs" });
+  if (!await canSeeCosts(req.user.role)) return res.status(403).json({ error: "The cost and gross margin of a job are shown to people who can see costs (Finance, the General Manager and Admin)" });
   const costed = order.lineItems.filter((li) => li.supplierCost != null);
   if (!costed.length) return res.status(404).json({ error: "No purchasing price has been entered on this order" });
   const billed = (await prisma.expense.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0;
@@ -78767,6 +78765,11 @@ commissionRouter.get("/pay-guide", async (_req, res) => {
   };
   res.json({ config, vatRate: VAT_RATE, examples, film, artwork, outsourced });
 });
+async function redactOutsourced(role, s) {
+  if (await canSeeCosts(role)) return { ...s, outsourced: { ...s.outsourced, detail: true } };
+  const jobs = s.outsourced.jobs.map((j) => ({ orderNo: j.orderNo, customer: j.customer, orderTotal: j.orderTotal, moneyIn: j.moneyIn, commission: j.commission, netSales: null, netCost: null, grossProfit: null, marginPct: null, ratePct: null }));
+  return { ...s, outsourced: { commission: s.outsourced.commission, jobs, detail: false } };
+}
 commissionRouter.get("/my", async (req, res) => {
   const period = periodSchema.safeParse(req.query.period ?? thisMonth());
   if (!period.success) return res.status(400).json({ error: period.error.issues[0]?.message });
@@ -78777,7 +78780,7 @@ commissionRouter.get("/my", async (req, res) => {
   res.json({
     period: period.data,
     config,
-    statement: mine,
+    statement: await redactOutsourced(req.user.role, mine),
     payout: payout ? { status: payout.status, amount: payout.amount, paidOn: payout.paidOn } : null,
     clients: clients.map((c) => ({ id: c.id, name: c.clientName, startDate: c.startDate, endDate: c.endDate }))
   });
@@ -78788,12 +78791,13 @@ commissionRouter.get("/statement", manage, async (req, res) => {
   const { config, statements } = await buildStatements(period.data);
   const payouts = await prisma.commissionPayout.findMany({ where: { period: period.data } });
   const byStaff = new Map(payouts.map((p) => [p.staffId, p]));
+  const shown = await Promise.all(statements.map((s) => redactOutsourced(req.user.role, s)));
   res.json({
     period: period.data,
     open: period.data >= thisMonth(),
     // the month is not over, so more money may still arrive
     config,
-    statements: statements.map((s) => {
+    statements: shown.map((s) => {
       const p = byStaff.get(s.staffId);
       return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
     }),
@@ -80090,6 +80094,7 @@ freelanceRouter.post("/clients/:id/release", manage2, async (req, res) => {
 });
 freelanceRouter.get("/statement", manage2, async (req, res) => {
   const week = weekOf(req.query.week);
+  const seesCosts = await canSeeCosts(req.user.role);
   const { config, statements } = await buildFreelanceStatements(week);
   const payouts = await prisma.freelancePayout.findMany({ where: { weekStart: week } });
   const byAgent = new Map(payouts.map((p) => [p.agentId, p]));
@@ -80106,7 +80111,8 @@ freelanceRouter.get("/statement", manage2, async (req, res) => {
     lowMarginPct: config.freelanceLowMarginPct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
     b2cReady: isB2cReady(await loadMpesaConfig()),
-    statements: statements.map((s) => {
+    statements: statements.map((s0) => {
+      const s = seesCosts ? s0 : { ...s0, outsourcedJobs: s0.outsourcedJobs.map((j) => ({ orderNo: j.orderNo, customer: j.customer, orderTotal: j.orderTotal, moneyIn: j.moneyIn, commission: j.commission, netSales: null, netCost: null, grossProfit: null, marginPct: null, ratePct: null })) };
       const p = byAgent.get(s.agentId);
       const a2 = p ? latest.get(p.id) : void 0;
       return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, withholdingTax: p.withholdingTax, netPay: round2(p.amount - p.withholdingTax), paidOn: p.paidOn, paidMethod: p.paidMethod, receipt: p.receipt, mpesa: a2 ? { id: a2.id, status: a2.status, resultDesc: a2.resultDesc, receipt: a2.receipt, phone: a2.phone, amount: a2.amount } : null } : null };

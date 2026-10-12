@@ -42,8 +42,10 @@ const outsourced = (agent: number, price: number, cost: number, qty: number, pay
 describe('freelancers: the scale to KES 10 million, outsourced jobs, and the annual statement', () => {
   before(async () => {
     await prisma.role.create({ data: { name: 'Seller (fl outsourced test)', canCaptureOrders: true } });
-    await prisma.role.create({ data: { name: 'Boss (fl outsourced test)', canCaptureOrders: true, canAccessFinance: true, canAccessAccounting: true, canManageCommission: true } });
-    for (const [key, role] of [['seller', 'Seller (fl outsourced test)'], ['boss', 'Boss (fl outsourced test)']] as const) {
+    await prisma.role.create({ data: { name: 'Boss (fl outsourced test)', canCaptureOrders: true, canAccessFinance: true, canAccessAccounting: true, canManageCommission: true, canSeeCosts: true } });
+    // a commission manager who may not see costs
+    await prisma.role.create({ data: { name: 'Clerk (fl outsourced test)', canCaptureOrders: true, canManageCommission: true } });
+    for (const [key, role] of [['seller', 'Seller (fl outsourced test)'], ['boss', 'Boss (fl outsourced test)'], ['clerk', 'Clerk (fl outsourced test)']] as const) {
       const u = await prisma.user.create({ data: { name: `${key} (fl outsourced test)`, role, pinHash: 'x' } });
       ids[key] = u.id;
       tokens[key] = signToken({ id: u.id, name: u.name, role });
@@ -85,6 +87,10 @@ describe('freelancers: the scale to KES 10 million, outsourced jobs, and the ann
     assert.deepEqual([s.outsourcedCommission, s.baseCommission, s.premiumCommission, s.commission], [2000, 0, 0, 2000]);
     assert.equal(s.outsourcedJobs[0].grossProfit, 10000);
     assert.equal(s.withholdingTax, withholdingOn(2000, s.whtRate));
+    // a commission manager who may not see costs sees what the job earned and what the client paid, not its profit or margin
+    const blind = (await call('clerk', 'GET', `/freelance/statement?week=${week}`)).body.statements.find((x: any) => x.agentId === agent);
+    assert.equal(blind.outsourcedCommission, 2000);
+    assert.deepEqual([blind.outsourcedJobs[0].commission, blind.outsourcedJobs[0].moneyIn, blind.outsourcedJobs[0].grossProfit, blind.outsourcedJobs[0].netCost, blind.outsourcedJobs[0].marginPct], [2000, 23200, null, null, null]);
 
     // half paid: half is earned; not paid to the company at all: nothing, and the job is not in the statement
     const half = await outsourced(agent, 2320, 1160, 10, 11600);

@@ -24,7 +24,7 @@ interface Statement {
   premiumCommission: number;
   /** Outsourced orders they brought: a share of each job's net gross profit, on what the client has paid the company. */
   outsourcedCommission: number;
-  outsourcedJobs: { orderNo: string; customer: string; netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; orderTotal: number; moneyIn: number; commission: number }[];
+  outsourcedJobs: { orderNo: string; customer: string; netSales: number | null; netCost: number | null; grossProfit: number | null; marginPct: number | null; ratePct: number | null; orderTotal: number; moneyIn: number; commission: number }[];
   belowBaseNet: number;
   commission: number;
   /** Withholding tax: the rate for this person, the tax deducted, and what they are paid after it. */
@@ -280,11 +280,15 @@ function WeekTab() {
                                         <tr>
                                           <th>Order</th>
                                           <th>Customer</th>
-                                          <th style={numStyle}>Net sales</th>
-                                          <th style={numStyle}>Net cost</th>
-                                          <th style={numStyle}>Gross profit</th>
-                                          <th style={numStyle}>Margin</th>
-                                          <th style={numStyle}>Share</th>
+                                          {s.outsourcedJobs[0]?.grossProfit != null && (
+                                            <>
+                                              <th style={numStyle}>Net sales</th>
+                                              <th style={numStyle}>Net cost</th>
+                                              <th style={numStyle}>Gross profit</th>
+                                              <th style={numStyle}>Margin</th>
+                                              <th style={numStyle}>Share</th>
+                                            </>
+                                          )}
                                           <th style={numStyle}>Paid to us</th>
                                           <th style={numStyle}>Commission</th>
                                         </tr>
@@ -294,11 +298,15 @@ function WeekTab() {
                                           <tr key={j.orderNo}>
                                             <td>{j.orderNo}</td>
                                             <td>{j.customer}</td>
-                                            <td style={numStyle}>{fmtKsh(j.netSales)}</td>
-                                            <td style={numStyle}>{fmtKsh(j.netCost)}</td>
-                                            <td style={numStyle}>{fmtKsh(j.grossProfit)}</td>
-                                            <td style={numStyle}>{j.marginPct == null ? '—' : `${fmtNum(j.marginPct, 1)}%`}</td>
-                                            <td style={numStyle}>{j.ratePct}%</td>
+                                            {j.grossProfit != null && (
+                                              <>
+                                                <td style={numStyle}>{fmtKsh(j.netSales ?? 0)}</td>
+                                                <td style={numStyle}>{fmtKsh(j.netCost ?? 0)}</td>
+                                                <td style={numStyle}>{fmtKsh(j.grossProfit)}</td>
+                                                <td style={numStyle}>{j.marginPct == null ? '—' : `${fmtNum(j.marginPct, 1)}%`}</td>
+                                                <td style={numStyle}>{j.ratePct}%</td>
+                                              </>
+                                            )}
                                             <td style={numStyle}>{fmtKsh(j.moneyIn)} of {fmtKsh(j.orderTotal)}</td>
                                             <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(j.commission)}</td>
                                           </tr>

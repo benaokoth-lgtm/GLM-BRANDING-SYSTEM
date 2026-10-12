@@ -296,7 +296,7 @@ ordersRouter.get('/:id', async (req, res) => {
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   const sourcer = order.sourcedByStaffId ? await prisma.user.findUnique({ where: { id: order.sourcedByStaffId }, select: { name: true } }) : null;
   const freelancer = order.freelanceAgentId ? await prisma.freelanceAgent.findUnique({ where: { id: order.freelanceAgentId }, select: { name: true } }) : null;
-  res.json({ ...serializeDetail(order, { costs: (await canSeeCosts(req.user!.role)) || ownsOutsourced(req.user!, order) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user!, order) });
+  res.json({ ...serializeDetail(order, { costs: await canSeeCosts(req.user!.role) }), sourcedByName: sourcer?.name ?? null, freelanceAgentName: freelancer?.name ?? null, canTakePayment: await canTakePayment(req.user!, order) });
 });
 
 // A line is either a material sale ('material': materialId set, no service)
@@ -372,7 +372,9 @@ export async function captureWalkin(req: import('express').Request, res: import(
   // Who the order is credited to (the sales person) and who keys it (the cashier): decided here, from the person's role and whether their order taking is on.
   const cap = await resolveCapture(req.user!, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const costs = extra.keepCosts ? true : await canSeeCosts(req.user!.role);
+  const sees = await canSeeCosts(req.user!.role);
+  // an Outsourced Order always keeps the purchasing price the sales person enters (it is how the job is costed); what comes back to them shows it only if they may see costs
+  const costs = extra.keepCosts ? true : sees;
 
   // Payments taken at capture: the new list form, or the older single amount + method.
   const paymentLines: PaymentLine[] =
@@ -431,7 +433,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
     return created;
   });
 
-  res.status(201).json(serializeDetail(order, { costs: !!extra.keepCosts }));
+  res.status(201).json(serializeDetail(order, { costs: sees }));
 }
 
 // ── Outsourced Order: a contracted-out job the sales person buys and sells on ──────────────────────────────────────────────────────────────
@@ -439,11 +441,6 @@ export async function captureWalkin(req: import('express').Request, res: import(
 // gross margin and what it earns them. The job's cost and margin stay visible to them and to people who can see costs; everyone else is shown selling prices only.
 const CUSTOM_OUTSOURCED = 'Outsourced service (custom)';
 const OUTSOURCED_UNITS = ['piece', 'sqm', 'metre', 'set', 'job'] as const;
-
-/** The outsourced order's own costs are the capturing sales person's to see: whoever it is for, who sourced the client, or who keyed it. */
-function ownsOutsourced(user: { id: number }, order: { channel: string; staffId: number; sourcedByStaffId: number | null; capturedById?: number | null }): boolean {
-  return order.channel === 'outsourced' && (order.staffId === user.id || order.sourcedByStaffId === user.id || order.capturedById === user.id);
-}
 
 async function customOutsourcedService() {
   const found = await prisma.service.findFirst({ where: { name: CUSTOM_OUTSOURCED } });
@@ -530,7 +527,7 @@ ordersRouter.get('/:id/margin', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { ...orderInclude } });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
-  if (!(await canSeeCosts(req.user!.role)) && !ownsOutsourced(req.user!, order)) return res.status(403).json({ error: 'The cost of this job is shown to the sales person it is for and to people who can see costs' });
+  if (!(await canSeeCosts(req.user!.role))) return res.status(403).json({ error: 'The cost and gross margin of a job are shown to people who can see costs (Finance, the General Manager and Admin)' });
   const costed = order.lineItems.filter((li) => li.supplierCost != null);
   if (!costed.length) return res.status(404).json({ error: 'No purchasing price has been entered on this order' });
   const billed = (await prisma.expense.aggregate({ where: { orderId: order.id }, _sum: { amount: true } }))._sum.amount ?? 0;

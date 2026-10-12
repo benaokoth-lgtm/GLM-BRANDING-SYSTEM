@@ -90,7 +90,9 @@ interface Statement {
   };
   outsourced: {
     commission: number;
-    jobs: { orderNo: string; customer: string; netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; orderTotal: number; moneyIn: number; commission: number }[];
+    /** False when the viewer may not see costs: a job then shows only what the client has paid and the commission it earned. */
+    detail?: boolean;
+    jobs: { orderNo: string; customer: string; netSales: number | null; netCost: number | null; grossProfit: number | null; marginPct: number | null; ratePct: number | null; orderTotal: number; moneyIn: number; commission: number }[];
   };
   film: { commission: number; sales: { orderNo: string; customer: string; metres: number; pricePerM: number; premiumPerM: number; orderTotal: number; moneyIn: number; commission: number }[] };
   artwork: { commission: number; jobs: { orderNo: string; customer: string; pieces: number; systemPerPiece: number; chargedPerPiece: number; orderTotal: number; moneyIn: number; commission: number }[] };
@@ -329,11 +331,15 @@ function StatementDetail({ s, config, you, open }: { s: Statement; config: Confi
                 <tr>
                   <th>Order</th>
                   <th>Customer</th>
-                  <th style={numStyle}>Net sales</th>
-                  <th style={numStyle}>Net cost</th>
-                  <th style={numStyle}>Gross profit</th>
-                  <th style={numStyle}>Margin</th>
-                  <th style={numStyle}>Share</th>
+                  {s.outsourced.detail !== false && (
+                    <>
+                      <th style={numStyle}>Net sales</th>
+                      <th style={numStyle}>Net cost</th>
+                      <th style={numStyle}>Gross profit</th>
+                      <th style={numStyle}>Margin</th>
+                      <th style={numStyle}>Share</th>
+                    </>
+                  )}
                   <th style={numStyle}>Paid so far</th>
                   <th style={numStyle}>Commission</th>
                 </tr>
@@ -343,11 +349,15 @@ function StatementDetail({ s, config, you, open }: { s: Statement; config: Confi
                   <tr key={j.orderNo}>
                     <td>{j.orderNo}</td>
                     <td>{j.customer}</td>
-                    <td style={numStyle}>{fmtKsh(j.netSales)}</td>
-                    <td style={numStyle}>{fmtKsh(j.netCost)}</td>
-                    <td style={numStyle}>{fmtKsh(j.grossProfit)}</td>
-                    <td style={numStyle}>{j.marginPct == null ? '—' : pct(j.marginPct)}</td>
-                    <td style={numStyle}>{pct(j.ratePct)}</td>
+                    {s.outsourced.detail !== false && (
+                      <>
+                        <td style={numStyle}>{j.netSales == null ? '—' : fmtKsh(j.netSales)}</td>
+                        <td style={numStyle}>{j.netCost == null ? '—' : fmtKsh(j.netCost)}</td>
+                        <td style={numStyle}>{j.grossProfit == null ? '—' : fmtKsh(j.grossProfit)}</td>
+                        <td style={numStyle}>{j.marginPct == null ? '—' : pct(j.marginPct)}</td>
+                        <td style={numStyle}>{j.ratePct == null ? '—' : pct(j.ratePct)}</td>
+                      </>
+                    )}
                     <td style={numStyle}>{fmtKsh(j.moneyIn)} of {fmtKsh(j.orderTotal)}</td>
                     <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(j.commission)}</td>
                   </tr>

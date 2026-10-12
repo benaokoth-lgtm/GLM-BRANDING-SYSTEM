@@ -12,6 +12,7 @@ import { settlePayout } from '../freelancePay';
 import { sendPayoutToPhone } from '../mpesaB2c';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { buildFreelanceStatements, commissionEnabled, getCommissionConfig } from '../commission';
+import { canSeeCosts } from '../costs';
 import { isB2cReady, loadMpesaConfig } from '../mpesaConfig';
 import { ownershipEnd } from '@glm/shared';
 
@@ -190,6 +191,7 @@ freelanceRouter.post('/clients/:id/release', manage, async (req, res) => {
 // ── The weekly statement and payouts ────────────────────────────────────────
 freelanceRouter.get('/statement', manage, async (req, res) => {
   const week = weekOf(req.query.week);
+  const seesCosts = await canSeeCosts(req.user!.role);
   const { config, statements } = await buildFreelanceStatements(week);
   const payouts = await prisma.freelancePayout.findMany({ where: { weekStart: week } });
   const byAgent = new Map(payouts.map((p) => [p.agentId, p]));
@@ -206,7 +208,9 @@ freelanceRouter.get('/statement', manage, async (req, res) => {
     lowMarginPct: config.freelanceLowMarginPct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
     b2cReady: isB2cReady(await loadMpesaConfig()),
-    statements: statements.map((s) => {
+    statements: statements.map((s0) => {
+      // the cost, profit and margin of an outsourced job are for people who can see costs
+      const s = seesCosts ? s0 : { ...s0, outsourcedJobs: s0.outsourcedJobs.map((j) => ({ orderNo: j.orderNo, customer: j.customer, orderTotal: j.orderTotal, moneyIn: j.moneyIn, commission: j.commission, netSales: null, netCost: null, grossProfit: null, marginPct: null, ratePct: null })) as never };
       const p = byAgent.get(s.agentId);
       const a = p ? latest.get(p.id) : undefined;
       return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, withholdingTax: p.withholdingTax, netPay: round2(p.amount - p.withholdingTax), paidOn: p.paidOn, paidMethod: p.paidMethod, receipt: p.receipt, mpesa: a ? { id: a.id, status: a.status, resultDesc: a.resultDesc, receipt: a.receipt, phone: a.phone, amount: a.amount } : null } : null };

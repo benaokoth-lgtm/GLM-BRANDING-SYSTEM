@@ -94,31 +94,34 @@ describe('the Outsourced Order', () => {
     assert.deepEqual(r.body.commission.bands, DEFAULT_OUTSOURCED_BANDS);
   });
 
-  it('captures a job from the price list, shows the salesperson its costs, and works out the margin', async () => {
+  it('captures a job from the price list; the costing and margin are for people who can see costs, not the salesperson', async () => {
     // 10 units at 2,320 (VAT incl) bought at 1,160 (VAT incl, claimable): sale 23,200, cost 11,600
     const r = await job('seller', 2320, 1160, true, 10, 23200);
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.match(r.body.orderNo, /^O-7\d{3}$/);
     assert.equal(r.body.channel, 'outsourced');
     assert.equal(r.body.totals.grandTotal, 23200);
-    assert.equal(r.body.lineItems[0].supplierCost, 1160); // the seller sees their own costing
+    assert.equal(r.body.lineItems[0].supplierCost, undefined); // the sales person enters the purchasing price but is not shown the costing back
     const id = r.body.id;
 
-    const m = (await call('seller', 'GET', `/orders/${id}/margin`)).body;
+    // the margin is for people who can see costs (Finance, the General Manager, Admin) — not the sales person it is for
+    assert.equal((await call('seller', 'GET', `/orders/${id}/margin`)).status, 403);
+    const m = (await call('mgr', 'GET', `/orders/${id}/margin`)).body;
     assert.deepEqual([m.saleIncl, m.netSales, m.costIncl, m.netCost, m.grossProfit, m.marginPct], [23200, 20000, 11600, 10000, 10000, 50]);
     assert.deepEqual([m.commission.ratePct, m.commission.fullAmount, m.commission.earnedSoFar, m.commission.enabled], [20, 2000, 2000, true]);
     assert.equal(m.lines[0].grossProfit, 10000);
 
-    // the order opened by the sales person carries the cost; someone else cannot open the margin
+    // the order opened by the sales person does not carry the cost; a manager who sees costs gets it
     const d = (await call('seller', 'GET', `/orders/${id}`)).body;
-    assert.equal(d.lineItems[0].supplierCost, 1160);
+    assert.equal(d.lineItems[0].supplierCost, undefined);
     assert.equal((await call('other', 'GET', `/orders/${id}/margin`)).status, 403);
-    assert.equal((await call('mgr', 'GET', `/orders/${id}/margin`)).status, 200); // a manager who sees costs
+    assert.equal((await call('mgr', 'GET', `/orders/${id}`)).body.lineItems[0].supplierCost, 1160);
+    assert.equal((await call('admin', 'GET', `/orders/${id}/margin`)).status, 200);
   });
 
   it('input VAT that cannot be claimed is a cost: the same job earns less', async () => {
     const r = await job('seller', 2320, 1160, false, 10, 23200);
-    const m = (await call('seller', 'GET', `/orders/${r.body.id}/margin`)).body;
+    const m = (await call('mgr', 'GET', `/orders/${r.body.id}/margin`)).body;
     assert.deepEqual([m.netCost, m.vatInCost, m.inputVatClaimed, m.grossProfit, m.marginPct], [11600, 1600, 0, 8400, 42]);
     assert.deepEqual([m.commission.ratePct, m.commission.fullAmount], [20, 1680]);
   });
@@ -151,7 +154,14 @@ describe('the Outsourced Order', () => {
     const s = await mine('other');
     assert.equal(s.outsourced.commission, 2840);
     assert.equal(s.total, 2840);
-    const rows = Object.fromEntries(s.outsourced.jobs.map((j: any) => [j.orderNo, j]));
+    // the sales person's own statement shows what each job earned them, not its cost, profit or margin
+    assert.equal(s.outsourced.detail, false);
+    const mineRows = Object.fromEntries(s.outsourced.jobs.map((j: any) => [j.orderNo, j]));
+    assert.deepEqual([mineRows[a.body.orderNo].commission, mineRows[a.body.orderNo].moneyIn, mineRows[a.body.orderNo].grossProfit, mineRows[a.body.orderNo].netCost, mineRows[a.body.orderNo].marginPct, mineRows[a.body.orderNo].ratePct], [2000, 23200, null, null, null, null]);
+    // a manager who sees costs has the whole of it
+    const team = (await call('mgr', 'GET', `/commission/statement?period=${period}`)).body.statements.find((x: any) => x.staffId === ids.other);
+    assert.equal(team.outsourced.detail, true);
+    const rows = Object.fromEntries(team.outsourced.jobs.map((j: any) => [j.orderNo, j]));
     assert.deepEqual([rows[a.body.orderNo].grossProfit, rows[a.body.orderNo].marginPct, rows[a.body.orderNo].ratePct, rows[a.body.orderNo].commission], [10000, 50, 20, 2000]);
     assert.deepEqual([rows[b.body.orderNo].grossProfit, rows[b.body.orderNo].commission], [8400, 840]);
     assert.equal(rows[d.body.orderNo].commission, 0);
@@ -161,7 +171,7 @@ describe('the Outsourced Order', () => {
     // a supplier bill larger than the quote is a cost too: the profit, the margin and the commission fall
     const bill = await call('mgr', 'POST', `/orders/${a.body.id}/supplier-bills`, { supplierName: 'Print House', amount: 13920, paidNow: 13920, method: 'Bank Transfer' });
     assert.equal(bill.status, 201, JSON.stringify(bill.body));
-    const m = (await call('other', 'GET', `/orders/${a.body.id}/margin`)).body;
+    const m = (await call('mgr', 'GET', `/orders/${a.body.id}/margin`)).body;
     assert.deepEqual([m.netCost, m.grossProfit, m.marginPct], [12000, 8000, 40]); // 13,920 incl. VAT claimed back = 12,000
     assert.equal((await mine('other')).outsourced.commission, 1600 + 840);
   });

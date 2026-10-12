@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react';
-import { EXPENSE_METHODS, FREELANCE_PAY_METHODS, addWeeks, fmtDate, fmtKsh, todayStr, weekStart } from '@glm/shared';
+import { EXPENSE_METHODS, FREELANCE_PAY_METHODS, addWeeks, fmtDate, fmtKsh, fmtNum, todayStr, weekStart } from '@glm/shared';
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from '../pages/accounting/shared';
 
@@ -22,6 +22,9 @@ interface Statement {
   premiumNet: number;
   baseCommission: number;
   premiumCommission: number;
+  /** Outsourced orders they brought: a share of each job's net gross profit, on what the client has paid the company. */
+  outsourcedCommission: number;
+  outsourcedJobs: { orderNo: string; customer: string; netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; orderTotal: number; moneyIn: number; commission: number }[];
   belowBaseNet: number;
   commission: number;
   /** Withholding tax: the rate for this person, the tax deducted, and what they are paid after it. */
@@ -230,7 +233,11 @@ function WeekTab() {
                           <td style={numStyle}>{s.belowBaseNet > 0 ? fmtKsh(s.belowBaseNet) : '—'}</td>
                           <td style={numStyle}>
                             {fmtKsh(s.commission)}
-                            {s.premiumCommission > 0 && <div className="text-muted" style={{ fontSize: 11 }}>{fmtKsh(s.baseCommission)} bands + {fmtKsh(s.premiumCommission)} above base</div>}
+                            {(s.premiumCommission > 0 || s.outsourcedCommission > 0) && (
+                              <div className="text-muted" style={{ fontSize: 11 }}>
+                                {fmtKsh(s.baseCommission)} bands{s.premiumCommission > 0 ? ` + ${fmtKsh(s.premiumCommission)} above base` : ''}{s.outsourcedCommission > 0 ? ` + ${fmtKsh(s.outsourcedCommission)} outsourced jobs (on profit)` : ''}
+                              </div>
+                            )}
                           </td>
                           <td style={numStyle}>
                             {s.withholdingTax > 0 ? fmtKsh(s.withholdingTax) : '—'}
@@ -265,6 +272,42 @@ function WeekTab() {
                                 <p className="note" style={{ marginTop: 0 }}>
                                   In the <b>{s.band.rate}%</b> band{s.band.toNext != null && s.band.nextRate != null ? <> — {fmtKsh(s.band.toNext)} more takes the next slice to {s.band.nextRate}%</> : null}.
                                 </p>
+                                {s.outsourcedJobs.length > 0 && (
+                                  <>
+                                    <div className="card-kicker">Outsourced jobs — a share of the gross profit, on what the client has paid the company</div>
+                                    <table className="table">
+                                      <thead>
+                                        <tr>
+                                          <th>Order</th>
+                                          <th>Customer</th>
+                                          <th style={numStyle}>Net sales</th>
+                                          <th style={numStyle}>Net cost</th>
+                                          <th style={numStyle}>Gross profit</th>
+                                          <th style={numStyle}>Margin</th>
+                                          <th style={numStyle}>Share</th>
+                                          <th style={numStyle}>Paid to us</th>
+                                          <th style={numStyle}>Commission</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {s.outsourcedJobs.map((j) => (
+                                          <tr key={j.orderNo}>
+                                            <td>{j.orderNo}</td>
+                                            <td>{j.customer}</td>
+                                            <td style={numStyle}>{fmtKsh(j.netSales)}</td>
+                                            <td style={numStyle}>{fmtKsh(j.netCost)}</td>
+                                            <td style={numStyle}>{fmtKsh(j.grossProfit)}</td>
+                                            <td style={numStyle}>{j.marginPct == null ? '—' : `${fmtNum(j.marginPct, 1)}%`}</td>
+                                            <td style={numStyle}>{j.ratePct}%</td>
+                                            <td style={numStyle}>{fmtKsh(j.moneyIn)} of {fmtKsh(j.orderTotal)}</td>
+                                            <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(j.commission)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </>
+                                )}
+                                {s.orders.length > 0 && (
                                 <table className="table">
                                   <thead>
                                     <tr>
@@ -291,6 +334,7 @@ function WeekTab() {
                                     ))}
                                   </tbody>
                                 </table>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -581,11 +625,85 @@ export function PeopleTab() {
 }
 
 // ── Tax withheld ────────────────────────────────────────────────────────────
+interface AnnualData {
+  year: number;
+  people: { agentId: number; agentName: string; kraPin: string; nationalId: string; weeks: number; gross: number; withheld: number; net: number }[];
+  totals: { gross: number; withheld: number; net: number };
+  missingPin: string[];
+  missingId: string[];
+}
+
 interface TaxData {
   month: string;
   rows: { id: number; paidOn: string | null; agentName: string; kraPin: string; nationalId: string; gross: number; rate: number; withheld: number; net: number; method: string | null; reference: string | null }[];
   totals: { gross: number; withheld: number; net: number };
   missingPin: string[];
+}
+
+// What each freelance sales person was paid in the year and the tax withheld: for their own return, and for the company's year-end (commission is a deductible expense when the tax
+// withheld has been paid over and the payee is identified).
+function AnnualCard() {
+  const [year, setYear] = useState(Number(todayStr().slice(0, 4)));
+  const { data, error, loading } = useLoad<AnnualData>(`/freelance/annual?year=${year}`);
+  return (
+    <Card title={`Freelancers' year — ${year}`} hint="What each was paid in the calendar year, the tax withheld, and what they received — the figures for their tax return and for your year-end. Print it for each person, or for your accountant.">
+      <div className="field no-print" style={{ margin: '0 0 var(--space-2)', maxWidth: 140 }}>
+        <label>Year</label>
+        <input className="input" type="number" min={2000} max={2100} value={year} onChange={(e) => e.target.value && setYear(Number(e.target.value))} />
+      </div>
+      {!data ? (
+        <Loading loading={loading} error={error} />
+      ) : data.people.length === 0 ? (
+        <p className="note" style={{ margin: 0 }}>No freelance commission was paid in {data.year}.</p>
+      ) : (
+        <>
+          {(data.missingPin.length > 0 || data.missingId.length > 0) && (
+            <p className="note" style={{ color: 'var(--color-error)' }}>
+              {data.missingPin.length > 0 && <>No KRA PIN for {data.missingPin.join(', ')}. </>}
+              {data.missingId.length > 0 && <>No national ID for {data.missingId.join(', ')}. </>}
+              Add them under Freelance sales persons → Edit: the tax withheld cannot be credited to them, and the expense is harder to defend, without them.
+            </p>
+          )}
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Freelance sales person</th>
+                  <th>KRA PIN</th>
+                  <th>National ID</th>
+                  <th style={numStyle}>Weeks paid</th>
+                  <th style={numStyle}>Commission</th>
+                  <th style={numStyle}>Tax withheld</th>
+                  <th style={numStyle}>Paid to them</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.people.map((p) => (
+                  <tr key={p.agentId}>
+                    <td>{p.agentName}</td>
+                    <td>{p.kraPin || <Tag tone="bad">missing</Tag>}</td>
+                    <td>{p.nationalId || <Tag tone="bad">missing</Tag>}</td>
+                    <td style={numStyle}>{p.weeks}</td>
+                    <td style={numStyle}>{fmtKsh(p.gross)}</td>
+                    <td style={numStyle}>{fmtKsh(p.withheld)}</td>
+                    <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(p.net)}</td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={4}><b>Total</b></td>
+                  <td style={numStyle}><b>{fmtKsh(data.totals.gross)}</b></td>
+                  <td style={numStyle}><b>{fmtKsh(data.totals.withheld)}</b></td>
+                  <td style={numStyle}><b>{fmtKsh(data.totals.net)}</b></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button type="button" className="btn btn-secondary btn-sm no-print" style={{ marginTop: 'var(--space-2)' }} onClick={() => window.print()}>Print</button>
+          <p className="note">The commission is booked as a Freelance Commission expense, so it already lowers the profit the income tax is worked out on (Compliance → Corporation tax). The 30% is applied to the profit left after it.</p>
+        </>
+      )}
+    </Card>
+  );
 }
 
 function TaxTab() {
@@ -686,7 +804,12 @@ export default function FreelancePanel() {
           Tax withheld
         </button>
       </div>
-      {part === 'week' ? <WeekTab /> : part === 'people' ? <PeopleTab /> : <TaxTab />}
+      {part === 'week' ? <WeekTab /> : part === 'people' ? <PeopleTab /> : (
+        <>
+          <TaxTab />
+          <AnnualCard />
+        </>
+      )}
     </>
   );
 }

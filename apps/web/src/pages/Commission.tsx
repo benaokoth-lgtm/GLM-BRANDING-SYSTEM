@@ -8,6 +8,7 @@ import { useCatalog } from '../hooks/useCatalog';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from './accounting/shared';
 import FreelancePanel from '../components/FreelancePanel';
 import PayGuide from '../components/PayGuide';
+import BigSaleScenario from '../components/BigSaleScenario';
 
 // Sales commission. Everyone who captures orders sees their own month: what they earned, how, and what they have sold. Managers also
 // see the whole team, approve and pay the month, manage which client belongs to whom, and set the rates.
@@ -1214,6 +1215,10 @@ function RatesTab() {
           bands={freelance}
           onChange={setFreelance}
         />
+        <BigSaleScenario bands={toBands(freelance)} whtRate={Number(flTax) || 0} />
+        <p className="note" style={{ margin: 0 }}>
+          Freelancers who bring an <b>Outsourced Order</b> are not paid on this scale: they get the Outsourced jobs scale (above) as a share of the job's net gross profit, only on what the client pays the company.
+        </p>
         <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
           <div className="field" style={{ margin: 0 }}>
             <label>Freelancers: % of the amount charged above base that they keep</label>

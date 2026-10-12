@@ -201,6 +201,7 @@ freelanceRouter.get('/statement', manage, async (req, res) => {
     weekEnd: weekEnd(week),
     open: weekEnd(week) >= todayStr(), // the week is not over, so more money may still arrive
     bands: config.freelanceBands,
+    outsourcedBands: config.outsourcedBands,
     premiumPct: config.freelancePremiumPct,
     lowMarginPct: config.freelanceLowMarginPct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
@@ -242,7 +243,7 @@ freelanceRouter.post('/payouts/approve', manage, async (req, res) => {
       amount: s.commission,
       withholdingRate: s.whtRate,
       withholdingTax: s.withholdingTax,
-      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, belowBaseNet: s.belowBaseNet, orders: s.orders }),
+      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, outsourcedCommission: s.outsourcedCommission, outsourcedJobs: s.outsourcedJobs, belowBaseNet: s.belowBaseNet, orders: s.orders }),
       status: 'Approved',
       approvedByName: req.user!.name,
       approvedAt: new Date(),
@@ -366,6 +367,36 @@ freelanceRouter.get('/withholding', manage, async (req, res) => {
     rows: out,
     totals: { gross: round2(out.reduce((a, r) => a + r.gross, 0)), withheld: round2(out.reduce((a, r) => a + r.withheld, 0)), net: round2(out.reduce((a, r) => a + r.net, 0)) },
     missingPin: [...new Set(out.filter((r) => r.withheld > 0 && !r.kraPin).map((r) => r.agentName))],
+  });
+});
+
+// ── The year's statement for each freelance sales person ───────────────────
+// What each was paid in a calendar year, the tax withheld and what they received: the figures for the freelancer's own return and for the company's year-end — the commission
+// is a deductible business expense only when the tax withheld on it has been paid over and the payee is identified (KRA PIN, national ID), so the people missing a PIN are listed.
+freelanceRouter.get('/annual', manage, async (req, res) => {
+  const y = Number(req.query.year);
+  const year = Number.isInteger(y) && y >= 2000 && y <= 2100 ? y : Number(todayStr().slice(0, 4));
+  const rows = await prisma.freelancePayout.findMany({
+    where: { status: 'Paid', paidOn: { gte: `${year}-01-01`, lte: `${year}-12-31` } },
+    include: { agent: { select: { id: true, name: true, kraPin: true, nationalId: true, phone: true } } },
+    orderBy: [{ paidOn: 'asc' }, { id: 'asc' }],
+  });
+  const by = new Map<number, { agentId: number; agentName: string; kraPin: string; nationalId: string; weeks: number; gross: number; withheld: number; net: number }>();
+  for (const r of rows) {
+    const cur = by.get(r.agentId) ?? { agentId: r.agentId, agentName: r.agent.name, kraPin: r.agent.kraPin ?? '', nationalId: r.agent.nationalId ?? '', weeks: 0, gross: 0, withheld: 0, net: 0 };
+    cur.weeks += 1;
+    cur.gross = round2(cur.gross + r.amount);
+    cur.withheld = round2(cur.withheld + r.withholdingTax);
+    cur.net = round2(cur.gross - cur.withheld);
+    by.set(r.agentId, cur);
+  }
+  const people = [...by.values()].sort((a, b) => b.gross - a.gross || a.agentName.localeCompare(b.agentName));
+  res.json({
+    year,
+    people,
+    totals: { gross: round2(people.reduce((a, r) => a + r.gross, 0)), withheld: round2(people.reduce((a, r) => a + r.withheld, 0)), net: round2(people.reduce((a, r) => a + r.net, 0)) },
+    missingPin: people.filter((r) => r.withheld > 0 && !r.kraPin).map((r) => r.agentName),
+    missingId: people.filter((r) => !r.nationalId).map((r) => r.agentName),
   });
 });
 

@@ -252,6 +252,17 @@ export const DEFAULT_FREELANCE_BANDS: Band[] = [
   { from: 0, rate: 2 },
   { from: 50000, rate: 3 },
   { from: 150000, rate: 4 },
+  // Large deals are bargained down to a thin margin, so the marginal share falls again: a single sale of KES 10 million (net 8.62 million) pays about 1.85% in all —
+  // 159,207 — rather than the 4% a flat top band would give (about 345,000).
+  { from: 500000, rate: 3 },
+  { from: 2000000, rate: 2 },
+  { from: 5000000, rate: 1 },
+];
+/** The scale freelancers were first given (up to 150,000 and flat above). A saved scale that is exactly this one has never been edited, so it follows the current defaults. */
+export const LEGACY_FREELANCE_BANDS: Band[] = [
+  { from: 0, rate: 2 },
+  { from: 50000, rate: 3 },
+  { from: 150000, rate: 4 },
 ];
 /** The % of the amount charged above base that the freelancer keeps. */
 export const DEFAULT_FREELANCE_PREMIUM_PCT = 30;

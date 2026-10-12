@@ -65941,6 +65941,16 @@ function withholdingOn(gross, ratePct) {
 var DEFAULT_FREELANCE_BANDS = [
   { from: 0, rate: 2 },
   { from: 5e4, rate: 3 },
+  { from: 15e4, rate: 4 },
+  // Large deals are bargained down to a thin margin, so the marginal share falls again: a single sale of KES 10 million (net 8.62 million) pays about 1.85% in all —
+  // 159,207 — rather than the 4% a flat top band would give (about 345,000).
+  { from: 5e5, rate: 3 },
+  { from: 2e6, rate: 2 },
+  { from: 5e6, rate: 1 }
+];
+var LEGACY_FREELANCE_BANDS = [
+  { from: 0, rate: 2 },
+  { from: 5e4, rate: 3 },
   { from: 15e4, rate: 4 }
 ];
 var DEFAULT_FREELANCE_PREMIUM_PCT = 30;
@@ -66488,7 +66498,7 @@ async function getCommissionConfig(db = prisma) {
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
-    freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
+    freelanceBands: ((saved) => JSON.stringify(saved) === JSON.stringify(LEGACY_FREELANCE_BANDS) ? DEFAULT_FREELANCE_BANDS : saved)(readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS)),
     freelancePremiumPct: row?.freelancePremiumPct ?? DEFAULT_FREELANCE_PREMIUM_PCT,
     freelanceLowMarginPct: row?.freelanceLowMarginPct ?? DEFAULT_FREELANCE_LOW_MARGIN_PCT,
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
@@ -66835,16 +66845,28 @@ async function buildFreelanceStatements(weekStartDate, only) {
   for (const p of payments) flow(p.orderId).received += p.amount;
   for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
   const orders = flows.size ? await prisma.order.findMany({ where: { id: { in: [...flows.keys()] }, freelanceAgentId: only ?? { not: null } }, include: orderInc }) : [];
+  const outIds = orders.filter((o) => o.channel === "outsourced").map((o) => o.id);
+  const billedRows = outIds.length ? await prisma.expense.groupBy({ by: ["orderId"], where: { orderId: { in: outIds } }, _sum: { amount: true } }) : [];
+  const billed = new Map(billedRows.map((r) => [r.orderId, r._sum.amount ?? 0]));
   const people = /* @__PURE__ */ new Map();
   for (const o of orders) {
     const id = o.freelanceAgentId;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: "", status: "", phone: "", mpesaNumber: "", payMethod: "M-Pesa", kraPin: "", weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: "", status: "", phone: "", mpesaNumber: "", payMethod: "M-Pesa", kraPin: "", weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, outsourcedCommission: 0, outsourcedJobs: [], commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id);
     const net8 = f.received - f.refunded;
+    if (o.channel === "outsourced") {
+      const total = orderTotal(o);
+      const job = outsourcedJobFigures(o, billed.get(o.id) ?? 0);
+      const oc = outsourcedCommission(job.figures, config.outsourcedBands, total > 0 ? Math.max(0, net8) / total : 0);
+      st.received = round2(st.received + net8);
+      st.outsourcedCommission = round2(st.outsourcedCommission + oc.earned);
+      st.outsourcedJobs.push({ orderNo: o.orderNo, customer: customerOf(o), netSales: job.figures.netSales, netCost: job.figures.netCost, grossProfit: job.figures.grossProfit, marginPct: job.figures.marginPct, ratePct: oc.ratePct, orderTotal: round2(total), moneyIn: round2(net8), commission: oc.earned });
+      continue;
+    }
     const share = o.freelanceQualifyingShare;
     const qual = net8 * share / (1 + VAT_RATE);
     const premiumShare = Math.min(share, Math.max(0, o.freelancePremiumShare));
@@ -66864,7 +66886,7 @@ async function buildFreelanceStatements(weekStartDate, only) {
     const basis = Math.max(0, st.baseNet);
     st.baseCommission = bandedAmount(config.freelanceBands, basis);
     st.premiumCommission = round2(Math.max(0, st.premiumNet) * config.freelancePremiumPct / 100);
-    st.commission = round2(st.baseCommission + st.premiumCommission);
+    st.commission = round2(st.baseCommission + st.premiumCommission + st.outsourcedCommission);
     st.band = bandPosition(config.freelanceBands, basis);
   }
   const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });
@@ -80079,6 +80101,7 @@ freelanceRouter.get("/statement", manage2, async (req, res) => {
     open: weekEnd(week) >= todayStr(),
     // the week is not over, so more money may still arrive
     bands: config.freelanceBands,
+    outsourcedBands: config.outsourcedBands,
     premiumPct: config.freelancePremiumPct,
     lowMarginPct: config.freelanceLowMarginPct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
@@ -80118,7 +80141,7 @@ freelanceRouter.post("/payouts/approve", manage2, async (req, res) => {
       amount: s.commission,
       withholdingRate: s.whtRate,
       withholdingTax: s.withholdingTax,
-      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, belowBaseNet: s.belowBaseNet, orders: s.orders }),
+      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, outsourcedCommission: s.outsourcedCommission, outsourcedJobs: s.outsourcedJobs, belowBaseNet: s.belowBaseNet, orders: s.orders }),
       status: "Approved",
       approvedByName: req.user.name,
       approvedAt: /* @__PURE__ */ new Date()
@@ -80220,6 +80243,32 @@ freelanceRouter.get("/withholding", manage2, async (req, res) => {
     rows: out,
     totals: { gross: round2(out.reduce((a2, r) => a2 + r.gross, 0)), withheld: round2(out.reduce((a2, r) => a2 + r.withheld, 0)), net: round2(out.reduce((a2, r) => a2 + r.net, 0)) },
     missingPin: [...new Set(out.filter((r) => r.withheld > 0 && !r.kraPin).map((r) => r.agentName))]
+  });
+});
+freelanceRouter.get("/annual", manage2, async (req, res) => {
+  const y = Number(req.query.year);
+  const year = Number.isInteger(y) && y >= 2e3 && y <= 2100 ? y : Number(todayStr().slice(0, 4));
+  const rows = await prisma.freelancePayout.findMany({
+    where: { status: "Paid", paidOn: { gte: `${year}-01-01`, lte: `${year}-12-31` } },
+    include: { agent: { select: { id: true, name: true, kraPin: true, nationalId: true, phone: true } } },
+    orderBy: [{ paidOn: "asc" }, { id: "asc" }]
+  });
+  const by = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const cur = by.get(r.agentId) ?? { agentId: r.agentId, agentName: r.agent.name, kraPin: r.agent.kraPin ?? "", nationalId: r.agent.nationalId ?? "", weeks: 0, gross: 0, withheld: 0, net: 0 };
+    cur.weeks += 1;
+    cur.gross = round2(cur.gross + r.amount);
+    cur.withheld = round2(cur.withheld + r.withholdingTax);
+    cur.net = round2(cur.gross - cur.withheld);
+    by.set(r.agentId, cur);
+  }
+  const people = [...by.values()].sort((a2, b) => b.gross - a2.gross || a2.agentName.localeCompare(b.agentName));
+  res.json({
+    year,
+    people,
+    totals: { gross: round2(people.reduce((a2, r) => a2 + r.gross, 0)), withheld: round2(people.reduce((a2, r) => a2 + r.withheld, 0)), net: round2(people.reduce((a2, r) => a2 + r.net, 0)) },
+    missingPin: people.filter((r) => r.withheld > 0 && !r.kraPin).map((r) => r.agentName),
+    missingId: people.filter((r) => !r.nationalId).map((r) => r.agentName)
   });
 });
 freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {

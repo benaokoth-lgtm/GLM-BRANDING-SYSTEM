@@ -368,7 +368,7 @@ describe('freelance sales persons', () => {
       const empty = (await call('boss', 'GET', '/freelance/statement?week=2020-01-06')).body;
       assert.equal(empty.statements.length, 0);
       const cfg = (await call('boss', 'GET', '/commission/settings')).body;
-      assert.deepEqual(cfg.freelanceBands, [{ from: 0, rate: 2 }, { from: 50000, rate: 3 }, { from: 150000, rate: 4 }]);
+      assert.deepEqual(cfg.freelanceBands, [{ from: 0, rate: 2 }, { from: 50000, rate: 3 }, { from: 150000, rate: 4 }, { from: 500000, rate: 3 }, { from: 2000000, rate: 2 }, { from: 5000000, rate: 1 }]);
       const put = await call('admin', 'PUT', '/commission/settings', { generalBands: cfg.generalBands, filmBands: cfg.filmBands, artworkRatePct: 50, ownershipMonths: 12, freelanceBands: [{ from: 0, rate: 4 }] });
       assert.equal(put.status, 200);
       assert.deepEqual(put.body.freelanceBands, [{ from: 0, rate: 4 }]);

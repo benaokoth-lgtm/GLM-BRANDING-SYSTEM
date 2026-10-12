@@ -16,6 +16,7 @@ import {
   DEFAULT_FILM_BANDS,
   DEFAULT_GENERAL_BANDS,
   DEFAULT_FREELANCE_BANDS,
+  LEGACY_FREELANCE_BANDS,
   DEFAULT_FREELANCE_WHT_RATE,
   DEFAULT_OWNERSHIP_MONTHS,
   DEFAULT_TARGET_MODE,
@@ -144,7 +145,7 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
-    freelanceBands: readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS),
+    freelanceBands: ((saved) => (JSON.stringify(saved) === JSON.stringify(LEGACY_FREELANCE_BANDS) ? DEFAULT_FREELANCE_BANDS : saved))(readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS)),
     freelancePremiumPct: row?.freelancePremiumPct ?? DEFAULT_FREELANCE_PREMIUM_PCT,
     freelanceLowMarginPct: row?.freelanceLowMarginPct ?? DEFAULT_FREELANCE_LOW_MARGIN_PCT,
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
@@ -703,9 +704,12 @@ export interface FreelanceStatement {
   baseNet: number;
   /** Net of VAT charged above base prices on those lines: the premium. */
   premiumNet: number;
-  /** The two parts of the commission. */
+  /** The commission is in up to three parts. */
   baseCommission: number;
   premiumCommission: number;
+  /** Outsourced orders they brought: a share of each job's NET gross profit, as the client pays the company (not on sales). */
+  outsourcedCommission: number;
+  outsourcedJobs: { orderNo: string; customer: string; netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; orderTotal: number; moneyIn: number; commission: number }[];
   /** Net of VAT that did not qualify (sold below a base price): earns nothing. */
   belowBaseNet: number;
   commission: number;
@@ -738,17 +742,31 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
   for (const p of payments) flow(p.orderId).received += p.amount;
   for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
   const orders = flows.size ? await prisma.order.findMany({ where: { id: { in: [...flows.keys()] }, freelanceAgentId: only ?? { not: null } }, include: orderInc }) : [];
+  // what suppliers have billed on the outsourced orders (a bill above the quote is a cost too)
+  const outIds = orders.filter((o) => o.channel === 'outsourced').map((o) => o.id);
+  const billedRows = outIds.length ? await prisma.expense.groupBy({ by: ['orderId'], where: { orderId: { in: outIds } }, _sum: { amount: true } }) : [];
+  const billed = new Map(billedRows.map((r) => [r.orderId as number, r._sum.amount ?? 0]));
 
   const people = new Map<number, FreelanceStatement>();
   for (const o of orders) {
     const id = o.freelanceAgentId!;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, outsourcedCommission: 0, outsourcedJobs: [], commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id)!;
     const net = f.received - f.refunded;
+    if (o.channel === 'outsourced') {
+      // paid on the job's net gross profit (the same scale as staff), only on what the client has paid the company — never on the sale
+      const total = orderTotal(o);
+      const job = outsourcedJobFigures(o, billed.get(o.id) ?? 0);
+      const oc = outsourcedCommission(job.figures, config.outsourcedBands, total > 0 ? Math.max(0, net) / total : 0);
+      st.received = round2(st.received + net);
+      st.outsourcedCommission = round2(st.outsourcedCommission + oc.earned);
+      st.outsourcedJobs.push({ orderNo: o.orderNo, customer: customerOf(o), netSales: job.figures.netSales, netCost: job.figures.netCost, grossProfit: job.figures.grossProfit, marginPct: job.figures.marginPct, ratePct: oc.ratePct, orderTotal: round2(total), moneyIn: round2(net), commission: oc.earned });
+      continue;
+    }
     const share = o.freelanceQualifyingShare;
     const qual = (net * share) / (1 + VAT_RATE);
     // the order's qualifying part divides into the base price (banded; thin-margin lines at a reduced weight) and the premium above it (a share)
@@ -769,7 +787,7 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
     const basis = Math.max(0, st.baseNet);
     st.baseCommission = bandedAmount(config.freelanceBands, basis);
     st.premiumCommission = round2((Math.max(0, st.premiumNet) * config.freelancePremiumPct) / 100);
-    st.commission = round2(st.baseCommission + st.premiumCommission);
+    st.commission = round2(st.baseCommission + st.premiumCommission + st.outsourcedCommission);
     st.band = bandPosition(config.freelanceBands, basis);
   }
   const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });

@@ -18,7 +18,7 @@ async function call(method: string, path: string, body?: unknown) {
 const filmServices = () => prisma.service.findMany({ where: { OR: [{ name: 'DTF Sheet (per metre)' }, { soldViaDtfModule: true, unit: 'metre' }] } });
 const sell = async (rollId: string) => call('POST', '/dtf/sales', { rollId, client: 'Service Client', metres: 2 });
 
-describe('the DTF film service on the price list', () => {
+describe('the DTF film and artwork services on the price list', () => {
   let rollId = '';
   before(async () => {
     await prisma.role.create({ data: { name: 'Lead (dtf service test)', canAccessDtf: true, canManageDtf: true, canCaptureOrders: true } });
@@ -60,6 +60,30 @@ describe('the DTF film service on the price list', () => {
 
     // put the price list back as it was
     await prisma.service.update({ where: { id: created!.id }, data: { name: 'DTF Sheet (per metre)' } });
+    for (const s of existing) await prisma.service.update({ where: { id: s.id }, data: { name: s.name, soldViaDtfModule: s.soldViaDtfModule } });
+  });
+  it('the same for the artwork service ("DTF Printing"): created when missing, a renamed one is used, a retired one is brought back', async () => {
+    const printServices = () => prisma.service.findMany({ where: { OR: [{ name: 'DTF Printing' }, { soldViaDtfModule: true, unit: 'sqm' }] } });
+    const job = () => call('POST', '/dtf/jobs', { rollId, client: 'Artwork Client', runningMetres: 1, pieces: 36, heatPressFee: 20, amountPaid: 0 });
+    const existing = await printServices();
+    for (const s of existing) await prisma.service.update({ where: { id: s.id }, data: { name: `held print ${s.id}`, soldViaDtfModule: false } });
+
+    const first = await job();
+    assert.equal(first.status, 201, JSON.stringify(first.body));
+    const created = await prisma.service.findFirst({ where: { name: 'DTF Printing' } });
+    assert.ok(created, 'the service was created');
+    assert.deepEqual([created!.unit, created!.soldViaDtfModule, created!.chargesPressingFee, created!.retired], ['sqm', true, true, false]);
+
+    await prisma.service.update({ where: { id: created!.id }, data: { name: 'DTF Artwork (renamed)' } });
+    assert.equal((await job()).status, 201);
+    assert.equal(await prisma.service.count({ where: { name: 'DTF Printing' } }), 0);
+    assert.equal(await prisma.service.count({ where: { soldViaDtfModule: true, unit: 'sqm' } }), 1);
+
+    await prisma.service.update({ where: { id: created!.id }, data: { retired: true } });
+    assert.equal((await job()).status, 201);
+    assert.equal((await prisma.service.findUniqueOrThrow({ where: { id: created!.id } })).retired, false);
+
+    await prisma.service.update({ where: { id: created!.id }, data: { name: 'DTF Printing' } });
     for (const s of existing) await prisma.service.update({ where: { id: s.id }, data: { name: s.name, soldViaDtfModule: s.soldViaDtfModule } });
   });
 });

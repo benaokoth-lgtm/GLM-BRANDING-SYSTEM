@@ -66,7 +66,7 @@ describe('commission paid by pay bands', () => {
     const cfg = (await call('boss', 'GET', '/commission/settings')).body;
     assert.equal(cfg.generalMode, 'steps');
     assert.equal(cfg.performanceFloor, 120000);
-    assert.deepEqual(cfg.payBands.map((b: any) => [b.from, b.payout]), [[0, 0], [30000, 12000], [60000, 18000], [90000, 24000], [120000, 30000], [150000, 36000], [180000, 42000], [210000, 48000]]);
+    assert.deepEqual(cfg.payBands.map((b: any) => [b.from, b.payout]), [[0, 0], [30000, 12000], [60000, 18000], [90000, 24000], [120000, 35000], [180000, 38000], [240000, 42000], [300000, 48000], [360000, 54000], [400000, 58000], [500000, 60000]]);
   });
 
   it('below the first band nothing is paid, and the person is flagged for performance improvement', async () => {
@@ -92,8 +92,8 @@ describe('commission paid by pay bands', () => {
     assert.equal(s.scheme.belowFloor, true);
     assert.equal((await sale('zed', 59000)).status, 201); // 120,000: band 4, the anchor, and out of the warning
     s = await mine('zed');
-    assert.deepEqual([s.general.commission, s.scheme.step.index, s.scheme.belowFloor], [30000, 4, false]);
-    assert.equal(s.total, 30000);
+    assert.deepEqual([s.general.commission, s.scheme.step.index, s.scheme.belowFloor], [35000, 4, false]);
+    assert.equal(s.total, 35000);
   });
 
   it('a band starts exactly at its figure', async () => {
@@ -106,12 +106,41 @@ describe('commission paid by pay bands', () => {
     const team = (await call('boss', 'GET', `/commission/statement?period=${period}`)).body;
     const low = team.statements.find((x: any) => x.staffId === ids.low);
     assert.equal(low.scheme.belowFloor, true);
-    assert.equal(team.statements.find((x: any) => x.staffId === ids.zed).total, 30000);
+    assert.equal(team.statements.find((x: any) => x.staffId === ids.zed).total, 35000);
     const monthly = (await call('boss', 'GET', `/commission/monthly?year=${period.slice(0, 4)}`)).body;
     const row = monthly.months.find((m: any) => m.period === period).rows;
     assert.equal(row.find((r: any) => r.staffId === ids.low).belowFloor, true);
     assert.equal(row.find((r: any) => r.staffId === ids.low).band, 0);
-    assert.deepEqual([row.find((r: any) => r.staffId === ids.zed).belowFloor, row.find((r: any) => r.staffId === ids.zed).commission], [false, 30000]);
+    assert.deepEqual([row.find((r: any) => r.staffId === ids.zed).belowFloor, row.find((r: any) => r.staffId === ids.zed).commission], [false, 35000]);
+  });
+
+  it('the pay guide is built from the current settings: change the bands or the payday and it follows', async () => {
+    const guide = async (who: string) => (await call(who, 'GET', '/commission/pay-guide')).body;
+    let g = await guide('zed'); // any employee can read it
+    assert.deepEqual(g.config.payBands.map((b: any) => [b.from, b.payout]), [[0, 0], [30000, 12000], [60000, 18000], [90000, 24000], [120000, 35000], [180000, 38000], [240000, 42000], [300000, 48000], [360000, 54000], [400000, 58000], [500000, 60000]]);
+    assert.equal(g.config.payday, 5);
+    // take-home examples: the minimum wage first, then each higher pay level, each worked out by the payroll's own rules
+    assert.equal(g.examples[0].label, 'Minimum wage');
+    assert.equal(g.examples[0].gross, 16113.75);
+    assert.deepEqual(g.examples.slice(1).map((e: any) => e.gross), [18000, 24000, 35000, 38000, 42000, 48000, 54000, 58000, 60000]);
+    for (const e of g.examples) assert.ok(Math.abs(e.nssf + e.shif + e.housingLevy + e.paye + e.net - e.gross) <= 0.02, 'deductions + take-home add up to the gross (within a cent of rounding each way)');
+    assert.ok(g.film.highEarns > g.film.lowEarns && g.film.lowEarns > 0);
+    assert.ok(g.artwork.earns > 0);
+
+    // an Admin changes the bands and the payday: the guide shows them straight away
+    const base = { generalBands: [{ from: 0, rate: 2 }], filmBands: [{ from: 0, rate: 10 }], artworkRatePct: 50, ownershipMonths: 12 };
+    const changed = await call('admin', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 0, payout: 0 }, { from: 40000, payout: 20000 }, { from: 100000, payout: 40000 }], payday: 10 });
+    assert.equal(changed.status, 200);
+    g = await guide('zed');
+    assert.deepEqual(g.config.payBands, [{ from: 0, payout: 0 }, { from: 40000, payout: 20000 }, { from: 100000, payout: 40000 }]);
+    assert.equal(g.config.payday, 10);
+    assert.deepEqual(g.examples.map((e: any) => e.gross), [16113.75, 20000, 40000]);
+
+    assert.equal((await call('admin', 'PUT', '/commission/settings', { ...base, payday: 0 })).status, 400);
+    assert.equal((await call('admin', 'PUT', '/commission/settings', { ...base, payday: 29 })).status, 400);
+    assert.equal((await call('zed', 'PUT', '/commission/settings', { ...base, payday: 7 })).status, 403);
+    // put the shared settings back
+    await call('admin', 'PUT', '/commission/settings', { ...base, payBands: [{ from: 0, payout: 0 }, { from: 30000, payout: 12000 }, { from: 60000, payout: 18000 }, { from: 90000, payout: 24000 }, { from: 120000, payout: 35000 }, { from: 180000, payout: 38000 }, { from: 240000, payout: 42000 }, { from: 300000, payout: 48000 }, { from: 360000, payout: 54000 }, { from: 400000, payout: 58000 }, { from: 500000, payout: 60000 }], payday: 5 });
   });
 
   it('only a manager changes the bands; they are checked, and can be switched back to percentages', async () => {
@@ -128,6 +157,6 @@ describe('commission paid by pay bands', () => {
     assert.equal(back.body.generalMode, 'percent');
     assert.equal((await mine('zed')).scheme.mode, 'percent');
     // leave the shared settings as this file found them
-    await call('admin', 'PUT', '/commission/settings', { ...base, generalMode: 'steps', payBands: [{ from: 0, payout: 0 }, { from: 30000, payout: 12000 }, { from: 60000, payout: 18000 }, { from: 90000, payout: 24000 }, { from: 120000, payout: 30000 }, { from: 150000, payout: 36000 }, { from: 180000, payout: 42000 }, { from: 210000, payout: 48000 }] });
+    await call('admin', 'PUT', '/commission/settings', { ...base, generalMode: 'steps', payBands: [{ from: 0, payout: 0 }, { from: 30000, payout: 12000 }, { from: 60000, payout: 18000 }, { from: 90000, payout: 24000 }, { from: 120000, payout: 35000 }, { from: 180000, payout: 38000 }, { from: 240000, payout: 42000 }, { from: 300000, payout: 48000 }, { from: 360000, payout: 54000 }, { from: 400000, payout: 58000 }, { from: 500000, payout: 60000 }] });
   });
 });

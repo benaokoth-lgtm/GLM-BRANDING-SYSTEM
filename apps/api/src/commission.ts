@@ -5,6 +5,7 @@ import {
   DEFAULT_PAY_STEPS,
   DEFAULT_PERFORMANCE_FLOOR,
   DEFAULT_MINIMUM_WAGE,
+  DEFAULT_PAYDAY,
   salesPay,
   GENERAL_MODES,
   payStepsProblem,
@@ -104,6 +105,8 @@ export interface CommissionConfig {
   performanceFloor: number;
   /** The least a person on the pay bands is paid for a month. */
   minimumWage: number;
+  /** The day of the month people on the pay bands are paid, for the month before. */
+  payday: number;
 }
 
 function readBands(json: string | null | undefined, fallback: Band[]): Band[] {
@@ -145,6 +148,7 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     payBands: readSteps(row?.payBandsJson),
     performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
     minimumWage: row?.minimumWage ?? DEFAULT_MINIMUM_WAGE,
+    payday: row?.payday ?? DEFAULT_PAYDAY,
   };
 }
 

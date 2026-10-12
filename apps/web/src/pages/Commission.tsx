@@ -7,6 +7,7 @@ import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from './accounting/shared';
 import FreelancePanel from '../components/FreelancePanel';
+import PayGuide from '../components/PayGuide';
 
 // Sales commission. Everyone who captures orders sees their own month: what they earned, how, and what they have sold. Managers also
 // see the whole team, approve and pay the month, manage which client belongs to whom, and set the rates.
@@ -38,6 +39,8 @@ interface Config {
   performanceFloor: number;
   /** The least a person paid on the pay bands is paid for a month. */
   minimumWage: number;
+  /** The day of the month people on the pay bands are paid, for the month before. */
+  payday: number;
 }
 interface Pay {
   onBands: boolean;
@@ -156,7 +159,7 @@ interface MonthlyData {
   totals: MonthlyTotals;
 }
 
-type Tab = 'mine' | 'team' | 'monthly' | 'clients' | 'freelance' | 'rates';
+type Tab = 'mine' | 'guide' | 'team' | 'monthly' | 'clients' | 'freelance' | 'rates';
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 // up to two decimals, no trailing zeros: 10 → "10%", 3.5 → "3.5%" (stripping zeros from a whole number would turn 10 into 1)
 const pct = (n: number) => `${parseFloat(Number(n).toFixed(2))}%`;
@@ -1000,6 +1003,7 @@ function RatesTab() {
   const [payBands, setPayBands] = useState<{ from: string; payout: string }[]>([]);
   const [floor, setFloor] = useState('');
   const [minWage, setMinWage] = useState('');
+  const [payday, setPayday] = useState('5');
   const [general, setGeneral] = useState<{ from: string; rate: string }[]>([]);
   const [film, setFilm] = useState<{ from: string; rate: string }[]>([]);
   const [freelance, setFreelance] = useState<{ from: string; rate: string }[]>([]);
@@ -1032,19 +1036,20 @@ function RatesTab() {
     setPayBands((data.payBands ?? []).map((b) => ({ from: String(b.from), payout: String(b.payout) })));
     setFloor(String(data.performanceFloor ?? 120000));
     setMinWage(String(data.minimumWage ?? 16113.75));
+    setPayday(String(data.payday ?? 5));
   }, [data]);
 
   if (!data) return <Loading loading={loading} error={error} />;
   const toBands = (rows: { from: string; rate: string }[]): Band[] => rows.map((r) => ({ from: Number(r.from), rate: Number(r.rate) }));
   const toSteps = payBands.map((r) => ({ from: Number(r.from), payout: Number(r.payout) }));
-  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null) ?? (genMode === 'steps' && !(Number(minWage) >= 0) ? 'Enter the minimum wage' : null);
+  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null) ?? (genMode === 'steps' && !(Number(minWage) >= 0) ? 'Enter the minimum wage' : null) ?? (genMode === 'steps' && !(Number.isInteger(Number(payday)) && Number(payday) >= 1 && Number(payday) <= 28) ? 'The payday must be a day of the month from 1 to 28' : null);
 
   async function save() {
     setBusy(true);
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor), minimumWage: Number(minWage) });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor), minimumWage: Number(minWage), payday: Number(payday) });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -1085,6 +1090,11 @@ function RatesTab() {
               <label>Minimum monthly wage (Ksh)</label>
               <input className="input" inputMode="decimal" value={minWage} onChange={(e) => setMinWage(e.target.value)} />
               <p className="note" style={{ margin: 0 }}>For employees ticked “Paid on sales bands” (Compliance → Employees), the band payout is their pay for the month; if it falls below this, this is paid instead. Approving a closed month in Team &amp; payouts puts it into payroll automatically. 16,113.75 is a placeholder — confirm the figure that applies with your accountant.</p>
+            </div>
+            <div className="field" style={{ maxWidth: 320 }}>
+              <label>Payday — day of the month (1–28)</label>
+              <input className="input" inputMode="numeric" value={payday} onChange={(e) => setPayday(e.target.value)} />
+              <p className="note" style={{ margin: 0 }}>Staff on the pay bands are paid on this day for the month before (5 = September's pay on 5 October). It appears on their pay guide.</p>
             </div>
           </div>
         )}
@@ -1182,7 +1192,7 @@ export default function Commission() {
   const [tab, setTab] = useSubTab<Tab>(manager ? 'team' : 'mine');
   const [period, setPeriod] = useState(thisMonth());
 
-  const tabs: [Tab, string][] = [['mine', 'My commission']];
+  const tabs: [Tab, string][] = [['mine', 'My commission'], ['guide', 'How you are paid']];
   if (manager) tabs.push(['team', 'Team & payouts'], ['monthly', 'Monthly report'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
 
   return (
@@ -1208,6 +1218,7 @@ export default function Commission() {
         ))}
       </div>
       {tab === 'mine' && <MyTab period={period} />}
+      {tab === 'guide' && <PayGuide />}
       {tab === 'team' && manager && <TeamTab period={period} />}
       {tab === 'monthly' && manager && <MonthlyTab />}
       {tab === 'clients' && manager && <ClientsTab />}

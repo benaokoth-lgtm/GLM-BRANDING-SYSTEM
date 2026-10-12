@@ -360,20 +360,26 @@ export const GENERAL_MODES = ['steps', 'percent'] as const;
 export type GeneralMode = (typeof GENERAL_MODES)[number];
 export const DEFAULT_GENERAL_MODE: GeneralMode = 'steps';
 
-/** Monthly net sales → fixed payout. Band 4 (120,000 → 30,000) is the anchor, and the performance floor. */
+/** Monthly net sales → fixed payout. Band 4 (120,000 → 35,000) is the anchor, and the performance floor. */
 export const DEFAULT_PAY_STEPS: PayStep[] = [
   { from: 0, payout: 0 },
   { from: 30000, payout: 12000 },
   { from: 60000, payout: 18000 },
   { from: 90000, payout: 24000 },
-  { from: 120000, payout: 30000 },
-  { from: 150000, payout: 36000 },
-  { from: 180000, payout: 42000 },
-  { from: 210000, payout: 48000 },
+  { from: 120000, payout: 35000 },
+  { from: 180000, payout: 38000 },
+  { from: 240000, payout: 42000 },
+  { from: 300000, payout: 48000 },
+  { from: 360000, payout: 54000 },
+  { from: 400000, payout: 58000 },
+  { from: 500000, payout: 60000 },
 ];
 
 /** Sales below this in a month need performance improvement. */
 export const DEFAULT_PERFORMANCE_FLOOR = 120000;
+
+/** The day of the month staff are paid, for the month before. */
+export const DEFAULT_PAYDAY = 5;
 
 /** Placeholder minimum monthly wage (the general-labourer rate in the cities) — confirm the rate that applies to the job. */
 export const DEFAULT_MINIMUM_WAGE = 16113.75;

@@ -1242,10 +1242,12 @@ model CommissionSettings {
   // How general sales are paid: 'steps' = a fixed payout by the month's sales band (payBandsJson: [{from, payout}]); 'percent' = the marginal bands above.
   // In 'steps' the salary-multiple target is not used: sales below performanceFloor are flagged for performance improvement instead.
   generalMode      String   @default("steps")
-  payBandsJson     String   @default("[{\"from\":0,\"payout\":0},{\"from\":30000,\"payout\":12000},{\"from\":60000,\"payout\":18000},{\"from\":90000,\"payout\":24000},{\"from\":120000,\"payout\":30000},{\"from\":150000,\"payout\":36000},{\"from\":180000,\"payout\":42000},{\"from\":210000,\"payout\":48000}]")
+  payBandsJson     String   @default("[{\"from\":0,\"payout\":0},{\"from\":30000,\"payout\":12000},{\"from\":60000,\"payout\":18000},{\"from\":90000,\"payout\":24000},{\"from\":120000,\"payout\":35000},{\"from\":180000,\"payout\":38000},{\"from\":240000,\"payout\":42000},{\"from\":300000,\"payout\":48000},{\"from\":360000,\"payout\":54000},{\"from\":400000,\"payout\":58000},{\"from\":500000,\"payout\":60000}]")
   performanceFloor Float    @default(120000)
   // The least a person on the pay bands is paid for a month: a band payout below it is topped up to it. A placeholder — confirm the figure that applies to the job with your accountant.
   minimumWage      Float    @default(16113.75)
+  // The day of the month staff on the pay bands are paid, for the month before (shown on the pay guide).
+  payday           Int      @default(5)
   updatedByName    String   @default("")
   updatedAt        DateTime @updatedAt
 }

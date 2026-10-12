@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { EXPENSE_METHODS, GENERAL_MODES, computePay, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
+import { EXPENSE_METHODS, GENERAL_MODES, VAT_RATE, artworkPremiumCommission, computePay, filmPremiumCommission, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
@@ -54,6 +54,8 @@ const settingsSchema = z.object({
   performanceFloor: z.number().min(0).max(1e9).optional(),
   // The least a person on the pay bands is paid for a month (a band payout below it is topped up to it).
   minimumWage: z.number().min(0).max(1e9).optional(),
+  // The day of the month people on the pay bands are paid, for the month before (1–28 so it exists in every month).
+  payday: z.number().int().min(1).max(28).optional(),
 });
 
 // The rates — the pay bands, minimum wage, percentages, ownership periods — are set by an Admin only. Managers and staff can read them (everyone sees the scheme they are paid under).
@@ -80,10 +82,41 @@ commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
     ...(d.payBands ? { payBandsJson: JSON.stringify([...d.payBands].sort((x, y) => x.from - y.from)) } : {}),
     ...(d.performanceFloor !== undefined ? { performanceFloor: d.performanceFloor } : {}),
     ...(d.minimumWage !== undefined ? { minimumWage: d.minimumWage } : {}),
+    ...(d.payday !== undefined ? { payday: d.payday } : {}),
     updatedByName: req.user!.name,
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
   res.json(await getCommissionConfig());
+});
+
+// ── The pay guide ───────────────────────────────────────────────────────────
+// Everything the employee pay guide needs, built from the CURRENT settings — the bands, floor, minimum wage and payday — so changing the bands in Rates changes the guide
+// (and every screen that shows them) with nothing else to update. The take-home examples are worked out by the payroll's own rules for each pay level.
+commissionRouter.get('/pay-guide', async (_req, res) => {
+  const config = await getCommissionConfig();
+  const dtf = await prisma.dtfSetting.findUnique({ where: { id: 1 } });
+  const filmBase = dtf?.minPricePerM ?? 400;
+  const today = todayStr();
+  const sorted = [...config.payBands].sort((a, b) => a.from - b.from);
+  const levels: { gross: number; label: string }[] = [{ gross: config.minimumWage, label: 'Minimum wage' }];
+  sorted.forEach((b, i) => {
+    if (b.payout > config.minimumWage && !levels.some((l) => Math.abs(l.gross - b.payout) < 0.005)) levels.push({ gross: b.payout, label: `Band ${i}` });
+  });
+  const examples = levels.map((l) => {
+    const c = computePay(l.gross, 'Employee', today);
+    return { gross: round2(l.gross), label: l.label, nssf: round2(c.nssf), shif: round2(c.shif), housingLevy: round2(c.housingLevy), paye: round2(c.paye), net: round2(c.netPay) };
+  });
+  const filmMetres = 10;
+  const film = {
+    base: filmBase,
+    metres: filmMetres,
+    highPrice: filmBase + 200,
+    highEarns: filmPremiumCommission(filmMetres, filmBase + 200, filmBase, config.filmBands, VAT_RATE),
+    lowPrice: filmBase + 50,
+    lowEarns: filmPremiumCommission(filmMetres, filmBase + 50, filmBase, config.filmBands, VAT_RATE),
+  };
+  const artwork = { pieces: 100, recommended: 40, charged: 45, earns: artworkPremiumCommission(100, 45, 40, config.artworkRatePct, VAT_RATE) };
+  res.json({ config, vatRate: VAT_RATE, examples, film, artwork });
 });
 
 // ── Statements ──────────────────────────────────────────────────────────────

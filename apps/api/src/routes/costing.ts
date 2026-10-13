@@ -18,6 +18,7 @@ import {
   costingCardTiers,
   costingFloor,
   costingQuote,
+  costingJobLabel,
   isCostingJobType,
   printCalc,
   printSettingsProblem,
@@ -201,7 +202,7 @@ async function printSettings(): Promise<PrintSettings> {
   if (!row) return DEFAULT_PRINT_SETTINGS;
   try {
     const d = JSON.parse(row.data) as PrintSettings;
-    return { papers: d.papers, fees: { ...DEFAULT_PRINT_SETTINGS.fees, ...d.fees }, tiers: d.tiers };
+    return { papers: d.papers, fees: { ...DEFAULT_PRINT_SETTINGS.fees, ...d.fees }, tiers: d.tiers, floorMarginPct: d.floorMarginPct ?? DEFAULT_PRINT_SETTINGS.floorMarginPct };
   } catch {
     return DEFAULT_PRINT_SETTINGS;
   }
@@ -259,12 +260,59 @@ costingRouter.post('/print/pricelist', mayCost, async (req, res) => {
   });
 });
 
+// Saved as a quote, a print costing goes through the same steps as any other: the price agreed with the client, a manager's approval below the floor, and capture as an order.
+const printSaveSchema = printJobSchema.extend({
+  clientName: z.string().trim().min(2, 'Enter the client’s name').max(120),
+  phone: z.string().trim().max(40).default(''),
+  note: z.string().trim().max(300).default(''),
+  validDays: z.number().int().min(1).max(90).default(14),
+});
+
+costingRouter.post('/print/quotes', mayCost, async (req, res) => {
+  const parsed = printSaveSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const [sees, s] = await Promise.all([canSeeCosts(req.user!.role), printSettings()]);
+  const { clientName, phone, note, validDays, ...rest } = parsed.data;
+  const job: PrintJob = { ...rest, mode: sees ? rest.mode : 'tier' };
+  if (job.paper >= s.papers.length || job.cover >= s.papers.length) return res.status(400).json({ error: 'That paper is not on the list' });
+  const r = printCalc(job, s);
+  if (r.cost <= 0) return res.status(400).json({ error: 'There is nothing to cost' });
+  const created = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    await tx.setting.update({ where: { id: 1 }, data: { nextCostingQuoteNo: settings.nextCostingQuoteNo + 1 } });
+    const until = new Date(todayStr() + 'T00:00:00Z');
+    until.setUTCDate(until.getUTCDate() + validDays);
+    return tx.costingQuote.create({
+      data: {
+        quoteNo: 'CQ-' + settings.nextCostingQuoteNo,
+        createdDate: todayStr(),
+        validUntil: until.toISOString().slice(0, 10),
+        clientName,
+        phone,
+        note,
+        staffId: req.user!.id,
+        staffName: req.user!.name,
+        jobType: job.product,
+        inputJson: JSON.stringify(job),
+        summary: printSpec(job, s) + ' — ' + r.qty + (job.product === 'brochure' ? ' pieces' : ' copies'),
+        linesJson: JSON.stringify(r.lines.map((l, i) => ({ rateId: i + 1, kind: 'service', name: l.label, note: l.note, amount: l.amount }))),
+        cost: r.cost,
+        marginPct: r.markupPct,
+        floorMarginPct: Math.min(s.floorMarginPct, r.markupPct),
+        price: r.priceExVat,
+      },
+    });
+  });
+  res.status(201).json(viewOf(created, sees));
+});
+
 // the rates (Admin)
 const money = z.number().min(0).max(100_000_000);
 const printSettingsSchema = z.object({
   papers: z.array(z.object({ name: z.string().trim().min(1).max(60), one: money, two: money })).min(1).max(20),
   fees: z.object({ staple: money, trim: money, fold: money, lam: money, designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: z.number().min(0).max(100) }),
   tiers: z.array(z.object({ min: z.number().int(), pct: z.number().min(0).max(1000) })).min(1).max(12),
+  floorMarginPct: z.number().min(0).max(1000),
 });
 
 costingRouter.get('/print/settings', admin, async (_req, res) => {
@@ -458,11 +506,11 @@ costingRouter.post('/quotes/:id/status', mayCost, async (req, res) => {
 });
 
 // ── the costed job's service on the price list (found by name, or made the first time it is needed)
-async function costedService(jobType: CostingJobType) {
-  const name = 'Costed job — ' + (jobType === 'cards' ? 'Business cards' : jobType === 'indoor' ? 'Indoor signage' : 'Outdoor signage');
+async function costedService(jobType: string) {
+  const name = 'Costed job — ' + costingJobLabel(jobType);
   const found = await prisma.service.findFirst({ where: { name } });
   if (found) return found;
-  const head = await prisma.businessHead.findFirst({ where: { name: jobType === 'cards' ? 'General Order' : 'Large Format Printing' } });
+  const head = await prisma.businessHead.findFirst({ where: { name: jobType === 'indoor' || jobType === 'outdoor' ? 'Large Format Printing' : 'General Order' } });
   // contracted out, and kept off the General Order picker (it is only ever used here, at the agreed price)
   return prisma.service.create({ data: { name, item: name, unit: 'piece', price: 0, outsourced: true, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
@@ -487,7 +535,7 @@ costingRouter.post('/quotes/:id/capture', mayCost, async (req, res) => {
   if (q.agreedPrice == null) return res.status(400).json({ error: 'Record the price agreed with the client first' });
   if (q.approval === 'Pending') return res.status(400).json({ error: 'The agreed price is under the floor and is waiting for a manager’s approval' });
   if (q.approval === 'Rejected') return res.status(400).json({ error: 'The agreed price was not approved — agree another price' });
-  const service = await costedService(q.jobType as CostingJobType);
+  const service = await costedService(q.jobType);
   const total = r2(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
     customerName: body.data.customerName?.trim() || q.clientName,

@@ -137,4 +137,41 @@ describe('Job Costing: Brochures & Eulogies', () => {
     assert.equal((await call('admin', 'PUT', '/costing/print/settings', S)).status, 200);
     assert.equal((await call('seller', 'POST', '/costing/print/quote', { ...eulogy })).body.cost, 18200);
   });
+
+  it('a print costing saved as a quote is agreed, approved under the floor, and captured as an order', async () => {
+    const save = (who: string, extra: object = {}) => call(who, 'POST', '/costing/print/quotes', { ...eulogy, clientName: 'Hope Chapel', phone: '0712 000 000', ...extra });
+    assert.equal((await call('nobody', 'POST', '/costing/print/quotes', { ...eulogy, clientName: 'X Y' })).status, 403);
+    assert.equal((await save('seller', { clientName: 'X' })).status, 400); // a name is needed
+    const q = await save('seller');
+    assert.equal(q.status, 201, JSON.stringify(q.body));
+    assert.match(q.body.quoteNo, /^CQ-\d+$/);
+    assert.deepEqual([q.body.jobType, q.body.cost, q.body.price, q.body.total], ['eulogy', 18200, 24570, 28501.2]);
+    assert.equal(q.body.summary, 'Eulogy, 8 pages / 130gsm gloss, stapled, trimmed and folded — 100 copies');
+    assert.equal(q.body.lines.length, 7);
+    assert.equal(q.body.marginPct, undefined); // not for a seller
+    // 18,200 cost + the 30% floor = 23,660 before VAT = 27,445.60 with VAT: anything lower needs a manager
+    assert.equal(q.body.lowestTotal, 27445.6);
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.body.id}/agree`, { total: 20000 })).status, 400); // below cost
+    const low = await call('seller', 'POST', `/costing/quotes/${q.body.id}/agree`, { total: 26000 });
+    assert.equal(low.body.approval, 'Pending');
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.body.id}/capture`, { paymentTiming: 'onCompletion' })).status, 400);
+    assert.equal((await call('finance', 'POST', `/costing/quotes/${q.body.id}/approve`)).body.approval, 'Approved');
+    const cap = await call('seller', 'POST', `/costing/quotes/${q.body.id}/capture`, { paymentTiming: 'onAcceptance', payments: [{ method: 'Cash', amount: 10000 }] });
+    assert.equal(cap.status, 201, JSON.stringify(cap.body));
+    assert.deepEqual([cap.body.totals.grandTotal, cap.body.totals.balanceDue, cap.body.customerName], [26000, 16000, 'Hope Chapel']);
+    assert.equal(cap.body.lineItems[0].serviceName, 'Costed job — Eulogy — Eulogy, 8 pages / 130gsm gloss, stapled, trimmed and folded — 100 copies');
+    // what the job costs us (VAT included, as the printer bills it) is on the line for Finance only
+    assert.equal((await call('admin', 'GET', `/orders/${cap.body.id}`)).body.lineItems[0].supplierCost, 21112);
+    assert.equal((await call('seller', 'GET', `/orders/${cap.body.id}`)).body.lineItems[0].supplierCost, undefined);
+    // a finance user sees the margin; and a flat markup is theirs to choose
+    const fin = await save('finance', { mode: 'flat' });
+    assert.deepEqual([fin.body.marginPct, fin.body.price], [50, 27300]);
+    // the lowest margin without approval is one of the rates
+    const s = (await call('admin', 'GET', '/costing/print/settings')).body;
+    assert.equal(s.floorMarginPct, 30);
+    assert.equal((await call('admin', 'PUT', '/costing/print/settings', { ...s, floorMarginPct: 20 })).status, 200);
+    const looser = await save('seller');
+    assert.equal(looser.body.lowestTotal, 25334.4); // 18,200 × 1.2 × 1.16; (a floor can never be above the margin the quote was made at)
+    assert.equal((await call('admin', 'PUT', '/costing/print/settings', s)).status, 200);
+  });
 });

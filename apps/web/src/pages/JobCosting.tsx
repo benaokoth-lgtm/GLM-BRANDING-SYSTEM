@@ -200,7 +200,7 @@ export default function JobCosting() {
       </div>
 
       {brochures ? (
-        <PrintCosting />
+        <PrintCosting onSaved={(id) => { setOpenQuoteId(id); setView('quotes'); }} />
       ) : (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
         <div className="no-print" style={{ display: 'grid', gap: 'var(--space-5)' }}>

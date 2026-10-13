@@ -66504,7 +66504,8 @@ var DEFAULT_PRINT_SETTINGS = {
     { min: 1, pct: 50 },
     { min: 100, pct: 35 },
     { min: 500, pct: 25 }
-  ]
+  ],
+  floorMarginPct: 30
 };
 var PRINT_FEE_LABELS = [
   { key: "designEu", label: "Design/layout, eulogy", unit: "KES / job" },
@@ -66526,6 +66527,7 @@ function printSettingsProblem(s) {
   }
   for (const { key: key2, label } of PRINT_FEE_LABELS) if (!(s.fees[key2] >= 0)) return `${label} cannot be negative`;
   if (s.fees.waste > 100) return "Wastage cannot be more than 100%";
+  if (!(s.floorMarginPct >= 0) || s.floorMarginPct > 1e3) return "The lowest margin is between 0% and 1000%";
   if (s.tiers.length < 1) return "There must be at least one mark-up tier";
   const sorted = [...s.tiers].sort((a2, b) => a2.min - b.min);
   if (sorted[0].min !== 1) return "The first mark-up tier must start at 1";
@@ -66536,6 +66538,9 @@ function printSettingsProblem(s) {
     if (!(t.pct >= 0) || t.pct > 1e3) return "A mark-up is between 0% and 1000%";
   }
   return null;
+}
+function costingJobLabel(jobType) {
+  return COSTING_JOB_LABEL[jobType] ?? PRINT_PRODUCT_LABEL[jobType] ?? jobType;
 }
 function printMarkupPct(tiers, qty, mode) {
   const sorted = [...tiers].sort((a2, b) => a2.min - b.min);
@@ -80870,7 +80875,7 @@ async function printSettings() {
   if (!row) return DEFAULT_PRINT_SETTINGS;
   try {
     const d = JSON.parse(row.data);
-    return { papers: d.papers, fees: { ...DEFAULT_PRINT_SETTINGS.fees, ...d.fees }, tiers: d.tiers };
+    return { papers: d.papers, fees: { ...DEFAULT_PRINT_SETTINGS.fees, ...d.fees }, tiers: d.tiers, floorMarginPct: d.floorMarginPct ?? DEFAULT_PRINT_SETTINGS.floorMarginPct };
   } catch {
     return DEFAULT_PRINT_SETTINGS;
   }
@@ -80921,11 +80926,55 @@ costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
     )
   });
 });
+var printSaveSchema = printJobSchema.extend({
+  clientName: external_exports.string().trim().min(2, "Enter the client\u2019s name").max(120),
+  phone: external_exports.string().trim().max(40).default(""),
+  note: external_exports.string().trim().max(300).default(""),
+  validDays: external_exports.number().int().min(1).max(90).default(14)
+});
+costingRouter.post("/print/quotes", mayCost, async (req, res) => {
+  const parsed = printSaveSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
+  const { clientName, phone, note, validDays, ...rest } = parsed.data;
+  const job = { ...rest, mode: sees ? rest.mode : "tier" };
+  if (job.paper >= s.papers.length || job.cover >= s.papers.length) return res.status(400).json({ error: "That paper is not on the list" });
+  const r = printCalc(job, s);
+  if (r.cost <= 0) return res.status(400).json({ error: "There is nothing to cost" });
+  const created = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    await tx.setting.update({ where: { id: 1 }, data: { nextCostingQuoteNo: settings.nextCostingQuoteNo + 1 } });
+    const until = /* @__PURE__ */ new Date(todayStr() + "T00:00:00Z");
+    until.setUTCDate(until.getUTCDate() + validDays);
+    return tx.costingQuote.create({
+      data: {
+        quoteNo: "CQ-" + settings.nextCostingQuoteNo,
+        createdDate: todayStr(),
+        validUntil: until.toISOString().slice(0, 10),
+        clientName,
+        phone,
+        note,
+        staffId: req.user.id,
+        staffName: req.user.name,
+        jobType: job.product,
+        inputJson: JSON.stringify(job),
+        summary: printSpec(job, s) + " \u2014 " + r.qty + (job.product === "brochure" ? " pieces" : " copies"),
+        linesJson: JSON.stringify(r.lines.map((l, i) => ({ rateId: i + 1, kind: "service", name: l.label, note: l.note, amount: l.amount }))),
+        cost: r.cost,
+        marginPct: r.markupPct,
+        floorMarginPct: Math.min(s.floorMarginPct, r.markupPct),
+        price: r.priceExVat
+      }
+    });
+  });
+  res.status(201).json(viewOf(created, sees));
+});
 var money4 = external_exports.number().min(0).max(1e8);
 var printSettingsSchema = external_exports.object({
   papers: external_exports.array(external_exports.object({ name: external_exports.string().trim().min(1).max(60), one: money4, two: money4 })).min(1).max(20),
   fees: external_exports.object({ staple: money4, trim: money4, fold: money4, lam: money4, designEu: money4, designPr: money4, designBr: money4, proof: money4, deliver: money4, waste: external_exports.number().min(0).max(100) }),
-  tiers: external_exports.array(external_exports.object({ min: external_exports.number().int(), pct: external_exports.number().min(0).max(1e3) })).min(1).max(12)
+  tiers: external_exports.array(external_exports.object({ min: external_exports.number().int(), pct: external_exports.number().min(0).max(1e3) })).min(1).max(12),
+  floorMarginPct: external_exports.number().min(0).max(1e3)
 });
 costingRouter.get("/print/settings", admin2, async (_req, res) => {
   res.json(await printSettings());
@@ -81095,10 +81144,10 @@ costingRouter.post("/quotes/:id/status", mayCost, async (req, res) => {
   res.json(viewOf(updated, await canSeeCosts(req.user.role)));
 });
 async function costedService(jobType) {
-  const name2 = "Costed job \u2014 " + (jobType === "cards" ? "Business cards" : jobType === "indoor" ? "Indoor signage" : "Outdoor signage");
+  const name2 = "Costed job \u2014 " + costingJobLabel(jobType);
   const found = await prisma.service.findFirst({ where: { name: name2 } });
   if (found) return found;
-  const head = await prisma.businessHead.findFirst({ where: { name: jobType === "cards" ? "General Order" : "Large Format Printing" } });
+  const head = await prisma.businessHead.findFirst({ where: { name: jobType === "indoor" || jobType === "outdoor" ? "Large Format Printing" : "General Order" } });
   return prisma.service.create({ data: { name: name2, item: name2, unit: "piece", price: 0, outsourced: true, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
 var captureSchema = external_exports.object({

@@ -1,4 +1,5 @@
 import { round2 } from './accounting';
+import { COSTING_JOB_LABEL } from './costing';
 import { VAT_RATE } from './tax';
 
 // Job Costing → Brochures & Eulogies: what an outsourced print job costs and what to quote. Eulogy booklets and company profiles are folded A3 sheets (4 pages to a sheet, always
@@ -54,6 +55,8 @@ export interface PrintSettings {
   papers: PrintPaper[];
   fees: PrintFees;
   tiers: PrintTier[];
+  /** The lowest margin (markup on cost, %) a price agreed with a client may fall to without a manager's approval (a saved quote). */
+  floorMarginPct: number;
 }
 
 /** Placeholders from the design: to be replaced by the printer's real quotes (Job Costing → Brochures & Eulogies → Rates). */
@@ -71,6 +74,7 @@ export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
     { min: 100, pct: 35 },
     { min: 500, pct: 25 },
   ],
+  floorMarginPct: 30,
 };
 
 export const PRINT_FEE_LABELS: { key: keyof PrintFees; label: string; unit: string }[] = [
@@ -95,6 +99,7 @@ export function printSettingsProblem(s: PrintSettings): string | null {
   }
   for (const { key, label } of PRINT_FEE_LABELS) if (!(s.fees[key] >= 0)) return `${label} cannot be negative`;
   if (s.fees.waste > 100) return 'Wastage cannot be more than 100%';
+  if (!(s.floorMarginPct >= 0) || s.floorMarginPct > 1000) return 'The lowest margin is between 0% and 1000%';
   if (s.tiers.length < 1) return 'There must be at least one mark-up tier';
   const sorted = [...s.tiers].sort((a, b) => a.min - b.min);
   if (sorted[0]!.min !== 1) return 'The first mark-up tier must start at 1';
@@ -105,6 +110,11 @@ export function printSettingsProblem(s: PrintSettings): string | null {
     if (!(t.pct >= 0) || t.pct > 1000) return 'A mark-up is between 0% and 1000%';
   }
   return null;
+}
+
+/** The name of a costed job's kind for a saved quote: Business cards, Indoor signage, … or Eulogy, Company profile, Brochure. */
+export function costingJobLabel(jobType: string): string {
+  return (COSTING_JOB_LABEL as Record<string, string>)[jobType] ?? (PRINT_PRODUCT_LABEL as Record<string, string>)[jobType] ?? jobType;
 }
 
 export interface PrintJob {

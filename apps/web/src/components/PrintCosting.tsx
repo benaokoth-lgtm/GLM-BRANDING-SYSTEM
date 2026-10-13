@@ -44,7 +44,7 @@ type View = 'calc' | 'list' | 'quote' | 'rates';
 const f2 = (n: number) => n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const label = { fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 } as const;
 
-export default function PrintCosting() {
+export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) => void }) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
   const [config, setConfig] = useState<Config | null>(null);
@@ -67,6 +67,8 @@ export default function PrintCosting() {
   const [error, setError] = useState('');
   const [client, setClient] = useState('');
   const [company, setCompany] = useState<CompanySettings | null>(null);
+  // "Save as quote": keep this costing for a client, to agree the price and capture as an order
+  const [saving, setSaving] = useState<{ client: string; phone: string; note: string; busy: boolean; err: string } | null>(null);
 
   useEffect(() => {
     api
@@ -108,6 +110,45 @@ export default function PrintCosting() {
   }, [key, config]);
 
   const set = (patch: Partial<typeof job>) => setJob((j) => ({ ...j, ...patch }));
+  async function saveQuote() {
+    if (!saving || saving.busy) return;
+    setSaving({ ...saving, busy: true, err: '' });
+    try {
+      const saved = await api.post<{ id: number }>('/costing/print/quotes', { ...body, clientName: saving.client, phone: saving.phone, note: saving.note });
+      setSaving(null);
+      onSaved?.(saved.id);
+    } catch (e) {
+      setSaving({ ...saving, busy: false, err: e instanceof Error ? e.message : 'Could not save the quote' });
+    }
+  }
+  const saveBox = saving && (
+    <div className="no-print" style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)', maxWidth: 520 }}>
+      <div className="card-kicker">Keep this costing as a quote for a client</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Client name *</label>
+          <input className="input" value={saving.client} onChange={(e) => setSaving({ ...saving, client: e.target.value })} />
+        </div>
+        <div className="field" style={{ margin: 0 }}>
+          <label>Phone (optional)</label>
+          <input className="input" value={saving.phone} onChange={(e) => setSaving({ ...saving, phone: e.target.value })} placeholder="07xx xxx xxx" />
+        </div>
+      </div>
+      <div className="field" style={{ margin: 0 }}>
+        <label>Note (optional)</label>
+        <input className="input" value={saving.note} onChange={(e) => setSaving({ ...saving, note: e.target.value })} />
+      </div>
+      {saving.err && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{saving.err}</p>}
+      <div>
+        <button type="button" className="btn btn-primary btn-sm" disabled={saving.busy || saving.client.trim().length < 2} onClick={saveQuote}>
+          Save quote
+        </button>{' '}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSaving(null)}>Cancel</button>
+      </div>
+      <p className="note" style={{ margin: 0 }}>The costing is kept as it is now, for 14 days. Later changes to the printer's rates do not change it. Agree the price with the client under Saved quotes, then capture it as an order.</p>
+    </div>
+  );
+  const startSave = () => setSaving(saving ? null : { client: client.trim(), phone: '', note: '', busy: false, err: '' });
   const chip = (text: string, on: boolean, onClick: () => void) => (
     <button key={text} type="button" className={'btn btn-sm ' + (on ? 'btn-primary' : 'btn-secondary')} aria-pressed={on} onClick={onClick}>
       {text}
@@ -245,11 +286,15 @@ export default function PrintCosting() {
                   {result.profit != null && <>Profit on job {fmtKsh(result.profit)} · </>}
                   {fmtNum(result.sheets)} A3 sheets in total
                 </div>
-                <div style={{ marginTop: 'var(--space-3)' }}>
+                <div className="no-print" style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                   <button type="button" className="btn btn-secondary btn-sm" onClick={() => setView('quote')}>
-                    Make a quote for the client
+                    Print a quotation
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm blueprint" onClick={startSave}>
+                    Save as quote
                   </button>
                 </div>
+                {saveBox}
               </>
             )}
           </div>
@@ -268,8 +313,12 @@ export default function PrintCosting() {
             <button type="button" className="btn btn-primary blueprint" onClick={() => window.print()}>
               Print / save PDF
             </button>
+            <button type="button" className="btn btn-secondary" onClick={startSave}>
+              Save as quote
+            </button>
             <span className="note" style={{ margin: 0 }}>This is the job chosen on the Calculator — change it there and the quote follows.</span>
           </div>
+          {saveBox}
           <div style={{ background: '#fff', color: '#201e1d', border: '2px solid var(--color-divider)', maxWidth: 820, padding: 40 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
               <div>
@@ -512,6 +561,11 @@ function PrintRates() {
         <div>
           <div className="card-kicker">Markup tiers</div>
           <p className="note" style={{ marginTop: 0 }}>Chosen by quantity (copies or pieces). “Flat” on the Calculator uses the first tier only.</p>
+          <div className="field" style={{ margin: '0 0 var(--space-3)' }}>
+            <label>Lowest margin without approval (% on cost)</label>
+            {input(s.floorMarginPct, (v) => edit({ ...s, floorMarginPct: v }), 90)}
+            <div className="text-muted" style={{ fontSize: 11 }}>On a saved quote, a price agreed below cost plus this margin waits for a manager's approval.</div>
+          </div>
           <table className="table">
             <thead>
               <tr>

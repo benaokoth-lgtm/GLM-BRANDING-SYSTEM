@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { COSTING_JOB_LABEL, fmtDate, fmtKsh, isNamedClient } from '@glm/shared';
-import type { CostingJobType } from '@glm/shared';
+import { costingJobLabel, fmtDate, fmtKsh, isNamedClient } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
@@ -26,7 +25,7 @@ export interface QuoteView {
   note: string;
   staffId: number;
   staffName: string;
-  jobType: CostingJobType;
+  jobType: string;
   summary: string;
   lines: { rateId: number; name: string; note: string; amount: number }[];
   cost: number;
@@ -132,7 +131,7 @@ export default function CostingQuotes({ openId, onOpened }: { openId?: number | 
                     </td>
                     <td>{q.clientName}</td>
                     <td>
-                      {COSTING_JOB_LABEL[q.jobType]}
+                      {costingJobLabel(q.jobType)}
                       <div className="text-muted" style={{ fontSize: 11 }}>{q.summary}</div>
                     </td>
                     <td>{q.staffName}</td>
@@ -187,7 +186,7 @@ function QuoteDialog({ quote: q, canSeeCosts, onClose, onChanged }: { quote: Quo
           {q.quoteNo} · {q.clientName} <Tag tone={st.tone}>{st.label}</Tag>
         </div>
         <p className="note" style={{ margin: 0 }}>
-          {COSTING_JOB_LABEL[q.jobType]} · {q.summary} · quoted by {q.staffName} on {fmtDate(q.createdDate)}, valid to {fmtDate(q.validUntil)}
+          {costingJobLabel(q.jobType)} · {q.summary} · quoted by {q.staffName} on {fmtDate(q.createdDate)}, valid to {fmtDate(q.validUntil)}
           {q.phone ? ` · ${q.phone}` : ''}
         </p>
 
@@ -341,7 +340,7 @@ function CaptureDialog({ quote: q, total, onClose, onDone }: { quote: QuoteView;
       <div className="dialog blueprint" style={{ maxWidth: 560, width: '100%', maxHeight: '92vh', overflowY: 'auto', display: 'grid', gap: 'var(--space-3)' }} onClick={(e) => e.stopPropagation()}>
         <div className="dialog-title">Capture {q.quoteNo} as an order</div>
         <p className="note" style={{ margin: 0 }}>
-          {COSTING_JOB_LABEL[q.jobType]} · {q.summary} — <b>{fmtKsh(total)}</b> with VAT, the price agreed with the client.
+          {costingJobLabel(q.jobType)} · {q.summary} — <b>{fmtKsh(total)}</b> with VAT, the price agreed with the client.
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
           <div className="field" style={{ margin: 0 }}>

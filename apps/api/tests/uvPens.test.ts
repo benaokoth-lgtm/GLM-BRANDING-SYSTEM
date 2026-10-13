@@ -3,7 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DEFAULT_PEN_TIERS, penQuote, penRangeLabel, penTiersProblem } from '@glm/shared';
+import { DEFAULT_PEN_TIERS, UV_PEN_SERVICE, penQuote, penRangeLabel, penTiersProblem } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -98,5 +98,36 @@ describe('UV pen branding price picker', () => {
     // back to the owner's rates
     assert.equal((await call('lead', 'PUT', '/dtf/pen-tiers', { tiers: DEFAULT_PEN_TIERS })).status, 200);
     assert.deepEqual((await call('printer', 'GET', '/dtf/pen-tiers')).body.tiers, DEFAULT_PEN_TIERS);
+  });
+
+  it('capture as order: the rate comes from the tiers on the server, and the order is an ordinary one', async () => {
+    assert.equal((await call('nobody', 'POST', '/dtf/pen-orders', { pens: 10 })).status, 403);
+    assert.equal((await call('printer', 'POST', '/dtf/pen-orders', { pens: 0 })).status, 400);
+    assert.equal((await call('printer', 'POST', '/dtf/pen-orders', { pens: 2.5 })).status, 400);
+
+    // 450 pens are 15/= each, 6,750/= — a rate sent from the screen is not listened to
+    const r = await call('printer', 'POST', '/dtf/pen-orders', { pens: 450, client: 'Hope Chapel', rate: 1, payments: [{ method: 'Cash', amount: 2000 }] });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(r.body.order.totals.grandTotal, 6750);
+    assert.equal(r.body.order.totals.balanceDue, 4750);
+    assert.equal(r.body.order.customerName, 'Hope Chapel');
+    assert.equal(r.body.order.channel, 'general');
+    assert.match(r.body.order.orderNo, /^U-/);
+    const line = r.body.order.lineItems[0];
+    assert.deepEqual([line.qty, line.unitPrice], [450, 15]);
+
+    // the whole order moves to the cheaper rate at 500
+    const big = await call('printer', 'POST', '/dtf/pen-orders', { pens: 500, payments: [{ method: 'M-Pesa', amount: 6000 }] });
+    assert.equal(big.status, 201, JSON.stringify(big.body));
+    assert.deepEqual([big.body.order.totals.grandTotal, big.body.order.totals.balanceDue, big.body.order.customerName], [6000, 0, 'Walk-in']);
+
+    // the price list gets its own pen service, sold only through this screen
+    const svc = await prisma.service.findFirstOrThrow({ where: { name: UV_PEN_SERVICE } });
+    assert.deepEqual([svc.unit, svc.soldViaDtfModule], ['piece', true]);
+    assert.equal(await prisma.service.count({ where: { name: UV_PEN_SERVICE } }), 1);
+
+    // more than the order total cannot be taken
+    const over = await call('printer', 'POST', '/dtf/pen-orders', { pens: 10, payments: [{ method: 'Cash', amount: 500 }] });
+    assert.equal(over.status, 400);
   });
 });

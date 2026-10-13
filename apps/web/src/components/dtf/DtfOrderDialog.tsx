@@ -20,8 +20,8 @@ interface MaterialLine {
 interface Props {
   /** UV DTF: a sticker applied cold, so there is no heat press fee. */
   product?: 'dtf' | 'uv';
-  mode: 'sale' | 'job';
-  postUrl: '/dtf/sales' | '/dtf/jobs';
+  mode: 'sale' | 'job' | 'pens';
+  postUrl: '/dtf/sales' | '/dtf/jobs' | '/dtf/pen-orders';
   basePayload: Record<string, unknown>;
   // qty × unitPrice is the film/artwork line's own total, before any
   // merchandise or (job-only) heat press fee is added on top.
@@ -122,7 +122,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
       onDone();
     } catch (err) {
       customerWin?.close();
-      setError(err instanceof Error ? err.message : `Failed to record ${mode === 'sale' ? 'sale' : 'job'}`);
+      setError(err instanceof Error ? err.message : `Failed to record ${mode === 'job' ? 'job' : mode === 'pens' ? 'pen order' : 'sale'}`);
     } finally {
       setBusy(false);
     }
@@ -132,7 +132,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog blueprint" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
         <Corners />
-        <div className="dialog-title">Complete {mode === 'sale' ? 'film sale' : 'artwork job'} order</div>
+        <div className="dialog-title">Complete {mode === 'pens' ? 'UV pen' : mode === 'sale' ? 'film sale' : 'artwork job'} order</div>
         {sentFor ? (
           <>
             <div className="dialog-body">
@@ -155,7 +155,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
           <>
         <div className="dialog-body">
         <p className="note" style={{ marginTop: 0 }}>
-          {clientName.trim() ? `Client: ${clientName.trim()}` : 'Walk-in client'} — {mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
+          {clientName.trim() ? `Client: ${clientName.trim()}` : 'Walk-in client'} — {mode === 'pens' ? 'pens' : mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
@@ -184,7 +184,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
 
           <div>
             <label style={{ display: 'block', marginBottom: 'var(--space-1)' }}>
-              Merchandise sold with this {mode === 'sale' ? 'sale' : 'job'} (optional)
+              Merchandise sold with this {mode === 'job' ? 'job' : mode === 'pens' ? 'order' : 'sale'} (optional)
             </label>
             {materialLines.map((ml, idx) => (
               <div key={idx} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>

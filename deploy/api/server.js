@@ -26440,7 +26440,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r26 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r26, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r27 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r27, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -28966,10 +28966,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r26, options) => {
+    var intersects = (r1, r27, options) => {
       r1 = new Range(r1, options);
-      r26 = new Range(r26, options);
-      return r1.intersects(r26, options);
+      r27 = new Range(r27, options);
+      return r1.intersects(r27, options);
     };
     module2.exports = intersects;
   }
@@ -66447,12 +66447,14 @@ var COSTING_DEFAULT_RATES = [
 ];
 
 // packages/shared/src/pens.ts
+var UV_PEN_SERVICE = "UV Pen Branding";
 var DEFAULT_PEN_TIERS = [
   { from: 1, rate: 20 },
   { from: 100, rate: 15 },
   { from: 500, rate: 12 },
   { from: 1001, rate: 10 }
 ];
+var r25 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var sortedPenTiers = (tiers) => [...tiers].sort((a2, b) => a2.from - b.from);
 function penTiersProblem(tiers) {
   if (tiers.length === 0) return "There must be at least one rate";
@@ -66464,6 +66466,22 @@ function penTiersProblem(tiers) {
   if (s[0].from !== 1) return "The first tier must start at 1 pen";
   for (let i = 1; i < s.length; i++) if (s[i].from === s[i - 1].from) return `Two tiers start at ${s[i].from} pens`;
   return null;
+}
+function penTierFor(tiers, qty) {
+  let found = null;
+  for (const t of sortedPenTiers(tiers)) if (qty >= t.from) found = t;
+  return found;
+}
+function penQuote(tiers, qty) {
+  const q = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
+  const s = sortedPenTiers(tiers);
+  const tier = penTierFor(s, q);
+  const rate2 = tier?.rate ?? 0;
+  const total = r25(q * rate2);
+  const cur = rate2 || s[0]?.rate || 0;
+  const next = q > 0 ? s.find((t) => t.from > q && t.rate < cur) : void 0;
+  const upsell = next ? { qty: next.from, add: next.from - q, rate: next.rate, newTotal: r25(next.rate * next.from), saving: r25(total - next.rate * next.from) } : null;
+  return { qty: q, tier, rate: rate2, total, upsell };
 }
 
 // apps/api/src/pins.ts
@@ -76962,7 +76980,7 @@ async function createDtfOrder(tx, opts) {
     data: {
       orderNo,
       kind: "walkin",
-      channel: "dtf",
+      channel: opts.channel ?? "dtf",
       customerName: opts.customerName || null,
       phone: opts.phone || null,
       staffId: opts.staffId,
@@ -77012,6 +77030,15 @@ async function dtfService(tx, kind, product = "dtf") {
       businessHeadId: head?.id ?? null
     }
   });
+}
+async function penService(tx) {
+  const found = await tx.service.findFirst({ where: { name: UV_PEN_SERVICE } });
+  if (found) {
+    if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
+    return found;
+  }
+  const head = await tx.businessHead.findFirst({ where: { name: "UV Printing" } });
+  return tx.service.create({ data: { name: UV_PEN_SERVICE, item: UV_PEN_SERVICE, unit: "piece", price: DEFAULT_PEN_TIERS[0].rate, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
 dtfRouter.get("/data", async (req, res) => {
   const perms = await permissionsForRole(req.user.role);
@@ -77093,6 +77120,59 @@ dtfRouter.put("/pen-tiers", manageOnly, async (req, res) => {
   if (problem) return res.status(400).json({ error: problem });
   await prisma.$transaction([prisma.penTier.deleteMany({}), prisma.penTier.createMany({ data: tiers.map((t) => ({ fromQty: t.from, rate: t.rate })) })]);
   res.json({ canManage: true, tiers: await penTiers() });
+});
+var penOrderSchema = external_exports.object({
+  pens: external_exports.number().int().positive("Enter the number of pens").max(1e6),
+  client: external_exports.string().max(200).default(""),
+  phone: external_exports.string().max(40).default(""),
+  amountPaid: external_exports.number().min(0).default(0),
+  paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
+  payments: external_exports.array(paymentLineSchema).max(6).optional(),
+  materialLines: external_exports.array(materialLineSchema).default([]),
+  sourcedBy: external_exports.number().int().nullable().optional(),
+  freelanceAgentId: external_exports.number().int().nullable().optional(),
+  // The sales person the order is credited to, when the front office captures it for them (see frontOffice.ts).
+  staffId: external_exports.number().int().nullable().optional()
+});
+dtfRouter.post("/pen-orders", async (req, res) => {
+  const parsed = penOrderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const quote = penQuote(await penTiers(), d.pens);
+  if (!quote.tier) return res.status(400).json({ error: "No rate applies to that number of pens" });
+  const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
+  if (claim) return res.status(400).json({ error: claim });
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
+  const merch = await materialLineItems(prisma, d.materialLines).catch(() => null);
+  if (!merch) return res.status(400).json({ error: "Material not found" });
+  const orderTotal2 = quote.total + merch.reduce((a2, m) => a2 + m.qty * m.unitPrice, 0);
+  if (paid > orderTotal2 + 5e-3) return res.status(400).json({ error: "Amount paid cannot exceed the order total" });
+  try {
+    const order = await prisma.$transaction(async (tx) => {
+      const service = await penService(tx);
+      return createDtfOrder(tx, {
+        product: "uv",
+        channel: "general",
+        customerName: d.client.trim() || WALK_IN_CLIENT,
+        phone: d.phone.trim(),
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
+        serviceLine: { itemType: "service", serviceId: service.id, qty: d.pens, unitPrice: quote.rate },
+        materialLines: d.materialLines,
+        payments: paymentLines,
+        sourcedBy: d.sourcedBy,
+        freelanceAgentId: d.freelanceAgentId,
+        serviceBase: quote.rate
+        // sold at the tier rate, with nothing above it to earn a premium on
+      });
+    });
+    res.status(201).json({ order: serializeDetail(order) });
+  } catch (err) {
+    res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the pen order") });
+  }
 });
 var settingsSchema6 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
@@ -80683,11 +80763,11 @@ costingRouter.put("/job-types/:key", admin2, async (req, res) => {
   const row = await prisma.costingJobType.update({ where: { key: req.params.key }, data: parsed.data });
   res.json(toType(row));
 });
-var r25 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r26 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function viewOf(q, sees) {
-  const vat = r25(q.price * VAT_RATE);
+  const vat = r26(q.price * VAT_RATE);
   const floor2 = costingFloor(q.cost, q.floorMarginPct);
-  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r25(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
+  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r26(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
   return {
     id: q.id,
     quoteNo: q.quoteNo,
@@ -80708,7 +80788,7 @@ function viewOf(q, sees) {
     cost: q.cost,
     price: q.price,
     vat,
-    total: r25(q.price + vat),
+    total: r26(q.price + vat),
     // the lowest the price may be agreed at without approval (a price, not a margin)
     lowestPrice: floor2.price,
     lowestTotal: floor2.total,
@@ -80719,7 +80799,7 @@ function viewOf(q, sees) {
     lostReason: q.lostReason,
     orderId: q.orderId,
     orderNo: q.orderNo,
-    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r25(q.price - q.cost) } : {}
+    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r26(q.price - q.cost) } : {}
   };
 }
 async function seesAllQuotes(user) {
@@ -80863,7 +80943,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
   if (q.approval === "Pending") return res.status(400).json({ error: "The agreed price is under the floor and is waiting for a manager\u2019s approval" });
   if (q.approval === "Rejected") return res.status(400).json({ error: "The agreed price was not approved \u2014 agree another price" });
   const service = await costedService(q.jobType);
-  const total = r25(q.agreedPrice * (1 + VAT_RATE));
+  const total = r26(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
     customerName: body.data.customerName?.trim() || q.clientName,
     phone: body.data.phone ?? q.phone,
@@ -80874,7 +80954,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
     paymentTiming: body.data.paymentTiming,
     payments: body.data.paymentTiming === "onAcceptance" ? body.data.payments : void 0,
     // one line for the whole job at the price agreed (VAT included), with what the job costs us (VAT included, as a supplier bills it) kept on it for Finance
-    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r25(q.cost * (1 + VAT_RATE)) }]
+    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r26(q.cost * (1 + VAT_RATE)) }]
   });
   if (!form.success) return res.status(400).json({ error: form.error.issues[0]?.message ?? "Invalid input" });
   const quoteId = q.id;

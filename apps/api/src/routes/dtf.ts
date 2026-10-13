@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import { DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DtfProduct, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -95,6 +95,8 @@ async function createDtfOrder(
     capturedById: number;
     capturedByName: string;
     product?: DtfProduct;
+    /** 'dtf' for film sales and artwork jobs; UV pens are an ordinary order ('general'), so a sourced client earns the general-order commission. */
+    channel?: 'dtf' | 'general';
     serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null };
     materialLines: { materialId: number; qty: number; unitPrice?: number }[];
     payments: PaymentLine[];
@@ -142,7 +144,7 @@ async function createDtfOrder(
     data: {
       orderNo,
       kind: 'walkin',
-      channel: 'dtf',
+      channel: opts.channel ?? 'dtf',
       customerName: opts.customerName || null,
       phone: opts.phone || null,
       staffId: opts.staffId,
@@ -203,6 +205,17 @@ async function dtfService(tx: Prisma.TransactionClient, kind: 'film' | 'artwork'
       businessHeadId: head?.id ?? null,
     },
   });
+}
+
+/** The price-list service UV pen orders are recorded against: found by name, put right if retired, created on the first order. */
+async function penService(tx: Prisma.TransactionClient) {
+  const found = await tx.service.findFirst({ where: { name: UV_PEN_SERVICE } });
+  if (found) {
+    if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
+    return found;
+  }
+  const head = await tx.businessHead.findFirst({ where: { name: 'UV Printing' } });
+  return tx.service.create({ data: { name: UV_PEN_SERVICE, item: UV_PEN_SERVICE, unit: 'piece', price: DEFAULT_PEN_TIERS[0]!.rate, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
 
 // The full data set the tracker's calculations run on. Users without
@@ -294,6 +307,62 @@ dtfRouter.put('/pen-tiers', manageOnly, async (req, res) => {
   if (problem) return res.status(400).json({ error: problem });
   await prisma.$transaction([prisma.penTier.deleteMany({}), prisma.penTier.createMany({ data: tiers.map((t) => ({ fromQty: t.from, rate: t.rate })) })]);
   res.json({ canManage: true, tiers: await penTiers() });
+});
+
+const penOrderSchema = z.object({
+  pens: z.number().int().positive('Enter the number of pens').max(1_000_000),
+  client: z.string().max(200).default(''),
+  phone: z.string().max(40).default(''),
+  amountPaid: z.number().min(0).default(0),
+  paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
+  payments: z.array(paymentLineSchema).max(6).optional(),
+  materialLines: z.array(materialLineSchema).default([]),
+  sourcedBy: z.number().int().nullable().optional(),
+  freelanceAgentId: z.number().int().nullable().optional(),
+  // The sales person the order is credited to, when the front office captures it for them (see frontOffice.ts).
+  staffId: z.number().int().nullable().optional(),
+});
+
+// "Capture as order" on UV Pen Costing: the pens at the rate for their quantity — worked out here from the tiers, never taken from the screen — become an ordinary order
+// (receipt or invoice, any payment, any merchandise sold with it). There is no roll to consume, so nothing else is recorded.
+dtfRouter.post('/pen-orders', async (req, res) => {
+  const parsed = penOrderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  const quote = penQuote(await penTiers(), d.pens);
+  if (!quote.tier) return res.status(400).json({ error: 'No rate applies to that number of pens' });
+  const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
+  if (claim) return res.status(400).json({ error: claim });
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
+  const merch = await materialLineItems(prisma, d.materialLines).catch(() => null);
+  if (!merch) return res.status(400).json({ error: 'Material not found' });
+  const orderTotal = quote.total + merch.reduce((a, m) => a + m.qty * m.unitPrice, 0);
+  if (paid > orderTotal + 0.005) return res.status(400).json({ error: 'Amount paid cannot exceed the order total' });
+  try {
+    const order = await prisma.$transaction(async (tx) => {
+      const service = await penService(tx);
+      return createDtfOrder(tx, {
+        product: 'uv',
+        channel: 'general',
+        customerName: d.client.trim() || WALK_IN_CLIENT,
+        phone: d.phone.trim(),
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
+        serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pens, unitPrice: quote.rate },
+        materialLines: d.materialLines,
+        payments: paymentLines,
+        sourcedBy: d.sourcedBy,
+        freelanceAgentId: d.freelanceAgentId,
+        serviceBase: quote.rate, // sold at the tier rate, with nothing above it to earn a premium on
+      });
+    });
+    res.status(201).json({ order: serializeDetail(order) });
+  } catch (err) {
+    res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the pen order') });
+  }
 });
 
 // ── Setup ────────────────────────────────────────────────────────────────

@@ -2,6 +2,9 @@
 // 100–499 at 15/=, 500–1000 at 12/=, 1001 and over at 10/=. The tiers are data (a list of "from this many pens, this rate"), kept in the system and editable by a manager; the rate for
 // an order is the last tier whose "from" is not above the quantity. Prices are what the customer pays, VAT included, as everywhere else in the system.
 
+/** The price-list service a UV pen order is recorded against (created on the first order if the price list has none). */
+export const UV_PEN_SERVICE = 'UV Pen Branding';
+
 export interface PenTier {
   /** The first quantity this rate applies to. */
   from: number;

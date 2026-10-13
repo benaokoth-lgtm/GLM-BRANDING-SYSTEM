@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PEN_QUICK_PICKS, fmtNum, penQuote, penRangeLabel, penTiersProblem, sortedPenTiers } from '@glm/shared';
 import type { PenTier } from '@glm/shared';
 import { api } from '../../api/client';
+import DtfOrderDialog from './DtfOrderDialog';
 
 // UV DTF Film Order → UV Pen Costing: the price picker for UV-printed pen branding. Staff enter the number of pens and the rate per pen and the total to charge come from the tier
 // table — the whole order at the one rate for its quantity — so nobody has to ask for the price. When the customer is a few pens short of a cheaper tier it says so, and one tap
-// sets the order to that quantity. A manager changes the rates here; they are kept in the system, for everyone.
+// sets the order to that quantity. A manager changes the rates here; they are kept in the system, for everyone. "Capture as order" takes the priced pens through the usual order
+// popup (client, merchandise, payment); the server works the rate out again from the tiers.
 
 const label = { fontSize: 14, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' } as const;
 const rule = '2px solid var(--color-divider)';
@@ -24,6 +27,8 @@ export default function UvPenCosting() {
   const [error, setError] = useState('');
   const [qty, setQty] = useState(0);
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     api
@@ -190,8 +195,32 @@ export default function UvPenCosting() {
               <button type="button" className="btn btn-primary blueprint" onClick={() => set(u.qty)}>Set to {fmtNum(u.qty)} pens</button>
             </div>
           )}
+          {qty > 0 && (
+            <div>
+              <button type="button" className="btn btn-primary blueprint" onClick={() => setCapturing(true)}>
+                <i className="corner tl"></i>
+                <i className="corner tr"></i>
+                <i className="corner bl"></i>
+                <i className="corner br"></i>
+                Capture as order
+              </button>
+            </div>
+          )}
         </div>
       </div>
+      {capturing && qty > 0 && (
+        <DtfOrderDialog
+          product="uv"
+          mode="pens"
+          postUrl="/dtf/pen-orders"
+          basePayload={{ pens: qty }}
+          qty={qty}
+          unitPrice={q.rate}
+          client=""
+          onClose={() => setCapturing(false)}
+          onDone={() => navigate('/orders/all')}
+        />
+      )}
     </div>
   );
 }

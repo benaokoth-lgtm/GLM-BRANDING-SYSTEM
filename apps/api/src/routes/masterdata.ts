@@ -528,12 +528,6 @@ const serviceSchema = z.object({
   unit: z.enum(['piece', 'metre', 'sqm']),
   price: z.number().positive(),
   usesArtworkPricing: z.boolean().optional(),
-  // Contracted-out service: the supplier quotes one VAT-inclusive price (paper and service together); we add a mark-up.
-  outsourced: z.boolean().optional(),
-  supplierName: z.string().trim().max(120).optional(),
-  markupType: z.enum(MARKUP_TYPES).optional(),
-  markupValue: z.number().min(0).optional(),
-  defaultSupplierCost: z.number().positive().nullable().optional(),
 });
 
 masterDataRouter.post('/services', requireRole('Admin'), async (req, res) => {
@@ -568,11 +562,6 @@ const serviceUpdateSchema = z
     unit: z.enum(['piece', 'metre', 'sqm']).optional(),
     usesArtworkPricing: z.boolean().optional(),
     chargesPressingFee: z.boolean().optional(),
-    outsourced: z.boolean().optional(),
-    supplierName: z.string().trim().max(120).optional(),
-    markupType: z.enum(MARKUP_TYPES).optional(),
-    markupValue: z.number().min(0).optional(),
-    defaultSupplierCost: z.number().positive().nullable().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 

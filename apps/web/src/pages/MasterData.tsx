@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { MATERIAL_UNITS, PERMISSION_KEYS, compareSizes, fmtKsh, isWeakPin, priceFromCost, requiredPinLength } from '@glm/shared';
+import { MATERIAL_UNITS, PERMISSION_KEYS, compareSizes, fmtKsh, isWeakPin, requiredPinLength } from '@glm/shared';
 import { Fragment } from 'react';
 import type { PermissionKey, RoleRow } from '@glm/shared';
 import { api } from '../api/client';
@@ -270,7 +270,6 @@ export default function MasterData() {
     }
   }
 
-  // Contracted-out services: a generic in-place edit of the outsourced fields.
   // Delete a service from the price list. One no order has used goes outright; one that has been sold is only retired (the orders that used it keep it).
   async function deleteService(serviceId: number, name: string) {
     if (!window.confirm(`Delete "${name}" from the price list?\n\nIf no order has ever used it, it is removed. If it has been sold, it is taken off the price list and the order screens but stays on the orders that used it.`)) return;
@@ -586,10 +585,9 @@ export default function MasterData() {
     }
   }
 
-  // The service price list is shown as three lists: the ordinary services, then the contracted-out ones, then those priced by artwork size. A line that is both is listed as contracted out.
-  const contractedServices = serviceRows.filter((sv) => sv.outsourced);
-  const artworkServices = serviceRows.filter((sv) => !sv.outsourced && sv.usesArtworkPricing);
-  const plainServices = serviceRows.filter((sv) => !sv.outsourced && !sv.usesArtworkPricing);
+  // The service price list is shown as two lists: the ordinary services, then those priced by artwork size.
+  const artworkServices = serviceRows.filter((sv) => sv.usesArtworkPricing);
+  const plainServices = serviceRows.filter((sv) => !sv.usesArtworkPricing);
   const renderServiceTable = (rows: typeof serviceRows) => (
           <table className="table">
             <thead>
@@ -602,7 +600,6 @@ export default function MasterData() {
                 <th>Price</th>
                 <th>Artwork pricing</th>
                 <th>Charges pressing fee</th>
-                <th>Contracted out</th>
                 <th></th>
               </tr>
             </thead>
@@ -698,12 +695,6 @@ export default function MasterData() {
                       {sv.chargesPressingFee && <span className="tag tag-accent">Heat press</span>}
                     </label>
                   </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={sv.outsourced} onChange={(e) => saveServiceFields(sv.id, { outsourced: e.target.checked })} />
-                      {sv.outsourced && <span className="tag tag-accent">Outsourced</span>}
-                    </label>
-                  </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {svcEdit[sv.id] ? (
                       <>
@@ -731,59 +722,6 @@ export default function MasterData() {
                     )}
                   </td>
                 </tr>
-                {sv.outsourced && (
-                  <tr>
-                    <td colSpan={10} style={{ background: 'var(--color-surface)' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr auto', gap: 'var(--space-3)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>Supplier</label>
-                          <input className="input" defaultValue={sv.supplierName} onBlur={(e) => e.target.value !== sv.supplierName && saveServiceFields(sv.id, { supplierName: e.target.value })} placeholder="Who prints it for us" />
-                        </div>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>Usual supplier price per {sv.unit} (VAT incl.)</label>
-                          <input
-                            className="input"
-                            inputMode="decimal"
-                            defaultValue={sv.defaultSupplierCost ?? ''}
-                            onBlur={(e) => {
-                              const v = Number(e.target.value);
-                              if ((v || null) !== (sv.defaultSupplierCost ?? null)) saveServiceFields(sv.id, { defaultSupplierCost: v > 0 ? v : null });
-                            }}
-                            placeholder="paper + service, e.g. 40"
-                          />
-                        </div>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>Mark-up</label>
-                          <select className="input" value={sv.markupType ?? 'percent'} onChange={(e) => saveServiceFields(sv.id, { markupType: e.target.value })}>
-                            <option value="percent">Percentage (%)</option>
-                            <option value="amount">Amount (Ksh per {sv.unit})</option>
-                          </select>
-                        </div>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>{(sv.markupType ?? 'percent') === 'percent' ? 'Mark-up %' : 'Mark-up Ksh'}</label>
-                          <input
-                            className="input"
-                            inputMode="decimal"
-                            defaultValue={sv.markupValue ?? 0}
-                            onBlur={(e) => Number(e.target.value) !== (sv.markupValue ?? 0) && saveServiceFields(sv.id, { markupValue: Math.max(0, Number(e.target.value) || 0) })}
-                          />
-                        </div>
-                        {(() => {
-                          const cost = sv.defaultSupplierCost ?? 0;
-                          const suggested = cost > 0 ? priceFromCost(cost, sv.markupType ?? 'percent', sv.markupValue ?? 0) : 0;
-                          return (
-                            <button type="button" className="btn btn-secondary btn-sm" disabled={suggested <= 0 || suggested === sv.price} onClick={() => saveServiceFields(sv.id, { price: suggested })}>
-                              {suggested > 0 ? `Set price to ${fmtKsh(suggested)}` : 'Set price from cost'}
-                            </button>
-                          );
-                        })()}
-                      </div>
-                      <div className="note">
-                        The supplier quotes one price that includes paper and the service, VAT included; the mark-up gives the selling price (also VAT included). These are defaults — the real quote is entered on each job. Only people with the "See supplier costs" permission can see the supplier price and mark-up.
-                      </div>
-                    </td>
-                  </tr>
-                )}
                 </Fragment>
               ))}
             </tbody>
@@ -1134,15 +1072,6 @@ export default function MasterData() {
             </span>
           </div>
           {renderServiceTable(plainServices)}
-          {contractedServices.length > 0 && (
-            <div style={{ marginTop: 'var(--space-6)' }}>
-              <div className="card-kicker">Contracted-out services</div>
-              <p className="note" style={{ marginTop: 0 }}>
-                Work a supplier makes and we sell on (sold through <b>Sales → Outsourced Order</b>). Under each line: the supplier, their usual price and our mark-up. Tick or untick <b>Contracted out</b> on a line to move it between the lists.
-              </p>
-              {renderServiceTable(contractedServices)}
-            </div>
-          )}
           {artworkServices.length > 0 && (
             <div style={{ marginTop: 'var(--space-6)' }}>
               <div className="card-kicker">Artwork-priced services</div>

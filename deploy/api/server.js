@@ -66484,6 +66484,115 @@ function penQuote(tiers, qty) {
   return { qty: q, tier, rate: rate2, total, upsell };
 }
 
+// packages/shared/src/printCosting.ts
+var PRINT_PRODUCTS = ["eulogy", "profile", "brochure"];
+var PRINT_PRODUCT_LABEL = { eulogy: "Eulogy", profile: "Company profile", brochure: "Brochure" };
+var PRINT_PAGE_OPTIONS = [4, 8, 12, 16, 20, 24, 28, 32];
+var PRINT_UPS = { A4: 2, B5: 4 };
+var PRINT_BOOKLET_QTYS = [25, 50, 100, 250, 500];
+var PRINT_BROCHURE_QTYS = [100, 250, 500, 1e3, 5e3];
+var DEFAULT_PRINT_SETTINGS = {
+  papers: [
+    { name: "130gsm gloss", one: 35, two: 60 },
+    { name: "150gsm gloss", one: 40, two: 68 },
+    { name: "170gsm gloss", one: 45, two: 78 },
+    { name: "200gsm gloss", one: 55, two: 92 },
+    { name: "250gsm matt cover", one: 70, two: 115 }
+  ],
+  fees: { staple: 8, trim: 6, fold: 10, lam: 60, designEu: 3e3, designPr: 3e3, designBr: 1500, proof: 300, deliver: 500, waste: 5 },
+  tiers: [
+    { min: 1, pct: 50 },
+    { min: 100, pct: 35 },
+    { min: 500, pct: 25 }
+  ]
+};
+var PRINT_FEE_LABELS = [
+  { key: "designEu", label: "Design/layout, eulogy", unit: "KES / job" },
+  { key: "designPr", label: "Design/layout, company profile", unit: "KES / job" },
+  { key: "designBr", label: "Design/layout, brochure", unit: "KES / job" },
+  { key: "proof", label: "Proofing", unit: "KES / job" },
+  { key: "deliver", label: "Delivery", unit: "KES / job" },
+  { key: "staple", label: "Stapling", unit: "KES / set (2+ sheets)" },
+  { key: "trim", label: "Trimming", unit: "KES / set" },
+  { key: "fold", label: "Folding / creasing", unit: "KES / set" },
+  { key: "lam", label: "Lamination", unit: "KES / A3 sheet" },
+  { key: "waste", label: "Brochure wastage", unit: "% of sheets" }
+];
+function printSettingsProblem(s) {
+  if (s.papers.length < 1) return "There must be at least one paper";
+  for (const p of s.papers) {
+    if (!p.name.trim()) return "Every paper needs a name";
+    if (!(p.one >= 0) || !(p.two >= 0)) return `${p.name}: the sheet rates cannot be negative`;
+  }
+  for (const { key: key2, label } of PRINT_FEE_LABELS) if (!(s.fees[key2] >= 0)) return `${label} cannot be negative`;
+  if (s.fees.waste > 100) return "Wastage cannot be more than 100%";
+  if (s.tiers.length < 1) return "There must be at least one mark-up tier";
+  const sorted = [...s.tiers].sort((a2, b) => a2.min - b.min);
+  if (sorted[0].min !== 1) return "The first mark-up tier must start at 1";
+  for (let i = 0; i < sorted.length; i++) {
+    const t = sorted[i];
+    if (!Number.isInteger(t.min) || t.min < 1) return "A tier starts at a whole number of copies, 1 or more";
+    if (i > 0 && t.min === sorted[i - 1].min) return "Two mark-up tiers start at the same quantity";
+    if (!(t.pct >= 0) || t.pct > 1e3) return "A mark-up is between 0% and 1000%";
+  }
+  return null;
+}
+function printMarkupPct(tiers, qty, mode) {
+  const sorted = [...tiers].sort((a2, b) => a2.min - b.min);
+  if (mode === "flat") return sorted[0].pct;
+  let pct = sorted[0].pct;
+  for (const t of sorted) if (qty >= t.min) pct = t.pct;
+  return pct;
+}
+function printCalc(job, s) {
+  const qty = Math.max(1, Math.floor(job.qty) || 1);
+  const f = s.fees;
+  const paper = s.papers[job.paper] ?? s.papers[0];
+  const lines = [];
+  const add = (label, amount, note = "") => lines.push({ label, note, amount: round2(amount) });
+  let sheets = 0;
+  if (job.product === "brochure") {
+    const base3 = Math.ceil(qty / PRINT_UPS[job.size]);
+    const total2 = Math.ceil(base3 * (1 + f.waste / 100));
+    const rate2 = job.sides === 2 ? paper.two : paper.one;
+    sheets = total2;
+    add("A3 printing", total2 * rate2, `${total2} sheets \xD7 ${rate2} (${base3} + ${total2 - base3} waste)`);
+    if (job.lam) add("Lamination", total2 * f.lam, `${total2} sheets`);
+    add("Design/layout", f.designBr, "per job");
+  } else {
+    const n = Math.max(1, Math.round(job.pages / 4));
+    sheets = n * qty;
+    const inside = job.coverSep ? n - 1 : n;
+    if (inside > 0) add("Inside sheets", inside * paper.two * qty, `${inside} \xD7 ${paper.two} \xD7 ${qty} copies`);
+    if (job.coverSep) {
+      const cover = s.papers[job.cover] ?? paper;
+      add("Cover sheet", cover.two * qty, `${cover.name} \xD7 ${qty}`);
+    }
+    if (job.lam) add("Cover lamination", f.lam * qty, `${qty} covers`);
+    if (n > 1) add("Stapling", f.staple * qty, `${qty} sets`);
+    add("Trimming", f.trim * qty, `${qty} sets`);
+    if (job.fold) add("Folding / creasing", f.fold * qty, `${qty} sets`);
+    add("Design/layout", job.product === "eulogy" ? f.designEu : f.designPr, "per job");
+  }
+  add("Proofing", f.proof, "per job");
+  add("Delivery", f.deliver, "per job");
+  const cost = round2(lines.reduce((a2, l) => a2 + l.amount, 0));
+  const markupPct = printMarkupPct(s.tiers, qty, job.mode);
+  const markup = round2(cost * markupPct / 100);
+  const priceExVat = round2(cost + markup);
+  const vat = round2(priceExVat * VAT_RATE);
+  const total = round2(priceExVat + vat);
+  return { qty, lines, sheets, cost, markupPct, markup, priceExVat, vat, total, unitExVat: priceExVat / qty, unitTotal: total / qty, profit: markup };
+}
+function printSpec(job, s) {
+  const paper = s.papers[job.paper] ?? s.papers[0];
+  if (job.product === "brochure") return `Brochure, ${job.size} ${job.sides === 2 ? "double" : "single"} side / ${paper.name}${job.lam ? ", laminated" : ""}`;
+  const n = Math.max(1, Math.round(job.pages / 4));
+  const cover = job.coverSep ? ` with a ${(s.papers[job.cover] ?? paper).name} cover${job.lam ? ", laminated" : ""}` : job.lam ? ", laminated cover" : "";
+  const finish = [n > 1 ? "stapled" : null, "trimmed", job.fold ? "folded" : null].filter(Boolean);
+  return `${PRINT_PRODUCT_LABEL[job.product]}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(", ") + " and " + finish[finish.length - 1] : finish[0]}`;
+}
+
 // apps/api/src/pins.ts
 var PIN_ROUNDS = 10;
 var MAX_ATTEMPTS = 5;
@@ -71297,6 +71406,10 @@ function retireLegacyEmbroideryOnce() {
     await prisma.setting.update({ where: { id: 1 }, data: { embroideryLegacyRetired: true } });
   })();
 }
+async function clearContractedOutOnce() {
+  const r = await prisma.service.updateMany({ where: { outsourced: true, soldViaDtfModule: false }, data: { outsourced: false } });
+  if (r.count) console.log(`${r.count} service${r.count === 1 ? " was" : "s were"} no longer marked "contracted out" (the option has been removed).`);
+}
 
 // apps/api/src/staffNames.ts
 async function ensureStaffNames() {
@@ -71818,13 +71931,7 @@ var serviceSchema = external_exports.object({
   businessHeadId: external_exports.number().int().nullable().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]),
   price: external_exports.number().positive(),
-  usesArtworkPricing: external_exports.boolean().optional(),
-  // Contracted-out service: the supplier quotes one VAT-inclusive price (paper and service together); we add a mark-up.
-  outsourced: external_exports.boolean().optional(),
-  supplierName: external_exports.string().trim().max(120).optional(),
-  markupType: external_exports.enum(MARKUP_TYPES).optional(),
-  markupValue: external_exports.number().min(0).optional(),
-  defaultSupplierCost: external_exports.number().positive().nullable().optional()
+  usesArtworkPricing: external_exports.boolean().optional()
 });
 masterDataRouter.post("/services", requireRole("Admin"), async (req, res) => {
   const parsed = serviceSchema.safeParse(req.body);
@@ -71849,12 +71956,7 @@ var serviceUpdateSchema = external_exports.object({
   businessHeadId: external_exports.number().int().nullable().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]).optional(),
   usesArtworkPricing: external_exports.boolean().optional(),
-  chargesPressingFee: external_exports.boolean().optional(),
-  outsourced: external_exports.boolean().optional(),
-  supplierName: external_exports.string().trim().max(120).optional(),
-  markupType: external_exports.enum(MARKUP_TYPES).optional(),
-  markupValue: external_exports.number().min(0).optional(),
-  defaultSupplierCost: external_exports.number().positive().nullable().optional()
+  chargesPressingFee: external_exports.boolean().optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => {
   const parsed = serviceUpdateSchema.safeParse(req.body);
@@ -75428,10 +75530,10 @@ emailRouter.post("/send", sendLimiter, async (req, res) => {
     return res.status(500).json({ error: "Could not prepare the PDF to attach" });
   }
   const owes = detail.totals.balanceDue > 9e-3 && kind.isInvoice;
-  const money4 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money5 = (n) => "Ksh " + n.toLocaleString("en-KE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const who = detail.corporateClient?.name || (detail.customerName && detail.customerName.trim().toLowerCase() !== "walk-in" ? detail.customerName : "");
   const reach = [company.companyPhone, company.companyPhone2].filter((p) => p && p.trim()).join(" / ");
-  const summary = `Total ${money4(detail.totals.grandTotal)}${kind.isInvoice ? owes ? `. Balance due ${money4(detail.totals.balanceDue)}${detail.dueDate ? ` by ${detail.dueDate}` : ""}.` : ". Paid in full, thank you." : "."}`;
+  const summary = `Total ${money5(detail.totals.grandTotal)}${kind.isInvoice ? owes ? `. Balance due ${money5(detail.totals.balanceDue)}${detail.dueDate ? ` by ${detail.dueDate}` : ""}.` : ". Paid in full, thank you." : "."}`;
   const lines = [
     `Dear ${who || "customer"},`,
     ...parsed.data.message?.trim() ? ["", parsed.data.message.trim()] : [],
@@ -77537,8 +77639,8 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
     for (const s of sales) byDay2.set(s.soldOn, [...byDay2.get(s.soldOn) ?? [], s]);
     const days2 = [...byDay2.entries()].map(([date, list]) => {
       const orders = list.map((s) => {
-        const money4 = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
-        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money4 };
+        const money5 = s.order ? orderMoney(s.order) : { total: round2(s.metres * s.pricePerM), paid: round2(s.amountPaid), balance: round2(s.metres * s.pricePerM - s.amountPaid) };
+        return { saleId: s.id, orderId: s.orderId, orderNo: s.order?.orderNo ?? null, client: s.client || WALK_IN_CLIENT, rollId: s.rollId, metres: s.metres, pricePerM: s.pricePerM, stdPricePerM: s.stdPriceAtSale, capturedByName: s.capturedByName, ...money5 };
       });
       const metres = round2(list.reduce((a2, s) => a2 + s.metres, 0));
       return {
@@ -77562,8 +77664,8 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
       const calc = { id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece };
       const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
       const final = jobTotals(calc).finalPerPiece;
-      const money4 = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
-      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money4 };
+      const money5 = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
+      return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money5 };
     });
     const counted = orders.filter((o) => o.approval !== "Pending");
     const pieces = counted.reduce((a2, o) => a2 + o.pieces, 0);
@@ -80763,6 +80865,81 @@ costingRouter.put("/job-types/:key", admin2, async (req, res) => {
   const row = await prisma.costingJobType.update({ where: { key: req.params.key }, data: parsed.data });
   res.json(toType(row));
 });
+async function printSettings() {
+  const row = await prisma.printCostSetting.findUnique({ where: { id: 1 } });
+  if (!row) return DEFAULT_PRINT_SETTINGS;
+  try {
+    const d = JSON.parse(row.data);
+    return { papers: d.papers, fees: { ...DEFAULT_PRINT_SETTINGS.fees, ...d.fees }, tiers: d.tiers };
+  } catch {
+    return DEFAULT_PRINT_SETTINGS;
+  }
+}
+var printJobSchema = external_exports.object({
+  product: external_exports.enum(PRINT_PRODUCTS),
+  pages: external_exports.number().int().refine((n) => PRINT_PAGE_OPTIONS.includes(n), "Pages are 4, 8, 12 \u2026 32").default(8),
+  paper: external_exports.number().int().min(0).default(0),
+  cover: external_exports.number().int().min(0).default(0),
+  coverSep: external_exports.boolean().default(false),
+  lam: external_exports.boolean().default(false),
+  fold: external_exports.boolean().default(true),
+  size: external_exports.enum(["A4", "B5"]).default("A4"),
+  sides: external_exports.union([external_exports.literal(1), external_exports.literal(2)]).default(2),
+  qty: external_exports.number().int().min(1, "Enter at least 1").max(1e6),
+  mode: external_exports.enum(["tier", "flat"]).default("tier")
+});
+costingRouter.get("/print/config", mayCost, async (req, res) => {
+  const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
+  res.json({ canSeeCosts: sees, papers: s.papers.map((p) => p.name), pageOptions: PRINT_PAGE_OPTIONS, ups: PRINT_UPS, bookletQtys: PRINT_BOOKLET_QTYS, brochureQtys: PRINT_BROCHURE_QTYS });
+});
+function printView(job, s, sees) {
+  const r = printCalc(job, s);
+  const base3 = { canSeeCosts: sees, spec: printSpec(job, s), qty: r.qty, sheets: r.sheets, lines: r.lines, cost: r.cost, priceExVat: r.priceExVat, vat: r.vat, total: r.total, unitExVat: r.unitExVat, unitTotal: r.unitTotal };
+  return sees ? { ...base3, markupPct: r.markupPct, markup: r.markup, profit: r.profit } : base3;
+}
+costingRouter.post("/print/quote", mayCost, async (req, res) => {
+  const parsed = printJobSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
+  const job = { ...parsed.data, mode: sees ? parsed.data.mode : "tier" };
+  if (job.paper >= s.papers.length || job.cover >= s.papers.length) return res.status(400).json({ error: "That paper is not on the list" });
+  res.json(printView(job, s, sees));
+});
+costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
+  const parsed = printJobSchema.omit({ qty: true, product: true, pages: true, size: true, sides: true }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
+  const o = { ...parsed.data, mode: sees ? parsed.data.mode : "tier" };
+  if (o.paper >= s.papers.length || o.cover >= s.papers.length) return res.status(400).json({ error: "That paper is not on the list" });
+  const unit = (job) => r26(printCalc({ ...o, ...job }, s).unitTotal);
+  res.json({
+    bookletQtys: PRINT_BOOKLET_QTYS,
+    brochureQtys: PRINT_BROCHURE_QTYS,
+    booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: "eulogy", pages, size: "A4", sides: 2, qty })) })),
+    brochures: ["A4", "B5"].flatMap(
+      (size) => [1, 2].map((sides) => ({ name: size + (sides === 1 ? " single side" : " double side"), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: "brochure", pages: 8, size, sides, qty })) }))
+    )
+  });
+});
+var money4 = external_exports.number().min(0).max(1e8);
+var printSettingsSchema = external_exports.object({
+  papers: external_exports.array(external_exports.object({ name: external_exports.string().trim().min(1).max(60), one: money4, two: money4 })).min(1).max(20),
+  fees: external_exports.object({ staple: money4, trim: money4, fold: money4, lam: money4, designEu: money4, designPr: money4, designBr: money4, proof: money4, deliver: money4, waste: external_exports.number().min(0).max(100) }),
+  tiers: external_exports.array(external_exports.object({ min: external_exports.number().int(), pct: external_exports.number().min(0).max(1e3) })).min(1).max(12)
+});
+costingRouter.get("/print/settings", admin2, async (_req, res) => {
+  res.json(await printSettings());
+});
+costingRouter.put("/print/settings", admin2, async (req, res) => {
+  const parsed = printSettingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const next = { ...parsed.data, tiers: [...parsed.data.tiers].sort((a2, b) => a2.min - b.min) };
+  const problem = printSettingsProblem(next);
+  if (problem) return res.status(400).json({ error: problem });
+  const data = JSON.stringify(next);
+  await prisma.printCostSetting.upsert({ where: { id: 1 }, update: { data }, create: { id: 1, data } });
+  res.json(next);
+});
 var r26 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function viewOf(q, sees) {
   const vat = r26(q.price * VAT_RATE);
@@ -81031,5 +81208,5 @@ app.listen(port, () => {
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

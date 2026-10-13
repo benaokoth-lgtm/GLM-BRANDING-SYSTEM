@@ -6,6 +6,12 @@ import {
   COSTING_DEFAULT_RATES,
   COSTING_JOB_TYPES,
   COSTING_BASIS_LABEL,
+  DEFAULT_PRINT_SETTINGS,
+  PRINT_BOOKLET_QTYS,
+  PRINT_BROCHURE_QTYS,
+  PRINT_PAGE_OPTIONS,
+  PRINT_PRODUCTS,
+  PRINT_UPS,
   VAT_RATE,
   costingAgreement,
   costingBasesFor,
@@ -13,8 +19,12 @@ import {
   costingFloor,
   costingQuote,
   isCostingJobType,
+  printCalc,
+  printSettingsProblem,
+  printSpec,
   todayStr,
 } from '@glm/shared';
+import type { PrintJob, PrintSettings } from '@glm/shared';
 import type { CostingBasis, CostingJobType, CostingJobTypeRow, CostingKind, CostingRateRow } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -181,6 +191,95 @@ costingRouter.put('/job-types/:key', admin, async (req, res) => {
   await ensureCostingDefaults();
   const row = await prisma.costingJobType.update({ where: { key: req.params.key }, data: parsed.data });
   res.json(toType(row));
+});
+
+// ── Brochures & Eulogies: eulogy booklets, company profiles and brochures printed by a supplier ───────────────────────────────────────────────────────────────────────────────
+// The printer's rates (paper per A3 sheet, the fees, the mark-up tiers) are kept by an Admin as one row of settings. Everyone who costs a job sees the cost lines and the price; the mark-up
+// (its percentage and the profit) is for people who may see costs, and so is the choice between a mark-up by quantity and a flat one.
+async function printSettings(): Promise<PrintSettings> {
+  const row = await prisma.printCostSetting.findUnique({ where: { id: 1 } });
+  if (!row) return DEFAULT_PRINT_SETTINGS;
+  try {
+    const d = JSON.parse(row.data) as PrintSettings;
+    return { papers: d.papers, fees: { ...DEFAULT_PRINT_SETTINGS.fees, ...d.fees }, tiers: d.tiers };
+  } catch {
+    return DEFAULT_PRINT_SETTINGS;
+  }
+}
+
+const printJobSchema = z.object({
+  product: z.enum(PRINT_PRODUCTS),
+  pages: z.number().int().refine((n) => (PRINT_PAGE_OPTIONS as readonly number[]).includes(n), 'Pages are 4, 8, 12 … 32').default(8),
+  paper: z.number().int().min(0).default(0),
+  cover: z.number().int().min(0).default(0),
+  coverSep: z.boolean().default(false),
+  lam: z.boolean().default(false),
+  fold: z.boolean().default(true),
+  size: z.enum(['A4', 'B5']).default('A4'),
+  sides: z.union([z.literal(1), z.literal(2)]).default(2),
+  qty: z.number().int().min(1, 'Enter at least 1').max(1_000_000),
+  mode: z.enum(['tier', 'flat']).default('tier'),
+});
+
+costingRouter.get('/print/config', mayCost, async (req, res) => {
+  const [sees, s] = await Promise.all([canSeeCosts(req.user!.role), printSettings()]);
+  res.json({ canSeeCosts: sees, papers: s.papers.map((p) => p.name), pageOptions: PRINT_PAGE_OPTIONS, ups: PRINT_UPS, bookletQtys: PRINT_BOOKLET_QTYS, brochureQtys: PRINT_BROCHURE_QTYS });
+});
+
+function printView(job: PrintJob, s: PrintSettings, sees: boolean) {
+  const r = printCalc(job, s);
+  const base = { canSeeCosts: sees, spec: printSpec(job, s), qty: r.qty, sheets: r.sheets, lines: r.lines, cost: r.cost, priceExVat: r.priceExVat, vat: r.vat, total: r.total, unitExVat: r.unitExVat, unitTotal: r.unitTotal };
+  return sees ? { ...base, markupPct: r.markupPct, markup: r.markup, profit: r.profit } : base;
+}
+
+costingRouter.post('/print/quote', mayCost, async (req, res) => {
+  const parsed = printJobSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const [sees, s] = await Promise.all([canSeeCosts(req.user!.role), printSettings()]);
+  const job: PrintJob = { ...parsed.data, mode: sees ? parsed.data.mode : 'tier' };
+  if (job.paper >= s.papers.length || job.cover >= s.papers.length) return res.status(400).json({ error: 'That paper is not on the list' });
+  res.json(printView(job, s, sees));
+});
+
+// the price list: the VAT-inclusive price of one copy (booklets) or piece (brochures) at the usual quantities, for the paper and finishing chosen
+costingRouter.post('/print/pricelist', mayCost, async (req, res) => {
+  const parsed = printJobSchema.omit({ qty: true, product: true, pages: true, size: true, sides: true }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const [sees, s] = await Promise.all([canSeeCosts(req.user!.role), printSettings()]);
+  const o = { ...parsed.data, mode: sees ? parsed.data.mode : ('tier' as const) };
+  if (o.paper >= s.papers.length || o.cover >= s.papers.length) return res.status(400).json({ error: 'That paper is not on the list' });
+  const unit = (job: Pick<PrintJob, 'product' | 'pages' | 'size' | 'sides' | 'qty'>) => r2(printCalc({ ...o, ...job }, s).unitTotal);
+  res.json({
+    bookletQtys: PRINT_BOOKLET_QTYS,
+    brochureQtys: PRINT_BROCHURE_QTYS,
+    booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: 'eulogy', pages, size: 'A4', sides: 2, qty })) })),
+    brochures: (['A4', 'B5'] as const).flatMap((size) =>
+      ([1, 2] as const).map((sides) => ({ name: size + (sides === 1 ? ' single side' : ' double side'), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: 'brochure', pages: 8, size, sides, qty })) })),
+    ),
+  });
+});
+
+// the rates (Admin)
+const money = z.number().min(0).max(100_000_000);
+const printSettingsSchema = z.object({
+  papers: z.array(z.object({ name: z.string().trim().min(1).max(60), one: money, two: money })).min(1).max(20),
+  fees: z.object({ staple: money, trim: money, fold: money, lam: money, designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: z.number().min(0).max(100) }),
+  tiers: z.array(z.object({ min: z.number().int(), pct: z.number().min(0).max(1000) })).min(1).max(12),
+});
+
+costingRouter.get('/print/settings', admin, async (_req, res) => {
+  res.json(await printSettings());
+});
+
+costingRouter.put('/print/settings', admin, async (req, res) => {
+  const parsed = printSettingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const next: PrintSettings = { ...parsed.data, tiers: [...parsed.data.tiers].sort((a, b) => a.min - b.min) };
+  const problem = printSettingsProblem(next);
+  if (problem) return res.status(400).json({ error: problem });
+  const data = JSON.stringify(next);
+  await prisma.printCostSetting.upsert({ where: { id: 1 }, update: { data }, create: { id: 1, data } });
+  res.json(next);
 });
 
 // ── Costing quotes: a costing saved for a client, the price agreed with them, and the order it becomes ─────────────────────────────────────────────────────────────────────────

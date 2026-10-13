@@ -40,3 +40,13 @@ export function retireLegacyEmbroideryOnce(): Promise<void> {
     await prisma.setting.update({ where: { id: 1 }, data: { embroideryLegacyRetired: true } });
   })());
 }
+
+/**
+ * "Contracted out" is no longer an option on the price list (Master Data) and the General Order no longer takes a supplier's quote. A service that an earlier version had marked that way
+ * is put back to an ordinary service, once at every start (nothing can mark one again). The services made by Job Costing for a costed job (sold through their own screen) keep it:
+ * that is how a captured costing is sent to its supplier.
+ */
+export async function clearContractedOutOnce(): Promise<void> {
+  const r = await prisma.service.updateMany({ where: { outsourced: true, soldViaDtfModule: false }, data: { outsourced: false } });
+  if (r.count) console.log(`${r.count} service${r.count === 1 ? ' was' : 's were'} no longer marked "contracted out" (the option has been removed).`);
+}

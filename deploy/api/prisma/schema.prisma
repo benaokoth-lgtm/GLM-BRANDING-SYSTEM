@@ -1527,3 +1527,9 @@ model PenTier {
   fromQty Int   @unique // the first quantity this rate applies to
   rate    Float
 }
+
+// Job Costing → Brochures & Eulogies: the printer's rates (paper per A3 sheet, the fees, the mark-up tiers) kept as one row of JSON (see packages/shared/src/printCosting.ts).
+model PrintCostSetting {
+  id   Int    @id
+  data String
+}

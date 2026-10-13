@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { Loading, numStyle } from './accounting/shared';
 import CostingQuotes from '../components/CostingQuotes';
 import CostingRatesPanel from '../components/CostingRatesPanel';
+import PrintCosting from '../components/PrintCosting';
 import { useAuth } from '../state/AuthContext';
 
 // Sales → Job Costing. Staff pick a kind of job (business cards, indoor or outdoor signage), say how many and how big, and are given the price to quote: what the supplier rates
@@ -41,6 +42,8 @@ export default function JobCosting() {
   const [config, setConfig] = useState<Config | null>(null);
   const [loadError, setLoadError] = useState('');
   const [type, setType] = useState<CostingJobType>('cards');
+  // the tab beside the kinds of job: eulogy booklets, company profiles and brochures (its own calculator, price list, quote and rates)
+  const [brochures, setBrochures] = useState(false);
   // each kind of job keeps what was typed in while you look at another
   const [form, setForm] = useState<Record<CostingJobType, { qty: string; w: string; h: string; finish: CardFinish; margin: string }>>({
     cards: { qty: '500', w: '', h: '', finish: 'plain', margin: '' },
@@ -187,12 +190,18 @@ export default function JobCosting() {
         <>
       <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }} role="tablist">
         {config.jobTypes.map((t) => (
-          <button key={t.key} type="button" role="tab" aria-selected={type === t.key} className={'btn ' + (type === t.key ? 'btn-primary' : 'btn-secondary')} onClick={() => setType(t.key)}>
+          <button key={t.key} type="button" role="tab" aria-selected={!brochures && type === t.key} className={'btn ' + (!brochures && type === t.key ? 'btn-primary' : 'btn-secondary')} onClick={() => { setBrochures(false); setType(t.key); }}>
             {COSTING_JOB_LABEL[t.key]}
           </button>
         ))}
+        <button type="button" role="tab" aria-selected={brochures} className={'btn ' + (brochures ? 'btn-primary' : 'btn-secondary')} onClick={() => setBrochures(true)}>
+          Brochures &amp; eulogies
+        </button>
       </div>
 
+      {brochures ? (
+        <PrintCosting />
+      ) : (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
         <div className="no-print" style={{ display: 'grid', gap: 'var(--space-5)' }}>
           {type === 'cards' && (
@@ -367,6 +376,7 @@ export default function JobCosting() {
           )}
         </div>
       </div>
+      )}
         </>
       )}
     </>

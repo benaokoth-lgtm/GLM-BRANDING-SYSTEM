@@ -30,8 +30,7 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   }
   // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
   if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/embroidery', 'Embroidery Order']);
-  // Contracted-out jobs: the sales person costs the job (buying price) and sees the margin; commission on these is paid from the gross profit.
-  if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/outsourced', 'Outsourced Order']);
+  // The Outsourced Order screen (/orders/new/outsourced) is not in the menu for now; its route and everything behind it are unchanged.
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has

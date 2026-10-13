@@ -586,6 +586,210 @@ export default function MasterData() {
     }
   }
 
+  // The service price list is shown as three lists: the ordinary services, then the contracted-out ones, then those priced by artwork size. A line that is both is listed as contracted out.
+  const contractedServices = serviceRows.filter((sv) => sv.outsourced);
+  const artworkServices = serviceRows.filter((sv) => !sv.outsourced && sv.usesArtworkPricing);
+  const plainServices = serviceRows.filter((sv) => !sv.outsourced && !sv.usesArtworkPricing);
+  const renderServiceTable = (rows: typeof serviceRows) => (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Description</th>
+                <th>Size</th>
+                <th>Business head</th>
+                <th>Unit</th>
+                <th>Price</th>
+                <th>Artwork pricing</th>
+                <th>Charges pressing fee</th>
+                <th>Contracted out</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((sv) => (
+                <Fragment key={sv.id}>
+                <tr>
+                  <td>
+                    {svcEdit[sv.id] ? (
+                      <input className="input" style={{ width: 160 }} value={svcEdit[sv.id]!.item} title="Renames every size of this service" onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, item: e.target.value } }))} />
+                    ) : (
+                      <>
+                        {sv.item || sv.name}{' '}
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          title="Add another size of this service"
+                          onClick={() => {
+                            setNewServiceName(sv.item || sv.name);
+                            setNewServiceDescription(sv.description ?? '');
+                            setNewServiceSize('');
+                            setNewServiceUnit(sv.unit);
+                            setNewServicePrice('');
+                            setTimeout(() => document.getElementById('service-add')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+                          }}
+                        >
+                          + size
+                        </button>
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    {svcEdit[sv.id] ? <input className="input" style={{ width: 170 }} value={svcEdit[sv.id]!.description} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, description: e.target.value } }))} /> : sv.description || <span className="text-muted">—</span>}
+                  </td>
+                  <td>
+                    {svcEdit[sv.id] ? (
+                      <input className="input" style={{ width: 90 }} value={svcEdit[sv.id]!.size} placeholder="A3, L …" disabled={sv.soldViaDtfModule} title={sv.soldViaDtfModule ? 'Sold through the DTF module — it keeps its name' : undefined} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, size: e.target.value } }))} />
+                    ) : (
+                      sv.size || <span className="text-muted">—</span>
+                    )}
+                  </td>
+                  <td>
+                    <select className="input" style={{ width: 170 }} value={sv.businessHeadId ?? ''} onChange={(e) => saveServiceFields(sv.id, { businessHeadId: e.target.value ? Number(e.target.value) : null })}>
+                      <option value="">—</option>
+                      {heads.filter((h) => h.active || h.id === sv.businessHeadId).map((h) => (
+                        <option key={h.id} value={h.id}>
+                          {h.name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    {svcEdit[sv.id] ? (
+                      <select className="input" style={{ width: 90 }} value={svcEdit[sv.id]!.unit} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, unit: e.target.value as 'piece' | 'metre' | 'sqm' } }))}>
+                        <option value="piece">piece</option>
+                        <option value="metre">metre</option>
+                        <option value="sqm">sqm</option>
+                      </select>
+                    ) : bulkPrices?.[sv.id] ? (
+                      <select className="input" style={{ width: 90, ...(bulkPrices[sv.id]!.unit !== sv.unit ? { borderColor: 'var(--color-accent)', borderWidth: 2 } : {}) }} value={bulkPrices[sv.id]!.unit} onChange={(e) => setBulkPrices((x) => ({ ...x!, [sv.id]: { ...x![sv.id]!, unit: e.target.value as 'piece' | 'metre' | 'sqm' } }))}>
+                        <option value="piece">piece</option>
+                        <option value="metre">metre</option>
+                        <option value="sqm">sqm</option>
+                      </select>
+                    ) : (
+                      sv.unit
+                    )}
+                  </td>
+                  <td>
+                    {svcEdit[sv.id] ? (
+                      <input className="input" style={{ width: 100 }} inputMode="decimal" value={svcEdit[sv.id]!.price} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, price: e.target.value } }))} />
+                    ) : bulkPrices?.[sv.id] ? (
+                      <input className="input" style={{ width: 100, ...(Number(bulkPrices[sv.id]!.price) !== sv.price ? { borderColor: 'var(--color-accent)', borderWidth: 2 } : {}) }} inputMode="decimal" value={bulkPrices[sv.id]!.price} onChange={(e) => setBulkPrices((x) => ({ ...x!, [sv.id]: { ...x![sv.id]!, price: e.target.value } }))} aria-label={`Price of ${sv.item || sv.name}`} />
+                    ) : (
+                      <>
+                        {fmtKsh(sv.price)}
+                        <span className="text-muted" style={{ fontSize: 11 }}>
+                          {' '}
+                          /{sv.unit}
+                        </span>
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={sv.usesArtworkPricing} onChange={(e) => toggleUsesArtworkPricing(sv.id, e.target.checked)} />
+                      {sv.usesArtworkPricing && <span className="tag tag-accent">By artwork size</span>}
+                    </label>
+                  </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={sv.chargesPressingFee} onChange={(e) => toggleChargesPressingFee(sv.id, e.target.checked)} />
+                      {sv.chargesPressingFee && <span className="tag tag-accent">Heat press</span>}
+                    </label>
+                  </td>
+                  <td>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={sv.outsourced} onChange={(e) => saveServiceFields(sv.id, { outsourced: e.target.checked })} />
+                      {sv.outsourced && <span className="tag tag-accent">Outsourced</span>}
+                    </label>
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    {svcEdit[sv.id] ? (
+                      <>
+                        <button type="button" className="btn btn-primary btn-sm" onClick={() => saveServiceEdit(sv.id)}>
+                          Save
+                        </button>{' '}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSvcEdit((x) => { const { [sv.id]: _d, ...rest } = x; return rest; })}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={!!bulkPrices} title="Change this line's name, description, size, unit and price" onClick={() => setSvcEdit((x) => ({ ...x, [sv.id]: { item: sv.item || sv.name, description: sv.description ?? '', size: sv.size ?? '', unit: sv.unit, price: String(sv.price) } }))}>
+                        Edit
+                      </button>
+                      {!sv.soldViaDtfModule && (
+                        <>
+                          {' '}
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} disabled={!!bulkPrices} title="Delete this service from the price list" onClick={() => deleteService(sv.id, sv.item ? `${sv.item}${sv.size ? ' — ' + sv.size : ''}` : sv.name)}>
+                            Delete
+                          </button>
+                        </>
+                      )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+                {sv.outsourced && (
+                  <tr>
+                    <td colSpan={10} style={{ background: 'var(--color-surface)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr auto', gap: 'var(--space-3)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>Supplier</label>
+                          <input className="input" defaultValue={sv.supplierName} onBlur={(e) => e.target.value !== sv.supplierName && saveServiceFields(sv.id, { supplierName: e.target.value })} placeholder="Who prints it for us" />
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>Usual supplier price per {sv.unit} (VAT incl.)</label>
+                          <input
+                            className="input"
+                            inputMode="decimal"
+                            defaultValue={sv.defaultSupplierCost ?? ''}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if ((v || null) !== (sv.defaultSupplierCost ?? null)) saveServiceFields(sv.id, { defaultSupplierCost: v > 0 ? v : null });
+                            }}
+                            placeholder="paper + service, e.g. 40"
+                          />
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>Mark-up</label>
+                          <select className="input" value={sv.markupType ?? 'percent'} onChange={(e) => saveServiceFields(sv.id, { markupType: e.target.value })}>
+                            <option value="percent">Percentage (%)</option>
+                            <option value="amount">Amount (Ksh per {sv.unit})</option>
+                          </select>
+                        </div>
+                        <div className="field" style={{ margin: 0 }}>
+                          <label>{(sv.markupType ?? 'percent') === 'percent' ? 'Mark-up %' : 'Mark-up Ksh'}</label>
+                          <input
+                            className="input"
+                            inputMode="decimal"
+                            defaultValue={sv.markupValue ?? 0}
+                            onBlur={(e) => Number(e.target.value) !== (sv.markupValue ?? 0) && saveServiceFields(sv.id, { markupValue: Math.max(0, Number(e.target.value) || 0) })}
+                          />
+                        </div>
+                        {(() => {
+                          const cost = sv.defaultSupplierCost ?? 0;
+                          const suggested = cost > 0 ? priceFromCost(cost, sv.markupType ?? 'percent', sv.markupValue ?? 0) : 0;
+                          return (
+                            <button type="button" className="btn btn-secondary btn-sm" disabled={suggested <= 0 || suggested === sv.price} onClick={() => saveServiceFields(sv.id, { price: suggested })}>
+                              {suggested > 0 ? `Set price to ${fmtKsh(suggested)}` : 'Set price from cost'}
+                            </button>
+                          );
+                        })()}
+                      </div>
+                      <div className="note">
+                        The supplier quotes one price that includes paper and the service, VAT included; the mark-up gives the selling price (also VAT included). These are defaults — the real quote is entered on each job. Only people with the "See supplier costs" permission can see the supplier price and mark-up.
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+  );
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
@@ -929,203 +1133,25 @@ export default function MasterData() {
               {bulkPrices ? 'Change any price or unit below, then save them all together. Changed lines are outlined.' : 'Change many prices at once, or use Edit at the end of a line to change one line (name, description, size, unit and price).'}
             </span>
           </div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Service</th>
-                <th>Description</th>
-                <th>Size</th>
-                <th>Business head</th>
-                <th>Unit</th>
-                <th>Price</th>
-                <th>Artwork pricing</th>
-                <th>Charges pressing fee</th>
-                <th>Contracted out</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {serviceRows.map((sv) => (
-                <Fragment key={sv.id}>
-                <tr>
-                  <td>
-                    {svcEdit[sv.id] ? (
-                      <input className="input" style={{ width: 160 }} value={svcEdit[sv.id]!.item} title="Renames every size of this service" onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, item: e.target.value } }))} />
-                    ) : (
-                      <>
-                        {sv.item || sv.name}{' '}
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          title="Add another size of this service"
-                          onClick={() => {
-                            setNewServiceName(sv.item || sv.name);
-                            setNewServiceDescription(sv.description ?? '');
-                            setNewServiceSize('');
-                            setNewServiceUnit(sv.unit);
-                            setNewServicePrice('');
-                            setTimeout(() => document.getElementById('service-add')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-                          }}
-                        >
-                          + size
-                        </button>
-                      </>
-                    )}
-                  </td>
-                  <td>
-                    {svcEdit[sv.id] ? <input className="input" style={{ width: 170 }} value={svcEdit[sv.id]!.description} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, description: e.target.value } }))} /> : sv.description || <span className="text-muted">—</span>}
-                  </td>
-                  <td>
-                    {svcEdit[sv.id] ? (
-                      <input className="input" style={{ width: 90 }} value={svcEdit[sv.id]!.size} placeholder="A3, L …" disabled={sv.soldViaDtfModule} title={sv.soldViaDtfModule ? 'Sold through the DTF module — it keeps its name' : undefined} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, size: e.target.value } }))} />
-                    ) : (
-                      sv.size || <span className="text-muted">—</span>
-                    )}
-                  </td>
-                  <td>
-                    <select className="input" style={{ width: 170 }} value={sv.businessHeadId ?? ''} onChange={(e) => saveServiceFields(sv.id, { businessHeadId: e.target.value ? Number(e.target.value) : null })}>
-                      <option value="">—</option>
-                      {heads.filter((h) => h.active || h.id === sv.businessHeadId).map((h) => (
-                        <option key={h.id} value={h.id}>
-                          {h.name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    {svcEdit[sv.id] ? (
-                      <select className="input" style={{ width: 90 }} value={svcEdit[sv.id]!.unit} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, unit: e.target.value as 'piece' | 'metre' | 'sqm' } }))}>
-                        <option value="piece">piece</option>
-                        <option value="metre">metre</option>
-                        <option value="sqm">sqm</option>
-                      </select>
-                    ) : bulkPrices?.[sv.id] ? (
-                      <select className="input" style={{ width: 90, ...(bulkPrices[sv.id]!.unit !== sv.unit ? { borderColor: 'var(--color-accent)', borderWidth: 2 } : {}) }} value={bulkPrices[sv.id]!.unit} onChange={(e) => setBulkPrices((x) => ({ ...x!, [sv.id]: { ...x![sv.id]!, unit: e.target.value as 'piece' | 'metre' | 'sqm' } }))}>
-                        <option value="piece">piece</option>
-                        <option value="metre">metre</option>
-                        <option value="sqm">sqm</option>
-                      </select>
-                    ) : (
-                      sv.unit
-                    )}
-                  </td>
-                  <td>
-                    {svcEdit[sv.id] ? (
-                      <input className="input" style={{ width: 100 }} inputMode="decimal" value={svcEdit[sv.id]!.price} onChange={(e) => setSvcEdit((x) => ({ ...x, [sv.id]: { ...x[sv.id]!, price: e.target.value } }))} />
-                    ) : bulkPrices?.[sv.id] ? (
-                      <input className="input" style={{ width: 100, ...(Number(bulkPrices[sv.id]!.price) !== sv.price ? { borderColor: 'var(--color-accent)', borderWidth: 2 } : {}) }} inputMode="decimal" value={bulkPrices[sv.id]!.price} onChange={(e) => setBulkPrices((x) => ({ ...x!, [sv.id]: { ...x![sv.id]!, price: e.target.value } }))} aria-label={`Price of ${sv.item || sv.name}`} />
-                    ) : (
-                      <>
-                        {fmtKsh(sv.price)}
-                        <span className="text-muted" style={{ fontSize: 11 }}>
-                          {' '}
-                          /{sv.unit}
-                        </span>
-                      </>
-                    )}
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={sv.usesArtworkPricing} onChange={(e) => toggleUsesArtworkPricing(sv.id, e.target.checked)} />
-                      {sv.usesArtworkPricing && <span className="tag tag-accent">By artwork size</span>}
-                    </label>
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={sv.chargesPressingFee} onChange={(e) => toggleChargesPressingFee(sv.id, e.target.checked)} />
-                      {sv.chargesPressingFee && <span className="tag tag-accent">Heat press</span>}
-                    </label>
-                  </td>
-                  <td>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={sv.outsourced} onChange={(e) => saveServiceFields(sv.id, { outsourced: e.target.checked })} />
-                      {sv.outsourced && <span className="tag tag-accent">Outsourced</span>}
-                    </label>
-                  </td>
-                  <td style={{ whiteSpace: 'nowrap' }}>
-                    {svcEdit[sv.id] ? (
-                      <>
-                        <button type="button" className="btn btn-primary btn-sm" onClick={() => saveServiceEdit(sv.id)}>
-                          Save
-                        </button>{' '}
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSvcEdit((x) => { const { [sv.id]: _d, ...rest } = x; return rest; })}>
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={!!bulkPrices} title="Change this line's name, description, size, unit and price" onClick={() => setSvcEdit((x) => ({ ...x, [sv.id]: { item: sv.item || sv.name, description: sv.description ?? '', size: sv.size ?? '', unit: sv.unit, price: String(sv.price) } }))}>
-                        Edit
-                      </button>
-                      {!sv.soldViaDtfModule && (
-                        <>
-                          {' '}
-                          <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--color-error)' }} disabled={!!bulkPrices} title="Delete this service from the price list" onClick={() => deleteService(sv.id, sv.item ? `${sv.item}${sv.size ? ' — ' + sv.size : ''}` : sv.name)}>
-                            Delete
-                          </button>
-                        </>
-                      )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-                {sv.outsourced && (
-                  <tr>
-                    <td colSpan={10} style={{ background: 'var(--color-surface)' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 0.8fr auto', gap: 'var(--space-3)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>Supplier</label>
-                          <input className="input" defaultValue={sv.supplierName} onBlur={(e) => e.target.value !== sv.supplierName && saveServiceFields(sv.id, { supplierName: e.target.value })} placeholder="Who prints it for us" />
-                        </div>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>Usual supplier price per {sv.unit} (VAT incl.)</label>
-                          <input
-                            className="input"
-                            inputMode="decimal"
-                            defaultValue={sv.defaultSupplierCost ?? ''}
-                            onBlur={(e) => {
-                              const v = Number(e.target.value);
-                              if ((v || null) !== (sv.defaultSupplierCost ?? null)) saveServiceFields(sv.id, { defaultSupplierCost: v > 0 ? v : null });
-                            }}
-                            placeholder="paper + service, e.g. 40"
-                          />
-                        </div>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>Mark-up</label>
-                          <select className="input" value={sv.markupType ?? 'percent'} onChange={(e) => saveServiceFields(sv.id, { markupType: e.target.value })}>
-                            <option value="percent">Percentage (%)</option>
-                            <option value="amount">Amount (Ksh per {sv.unit})</option>
-                          </select>
-                        </div>
-                        <div className="field" style={{ margin: 0 }}>
-                          <label>{(sv.markupType ?? 'percent') === 'percent' ? 'Mark-up %' : 'Mark-up Ksh'}</label>
-                          <input
-                            className="input"
-                            inputMode="decimal"
-                            defaultValue={sv.markupValue ?? 0}
-                            onBlur={(e) => Number(e.target.value) !== (sv.markupValue ?? 0) && saveServiceFields(sv.id, { markupValue: Math.max(0, Number(e.target.value) || 0) })}
-                          />
-                        </div>
-                        {(() => {
-                          const cost = sv.defaultSupplierCost ?? 0;
-                          const suggested = cost > 0 ? priceFromCost(cost, sv.markupType ?? 'percent', sv.markupValue ?? 0) : 0;
-                          return (
-                            <button type="button" className="btn btn-secondary btn-sm" disabled={suggested <= 0 || suggested === sv.price} onClick={() => saveServiceFields(sv.id, { price: suggested })}>
-                              {suggested > 0 ? `Set price to ${fmtKsh(suggested)}` : 'Set price from cost'}
-                            </button>
-                          );
-                        })()}
-                      </div>
-                      <div className="note">
-                        The supplier quotes one price that includes paper and the service, VAT included; the mark-up gives the selling price (also VAT included). These are defaults — the real quote is entered on each job. Only people with the "See supplier costs" permission can see the supplier price and mark-up.
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
+          {renderServiceTable(plainServices)}
+          {contractedServices.length > 0 && (
+            <div style={{ marginTop: 'var(--space-6)' }}>
+              <div className="card-kicker">Contracted-out services</div>
+              <p className="note" style={{ marginTop: 0 }}>
+                Work a supplier makes and we sell on (sold through <b>Sales → Outsourced Order</b>). Under each line: the supplier, their usual price and our mark-up. Tick or untick <b>Contracted out</b> on a line to move it between the lists.
+              </p>
+              {renderServiceTable(contractedServices)}
+            </div>
+          )}
+          {artworkServices.length > 0 && (
+            <div style={{ marginTop: 'var(--space-6)' }}>
+              <div className="card-kicker">Artwork-priced services</div>
+              <p className="note" style={{ marginTop: 0 }}>
+                Priced by the size of one artwork: the price on an order is its area (length × width) at the rate per sqm set here. Tick or untick <b>Artwork pricing</b> on a line to move it between the lists.
+              </p>
+              {renderServiceTable(artworkServices)}
+            </div>
+          )}
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
             Press Edit on a line to change its name, description, size, unit and price (changing the name renames every size of that service). A service flagged "Artwork pricing" with unit "sqm" (e.g. DTF
             Printing, Embroidery) shows an "Artwork size (sqm)" field on order line items instead of a flat

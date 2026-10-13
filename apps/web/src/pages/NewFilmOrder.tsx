@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { VAT_RATE, filmPremiumCommission, filmPremiumPerM, fmtKsh, fmtNum, saleCalc, todayStr } from '@glm/shared';
-import type { Band } from '@glm/shared';
+import { DTF_PRODUCT_LABEL, VAT_RATE, filmPremiumCommission, filmPremiumPerM, fmtKsh, fmtNum, saleCalc, todayStr } from '@glm/shared';
+import type { Band, DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import type { DtfData } from '../components/dtf/shared';
@@ -13,7 +13,8 @@ const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Numb
 // manager tracker, so Staff with just canAccessDtf can reach it directly.
 // The actual roll-consumption record and Order are both created together
 // once the popup's Print button is pressed (see DtfOrderDialog.tsx).
-export default function NewFilmOrder() {
+export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct }) {
+  const label = DTF_PRODUCT_LABEL[product];
   const navigate = useNavigate();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,10 +29,10 @@ export default function NewFilmOrder() {
       .then((c) => setFilmBands(c.filmBands))
       .catch(() => setFilmBands(null));
     api
-      .get<DtfData>('/dtf/data')
+      .get<DtfData>(`/dtf/data?product=${product}`)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load DTF data'));
-  }, []);
+  }, [product]);
 
   if (!data) return <p className="note">{error ?? 'Loading…'}</p>;
 
@@ -54,8 +55,8 @@ export default function NewFilmOrder() {
       <i className="corner tr"></i>
       <i className="corner bl"></i>
       <i className="corner br"></i>
-      <div className="card-kicker">DTF film order</div>
-      <div className="card-title">New film sale</div>
+      <div className="card-kicker">{label} film order</div>
+      <div className="card-title">New {label} film sale</div>
 
       {error && (
         <p className="note" style={{ color: 'var(--color-error)' }}>
@@ -75,7 +76,7 @@ export default function NewFilmOrder() {
             ))}
           </select>
         </div>
-        {open.length === 0 && <p className="note">No open film roll — ask a manager to install one under DTF → Rolls before capturing a sale.</p>}
+        {open.length === 0 && <p className="note">No open {label} film roll — ask a manager to install one under DTF → {label} → Rolls before capturing a sale.</p>}
         <div className="field" style={{ margin: 0 }}>
           <label>Client (optional)</label>
           <input className="input" value={f.client} onChange={(e) => setF({ ...f, client: e.target.value })} placeholder="Walk-in (optional)" />
@@ -130,6 +131,7 @@ export default function NewFilmOrder() {
 
       {showOrderDialog && (
         <DtfOrderDialog
+          product={product}
           mode="sale"
           postUrl="/dtf/sales"
           basePayload={{ rollId, soldOn: todayStr(), client: f.client, metres, pricePerM: f.price.trim() === '' ? null : num(f.price) }}

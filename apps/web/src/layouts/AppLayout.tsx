@@ -26,7 +26,7 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
     tabs.push(['/orders/new/walkin', 'General Order']);
   }
   if (isAdmin || p.canAccessDtf || p.canManageDtf) {
-    tabs.push(['/orders/new/film', 'DTF Film Order'], ['/orders/new/artwork', 'DTF Artwork Order']);
+    tabs.push(['/orders/new/film', 'DTF Film Order'], ['/orders/new/artwork', 'DTF Artwork Order'], ['/orders/new/uv-film', 'UV DTF Film Order'], ['/orders/new/uv-artwork', 'UV DTF Artwork Order']);
   }
   // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
   if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/embroidery', 'Embroidery Order']);
@@ -69,6 +69,8 @@ const GROUP_OF: Record<string, Group> = {
   '/orders/new/walkin': 'sales',
   '/orders/new/film': 'sales',
   '/orders/new/artwork': 'sales',
+  '/orders/new/uv-film': 'sales',
+  '/orders/new/uv-artwork': 'sales',
   '/orders/new/embroidery': 'sales',
   '/orders/all': 'sales',
   '/commission': 'sales',
@@ -87,6 +89,8 @@ const ICON_OF: Record<string, string> = {
   '/orders/new/walkin': 'order',
   '/orders/new/film': 'film',
   '/orders/new/artwork': 'artwork',
+  '/orders/new/uv-film': 'film',
+  '/orders/new/uv-artwork': 'artwork',
   '/orders/new/embroidery': 'embroidery',
   '/orders/all': 'orders',
   '/commission': 'commission',

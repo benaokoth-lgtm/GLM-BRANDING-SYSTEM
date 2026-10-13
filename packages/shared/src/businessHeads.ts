@@ -3,11 +3,14 @@
 
 export const GENERAL_ORDER_HEAD = 'General Order';
 
-export const DEFAULT_BUSINESS_HEADS = ['DTF Printing', 'UV Printing', 'Laser Engraving', 'Large Format Printing', 'Embroidery', GENERAL_ORDER_HEAD] as const;
+export const UV_DTF_HEAD = 'UV DTF Printing';
+
+export const DEFAULT_BUSINESS_HEADS = ['DTF Printing', UV_DTF_HEAD, 'UV Printing', 'Laser Engraving', 'Large Format Printing', 'Embroidery', GENERAL_ORDER_HEAD] as const;
 
 /** Which head a service falls under until someone chooses one: picked from its name, General Order when nothing fits. */
 export function defaultBusinessHeadName(serviceName: string): string {
   const n = serviceName.toLowerCase();
+  if (/uv[\s-]*dtf/.test(n)) return UV_DTF_HEAD;
   if (n.includes('dtf')) return 'DTF Printing';
   if (n.includes('embroid')) return 'Embroidery';
   if (n.includes('laser') || n.includes('engrav')) return 'Laser Engraving';

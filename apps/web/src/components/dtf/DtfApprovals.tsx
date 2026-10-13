@@ -45,7 +45,7 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
   function load() {
     setLoading(true);
     api
-      .get<Approval[]>('/dtf/approvals')
+      .get<Approval[]>(`/dtf/approvals?product=${data.product}`)
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load approvals'))
       .finally(() => setLoading(false));

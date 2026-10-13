@@ -34,7 +34,7 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
     setError(null);
     setSaved(false);
     try {
-      await api.put('/dtf/settings', v);
+      await api.put(`/dtf/settings?product=${data.product}`, v);
       await reload();
       setSaved(true);
     } catch (err) {
@@ -46,7 +46,7 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
 
   return (
     <div style={{ maxWidth: 760 }}>
-      <Card title="DTF setup">
+      <Card title={`${data.product === 'uv' ? 'UV DTF' : 'DTF'} setup`}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
           {FIELDS.map(([k, label]) => (
             <Field key={k} label={label}>

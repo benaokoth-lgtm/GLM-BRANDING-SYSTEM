@@ -65470,6 +65470,19 @@ function computePay(grossPay, employeeType, date) {
 }
 
 // packages/shared/src/dtf.ts
+var DTF_SERVICE_NAMES = {
+  dtf: { film: "DTF Sheet (per metre)", artwork: "DTF Printing" },
+  uv: { film: "UV DTF Sheet (per metre)", artwork: "UV DTF Printing" }
+};
+var UV_DTF_SETTINGS = {
+  rollLengthM: 50,
+  rollWidthCm: 30,
+  stdPricePerM: 1500,
+  minPricePerM: 1200,
+  wastageTolerancePct: 5,
+  minPricePerPiece: 30,
+  fixedChargePerMetre: 1070
+};
 var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var div = (a2, b) => b > 0 ? a2 / b : 0;
 function saleCalc(s, metres, pricePerM, amountPaid) {
@@ -65500,9 +65513,9 @@ function jobTotals(j) {
   }
   return sys;
 }
-function nextRollId(rolls) {
+function nextRollId(rolls, product = "dtf") {
   const max = rolls.reduce((m, r) => Math.max(m, Number(/(\d+)$/.exec(r.id)?.[1] ?? 0)), 0);
-  return `ROLL-${String(max + 1).padStart(3, "0")}`;
+  return `${product === "uv" ? "UV" : "ROLL"}-${String(max + 1).padStart(3, "0")}`;
 }
 
 // packages/shared/src/accounting.ts
@@ -66130,9 +66143,11 @@ function reconcileRequisition(reqLines, purchases) {
 
 // packages/shared/src/businessHeads.ts
 var GENERAL_ORDER_HEAD = "General Order";
-var DEFAULT_BUSINESS_HEADS = ["DTF Printing", "UV Printing", "Laser Engraving", "Large Format Printing", "Embroidery", GENERAL_ORDER_HEAD];
+var UV_DTF_HEAD = "UV DTF Printing";
+var DEFAULT_BUSINESS_HEADS = ["DTF Printing", UV_DTF_HEAD, "UV Printing", "Laser Engraving", "Large Format Printing", "Embroidery", GENERAL_ORDER_HEAD];
 function defaultBusinessHeadName(serviceName) {
   const n = serviceName.toLowerCase();
+  if (/uv[\s-]*dtf/.test(n)) return UV_DTF_HEAD;
   if (n.includes("dtf")) return "DTF Printing";
   if (n.includes("embroid")) return "Embroidery";
   if (n.includes("laser") || n.includes("engrav")) return "Laser Engraving";
@@ -72016,8 +72031,9 @@ function primaryHead(lines) {
   return [...value.entries()].sort((a2, b) => b[1] - a2[1])[0][0];
 }
 function headGroup(head, dtfKind) {
-  if (dtfKind === "film") return `${DTF_HEAD} \u2014 Film sales`;
-  if (dtfKind === "artwork") return `${DTF_HEAD} \u2014 Artwork sales`;
+  const dtf = head === UV_DTF_HEAD ? UV_DTF_HEAD : DTF_HEAD;
+  if (dtfKind === "film") return `${dtf} \u2014 Film sales`;
+  if (dtfKind === "artwork") return `${dtf} \u2014 Artwork sales`;
   return head;
 }
 
@@ -76734,8 +76750,14 @@ var dtfRouter = (0, import_express13.Router)();
 dtfRouter.use(requireAuth, requirePermission("canAccessDtf", "canManageDtf"));
 var manageOnly = requirePermission("canManageDtf");
 var dateStr2 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD");
-async function getSettings() {
+var productOf = (v) => v === "uv" ? "uv" : "dtf";
+var settingsId = (product) => product === "uv" ? 2 : 1;
+async function getSettings(product = "dtf") {
+  if (product === "uv") return prisma.dtfSetting.upsert({ where: { id: 2 }, update: {}, create: { id: 2, ...UV_DTF_SETTINGS } });
   return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+}
+async function uvRollIds() {
+  return (await prisma.dtfRoll.findMany({ where: { product: "uv" }, select: { id: true } })).map((r) => r.id);
 }
 function orderCreationErrorMessage(err, fallback) {
   if (err instanceof import_client3.Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
@@ -76786,8 +76808,9 @@ async function createDtfOrder(tx, opts) {
   );
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
   const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-  const orderNo = "F-" + settings.nextDtfNo;
-  await tx.setting.update({ where: { id: 1 }, data: { nextDtfNo: settings.nextDtfNo + 1 } });
+  const uv = opts.product === "uv";
+  const orderNo = uv ? "U-" + settings.nextUvDtfNo : "F-" + settings.nextDtfNo;
+  await tx.setting.update({ where: { id: 1 }, data: uv ? { nextUvDtfNo: settings.nextUvDtfNo + 1 } : { nextDtfNo: settings.nextDtfNo + 1 } });
   const order = await tx.order.create({
     data: {
       orderNo,
@@ -76818,24 +76841,27 @@ async function createDtfOrder(tx, opts) {
   }
   return order;
 }
-async function dtfService(tx, kind) {
-  const name2 = kind === "film" ? "DTF Sheet (per metre)" : "DTF Printing";
-  const unit = kind === "film" ? "metre" : "sqm";
-  const found = await tx.service.findFirst({ where: { name: name2 } }) ?? await tx.service.findFirst({ where: { soldViaDtfModule: true, unit }, orderBy: { id: "asc" } });
+async function dtfService(tx, kind, product = "dtf") {
+  const uv = product === "uv";
+  const name2 = DTF_SERVICE_NAMES[product][kind];
+  const unit = kind === "film" ? "metre" : uv ? "piece" : "sqm";
+  const found = await tx.service.findFirst({ where: { name: name2 } }) ?? await tx.service.findFirst({ where: { soldViaDtfModule: true, unit, ...uv ? { name: { contains: "UV DTF" } } : { NOT: { name: { contains: "UV DTF" } } } }, orderBy: { id: "asc" } });
   if (found) {
     if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
     return found;
   }
-  const head = await tx.businessHead.findFirst({ where: { name: DTF_HEAD } });
-  const settings = await tx.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  const headName = uv ? UV_DTF_HEAD : DTF_HEAD;
+  const head = await tx.businessHead.findFirst({ where: { name: headName } }) ?? (uv ? await tx.businessHead.create({ data: { name: headName, sortOrder: ((await tx.businessHead.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0) + 1 } }) : null);
+  const settings = uv ? await tx.dtfSetting.upsert({ where: { id: 2 }, update: {}, create: { id: 2, ...UV_DTF_SETTINGS } }) : await tx.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
   return tx.service.create({
     data: {
       name: name2,
       item: name2,
       unit,
-      price: kind === "film" ? settings.stdPricePerM : DTF_PRINT_DEFAULT_RATE_PER_SQM,
+      price: kind === "film" ? settings.stdPricePerM : uv ? settings.minPricePerPiece : DTF_PRINT_DEFAULT_RATE_PER_SQM,
       soldViaDtfModule: true,
-      chargesPressingFee: kind === "artwork",
+      chargesPressingFee: kind === "artwork" && !uv,
+      // a UV DTF sticker is applied cold: no heat press fee
       businessHeadId: head?.id ?? null
     }
   });
@@ -76843,13 +76869,16 @@ async function dtfService(tx, kind) {
 dtfRouter.get("/data", async (req, res) => {
   const perms = await permissionsForRole(req.user.role);
   const canManage = perms.canManageDtf;
+  const product = productOf(req.query.product);
   const [settings, rolls, sales, jobs] = await Promise.all([
-    getSettings(),
-    prisma.dtfRoll.findMany({ where: canManage ? {} : { status: "open" }, orderBy: { id: "asc" } }),
-    prisma.dtfFilmSale.findMany({ orderBy: [{ soldOn: "desc" }, { id: "desc" }] }),
-    prisma.dtfArtworkJob.findMany({ orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
+    getSettings(product),
+    prisma.dtfRoll.findMany({ where: { product, ...canManage ? {} : { status: "open" } }, orderBy: { id: "asc" } }),
+    prisma.dtfFilmSale.findMany({ where: { roll: { product } }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] }),
+    prisma.dtfArtworkJob.findMany({ where: { roll: { product } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
   ]);
+  const uvIds = await uvRollIds();
   res.json({
+    product,
     canManage,
     settings: {
       rollLengthM: settings.rollLengthM,
@@ -76862,6 +76891,7 @@ dtfRouter.get("/data", async (req, res) => {
     },
     rolls: rolls.map((r) => ({
       id: r.id,
+      product: productOf(r.product),
       installedOn: r.installedOn,
       finishedOn: r.finishedOn,
       status: r.status,
@@ -76897,7 +76927,7 @@ dtfRouter.get("/data", async (req, res) => {
       approvalStatus: j.approvalStatus,
       orderId: j.orderId
     })),
-    pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending" } }) : 0
+    pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending", ...product === "uv" ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } } } }) : 0
   });
 });
 var settingsSchema6 = external_exports.object({
@@ -76912,13 +76942,16 @@ var settingsSchema6 = external_exports.object({
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
   const parsed = settingsSchema6.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  await getSettings();
-  await prisma.dtfSetting.update({ where: { id: 1 }, data: parsed.data });
+  const product = productOf(req.query.product);
+  await getSettings(product);
+  await prisma.dtfSetting.update({ where: { id: settingsId(product) }, data: parsed.data });
   res.json(parsed.data);
 });
 var noteSchema = external_exports.string().trim().min(3, "Say why the roll is being terminated").max(300);
 var rollSchema = external_exports.object({
   installedOn: dateStr2.optional(),
+  // A roll belongs to one product; a UV DTF roll's costs are Film A (printing) in filmCost and Film B (laminating) in inkPowderCost.
+  product: external_exports.enum(["dtf", "uv"]).default("dtf"),
   filmCost: external_exports.number().min(0).default(0),
   inkPowderCost: external_exports.number().min(0).default(0),
   // A roll that is already part-used (the system is starting up, or the roll was begun before it was recorded): the metres LEFT on it. The costs sent are then the whole roll's,
@@ -76947,7 +76980,8 @@ async function terminateRoll(db, rollId, cutOff, note, byName) {
 dtfRouter.post("/rolls", manageOnly, async (req, res) => {
   const parsed = rollSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const settings = await getSettings();
+  const product = parsed.data.product;
+  const settings = await getSettings(product);
   const installedOn = parsed.data.installedOn ?? todayStr();
   const fullLen = settings.rollLengthM;
   const left = parsed.data.metresLeft;
@@ -76956,10 +76990,11 @@ dtfRouter.post("/rolls", manageOnly, async (req, res) => {
   try {
     const roll = await prisma.$transaction(async (tx) => {
       for (const t of parsed.data.terminate ?? []) await terminateRoll(tx, t.rollId, installedOn, t.note, req.user.name);
-      const existing = await tx.dtfRoll.findMany({ select: { id: true } });
+      const existing = await tx.dtfRoll.findMany({ where: { product }, select: { id: true } });
       return tx.dtfRoll.create({
         data: {
-          id: nextRollId(existing),
+          id: nextRollId(existing, product),
+          product,
           installedOn,
           filmCost: Math.round(parsed.data.filmCost * part * 100) / 100,
           inkPowderCost: Math.round(parsed.data.inkPowderCost * part * 100) / 100,
@@ -77054,7 +77089,8 @@ dtfRouter.post("/sales", async (req, res) => {
   const d = parsed.data;
   const found = await openRoll(d.rollId);
   if ("error" in found) return res.status(400).json({ error: found.error });
-  const settings = await getSettings();
+  const product = productOf(found.roll.product);
+  const settings = await getSettings(product);
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   const c = saleCalc(settings, d.metres, d.pricePerM ?? null, paid);
   if (!c.valid) {
@@ -77067,8 +77103,9 @@ dtfRouter.post("/sales", async (req, res) => {
   if (paid > c.total) return res.status(400).json({ error: "Amount paid cannot exceed the sale total" });
   try {
     const { sale, order } = await prisma.$transaction(async (tx) => {
-      const service = await dtfService(tx, "film");
+      const service = await dtfService(tx, "film", product);
       const order2 = await createDtfOrder(tx, {
+        product,
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: cap.staffId,
@@ -77136,7 +77173,8 @@ var jobSchema = external_exports.object({
   runningMetres: external_exports.number().positive("Running metres must be greater than 0"),
   pieces: external_exports.number().int().positive("Pieces must be at least 1"),
   // Ksh/piece, staff-picked — see HEAT_PRESS_FEE_OPTIONS. Required: no artwork job is processed without it.
-  heatPressFee: external_exports.number({ required_error: "Choose the heat press fee \u2014 a job cannot be processed without it", invalid_type_error: "Choose the heat press fee \u2014 a job cannot be processed without it" }).positive("Choose the heat press fee \u2014 a job cannot be processed without it"),
+  // Required for DTF (checked below); a UV DTF sticker is applied cold, so it carries none.
+  heatPressFee: external_exports.number({ invalid_type_error: "Choose the heat press fee \u2014 a job cannot be processed without it" }).positive("Choose the heat press fee \u2014 a job cannot be processed without it").optional(),
   // Price per piece actually charged. Blank = the system-recommended price. Above it, the extra is the staff member's commission base.
   // Below it (but not under the per-piece floor) is a discount: it needs a manager's approval before the job is paid for or produced, and
   // no other discount applies on top of it.
@@ -77156,7 +77194,10 @@ dtfRouter.post("/jobs", async (req, res) => {
   const d = parsed.data;
   const found = await openRoll(d.rollId);
   if ("error" in found) return res.status(400).json({ error: found.error });
-  const settings = await getSettings();
+  const product = productOf(found.roll.product);
+  if (product === "dtf" && d.heatPressFee == null) return res.status(400).json({ error: "Choose the heat press fee \u2014 a job cannot be processed without it" });
+  const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
+  const settings = await getSettings(product);
   const sys = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
   if (d.pricePerPiece != null && d.pricePerPiece < settings.minPricePerPiece - 5e-3) {
     return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${settings.minPricePerPiece} KES` });
@@ -77164,7 +77205,7 @@ dtfRouter.post("/jobs", async (req, res) => {
   const chargedPerPiece = d.pricePerPiece != null && Math.abs(d.pricePerPiece - sys.finalPerPiece) > 5e-3 ? Math.round(d.pricePerPiece * 100) / 100 : null;
   const needsApproval = chargedPerPiece != null && chargedPerPiece < sys.finalPerPiece - 5e-3;
   const c = { ...sys, finalPerPiece: chargedPerPiece ?? sys.finalPerPiece };
-  const jobTotal = c.finalPerPiece * d.pieces + (d.heatPressFee ?? 0) * d.pieces;
+  const jobTotal = c.finalPerPiece * d.pieces + (heatPressFee ?? 0) * d.pieces;
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
@@ -77174,14 +77215,15 @@ dtfRouter.post("/jobs", async (req, res) => {
   if (needsApproval && paid > 0) return res.status(400).json({ error: "A price below the recommended price needs a manager\u2019s approval first \u2014 take the payment once it is approved" });
   try {
     const { job, order } = await prisma.$transaction(async (tx) => {
-      const service = await dtfService(tx, "artwork");
+      const service = await dtfService(tx, "artwork", product);
       const order2 = await createDtfOrder(tx, {
+        product,
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: cap.staffId,
         capturedById: cap.capturedById,
         capturedByName: cap.capturedByName,
-        serviceLine: { itemType: "service", serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee: d.heatPressFee ?? null },
+        serviceLine: { itemType: "service", serviceId: service.id, qty: d.pieces, unitPrice: c.finalPerPiece, heatPressFee },
         materialLines: d.materialLines,
         payments: paymentLines,
         sourcedBy: d.sourcedBy,
@@ -77240,12 +77282,13 @@ var orderMoney = (o) => {
 };
 var orderForDaily = { include: { lineItems: true, payments: true } };
 dtfRouter.get("/daily", manageOnly, async (req, res) => {
+  const product = productOf(req.query.product);
   const kind = req.query.kind === "sales" ? "sales" : "jobs";
   const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
   const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
   const dateRange = from || to ? { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } : void 0;
   if (kind === "sales") {
-    const sales = await prisma.dtfFilmSale.findMany({ where: dateRange ? { soldOn: dateRange } : void 0, include: { order: orderForDaily }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] });
+    const sales = await prisma.dtfFilmSale.findMany({ where: { roll: { product }, ...dateRange ? { soldOn: dateRange } : {} }, include: { order: orderForDaily }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] });
     const byDay2 = /* @__PURE__ */ new Map();
     for (const s of sales) byDay2.set(s.soldOn, [...byDay2.get(s.soldOn) ?? [], s]);
     const days2 = [...byDay2.entries()].map(([date, list]) => {
@@ -77267,7 +77310,7 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
     });
     return res.json({ kind, days: days2 });
   }
-  const jobs = await prisma.dtfArtworkJob.findMany({ where: dateRange ? { jobOn: dateRange } : void 0, include: { order: orderForDaily }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] });
+  const jobs = await prisma.dtfArtworkJob.findMany({ where: { roll: { product }, ...dateRange ? { jobOn: dateRange } : {} }, include: { order: orderForDaily }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] });
   const byDay = /* @__PURE__ */ new Map();
   for (const j of jobs) byDay.set(j.jobOn, [...byDay.get(j.jobOn) ?? [], j]);
   const days = [...byDay.entries()].map(([date, list]) => {
@@ -77298,8 +77341,9 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
   });
   res.json({ kind, days });
 });
-dtfRouter.get("/approvals", manageOnly, async (_req, res) => {
-  const rows = await prisma.priceApproval.findMany({ orderBy: [{ status: "asc" }, { id: "desc" }], take: 200 });
+dtfRouter.get("/approvals", manageOnly, async (req, res) => {
+  const uvIds = await uvRollIds();
+  const rows = await prisma.priceApproval.findMany({ where: productOf(req.query.product) === "uv" ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } }, orderBy: [{ status: "asc" }, { id: "desc" }], take: 200 });
   res.json(rows.map((r) => ({ ...r, requestedAt: r.requestedAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null, pctBelow: r.systemPerPiece > 0 ? Math.round((r.systemPerPiece - r.chargedPerPiece) / r.systemPerPiece * 1e3) / 10 : 0 })));
 });
 dtfRouter.post("/approvals/:id/approve", manageOnly, async (req, res) => {

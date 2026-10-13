@@ -29,8 +29,39 @@ export const DEFAULT_DTF_SETTINGS: DtfSettings = {
   fixedChargePerMetre: 2160,
 };
 
+/**
+ * The two printing products the tracker runs: DTF film (rolls "ROLL-001") and UV DTF film (rolls "UV-001"). Each has its own rolls and its own settings (roll size, prices,
+ * artwork charge); the formulas below are the same for both.
+ */
+export type DtfProduct = 'dtf' | 'uv';
+export const DTF_PRODUCTS: DtfProduct[] = ['dtf', 'uv'];
+export const DTF_PRODUCT_LABEL: Record<DtfProduct, string> = { dtf: 'DTF', uv: 'UV DTF' };
+export const isDtfProduct = (v: unknown): v is DtfProduct => v === 'dtf' || v === 'uv';
+
+/** The price-list services a film sale and an artwork job are recorded against, for each product. */
+export const DTF_SERVICE_NAMES: Record<DtfProduct, { film: string; artwork: string }> = {
+  dtf: { film: 'DTF Sheet (per metre)', artwork: 'DTF Printing' },
+  uv: { film: 'UV DTF Sheet (per metre)', artwork: 'UV DTF Printing' },
+};
+
+/**
+ * UV DTF starts from these: a 30 cm × 50 m roll, film sold at KES 1,500 a metre (VAT included) with a floor of 1,200, and artwork charged as 30 a piece plus a fixed 1,070 for every
+ * running metre shared across the pieces on it — 107 pieces on a metre come to 40 each (4,280 a metre). Editable in DTF → UV DTF → Setup.
+ */
+export const UV_DTF_SETTINGS: DtfSettings = {
+  rollLengthM: 50,
+  rollWidthCm: 30,
+  stdPricePerM: 1500,
+  minPricePerM: 1200,
+  wastageTolerancePct: 5,
+  minPricePerPiece: 30,
+  fixedChargePerMetre: 1070,
+};
+
 export interface DtfRoll {
-  id: string; // ROLL-001
+  id: string; // ROLL-001 (DTF) or UV-001 (UV DTF)
+  /** Which product the roll is for; DTF when not said. */
+  product?: DtfProduct;
   installedOn: string | null; // a roll is "started" only once this is set
   finishedOn: string | null;
   status: 'open' | 'closed';
@@ -360,9 +391,9 @@ export function dtfDashboard(
   };
 }
 
-export function nextRollId(rolls: { id: string }[]): string {
+export function nextRollId(rolls: { id: string }[], product: DtfProduct = 'dtf'): string {
   const max = rolls.reduce((m, r) => Math.max(m, Number(/(\d+)$/.exec(r.id)?.[1] ?? 0)), 0);
-  return `ROLL-${String(max + 1).padStart(3, '0')}`;
+  return `${product === 'uv' ? 'UV' : 'ROLL'}-${String(max + 1).padStart(3, '0')}`;
 }
 
 /** "1,234.5" style number with up to `dp` decimals; "—" when null. */

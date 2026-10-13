@@ -254,6 +254,8 @@ model Setting {
   nextDtfNo      Int     @default(3001)
   // Embroidery orders ("E-" prefix) are numbered on their own so they stand out in the order lists.
   nextEmbroideryNo Int   @default(5001)
+  // UV DTF film and artwork orders ("U-6001", …) — their own sequence, apart from the DTF flow's "F-".
+  nextUvDtfNo    Int     @default(6001)
   // Outsourced Orders (contracted-out jobs captured by the sales person with their own buying price): O-7001…
   nextOutsourcedNo Int   @default(7001)
   // The old per-sqm "Embroidery" service was retired once, when stitch-priced embroidery orders arrived (see embroideryLegacy.ts).
@@ -1118,6 +1120,7 @@ model QualityCheck {
 // saved with, so later Setup changes never re-price history.
 
 // Single row (id = 1), created on first read.
+// One row per product: id 1 is DTF, id 2 is UV DTF (created with the UV defaults the first time it is read).
 model DtfSetting {
   id                  Int   @id @default(1)
   rollLengthM         Float @default(100)
@@ -1152,6 +1155,8 @@ model DtfRoll {
   // A roll installed part-used (starting the system with a roll still in use): the metres already used before it was recorded. The roll is then tracked from the metres left —
   // rollLengthM is that length, and filmCost / inkPowderCost are the cost of those metres only.
   carriedInUsedM Float   @default(0)
+  // Which product the roll is for: 'dtf' (ROLL-001, …) or 'uv' (UV-001, …). Film A (printing) is filmCost and Film B (laminating) is inkPowderCost on a UV roll.
+  product       String   @default("dtf")
 
   filmSales   DtfFilmSale[]
   artworkJobs DtfArtworkJob[]

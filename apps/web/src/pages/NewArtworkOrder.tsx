@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, summariseRoll, todayStr } from '@glm/shared';
+import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, summariseRoll, todayStr } from '@glm/shared';
+import type { DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import type { DtfData } from '../components/dtf/shared';
@@ -16,7 +17,8 @@ const right = { textAlign: 'right' } as const;
 // the charge with. Same Print-time order + roll-consumption creation as the
 // film sale flow (see DtfOrderDialog.tsx), just for DTF Printing instead of
 // DTF Sheet.
-export default function NewArtworkOrder() {
+export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProduct }) {
+  const label = DTF_PRODUCT_LABEL[product];
   const navigate = useNavigate();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,10 +32,10 @@ export default function NewArtworkOrder() {
       .then((c) => setArtworkRate(c.artworkRatePct))
       .catch(() => setArtworkRate(null));
     api
-      .get<DtfData>('/dtf/data')
+      .get<DtfData>(`/dtf/data?product=${product}`)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load DTF data'));
-  }, []);
+  }, [product]);
 
   if (!data) return <p className="note">{error ?? 'Loading…'}</p>;
 
@@ -82,8 +84,8 @@ export default function NewArtworkOrder() {
       <i className="corner tr"></i>
       <i className="corner bl"></i>
       <i className="corner br"></i>
-      <div className="card-kicker">DTF artwork order</div>
-      <div className="card-title">New artwork job</div>
+      <div className="card-kicker">{label} artwork order</div>
+      <div className="card-title">New {label} artwork job</div>
 
       {error && (
         <p className="note" style={{ color: 'var(--color-error)' }}>
@@ -149,7 +151,7 @@ export default function NewArtworkOrder() {
         )}
       </div>
 
-      {open.length === 0 && <p className="note" style={{ marginTop: 'var(--space-3)' }}>No open film roll — ask a manager to install one under DTF → Rolls before capturing a job.</p>}
+      {open.length === 0 && <p className="note" style={{ marginTop: 'var(--space-3)' }}>No open {label} film roll — ask a manager to install one under DTF → {label} → Rolls before capturing a job.</p>}
 
       <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--color-divider)' }}>
         {lines.map(([l, fm, v]) => (
@@ -189,6 +191,7 @@ export default function NewArtworkOrder() {
 
       {showOrderDialog && (
         <DtfOrderDialog
+          product={product}
           mode="job"
           postUrl="/dtf/jobs"
           basePayload={{

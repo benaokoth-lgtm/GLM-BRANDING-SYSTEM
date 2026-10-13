@@ -1,4 +1,4 @@
-import { buildLineTotal, defaultBusinessHeadName, GENERAL_ORDER_HEAD } from '@glm/shared';
+import { buildLineTotal, defaultBusinessHeadName, GENERAL_ORDER_HEAD, UV_DTF_HEAD } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 
 // Which line of business an order belongs to. The rule is the one Sales by Business Head uses: a service sells for its business head (or the
@@ -34,7 +34,9 @@ export type DtfKind = 'film' | 'artwork' | null;
 
 /** The heading an order sits under in Production and Quality control: DTF Printing is split into its film sales and artwork sales. */
 export function headGroup(head: string, dtfKind: DtfKind): string {
-  if (dtfKind === 'film') return `${DTF_HEAD} — Film sales`;
-  if (dtfKind === 'artwork') return `${DTF_HEAD} — Artwork sales`;
+  // UV DTF is its own line of business, split the same way
+  const dtf = head === UV_DTF_HEAD ? UV_DTF_HEAD : DTF_HEAD;
+  if (dtfKind === 'film') return `${dtf} — Film sales`;
+  if (dtfKind === 'artwork') return `${dtf} — Artwork sales`;
   return head;
 }

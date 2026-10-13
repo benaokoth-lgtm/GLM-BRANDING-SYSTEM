@@ -18,6 +18,8 @@ interface MaterialLine {
 }
 
 interface Props {
+  /** UV DTF: a sticker applied cold, so there is no heat press fee. */
+  product?: 'dtf' | 'uv';
   mode: 'sale' | 'job';
   postUrl: '/dtf/sales' | '/dtf/jobs';
   basePayload: Record<string, unknown>;
@@ -38,7 +40,7 @@ interface Props {
 // Print is what actually creates the order (and, server-side, the linked
 // DtfFilmSale/DtfArtworkJob roll-consumption row) and prints two thermal
 // receipts — nothing is saved before that.
-export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPrice, client, needsApproval = false, onClose, onDone }: Props) {
+export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qty, unitPrice, client, needsApproval = false, onClose, onDone }: Props) {
   const { materials } = useCatalog();
   const { user } = useAuth();
   // The client's name, prefilled from the previous page but editable here, beside the phone: crediting a client to a staff member needs both, and a
@@ -58,7 +60,8 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   const [error, setError] = useState<string | null>(null);
   const [sentFor, setSentFor] = useState<string | null>(null); // order number, once it has been sent for approval
 
-  const heatPress = mode === 'job' ? Number(heatPressFee) || 0 : 0;
+  const noPress = product === 'uv';
+  const heatPress = mode === 'job' && !noPress ? Number(heatPressFee) || 0 : 0;
   const serviceLineTotal = qty * (unitPrice + heatPress);
   const materialsTotal = materialLines.reduce((a, ml) => {
     const mt = materials.find((m) => m.id === ml.materialId);
@@ -69,7 +72,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
   const paid = paymentsTotal(paymentRows);
   const payProblem = needsApproval ? null : paymentProblem(paymentRows, grandTotal);
   // No artwork job is processed without the heat press fee.
-  const heatPressMissing = mode === 'job' && !(heatPress > 0);
+  const heatPressMissing = mode === 'job' && !noPress && !(heatPress > 0);
   // Name and phone are optional (a blank client is recorded as "Walk-in") — except when the client is credited to a staff member.
   const sourcingIncomplete = sourced && (!phone.trim() || !isNamedClient(clientName));
 
@@ -104,7 +107,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
         materialLines: materialLines
           .filter((l) => Number(l.qty) > 0)
           .map((l) => ({ materialId: l.materialId, qty: Number(l.qty) })),
-        ...(mode === 'job' ? { heatPressFee: heatPress } : {}),
+        ...(mode === 'job' && !noPress ? { heatPressFee: heatPress } : {}),
       };
       const [{ order, approval }, company] = await Promise.all([
         api.post<{ order: OrderDetail; approval?: string | null }>(postUrl, payload),
@@ -166,7 +169,7 @@ export default function DtfOrderDialog({ mode, postUrl, basePayload, qty, unitPr
 
           <SourcingField phone={phone} name={clientName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} />
 
-          {mode === 'job' && (
+          {mode === 'job' && !noPress && (
             <Field label="Heat press fee (Ksh/pc) — required">
               <select className="input" value={heatPressFee} onChange={(e) => setHeatPressFee(e.target.value)} style={heatPressMissing ? { borderColor: 'var(--color-error)' } : undefined}>
                 <option value="">Select a fee…</option>

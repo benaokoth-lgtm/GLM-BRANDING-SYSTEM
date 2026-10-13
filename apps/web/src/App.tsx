@@ -72,6 +72,22 @@ export default function App() {
           }
         />
         <Route
+          path="/orders/new/uv-film"
+          element={
+            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
+              <NewFilmOrder product="uv" />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="/orders/new/uv-artwork"
+          element={
+            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
+              <NewArtworkOrder product="uv" />
+            </RequirePermission>
+          }
+        />
+        <Route
           path="/orders/new/artwork"
           element={
             <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>

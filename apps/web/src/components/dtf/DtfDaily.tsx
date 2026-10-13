@@ -79,7 +79,7 @@ function daysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function DtfDaily({ kind, reload, setError }: { kind: 'jobs' | 'sales' } & DtfTabProps) {
+export default function DtfDaily({ kind, data, reload, setError }: { kind: 'jobs' | 'sales' } & DtfTabProps) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
   const [rangeKey, setRangeKey] = useState('90');
@@ -93,7 +93,7 @@ export default function DtfDaily({ kind, reload, setError }: { kind: 'jobs' | 's
     setLoading(true);
     const days = RANGES.find(([k]) => k === rangeKey)?.[2] ?? null;
     api
-      .get<{ days: (JobDay | SaleDay)[] }>(`/dtf/daily?kind=${kind}${days ? `&from=${daysAgo(days)}&to=${todayStr()}` : ''}`)
+      .get<{ days: (JobDay | SaleDay)[] }>(`/dtf/daily?kind=${kind}&product=${data.product}${days ? `&from=${daysAgo(days)}&to=${todayStr()}` : ''}`)
       .then((r) => setDays(r.days))
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load the daily figures'))
       .finally(() => setLoading(false));

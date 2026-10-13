@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
-import type { DtfArtworkJob, DtfFilmSale, DtfRoll, DtfSettings } from '@glm/shared';
+import type { DtfArtworkJob, DtfFilmSale, DtfProduct, DtfRoll, DtfSettings } from '@glm/shared';
 
 export interface DtfData {
+  /** DTF or UV DTF: the rolls, sales, jobs and settings below are this product's. */
+  product: DtfProduct;
   canManage: boolean;
   settings: DtfSettings;
   rolls: DtfRoll[];

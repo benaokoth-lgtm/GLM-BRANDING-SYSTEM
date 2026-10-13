@@ -32,6 +32,10 @@ function previewPart(d: Draft, full: number) {
 
 export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
   const { settings } = data;
+  const uv = data.product === 'uv';
+  // A UV DTF roll is two films — A (printing) and B (laminating) — so its two costs are those; a DTF roll's are the film and the ink/powder.
+  const costA = uv ? 'Film A (printing)' : 'Film';
+  const costB = uv ? 'Film B (laminating)' : 'Ink / powder';
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [closingId, setClosingId] = useState<string | null>(null);
@@ -75,7 +79,7 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
     // correcting the metres left on a part-used roll rescales its costs to them
     const editing = draft.id ? rolls.find((x) => x.roll.id === draft.id) : undefined;
     const metresChanged = !!editing && (editing.roll.carriedInUsedM ?? 0) > 0 && draft.metresLeft.trim() !== '' && num(draft.metresLeft) !== editing.roll.rollLengthM;
-    return run(() => (draft.id ? api.put(`/dtf/rolls/${draft.id}`, metresChanged ? { ...body, metresLeft: num(draft.metresLeft) } : body) : api.post('/dtf/rolls', { ...body, ...part, ...(terminate.length ? { terminate } : {}) })));
+    return run(() => (draft.id ? api.put(`/dtf/rolls/${draft.id}`, metresChanged ? { ...body, metresLeft: num(draft.metresLeft) } : body) : api.post('/dtf/rolls', { ...body, product: data.product, ...part, ...(terminate.length ? { terminate } : {}) })));
   }
 
   return (
@@ -195,17 +199,17 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
                 <input className="input" inputMode="decimal" value={draft.metresLeft} onChange={(e) => setDraft({ ...draft, metresLeft: e.target.value })} placeholder="Measure what is left" autoFocus />
               </Field>
             )}
-            <Field label={!draft.id && draft.partUsed ? 'Film cost of the WHOLE roll (Ksh)' : draft.id && (rolls.find((x) => x.roll.id === draft.id)?.roll.carriedInUsedM ?? 0) > 0 ? 'Film cost of the metres left (Ksh)' : 'Film cost (Ksh)'}>
+            <Field label={!draft.id && draft.partUsed ? `${costA} cost of the WHOLE roll (Ksh)` : draft.id && (rolls.find((x) => x.roll.id === draft.id)?.roll.carriedInUsedM ?? 0) > 0 ? `${costA} cost of the metres left (Ksh)` : `${costA} cost (Ksh)`}>
               <input className="input" inputMode="decimal" value={draft.filmCost} onChange={(e) => setDraft({ ...draft, filmCost: e.target.value })} />
             </Field>
-            <Field label={!draft.id && draft.partUsed ? 'Ink / powder cost of the WHOLE roll (Ksh)' : draft.id && (rolls.find((x) => x.roll.id === draft.id)?.roll.carriedInUsedM ?? 0) > 0 ? 'Ink / powder cost of the metres left (Ksh)' : 'Ink / powder cost (Ksh)'}>
+            <Field label={!draft.id && draft.partUsed ? `${costB} cost of the WHOLE roll (Ksh)` : draft.id && (rolls.find((x) => x.roll.id === draft.id)?.roll.carriedInUsedM ?? 0) > 0 ? `${costB} cost of the metres left (Ksh)` : `${costB} cost (Ksh)`}>
               <input className="input" inputMode="decimal" value={draft.inkPowderCost} onChange={(e) => setDraft({ ...draft, inkPowderCost: e.target.value })} />
             </Field>
             {!draft.id && draft.partUsed && partPreview && (
               <p className="note" style={{ margin: 0 }}>
                 {partPreview.problem ?? (
                   <>
-                    {fmtNum(settings.rollLengthM - partPreview.left, 1)} m already used before the system; <b>{fmtNum(partPreview.left, 1)} m</b> will be tracked. The roll will carry <b>{fmtKsh(partPreview.film)}</b> film and <b>{fmtKsh(partPreview.ink)}</b> ink / powder — {fmtNum(partPreview.share * 100, 1)}% of the whole roll's cost, the share for the metres left.
+                    {fmtNum(settings.rollLengthM - partPreview.left, 1)} m already used before the system; <b>{fmtNum(partPreview.left, 1)} m</b> will be tracked. The roll will carry <b>{fmtKsh(partPreview.film)}</b> {costA.toLowerCase()} and <b>{fmtKsh(partPreview.ink)}</b> {costB.toLowerCase()} — {fmtNum(partPreview.share * 100, 1)}% of the whole roll's cost, the share for the metres left.
                   </>
                 )}
               </p>

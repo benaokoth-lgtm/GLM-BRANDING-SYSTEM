@@ -18,18 +18,18 @@ const ONLY_FOR: Record<string, string> = { '': 'Every finish', lam: 'Laminated c
 
 // ── a kind of job: its markup, wastage and cards to a sheet
 function JobTypeRow({ t, onSaved }: { t: CostingJobTypeRow; onSaved: () => void }) {
-  const [f, setF] = useState({ marginPct: String(t.marginPct), wastagePct: String(t.wastagePct), cardsPerSheet: String(t.cardsPerSheet), spareSheets: String(t.spareSheets) });
+  const [f, setF] = useState({ marginPct: String(t.marginPct), floorMarginPct: String(t.floorMarginPct), wastagePct: String(t.wastagePct), cardsPerSheet: String(t.cardsPerSheet), spareSheets: String(t.spareSheets) });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [saved, setSaved] = useState(false);
   const cards = t.key === 'cards';
-  const dirty = f.marginPct !== String(t.marginPct) || f.wastagePct !== String(t.wastagePct) || f.cardsPerSheet !== String(t.cardsPerSheet) || f.spareSheets !== String(t.spareSheets);
+  const dirty = f.marginPct !== String(t.marginPct) || f.floorMarginPct !== String(t.floorMarginPct) || f.wastagePct !== String(t.wastagePct) || f.cardsPerSheet !== String(t.cardsPerSheet) || f.spareSheets !== String(t.spareSheets);
   async function save() {
     setBusy(true);
     setErr('');
     setSaved(false);
     try {
-      await api.put(`/costing/job-types/${t.key}`, { marginPct: n(f.marginPct), wastagePct: n(f.wastagePct), cardsPerSheet: Math.round(n(f.cardsPerSheet)), spareSheets: Math.round(n(f.spareSheets)) });
+      await api.put(`/costing/job-types/${t.key}`, { marginPct: n(f.marginPct), floorMarginPct: n(f.floorMarginPct), wastagePct: n(f.wastagePct), cardsPerSheet: Math.round(n(f.cardsPerSheet)), spareSheets: Math.round(n(f.spareSheets)) });
       setSaved(true);
       onSaved();
     } catch (e) {
@@ -43,6 +43,7 @@ function JobTypeRow({ t, onSaved }: { t: CostingJobTypeRow; onSaved: () => void 
     <tr>
       <td><b>{COSTING_JOB_LABEL[t.key]}</b></td>
       <td>{input('marginPct')}</td>
+      <td>{input('floorMarginPct')}</td>
       <td>{cards ? <span className="text-muted">—</span> : input('wastagePct')}</td>
       <td>{cards ? input('cardsPerSheet') : <span className="text-muted">—</span>}</td>
       <td>{cards ? input('spareSheets') : <span className="text-muted">—</span>}</td>
@@ -255,13 +256,14 @@ export default function CostingRatesPanel() {
       <p className="note" style={{ margin: 0 }}>
         The rates behind <b>Sales → Job Costing</b>. Enter what the supplier charges <b>us</b>, without VAT. A change shows in the next costing straight away; a costing is not saved, so nothing already quoted changes.
       </p>
-      <Card title="Kinds of job" hint="The margin is a markup on cost: price = cost × (1 + margin %). Wastage is the extra material allowed for on signage. Business cards: how many fit on an A3 sheet, and the spare sheets added to every job.">
+      <Card title="Kinds of job" hint="The margin is a markup on cost: price = cost × (1 + margin %). The lowest margin is how far a salesperson may bargain a quote down with a client: a lower price needs Finance, the General Manager or Admin to approve it. Wastage is the extra material allowed for on signage. Business cards: how many fit on an A3 sheet, and the spare sheets added to every job.">
         <div style={{ overflowX: 'auto' }}>
           <table className="table">
             <thead>
               <tr>
                 <th>Job</th>
                 <th>Margin (% on cost)</th>
+                <th>Lowest margin without approval (%)</th>
                 <th>Wastage (%)</th>
                 <th>Cards per A3 sheet</th>
                 <th>Spare A3 sheets</th>

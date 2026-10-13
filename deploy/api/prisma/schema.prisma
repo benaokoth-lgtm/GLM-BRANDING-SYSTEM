@@ -249,6 +249,8 @@ model Setting {
   nextEmbroideryNo Int   @default(5001)
   // UV DTF film and artwork orders ("U-6001", …) — their own sequence, apart from the DTF flow's "F-".
   nextUvDtfNo    Int     @default(6001)
+  // Costing quotes ("CQ-1001", …) — a costing saved for a client, agreed and then captured as an order.
+  nextCostingQuoteNo Int  @default(1001)
   // Outsourced Orders (contracted-out jobs captured by the sales person with their own buying price): O-7001…
   nextOutsourcedNo Int   @default(7001)
   // The old per-sqm "Embroidery" service was retired once, when stitch-priced embroidery orders arrived (see embroideryLegacy.ts).
@@ -1481,7 +1483,40 @@ model CostingJobType {
   key           String @id // 'cards' | 'indoor' | 'outdoor'
   label         String
   marginPct     Float  @default(40)
+  // The lowest margin (markup on cost, %) a salesperson may agree with a client without approval.
+  floorMarginPct Float @default(30)
   wastagePct    Float  @default(0)
   cardsPerSheet Int    @default(21)
   spareSheets   Int    @default(1)
+}
+
+// A costing saved for a client: what the job costs us (frozen at the time), the price quoted, the price agreed with the client, and — once the client accepts — the order it became.
+model CostingQuote {
+  id             Int      @id @default(autoincrement())
+  quoteNo        String   @unique
+  status         String   @default("Draft") // Draft | Sent | Lost | Ordered
+  createdDate    String
+  validUntil     String
+  clientName     String
+  phone          String   @default("")
+  note           String   @default("")
+  staffId        Int
+  staffName      String
+  jobType        String
+  inputJson      String // the CostingInput it was worked out from
+  summary        String
+  linesJson      String // the cost lines as they were: later changes to the supplier rates do not touch a saved quote
+  cost           Float // what it costs us, VAT not included
+  marginPct      Float // the margin it was quoted at (markup on cost, %)
+  floorMarginPct Float // the lowest margin that needed no approval, when it was quoted
+  price          Float // the price quoted, VAT not included
+  agreedPrice    Float? // the price agreed with the client, VAT not included
+  approval       String   @default("") // '' | 'Pending' | 'Approved' | 'Rejected' — needed when the agreed price is under the floor
+  approvalNote   String   @default("")
+  approvedByName String   @default("")
+  approvedAt     DateTime?
+  lostReason     String   @default("")
+  orderId        Int?
+  orderNo        String   @default("")
+  createdAt      DateTime @default(now())
 }

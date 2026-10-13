@@ -54,6 +54,8 @@ export interface CostingJobTypeRow {
   label: string;
   /** Markup on cost, %. */
   marginPct: number;
+  /** The lowest margin a salesperson may agree with a client without a manager's approval (markup on cost, %). */
+  floorMarginPct: number;
   /** Signage: material added for waste, %. */
   wastagePct: number;
   /** Cards: how many fit on an A3 sheet, and the spare sheets added to every job. */
@@ -185,6 +187,22 @@ export function costingQuote(types: CostingJobTypeRow[], rates: CostingRateRow[]
   };
 }
 
+// ── A quote that is accepted: the price agreed with the client, and whether it is low enough to need a manager's approval.
+
+/** The lowest price (before VAT, and with it) that may be agreed without approval: the cost plus the floor margin. */
+export function costingFloor(cost: number, floorMarginPct: number): { price: number; total: number } {
+  const price = r2(cost * (1 + Math.max(0, floorMarginPct) / 100));
+  return { price, total: r2(price * (1 + VAT_RATE)) };
+}
+
+/** What a price agreed with the client (the total they pay, VAT included) comes to: the price before VAT, our margin on cost, and whether it needs approval or is below cost. */
+export function costingAgreement(cost: number, totalInclVat: number, floorMarginPct: number) {
+  const total = r2(Math.max(0, totalInclVat));
+  const price = r2(total / (1 + VAT_RATE));
+  const marginPct = cost > 0 ? r2(((price - cost) / cost) * 100) : 0;
+  return { total, price, vat: r2(total - price), marginPct, belowCost: price < cost - 0.005, needsApproval: price < costingFloor(cost, floorMarginPct).price - 0.005 };
+}
+
 /** Business cards at 100, 250, 500, 1,000 and 2,000, the same finish and rates. */
 export function costingCardTiers(types: CostingJobTypeRow[], rates: CostingRateRow[], input: CostingInput): { qty: number; sheets: number; cost: number; price: number; total: number; each: number; eachTotal: number }[] {
   return COSTING_CARD_TIERS.map((qty) => {
@@ -196,9 +214,9 @@ export function costingCardTiers(types: CostingJobTypeRow[], rates: CostingRateR
 // ── What a new database starts with: the sample rates from the costing design, to be replaced with the real supplier rates (Master Data → Costing Rates).
 
 export const COSTING_DEFAULT_JOB_TYPES: CostingJobTypeRow[] = [
-  { key: 'cards', label: COSTING_JOB_LABEL.cards, marginPct: 40, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
-  { key: 'indoor', label: COSTING_JOB_LABEL.indoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
-  { key: 'outdoor', label: COSTING_JOB_LABEL.outdoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
+  { key: 'cards', label: COSTING_JOB_LABEL.cards, marginPct: 40, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
+  { key: 'indoor', label: COSTING_JOB_LABEL.indoor, marginPct: 45, floorMarginPct: 30, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
+  { key: 'outdoor', label: COSTING_JOB_LABEL.outdoor, marginPct: 45, floorMarginPct: 30, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
 ];
 
 type DefaultRate = Omit<CostingRateRow, 'id' | 'active' | 'sortOrder'>;

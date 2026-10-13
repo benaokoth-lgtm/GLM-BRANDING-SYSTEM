@@ -3,6 +3,7 @@ import { CARD_FINISH_LABEL, COSTING_BASIS_LABEL, COSTING_JOB_LABEL, VAT_RATE, fm
 import type { CardFinish, CostingBasis, CostingJobType, CostingKind } from '@glm/shared';
 import { api } from '../api/client';
 import { Loading, numStyle } from './accounting/shared';
+import CostingQuotes from '../components/CostingQuotes';
 
 // Sales → Job Costing. Staff pick a kind of job (business cards, indoor or outdoor signage), say how many and how big, and are given the price to quote: what the supplier rates
 // add up to (the materials and services kept in Master Data → Costing Rates), plus the margin, plus VAT. The margin and the profit are shown only to people who may see costs
@@ -47,6 +48,10 @@ export default function JobCosting() {
   const [switched, setSwitched] = useState<Record<CostingJobType, { on: number[]; off: number[] }>>({ cards: { on: [], off: [] }, indoor: { on: [], off: [] }, outdoor: { on: [], off: [] } });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState('');
+  // the calculator, or the quotes saved from it
+  const [view, setView] = useState<'calc' | 'quotes'>('calc');
+  const [openQuoteId, setOpenQuoteId] = useState<number | null>(null);
+  const [saving, setSaving] = useState<{ client: string; phone: string; note: string; busy: boolean; err: string } | null>(null);
 
   useEffect(() => {
     api
@@ -98,6 +103,18 @@ export default function JobCosting() {
   if (!config) return <Loading loading={!loadError} error={loadError} />;
 
   const set = (patch: Partial<typeof f>) => setForm({ ...form, [type]: { ...f, ...patch } });
+  async function saveQuote() {
+    if (!saving || saving.busy) return;
+    setSaving({ ...saving, busy: true, err: '' });
+    try {
+      const saved = await api.post<{ id: number }>('/costing/quotes', { ...body, clientName: saving.client, phone: saving.phone, note: saving.note });
+      setSaving(null);
+      setOpenQuoteId(saved.id);
+      setView('quotes');
+    } catch (e) {
+      setSaving({ ...saving, busy: false, err: e instanceof Error ? e.message : 'Could not save the quote' });
+    }
+  }
   const toggle = (r: { id: number; defaultOn: boolean }) => {
     const on = sw.on.filter((x) => x !== r.id);
     const off = sw.off.filter((x) => x !== r.id);
@@ -139,10 +156,23 @@ export default function JobCosting() {
         <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>Sales</div>
         <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 38, lineHeight: 1.05, margin: 0 }}>Job costing</h1>
         <p className="note" style={{ marginBottom: 0 }}>
-          Cost an outsourced branding job from the supplier rates and get the price to quote. Nothing here is saved or sent: it is a calculator.
+          Cost an outsourced branding job from the supplier rates and get the price to quote. The calculator keeps nothing until you press “Save as quote”; a saved quote can then be agreed with the client and captured as an order.
         </p>
       </div>
 
+      <div className="no-print seg" role="radiogroup" aria-label="Costing" style={{ maxWidth: 360 }}>
+        <label className={'seg-opt' + (view === 'calc' ? ' checked' : '')}>
+          <input type="radio" name="jcview" checked={view === 'calc'} onChange={() => setView('calc')} />
+          Calculator
+        </label>
+        <label className={'seg-opt' + (view === 'quotes' ? ' checked' : '')}>
+          <input type="radio" name="jcview" checked={view === 'quotes'} onChange={() => setView('quotes')} />
+          Saved quotes
+        </label>
+      </div>
+      {view === 'quotes' && <CostingQuotes openId={openQuoteId} onOpened={() => setOpenQuoteId(null)} />}
+      {view === 'calc' && (
+        <>
       <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }} role="tablist">
         {config.jobTypes.map((t) => (
           <button key={t.key} type="button" role="tab" aria-selected={type === t.key} className={'btn ' + (type === t.key ? 'btn-primary' : 'btn-secondary')} onClick={() => setType(t.key)}>
@@ -254,9 +284,41 @@ export default function JobCosting() {
                     <span>Margin on the price {pct(quote.profitOnPricePct ?? 0)}</span>
                   </div>
                 )}
-                <button type="button" className="btn btn-secondary btn-sm no-print" style={{ marginTop: 'var(--space-3)' }} onClick={() => window.print()}>
-                  Print this quote
-                </button>
+                <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-3)' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>
+                    Print this quote
+                  </button>
+                  <button type="button" className="btn btn-primary btn-sm blueprint" disabled={!(quote.cost && quote.cost > 0)} onClick={() => setSaving(saving ? null : { client: '', phone: '', note: '', busy: false, err: '' })}>
+                    Save as quote
+                  </button>
+                </div>
+                {saving && (
+                  <div className="no-print" style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
+                    <div className="card-kicker">Keep this costing as a quote for a client</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+                      <div className="field" style={{ margin: 0 }}>
+                        <label>Client name *</label>
+                        <input className="input" value={saving.client} onChange={(e) => setSaving({ ...saving, client: e.target.value })} />
+                      </div>
+                      <div className="field" style={{ margin: 0 }}>
+                        <label>Phone (optional)</label>
+                        <input className="input" value={saving.phone} onChange={(e) => setSaving({ ...saving, phone: e.target.value })} placeholder="07xx xxx xxx" />
+                      </div>
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>Note (optional)</label>
+                      <input className="input" value={saving.note} onChange={(e) => setSaving({ ...saving, note: e.target.value })} />
+                    </div>
+                    {saving.err && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{saving.err}</p>}
+                    <div>
+                      <button type="button" className="btn btn-primary btn-sm" disabled={saving.busy || saving.client.trim().length < 2} onClick={saveQuote}>
+                        Save quote
+                      </button>{' '}
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSaving(null)}>Cancel</button>
+                    </div>
+                    <p className="note" style={{ margin: 0 }}>The costing is kept as it is now, for 14 days. Later changes to the supplier rates do not change it.</p>
+                  </div>
+                )}
               </>
             )}
             </div>
@@ -293,6 +355,8 @@ export default function JobCosting() {
           )}
         </div>
       </div>
+        </>
+      )}
     </>
   );
 }

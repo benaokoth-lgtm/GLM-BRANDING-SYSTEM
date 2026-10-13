@@ -2053,9 +2053,9 @@ function isWeakPin(pin) {
 // packages/shared/src/costing.ts
 var COSTING_JOB_LABEL = { cards: "Business cards", indoor: "Indoor signage", outdoor: "Outdoor signage" };
 var COSTING_DEFAULT_JOB_TYPES = [
-  { key: "cards", label: COSTING_JOB_LABEL.cards, marginPct: 40, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
-  { key: "indoor", label: COSTING_JOB_LABEL.indoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
-  { key: "outdoor", label: COSTING_JOB_LABEL.outdoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 }
+  { key: "cards", label: COSTING_JOB_LABEL.cards, marginPct: 40, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "indoor", label: COSTING_JOB_LABEL.indoor, marginPct: 45, floorMarginPct: 30, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "outdoor", label: COSTING_JOB_LABEL.outdoor, marginPct: 45, floorMarginPct: 30, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 }
 ];
 var rate = (kind, name, basis, cost, jobTypes, extra = {}) => ({ kind, name, basis, cost, jobTypes, onlyFor: "", defaultOn: true, ...extra });
 var COSTING_DEFAULT_RATES = [

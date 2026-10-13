@@ -12,6 +12,7 @@ import { signToken } from '../src/middleware/auth';
 let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
+const ids: Record<string, number> = {};
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens[who]}` }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -25,8 +26,10 @@ describe('job costing', () => {
     await prisma.role.create({ data: { name: 'Seller (costing test)', canCaptureOrders: true } });
     await prisma.role.create({ data: { name: 'Finance (costing test)', canCaptureOrders: true, canAccessFinance: true, canSeeCosts: true } });
     await prisma.role.create({ data: { name: 'Nobody (costing test)' } });
-    for (const [key, role] of [['seller', 'Seller (costing test)'], ['finance', 'Finance (costing test)'], ['nobody', 'Nobody (costing test)'], ['admin', 'Admin']] as const) {
+    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true }, create: { id: 1, enabled: true } });
+    for (const [key, role] of [['seller', 'Seller (costing test)'], ['other', 'Seller (costing test)'], ['finance', 'Finance (costing test)'], ['nobody', 'Nobody (costing test)'], ['admin', 'Admin']] as const) {
       const u = await prisma.user.create({ data: { name: `${key} (costing test)`, role, pinHash: 'x' } });
+      ids[key] = u.id;
       tokens[key] = signToken({ id: u.id, name: u.name, role });
     }
     server = app.listen(0);
@@ -141,13 +144,113 @@ describe('job costing', () => {
   });
 
   it("the margin, wastage and the cards to a sheet are each job's settings, kept by an Admin", async () => {
-    assert.equal((await call('seller', 'PUT', '/costing/job-types/cards', { marginPct: 10, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 })).status, 403);
-    assert.equal((await call('admin', 'PUT', '/costing/job-types/nope', { marginPct: 10, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 })).status, 404);
-    assert.equal((await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 40, wastagePct: 0, cardsPerSheet: 0, spareSheets: 1 })).status, 400);
+    assert.equal((await call('seller', 'PUT', '/costing/job-types/cards', { marginPct: 10, floorMarginPct: 5, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 })).status, 403);
+    assert.equal((await call('admin', 'PUT', '/costing/job-types/nope', { marginPct: 10, floorMarginPct: 5, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 })).status, 404);
+    assert.equal((await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 40, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 0, spareSheets: 1 })).status, 400);
     // 24 to a sheet and no spare: 500 cards = 21 sheets (not 25): printing 2,520 + cutting 840 + setup 500 = 3,860, +50% = 5,790
-    assert.equal((await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 50, wastagePct: 0, cardsPerSheet: 24, spareSheets: 0 })).status, 200);
+    assert.equal((await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 50, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 24, spareSheets: 0 })).status, 200);
     const q = (await quote('finance', { jobType: 'cards', qty: 500 })).body;
     assert.deepEqual([q.sheets, q.cost, q.price], [21, 3860, 5790]);
-    await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 40, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 });
+    await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 40, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 });
+  });
+  // ── a quote that is accepted
+  const save = (who: string, extra: Record<string, unknown> = {}) => call(who, 'POST', '/costing/quotes', { jobType: 'cards', qty: 500, finish: 'plain', clientName: 'Hope Chapel', phone: '0722123456', ...extra });
+  const cardsFloor = 4500 * 1.3; // the cost plus the floor margin of 30%, before VAT
+
+  it('a costing is saved as a quote with the cost lines frozen; the floor is shown as a price, the margin only to people who see costs', async () => {
+    assert.equal((await save('seller', { clientName: '' })).status, 400);
+    const rates = (await call('admin', 'GET', '/costing/rates')).body.rates;
+    assert.equal((await save('seller', { off: rates.map((r: any) => r.id) })).status, 400); // nothing to cost
+    const q = await save('seller');
+    assert.equal(q.status, 201, JSON.stringify(q.body));
+    assert.match(q.body.quoteNo, /^CQ-\d{4}$/);
+    assert.deepEqual([q.body.status, q.body.cost, q.body.price, q.body.vat, q.body.total], ['Draft', 4500, 6300, 1008, 7308]);
+    assert.equal(q.body.lines.length, 3);
+    assert.deepEqual([q.body.lowestPrice, q.body.lowestTotal], [cardsFloor, Math.round(cardsFloor * 1.16 * 100) / 100]);
+    for (const hidden of ['marginPct', 'floorMarginPct', 'profit']) assert.equal(q.body[hidden], undefined, hidden);
+    assert.equal((await call('finance', 'GET', `/costing/quotes/${q.body.id}`)).body.marginPct, 40);
+    // a later change to a supplier rate leaves the saved quote as it was
+    const printing = rates.find((r: any) => r.name === 'Printing on A3 art paper');
+    await call('admin', 'PUT', `/costing/rates/${printing.id}`, { kind: 'service', name: printing.name, basis: 'sheet', cost: 150, jobTypes: ['cards'], onlyFor: '', defaultOn: true });
+    assert.equal((await call('seller', 'GET', `/costing/quotes/${q.body.id}`)).body.cost, 4500);
+    assert.equal((await save('seller')).body.cost, 5250); // a new one uses the new rate
+    await call('admin', 'PUT', `/costing/rates/${printing.id}`, { kind: 'service', name: printing.name, basis: 'sheet', cost: 120, jobTypes: ['cards'], onlyFor: '', defaultOn: true });
+  });
+
+  it('a price agreed at or above the floor goes straight through; a lower one needs a manager; below cost is refused', async () => {
+    const q = (await save('seller')).body;
+    const agree = (who: string, total: number) => call(who, 'POST', `/costing/quotes/${q.id}/agree`, { total });
+    // 7,000 with VAT = 6,034.48 before VAT: a 34% margin, above the 30% floor
+    const ok = await agree('seller', 7000);
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.deepEqual([ok.body.agreed.total, ok.body.agreed.price, ok.body.agreed.needsApproval, ok.body.approval, ok.body.status], [7000, 6034.48, false, '', 'Sent']);
+    assert.equal(ok.body.agreed.marginPct, undefined); // the salesperson is not told the margin
+    assert.equal((await call('finance', 'GET', `/costing/quotes/${q.id}`)).body.agreed.marginPct, 34.1);
+    // below the floor (5,850 before VAT): 6,000 with VAT = 5,172.41 → waits for approval
+    const low = await agree('seller', 6000);
+    assert.deepEqual([low.body.agreed.needsApproval, low.body.approval], [true, 'Pending']);
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/capture`, { paymentTiming: 'onCompletion' })).status, 400); // not until it is decided
+    // under what the job costs us (4,500 + VAT = 5,220) is never allowed
+    const below = await agree('seller', 5000);
+    assert.equal(below.status, 400);
+    assert.match(below.body.error, /below what the job costs/);
+    assert.equal((await agree('seller', 6000)).body.approval, 'Pending');
+    // the salesperson cannot decide it, and neither can the person who quoted it; Finance can
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/approve`)).status, 403);
+    const own = (await save('finance')).body;
+    await call('finance', 'POST', `/costing/quotes/${own.id}/agree`, { total: 6000 });
+    const self = await call('finance', 'POST', `/costing/quotes/${own.id}/approve`);
+    assert.equal(self.status, 400);
+    assert.match(self.body.error, /quoted yourself/);
+    assert.equal((await call('finance', 'POST', `/costing/quotes/${q.id}/reject`, {})).status, 400); // a reason is needed
+    const done = await call('finance', 'POST', `/costing/quotes/${q.id}/approve`);
+    assert.deepEqual([done.status, done.body.approval, done.body.approvedByName], [200, 'Approved', 'finance (costing test)']);
+    // a new agreed price starts again
+    assert.equal((await agree('seller', 7308)).body.approval, '');
+  });
+
+  it('the accepted quote is captured as an order at the agreed price, credited to the salesperson, with the cost on its line', async () => {
+    const q = (await save('seller')).body;
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/capture`, { paymentTiming: 'onCompletion' })).status, 400); // no agreed price yet
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/agree`, { total: 7000 })).status, 200);
+    const cap = await call('seller', 'POST', `/costing/quotes/${q.id}/capture`, { paymentTiming: 'onAcceptance', payments: [{ method: 'Cash', amount: 7000 }], sourcedBy: ids.seller });
+    assert.equal(cap.status, 201, JSON.stringify(cap.body));
+    assert.match(cap.body.orderNo, /^W-\d+$/);
+    assert.deepEqual([cap.body.totals.grandTotal, cap.body.totals.balanceDue, cap.body.customerName], [7000, 0, 'Hope Chapel']);
+    assert.equal(cap.body.lineItems[0].serviceName, 'Costed job — Business cards — 500 cards · Plain · 25 A3 sheets'); // the job's summary rides on the line
+    // the quote is now that order, and cannot be captured twice
+    const after = (await call('seller', 'GET', `/costing/quotes/${q.id}`)).body;
+    assert.deepEqual([after.status, after.orderNo, after.orderId], ['Ordered', cap.body.orderNo, cap.body.id]);
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/capture`, { paymentTiming: 'onCompletion' })).status, 400);
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/agree`, { total: 8000 })).status, 400);
+    // what the job costs us (VAT included, as the supplier bills it) is on the line for Finance, not for the salesperson
+    const detail = (await call('finance', 'GET', `/orders/${cap.body.id}`)).body;
+    assert.equal(detail.lineItems[0].supplierCost, 5220);
+    assert.equal((await call('seller', 'GET', `/orders/${cap.body.id}`)).body.lineItems[0].supplierCost, undefined);
+    // the salesperson's commission is the usual rule: the money received, net of VAT, on a client they brought
+    const mine = (await call('seller', 'GET', `/commission/my?period=${new Date().toISOString().slice(0, 7)}`)).body.statement;
+    assert.ok(Math.abs(mine.general.netSales - 6034.48) < 0.02, String(mine.general.netSales)); // 7,000 ÷ 1.16
+  });
+
+  it('a quote belongs to the salesperson who made it; managers see them all; a lost quote needs a reason', async () => {
+    const q = (await save('seller', { clientName: 'Lost Client' })).body;
+    assert.equal((await call('other', 'GET', `/costing/quotes/${q.id}`)).status, 403);
+    assert.ok(!(await call('other', 'GET', '/costing/quotes')).body.quotes.some((x: any) => x.id === q.id));
+    assert.ok((await call('seller', 'GET', '/costing/quotes')).body.quotes.some((x: any) => x.id === q.id));
+    assert.ok((await call('finance', 'GET', '/costing/quotes')).body.quotes.some((x: any) => x.id === q.id));
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/status`, { status: 'Lost' })).status, 400);
+    const lost = await call('seller', 'POST', `/costing/quotes/${q.id}/status`, { status: 'Lost', reason: 'Went to another printer' });
+    assert.deepEqual([lost.status, lost.body.status, lost.body.lostReason], [200, 'Lost', 'Went to another printer']);
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${q.id}/agree`, { total: 7000 })).status, 400);
+    assert.equal((await call('nobody', 'GET', '/costing/quotes')).status, 403);
+  });
+
+  it("each job's floor is an Admin's to set and is kept on a quote when it is made", async () => {
+    assert.equal((await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 40, floorMarginPct: 45, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 })).status, 400); // above the usual margin
+    assert.equal((await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 40, floorMarginPct: 35, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 })).status, 200);
+    const q = (await save('seller')).body;
+    assert.equal(q.lowestPrice, 6075); // 4,500 + 35%
+    await call('admin', 'PUT', '/costing/job-types/cards', { marginPct: 40, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 });
+    assert.equal((await call('seller', 'GET', `/costing/quotes/${q.id}`)).body.lowestPrice, 6075); // the quote keeps the floor it was made under
   });
 });

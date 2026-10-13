@@ -354,6 +354,8 @@ export type WalkinForm = z.infer<typeof walkinSchema>;
 
 /** How the embroidery order (routes/embroidery.ts) differs from a General Order: its own numbering, the base price each line is measured against for commission, and a hook run inside the same transaction. */
 export interface WalkinExtras {
+  /** Keep the supplier cost typed on the lines even when the person capturing may not see costs (a costed job: the cost is the costing's, not theirs to enter). */
+  keepCosts?: boolean;
   prefix?: string;
   counter?: 'nextWalkinNo' | 'nextEmbroideryNo';
   creditLines?: CreditLine[];
@@ -365,7 +367,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
   // Who the order is credited to (the sales person) and who keys it (the cashier): decided here, from the person's role and whether their order taking is on.
   const cap = await resolveCapture(req.user!, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const costs = await canSeeCosts(req.user!.role);
+  const costs = extra.keepCosts ? true : await canSeeCosts(req.user!.role);
 
   // Payments taken at capture: the new list form, or the older single amount + method.
   const paymentLines: PaymentLine[] =

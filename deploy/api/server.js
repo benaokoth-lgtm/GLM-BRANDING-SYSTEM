@@ -26440,7 +26440,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r25 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r25, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r26 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r26, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -28966,10 +28966,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r25, options) => {
+    var intersects = (r1, r26, options) => {
       r1 = new Range(r1, options);
-      r25 = new Range(r25, options);
-      return r1.intersects(r25, options);
+      r26 = new Range(r26, options);
+      return r1.intersects(r26, options);
     };
     module2.exports = intersects;
   }
@@ -66398,6 +66398,16 @@ function costingQuote(types, rates, input) {
     unitTotal: qty > 0 ? r24(total / qty) : 0
   };
 }
+function costingFloor(cost, floorMarginPct) {
+  const price = r24(cost * (1 + Math.max(0, floorMarginPct) / 100));
+  return { price, total: r24(price * (1 + VAT_RATE)) };
+}
+function costingAgreement(cost, totalInclVat, floorMarginPct) {
+  const total = r24(Math.max(0, totalInclVat));
+  const price = r24(total / (1 + VAT_RATE));
+  const marginPct = cost > 0 ? r24((price - cost) / cost * 100) : 0;
+  return { total, price, vat: r24(total - price), marginPct, belowCost: price < cost - 5e-3, needsApproval: price < costingFloor(cost, floorMarginPct).price - 5e-3 };
+}
 function costingCardTiers(types, rates, input) {
   return COSTING_CARD_TIERS.map((qty) => {
     const q = costingQuote(types, rates, { ...input, jobType: "cards", qty });
@@ -66405,9 +66415,9 @@ function costingCardTiers(types, rates, input) {
   });
 }
 var COSTING_DEFAULT_JOB_TYPES = [
-  { key: "cards", label: COSTING_JOB_LABEL.cards, marginPct: 40, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
-  { key: "indoor", label: COSTING_JOB_LABEL.indoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
-  { key: "outdoor", label: COSTING_JOB_LABEL.outdoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 }
+  { key: "cards", label: COSTING_JOB_LABEL.cards, marginPct: 40, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "indoor", label: COSTING_JOB_LABEL.indoor, marginPct: 45, floorMarginPct: 30, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "outdoor", label: COSTING_JOB_LABEL.outdoor, marginPct: 45, floorMarginPct: 30, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 }
 ];
 var rate = (kind, name2, basis, cost, jobTypes, extra = {}) => ({ kind, name: name2, basis, cost, jobTypes, onlyFor: "", defaultOn: true, ...extra });
 var COSTING_DEFAULT_RATES = [
@@ -72923,7 +72933,7 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
 async function captureWalkin(req, res, form, extra = {}) {
   const cap = await resolveCapture(req.user, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const costs = await canSeeCosts(req.user.role);
+  const costs = extra.keepCosts ? true : await canSeeCosts(req.user.role);
   const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
   const totals = computeOrderTotals(
     { lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt },
@@ -80542,7 +80552,7 @@ costingRouter.get("/config", mayCost, async (req, res) => {
   const { types, rates } = await load();
   res.json({
     canSeeCosts: sees,
-    jobTypes: types.map((t) => ({ key: t.key, label: t.label, wastagePct: t.wastagePct, cardsPerSheet: t.cardsPerSheet, spareSheets: t.spareSheets, ...sees ? { marginPct: t.marginPct } : {} })),
+    jobTypes: types.map((t) => ({ key: t.key, label: t.label, wastagePct: t.wastagePct, cardsPerSheet: t.cardsPerSheet, spareSheets: t.spareSheets, ...sees ? { marginPct: t.marginPct, floorMarginPct: t.floorMarginPct } : {} })),
     // what is ticked in a costing: each rate, what it costs and where it applies
     rates: rates.filter((r) => r.active).map((r) => ({ id: r.id, kind: r.kind, name: r.name, basis: r.basis, jobTypes: r.jobTypes, onlyFor: r.onlyFor, defaultOn: r.defaultOn, sortOrder: r.sortOrder, cost: r.cost }))
   });
@@ -80622,6 +80632,7 @@ costingRouter.delete("/rates/:id", admin2, async (req, res) => {
 });
 var typeSchema = external_exports.object({
   marginPct: external_exports.number().min(0, "The margin cannot be negative").max(1e3),
+  floorMarginPct: external_exports.number().min(0, "The lowest margin cannot be negative").max(1e3),
   wastagePct: external_exports.number().min(0).max(100, "Wastage cannot be more than 100%"),
   cardsPerSheet: external_exports.number().int().min(1, "At least one card fits an A3 sheet"),
   spareSheets: external_exports.number().int().min(0).max(1e3)
@@ -80630,9 +80641,213 @@ costingRouter.put("/job-types/:key", admin2, async (req, res) => {
   if (!isCostingJobType(req.params.key)) return res.status(404).json({ error: "Unknown kind of job" });
   const parsed = typeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  if (parsed.data.floorMarginPct > parsed.data.marginPct) return res.status(400).json({ error: "The lowest margin cannot be above the usual margin" });
   await ensureCostingDefaults();
   const row = await prisma.costingJobType.update({ where: { key: req.params.key }, data: parsed.data });
   res.json(toType(row));
+});
+var r25 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+function viewOf(q, sees) {
+  const vat = r25(q.price * VAT_RATE);
+  const floor2 = costingFloor(q.cost, q.floorMarginPct);
+  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r25(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
+  return {
+    id: q.id,
+    quoteNo: q.quoteNo,
+    status: q.status,
+    createdDate: q.createdDate,
+    validUntil: q.validUntil,
+    expired: (q.status === "Draft" || q.status === "Sent") && q.validUntil < todayStr(),
+    clientName: q.clientName,
+    phone: q.phone,
+    note: q.note,
+    staffId: q.staffId,
+    staffName: q.staffName,
+    jobType: q.jobType,
+    summary: q.summary,
+    input: JSON.parse(q.inputJson),
+    // everyone sees the cost lines and the cost
+    lines: JSON.parse(q.linesJson),
+    cost: q.cost,
+    price: q.price,
+    vat,
+    total: r25(q.price + vat),
+    // the lowest the price may be agreed at without approval (a price, not a margin)
+    lowestPrice: floor2.price,
+    lowestTotal: floor2.total,
+    agreed: agreed ? { price: agreed.price, vat: agreed.vat, total: agreed.total, needsApproval: agreed.needsApproval, ...sees ? { marginPct: agreed.marginPct } : {} } : null,
+    approval: q.approval,
+    approvalNote: q.approvalNote,
+    approvedByName: q.approvedByName,
+    lostReason: q.lostReason,
+    orderId: q.orderId,
+    orderNo: q.orderNo,
+    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r25(q.price - q.cost) } : {}
+  };
+}
+async function seesAllQuotes(user) {
+  if (user.role === "Admin") return true;
+  const perms = await permissionsForRole(user.role);
+  return !!(perms.canSeeCosts || perms.canViewAllOrders);
+}
+async function openQuote(req, res) {
+  const q = await prisma.costingQuote.findUnique({ where: { id: Number(req.params.id) } });
+  if (!q) {
+    res.status(404).json({ error: "Quote not found" });
+    return null;
+  }
+  if (q.staffId !== req.user.id && !await seesAllQuotes(req.user)) {
+    res.status(403).json({ error: "That quote is another salesperson\u2019s" });
+    return null;
+  }
+  return q;
+}
+var saveSchema = quoteSchema2.extend({
+  clientName: external_exports.string().trim().min(2, "Enter the client\u2019s name").max(120),
+  phone: external_exports.string().trim().max(40).default(""),
+  note: external_exports.string().trim().max(300).default(""),
+  validDays: external_exports.number().int().min(1).max(90).default(14)
+});
+costingRouter.post("/quotes", mayCost, async (req, res) => {
+  const parsed = saveSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const sees = await canSeeCosts(req.user.role);
+  const { clientName, phone, note, validDays, ...rest } = parsed.data;
+  const input = { ...rest, marginPct: sees ? rest.marginPct : void 0 };
+  const { types, rates } = await load();
+  const q = costingQuote(types, rates, input);
+  if (q.cost <= 0) return res.status(400).json({ error: "There is nothing to cost \u2014 tick at least one line with a rate" });
+  const floor2 = types.find((t) => t.key === input.jobType).floorMarginPct;
+  const created = await prisma.$transaction(async (tx) => {
+    const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    await tx.setting.update({ where: { id: 1 }, data: { nextCostingQuoteNo: settings.nextCostingQuoteNo + 1 } });
+    const until = /* @__PURE__ */ new Date(todayStr() + "T00:00:00Z");
+    until.setUTCDate(until.getUTCDate() + validDays);
+    return tx.costingQuote.create({
+      data: {
+        quoteNo: "CQ-" + settings.nextCostingQuoteNo,
+        createdDate: todayStr(),
+        validUntil: until.toISOString().slice(0, 10),
+        clientName,
+        phone,
+        note,
+        staffId: req.user.id,
+        staffName: req.user.name,
+        jobType: input.jobType,
+        inputJson: JSON.stringify(input),
+        summary: q.summary,
+        linesJson: JSON.stringify(q.lines),
+        cost: q.cost,
+        marginPct: q.marginPct,
+        floorMarginPct: Math.min(floor2, q.marginPct),
+        price: q.price
+      }
+    });
+  });
+  res.status(201).json(viewOf(created, sees));
+});
+costingRouter.get("/quotes", mayCost, async (req, res) => {
+  const sees = await canSeeCosts(req.user.role);
+  const all = await seesAllQuotes(req.user);
+  const status = typeof req.query.status === "string" ? req.query.status : "";
+  const rows = await prisma.costingQuote.findMany({
+    where: { ...all ? {} : { staffId: req.user.id }, ...["Draft", "Sent", "Lost", "Ordered"].includes(status) ? { status } : {} },
+    orderBy: [{ id: "desc" }],
+    take: 300
+  });
+  res.json({ canSeeCosts: sees, quotes: rows.map((q) => viewOf(q, sees)) });
+});
+costingRouter.get("/quotes/:id", mayCost, async (req, res) => {
+  const q = await openQuote(req, res);
+  if (q) res.json(viewOf(q, await canSeeCosts(req.user.role)));
+});
+costingRouter.post("/quotes/:id/agree", mayCost, async (req, res) => {
+  const parsed = external_exports.object({ total: external_exports.number().positive("Enter the price agreed with the client").max(1e9) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const q = await openQuote(req, res);
+  if (!q) return;
+  if (q.status === "Ordered") return res.status(400).json({ error: "This quote has already been captured as an order" });
+  if (q.status === "Lost") return res.status(400).json({ error: "This quote was marked lost" });
+  const a2 = costingAgreement(q.cost, parsed.data.total, q.floorMarginPct);
+  if (a2.belowCost) return res.status(400).json({ error: "That price is below what the job costs us" });
+  const sees = await canSeeCosts(req.user.role);
+  const updated = await prisma.costingQuote.update({
+    where: { id: q.id },
+    data: { agreedPrice: a2.price, approval: a2.needsApproval ? "Pending" : "", approvalNote: "", approvedByName: "", approvedAt: null, status: q.status === "Draft" ? "Sent" : q.status }
+  });
+  res.json(viewOf(updated, sees));
+});
+async function decide(req, res, approve) {
+  if (!await canSeeCosts(req.user.role)) return res.status(403).json({ error: "A price under the floor is decided by Finance, the General Manager or Admin" });
+  const q = await prisma.costingQuote.findUnique({ where: { id: Number(req.params.id) } });
+  if (!q) return res.status(404).json({ error: "Quote not found" });
+  if (q.approval !== "Pending") return res.status(400).json({ error: "This quote is not waiting for approval" });
+  if (q.staffId === req.user.id) return res.status(400).json({ error: "You cannot decide a price you quoted yourself" });
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 300) : "";
+  if (!approve && reason.length < 3) return res.status(400).json({ error: "Give a reason for rejecting this price" });
+  const updated = await prisma.costingQuote.update({ where: { id: q.id }, data: { approval: approve ? "Approved" : "Rejected", approvalNote: reason, approvedByName: req.user.name, approvedAt: /* @__PURE__ */ new Date() } });
+  res.json(viewOf(updated, true));
+}
+costingRouter.post("/quotes/:id/approve", mayCost, (req, res) => decide(req, res, true));
+costingRouter.post("/quotes/:id/reject", mayCost, (req, res) => decide(req, res, false));
+costingRouter.post("/quotes/:id/status", mayCost, async (req, res) => {
+  const parsed = external_exports.object({ status: external_exports.enum(["Draft", "Sent", "Lost"]), reason: external_exports.string().trim().max(300).default("") }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const q = await openQuote(req, res);
+  if (!q) return;
+  if (q.status === "Ordered") return res.status(400).json({ error: "This quote has already been captured as an order" });
+  if (parsed.data.status === "Lost" && parsed.data.reason.length < 3) return res.status(400).json({ error: "Say why the quote was lost" });
+  const updated = await prisma.costingQuote.update({ where: { id: q.id }, data: { status: parsed.data.status, lostReason: parsed.data.status === "Lost" ? parsed.data.reason : "" } });
+  res.json(viewOf(updated, await canSeeCosts(req.user.role)));
+});
+async function costedService(jobType) {
+  const name2 = "Costed job \u2014 " + (jobType === "cards" ? "Business cards" : jobType === "indoor" ? "Indoor signage" : "Outdoor signage");
+  const found = await prisma.service.findFirst({ where: { name: name2 } });
+  if (found) return found;
+  const head = await prisma.businessHead.findFirst({ where: { name: jobType === "cards" ? "General Order" : "Large Format Printing" } });
+  return prisma.service.create({ data: { name: name2, item: name2, unit: "piece", price: 0, outsourced: true, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
+}
+var captureSchema = external_exports.object({
+  customerName: external_exports.string().optional(),
+  phone: external_exports.string().optional(),
+  staffId: external_exports.number().int().nullable().optional(),
+  sourcedBy: external_exports.number().int().nullable().optional(),
+  paymentTiming: external_exports.enum(["onAcceptance", "onCompletion"]),
+  payments: external_exports.array(paymentLineSchema).max(6).optional()
+});
+costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
+  const body = captureSchema.safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
+  const q = await openQuote(req, res);
+  if (!q) return;
+  if (q.status === "Ordered") return res.status(400).json({ error: "This quote is already order " + q.orderNo });
+  if (q.status === "Lost") return res.status(400).json({ error: "This quote was marked lost" });
+  if (q.agreedPrice == null) return res.status(400).json({ error: "Record the price agreed with the client first" });
+  if (q.approval === "Pending") return res.status(400).json({ error: "The agreed price is under the floor and is waiting for a manager\u2019s approval" });
+  if (q.approval === "Rejected") return res.status(400).json({ error: "The agreed price was not approved \u2014 agree another price" });
+  const service = await costedService(q.jobType);
+  const total = r25(q.agreedPrice * (1 + VAT_RATE));
+  const form = walkinSchema.safeParse({
+    customerName: body.data.customerName?.trim() || q.clientName,
+    phone: body.data.phone ?? q.phone,
+    staffId: body.data.staffId ?? q.staffId,
+    sourcedBy: body.data.sourcedBy ?? null,
+    freelanceAgentId: null,
+    // a freelancer is paid on list prices; a costed job has none, so it is not credited to one
+    paymentTiming: body.data.paymentTiming,
+    payments: body.data.paymentTiming === "onAcceptance" ? body.data.payments : void 0,
+    // one line for the whole job at the price agreed (VAT included), with what the job costs us (VAT included, as a supplier bills it) kept on it for Finance
+    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r25(q.cost * (1 + VAT_RATE)) }]
+  });
+  if (!form.success) return res.status(400).json({ error: form.error.issues[0]?.message ?? "Invalid input" });
+  const quoteId = q.id;
+  return captureWalkin(req, res, form.data, {
+    keepCosts: true,
+    after: async (tx, order) => {
+      const done2 = await tx.costingQuote.updateMany({ where: { id: quoteId, status: { not: "Ordered" } }, data: { status: "Ordered", orderId: order.id, orderNo: order.orderNo } });
+      if (done2.count !== 1) throw new Error("This quote was captured as an order a moment ago");
+    }
+  });
 });
 
 // apps/api/src/app.ts

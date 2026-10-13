@@ -31,6 +31,16 @@ export default function PriceListExcel({ kind, onApplied }: { kind: 'services' |
     }
   }
 
+  // the same lists with no prices on them, and room for competitors' prices
+  async function downloadSurvey() {
+    setError('');
+    try {
+      await downloadFile('/pricelists/market-survey.xlsx', 'market-survey-sheet.xlsx');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Download failed');
+    }
+  }
+
   async function choose(f: File | undefined) {
     if (!f) return;
     setError('');
@@ -78,6 +88,9 @@ export default function PriceListExcel({ kind, onApplied }: { kind: 'services' |
         </button>
         <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => input.current?.click()}>
           Upload Excel
+        </button>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={downloadSurvey} title="Every service, stock item and job we price, without our prices, with columns for competitors' prices">
+          Market survey sheet
         </button>
         <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden onChange={(e) => choose(e.target.files?.[0])} />
         <span className="text-muted" style={{ fontSize: 12 }}>

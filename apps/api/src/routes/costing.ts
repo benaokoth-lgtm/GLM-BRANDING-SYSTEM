@@ -197,7 +197,7 @@ costingRouter.put('/job-types/:key', admin, async (req, res) => {
 // ── Brochures & Eulogies: eulogy booklets, company profiles and brochures printed by a supplier ───────────────────────────────────────────────────────────────────────────────
 // The printer's rates (paper per A3 sheet, the fees, the mark-up tiers) are kept by an Admin as one row of settings. Everyone who costs a job sees the cost lines and the price; the mark-up
 // (its percentage and the profit) is for people who may see costs, and so is the choice between a mark-up by quantity and a flat one.
-async function printSettings(): Promise<PrintSettings> {
+export async function printSettings(): Promise<PrintSettings> {
   const row = await prisma.printCostSetting.findUnique({ where: { id: 1 } });
   if (!row) return DEFAULT_PRINT_SETTINGS;
   try {

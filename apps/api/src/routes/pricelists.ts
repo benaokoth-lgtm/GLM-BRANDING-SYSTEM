@@ -9,6 +9,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { ensureMaterialItemsOnce } from '../materials';
 import { ensureBusinessHeadsOnce } from '../purchases';
 import { readXlsx, writeXlsx, type Cell } from '../xlsx';
+import { marketSurveyRows, SURVEY_WIDTHS } from '../marketSurvey';
 
 export const pricelistsRouter = Router();
 pricelistsRouter.use(requireAuth);
@@ -41,6 +42,11 @@ pricelistsRouter.get('/materials.xlsx', async (_req, res) => {
   const rows: Cell[][] = [['Item', 'Description', 'Size', 'Unit', 'Price', 'Business head', 'Reorder level', 'Stock on hand (not uploaded)']];
   for (const m of materials) rows.push([m.item || m.name, m.description, m.size, m.unit, m.price, m.businessHead?.name ?? '', m.reorderLevel, m.stockQty]);
   send(res, 'stock-price-list.xlsx', 'Stock price list', rows, [34, 36, 12, 10, 12, 26, 14, 24]);
+});
+
+// The market-survey sheet: every service, stock item and formula-priced job, with the specification to price — and none of our prices (see marketSurvey.ts).
+pricelistsRouter.get('/market-survey.xlsx', requireRole('Admin'), async (_req, res) => {
+  send(res, 'market-survey-sheet.xlsx', 'Market survey', await marketSurveyRows(), SURVEY_WIDTHS);
 });
 
 // ── Reading the sheet ────────────────────────────────────────────────────────

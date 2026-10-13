@@ -30,7 +30,7 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   }
   // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
   if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/embroidery', 'Embroidery Order']);
-  // Costing an outsourced branding job (business cards, signage) from the supplier rates in Master Data → Costing Rates, to quote a price.
+  // Costing an outsourced branding job (business cards, signage) from the supplier rates under Sales → Job Costing → Rates, to quote a price.
   if (isAdmin || p.canCaptureOrders || p.canAccessFinance) tabs.push(['/costing', 'Job Costing']);
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);

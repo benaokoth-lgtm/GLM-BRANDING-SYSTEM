@@ -1,5 +1,5 @@
 // Job costing — what an outsourced branding job costs us and what to quote for it. Three kinds of job: business cards, indoor signage and outdoor signage.
-// The supplier rates (materials and services) live in Master Data → Costing Rates; this file is only the arithmetic, kept as pure functions so the server and the tests share it.
+// The supplier rates (materials and services) live in Sales → Job Costing → Rates; this file is only the arithmetic, kept as pure functions so the server and the tests share it.
 //
 // Margin is a MARKUP on cost: price = cost × (1 + margin%). The price is before VAT; VAT (16%) is added on top for the total the customer pays.
 
@@ -211,7 +211,7 @@ export function costingCardTiers(types: CostingJobTypeRow[], rates: CostingRateR
   });
 }
 
-// ── What a new database starts with: the sample rates from the costing design, to be replaced with the real supplier rates (Master Data → Costing Rates).
+// ── What a new database starts with: the sample rates from the costing design, to be replaced with the real supplier rates (Sales → Job Costing → Rates).
 
 export const COSTING_DEFAULT_JOB_TYPES: CostingJobTypeRow[] = [
   { key: 'cards', label: COSTING_JOB_LABEL.cards, marginPct: 40, floorMarginPct: 30, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },

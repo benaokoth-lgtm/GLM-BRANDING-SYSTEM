@@ -24,7 +24,7 @@ import { captureWalkin, paymentLineSchema, walkinSchema } from './orders';
 
 // Job costing: what an outsourced branding job (business cards, indoor or outdoor signage) costs and what to quote for it. Anyone who takes orders can cost a job; what the
 // supplier charges us, the cost lines and the cost are shown to everyone who costs a job; our margin and profit only to people who may see costs (Finance, the General Manager, Admin).
-// The supplier rates are kept by an Admin in Master Data → Costing Rates, as two lists: materials and services.
+// The supplier rates are kept by an Admin under Sales → Job Costing → Rates, as two lists: materials and services.
 export const costingRouter = Router();
 costingRouter.use(requireAuth);
 
@@ -107,7 +107,7 @@ costingRouter.post('/quote', mayCost, async (req, res) => {
   res.json({ canSeeCosts: true, ...q, tiers });
 });
 
-// ── Master Data → Costing Rates (Admin) ─────────────────────────────────────
+// ── Job Costing → Rates (Admin) ─────────────────────────────────────
 costingRouter.get('/rates', admin, async (_req, res) => {
   const { types, rates } = await load();
   res.json({ jobTypes: types, rates });

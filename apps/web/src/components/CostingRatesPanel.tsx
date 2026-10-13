@@ -4,7 +4,7 @@ import type { CostingBasis, CostingJobType, CostingJobTypeRow, CostingKind, Cost
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from '../pages/accounting/shared';
 
-// Master Data → Costing Rates (Admin): the numbers behind Sales → Job Costing. Two lists — the MATERIALS we buy and the SERVICES we pay for — each with what the supplier
+// Sales → Job Costing → Rates (Admin): the numbers behind the costing. Two lists — the MATERIALS we buy and the SERVICES we pay for — each with what the supplier
 // charges us, how it is charged (per A3 sheet, per sqm, per unit, per job) and which kinds of job it is costed on. Anything can be added, changed or taken off the list; a
 // change shows in the next costing straight away. Each kind of job also has its own markup, wastage and (business cards) cards to an A3 sheet.
 

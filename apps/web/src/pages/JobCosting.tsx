@@ -4,9 +4,11 @@ import type { CardFinish, CostingBasis, CostingJobType, CostingKind } from '@glm
 import { api } from '../api/client';
 import { Loading, numStyle } from './accounting/shared';
 import CostingQuotes from '../components/CostingQuotes';
+import CostingRatesPanel from '../components/CostingRatesPanel';
+import { useAuth } from '../state/AuthContext';
 
 // Sales → Job Costing. Staff pick a kind of job (business cards, indoor or outdoor signage), say how many and how big, and are given the price to quote: what the supplier rates
-// add up to (the materials and services kept in Master Data → Costing Rates), plus the margin, plus VAT. The margin and the profit are shown only to people who may see costs
+// add up to (the materials and services kept under Rates, here, by an Admin), plus the margin, plus VAT. The margin and the profit are shown only to people who may see costs
 // (Finance, the General Manager, Admin) — the salesperson sees the cost lines and the price. The arithmetic is the server's, so every screen and every quote agrees.
 
 interface Config {
@@ -49,7 +51,10 @@ export default function JobCosting() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [error, setError] = useState('');
   // the calculator, or the quotes saved from it
-  const [view, setView] = useState<'calc' | 'quotes'>('calc');
+  const { user } = useAuth();
+  // the supplier rates are an Admin's to keep (here, beside the calculator that uses them)
+  const isAdmin = user?.role === 'Admin';
+  const [view, setView] = useState<'calc' | 'quotes' | 'rates'>('calc');
   const [openQuoteId, setOpenQuoteId] = useState<number | null>(null);
   const [saving, setSaving] = useState<{ client: string; phone: string; note: string; busy: boolean; err: string } | null>(null);
 
@@ -160,7 +165,7 @@ export default function JobCosting() {
         </p>
       </div>
 
-      <div className="no-print seg" role="radiogroup" aria-label="Costing" style={{ maxWidth: 360 }}>
+      <div className="no-print seg" role="radiogroup" aria-label="Costing" style={{ maxWidth: 460 }}>
         <label className={'seg-opt' + (view === 'calc' ? ' checked' : '')}>
           <input type="radio" name="jcview" checked={view === 'calc'} onChange={() => setView('calc')} />
           Calculator
@@ -169,7 +174,14 @@ export default function JobCosting() {
           <input type="radio" name="jcview" checked={view === 'quotes'} onChange={() => setView('quotes')} />
           Saved quotes
         </label>
+        {isAdmin && (
+          <label className={'seg-opt' + (view === 'rates' ? ' checked' : '')}>
+            <input type="radio" name="jcview" checked={view === 'rates'} onChange={() => setView('rates')} />
+            Rates
+          </label>
+        )}
       </div>
+      {view === 'rates' && isAdmin && <CostingRatesPanel />}
       {view === 'quotes' && <CostingQuotes openId={openQuoteId} onOpened={() => setOpenQuoteId(null)} />}
       {view === 'calc' && (
         <>
@@ -212,7 +224,7 @@ export default function JobCosting() {
             <div className="card-kicker" style={{ marginBottom: -8 }}>What goes into the cost</div>
             {group('material', 'Materials')}
             {group('service', 'Services')}
-            <p className="note" style={{ margin: 0 }}>Untick a line this job does not need; tick an optional extra it does. The rates themselves are kept in Master Data → Costing Rates.</p>
+            <p className="note" style={{ margin: 0 }}>Untick a line this job does not need; tick an optional extra it does. The rates themselves are kept under the Rates tab (Admin).</p>
           </div>
           {sees && (
             <div className="field" style={{ margin: 0, maxWidth: 220 }}>

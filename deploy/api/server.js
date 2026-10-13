@@ -66446,6 +66446,26 @@ var COSTING_DEFAULT_RATES = [
   rate("service", "Design & setup (outdoor)", "job", 800, ["outdoor"])
 ];
 
+// packages/shared/src/pens.ts
+var DEFAULT_PEN_TIERS = [
+  { from: 1, rate: 20 },
+  { from: 100, rate: 15 },
+  { from: 500, rate: 12 },
+  { from: 1001, rate: 10 }
+];
+var sortedPenTiers = (tiers) => [...tiers].sort((a2, b) => a2.from - b.from);
+function penTiersProblem(tiers) {
+  if (tiers.length === 0) return "There must be at least one rate";
+  const s = sortedPenTiers(tiers);
+  for (const t of s) {
+    if (!Number.isInteger(t.from) || t.from < 1) return "Each tier must start at a whole number of pens, 1 or more";
+    if (!(t.rate >= 0) || !Number.isFinite(t.rate)) return "A rate cannot be negative";
+  }
+  if (s[0].from !== 1) return "The first tier must start at 1 pen";
+  for (let i = 1; i < s.length; i++) if (s[i].from === s[i - 1].from) return `Two tiers start at ${s[i].from} pens`;
+  return null;
+}
+
 // apps/api/src/pins.ts
 var PIN_ROUNDS = 10;
 var MAX_ATTEMPTS = 5;
@@ -77056,6 +77076,23 @@ dtfRouter.get("/data", async (req, res) => {
     })),
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending", ...product === "uv" ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } } } }) : 0
   });
+});
+async function penTiers() {
+  if (await prisma.penTier.count() === 0) await prisma.penTier.createMany({ data: DEFAULT_PEN_TIERS.map((t) => ({ fromQty: t.from, rate: t.rate })) });
+  return (await prisma.penTier.findMany({ orderBy: { fromQty: "asc" } })).map((t) => ({ from: t.fromQty, rate: t.rate }));
+}
+dtfRouter.get("/pen-tiers", async (req, res) => {
+  const perms = await permissionsForRole(req.user.role);
+  res.json({ canManage: perms.canManageDtf, tiers: await penTiers() });
+});
+dtfRouter.put("/pen-tiers", manageOnly, async (req, res) => {
+  const parsed = external_exports.object({ tiers: external_exports.array(external_exports.object({ from: external_exports.number().int(), rate: external_exports.number().max(1e6) })).min(1).max(20) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const tiers = sortedPenTiers(parsed.data.tiers);
+  const problem = penTiersProblem(tiers);
+  if (problem) return res.status(400).json({ error: problem });
+  await prisma.$transaction([prisma.penTier.deleteMany({}), prisma.penTier.createMany({ data: tiers.map((t) => ({ fromQty: t.from, rate: t.rate })) })]);
+  res.json({ canManage: true, tiers: await penTiers() });
 });
 var settingsSchema6 = external_exports.object({
   rollLengthM: external_exports.number().positive(),

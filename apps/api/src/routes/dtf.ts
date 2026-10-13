@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { DTF_PRINT_DEFAULT_RATE_PER_SQM, DTF_SERVICE_NAMES, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import { DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DtfProduct, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -271,6 +271,29 @@ dtfRouter.get('/data', async (req, res) => {
     })),
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: 'Pending', ...(product === 'uv' ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } }) } }) : 0,
   });
+});
+
+// ── UV pen branding: the price picker's rate tiers ───────────────────────
+// The rate a pen is charged at depends on how many pens are in the order; the whole order is charged at that one rate. Anyone with DTF access reads the tiers; a DTF manager
+// changes them. A new database starts with the owner's rates (1–99 at 20/=, 100–499 at 15/=, 500–1000 at 12/=, 1001+ at 10/=).
+async function penTiers() {
+  if ((await prisma.penTier.count()) === 0) await prisma.penTier.createMany({ data: DEFAULT_PEN_TIERS.map((t) => ({ fromQty: t.from, rate: t.rate })) });
+  return (await prisma.penTier.findMany({ orderBy: { fromQty: 'asc' } })).map((t) => ({ from: t.fromQty, rate: t.rate }));
+}
+
+dtfRouter.get('/pen-tiers', async (req, res) => {
+  const perms = await permissionsForRole(req.user!.role);
+  res.json({ canManage: perms.canManageDtf, tiers: await penTiers() });
+});
+
+dtfRouter.put('/pen-tiers', manageOnly, async (req, res) => {
+  const parsed = z.object({ tiers: z.array(z.object({ from: z.number().int(), rate: z.number().max(1_000_000) })).min(1).max(20) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const tiers = sortedPenTiers(parsed.data.tiers);
+  const problem = penTiersProblem(tiers);
+  if (problem) return res.status(400).json({ error: problem });
+  await prisma.$transaction([prisma.penTier.deleteMany({}), prisma.penTier.createMany({ data: tiers.map((t) => ({ fromQty: t.from, rate: t.rate })) })]);
+  res.json({ canManage: true, tiers: await penTiers() });
 });
 
 // ── Setup ────────────────────────────────────────────────────────────────

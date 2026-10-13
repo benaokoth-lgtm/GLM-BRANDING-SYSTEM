@@ -4,6 +4,7 @@ import { DTF_PRODUCT_LABEL, VAT_RATE, filmPremiumCommission, filmPremiumPerM, fm
 import type { Band, DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
+import UvPenCosting from '../components/dtf/UvPenCosting';
 import type { DtfData } from '../components/dtf/shared';
 
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
@@ -21,6 +22,8 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
   const [f, setF] = useState({ roll: '', client: '', metres: '', price: '' });
   const [showOrderDialog, setShowOrderDialog] = useState(false);
   const [filmBands, setFilmBands] = useState<Band[] | null>(null);
+  // UV DTF also prices UV-printed pens: its own tab beside the film sale
+  const [tab, setTab] = useState<'film' | 'pens'>('film');
 
   useEffect(() => {
     // The scheme staff are paid under, to show what a higher price is worth to them (nothing is blocked if it can't be read).
@@ -33,6 +36,28 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load DTF data'));
   }, [product]);
+
+  const tabs =
+    product === 'uv' ? (
+      <div className="seg" role="radiogroup" aria-label="UV DTF" style={{ maxWidth: 420, marginBottom: 'var(--space-4)' }}>
+        <label className={'seg-opt' + (tab === 'film' ? ' checked' : '')}>
+          <input type="radio" name="uvtab" checked={tab === 'film'} onChange={() => setTab('film')} />
+          Film sale
+        </label>
+        <label className={'seg-opt' + (tab === 'pens' ? ' checked' : '')}>
+          <input type="radio" name="uvtab" checked={tab === 'pens'} onChange={() => setTab('pens')} />
+          UV Pen Costing
+        </label>
+      </div>
+    ) : null;
+  if (product === 'uv' && tab === 'pens') {
+    return (
+      <>
+        {tabs}
+        <UvPenCosting />
+      </>
+    );
+  }
 
   if (!data) return <p className="note">{error ?? 'Loading…'}</p>;
 
@@ -50,6 +75,8 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
   const canSave = metres > 0 && !!rollId && c.valid;
 
   return (
+    <>
+    {tabs}
     <div className="card blueprint" style={{ maxWidth: 560 }}>
       <i className="corner tl"></i>
       <i className="corner tr"></i>
@@ -143,5 +170,6 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
         />
       )}
     </div>
+    </>
   );
 }

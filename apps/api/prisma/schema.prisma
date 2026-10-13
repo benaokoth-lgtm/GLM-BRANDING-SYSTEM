@@ -1527,3 +1527,10 @@ model CostingQuote {
   orderNo        String   @default("")
   createdAt      DateTime @default(now())
 }
+
+// UV pen branding (UV DTF Film Order → UV Pen Costing): the rate a pen is charged at, by the number of pens in the order. The whole order is charged at the one rate.
+model PenTier {
+  id      Int   @id @default(autoincrement())
+  fromQty Int   @unique // the first quantity this rate applies to
+  rate    Float
+}

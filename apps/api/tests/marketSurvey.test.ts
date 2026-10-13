@@ -22,6 +22,7 @@ describe('market survey sheet', () => {
     tokens.admin = signToken({ id: a.id, name: a.name, role: 'Admin' });
     await prisma.service.create({ data: { name: 'Survey Mug Print', item: 'Survey Mug Print', description: 'Full wrap', unit: 'piece', price: 12345.67 } });
     await prisma.service.create({ data: { name: 'Survey Retired Thing', item: 'Survey Retired Thing', unit: 'piece', price: 7777, retired: true } });
+    await prisma.service.create({ data: { name: 'Survey Own Screen', item: 'Survey Own Screen', unit: 'metre', price: 4321, soldViaDtfModule: true } });
     await prisma.material.create({ data: { name: 'Survey Apron — L', item: 'Survey Apron', size: 'L', unit: 'piece', price: 8765.43 } });
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -61,6 +62,6 @@ describe('market survey sheet', () => {
     assert.ok(!everything.includes('12345.67') && !everything.includes('8765.43'));
     assert.ok(!/\b(Price|Cost)\b/i.test(grid[0]!.filter((h) => !h.startsWith('Competitor') && !h.startsWith('Compare')).join('|')));
     // the services the system sells through their own screens are not repeated as list lines
-    assert.equal(rows.filter((r) => r[1] === 'Services' && /DTF Sheet|DTF Printing/.test(r[2]!)).length, 0);
+    assert.equal(find('Survey Own Screen'), undefined);
   });
 });

@@ -26,7 +26,7 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
     tabs.push(['/orders/new/walkin', 'General Order']);
   }
   if (isAdmin || p.canAccessDtf || p.canManageDtf) {
-    tabs.push(['/orders/new/film', 'Film Order'], ['/orders/new/artwork', 'Artwork Order']);
+    tabs.push(['/orders/new/film', 'DTF Film Order'], ['/orders/new/artwork', 'DTF Artwork Order']);
   }
   // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
   if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/embroidery', 'Embroidery Order']);

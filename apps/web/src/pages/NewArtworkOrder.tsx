@@ -82,7 +82,7 @@ export default function NewArtworkOrder() {
       <i className="corner tr"></i>
       <i className="corner bl"></i>
       <i className="corner br"></i>
-      <div className="card-kicker">Artwork order</div>
+      <div className="card-kicker">DTF artwork order</div>
       <div className="card-title">New artwork job</div>
 
       {error && (

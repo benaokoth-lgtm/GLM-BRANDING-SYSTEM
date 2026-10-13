@@ -973,7 +973,7 @@ export default function MasterData() {
           )}
           <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center', marginTop: 'var(--space-3)' }}>
             <span className="note" style={{ margin: 0 }}>
-              <b>Order taking</b> decides who may capture General, Film and Artwork orders. Switched off, a sales person keeps every other duty their role allows and the <b>front office</b> captures for them.
+              <b>Order taking</b> decides who may capture General, DTF Film and DTF Artwork orders. Switched off, a sales person keeps every other duty their role allows and the <b>front office</b> captures for them.
             </span>
             <button type="button" className="btn btn-secondary btn-sm" onClick={() => setAllOrderTaking(false)}>
               Switch off for all sales persons

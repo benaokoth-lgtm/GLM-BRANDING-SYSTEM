@@ -54,7 +54,7 @@ export default function NewFilmOrder() {
       <i className="corner tr"></i>
       <i className="corner bl"></i>
       <i className="corner br"></i>
-      <div className="card-kicker">Film order</div>
+      <div className="card-kicker">DTF film order</div>
       <div className="card-title">New film sale</div>
 
       {error && (

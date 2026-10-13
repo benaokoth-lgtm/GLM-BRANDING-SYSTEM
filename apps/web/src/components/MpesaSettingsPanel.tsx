@@ -109,7 +109,7 @@ export default function MpesaSettingsPanel() {
     <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)', gap: 'var(--space-4)', alignItems: 'start' }}>
       <Card
         title="M-Pesa"
-        hint="Send a payment prompt (STK push) to a customer's phone from General, Film and Artwork orders and Record payment — and match Paybill/Till payments Safaricom tells us about on its own."
+        hint="Send a payment prompt (STK push) to a customer's phone from General, DTF Film and DTF Artwork orders and Record payment — and match Paybill/Till payments Safaricom tells us about on its own."
         actions={<Tag tone={data.enabled ? 'good' : 'neutral'}>{data.enabled ? 'On' : 'Off'}</Tag>}
       >
         <Notice error={err} message={msg} />

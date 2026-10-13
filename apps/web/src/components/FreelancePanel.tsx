@@ -22,9 +22,6 @@ interface Statement {
   premiumNet: number;
   baseCommission: number;
   premiumCommission: number;
-  /** Outsourced orders they brought: a share of each job's net gross profit, on what the client has paid the company. */
-  outsourcedCommission: number;
-  outsourcedJobs: { orderNo: string; customer: string; netSales: number | null; netCost: number | null; grossProfit: number | null; marginPct: number | null; ratePct: number | null; orderTotal: number; moneyIn: number; commission: number }[];
   belowBaseNet: number;
   commission: number;
   /** Withholding tax: the rate for this person, the tax deducted, and what they are paid after it. */
@@ -233,11 +230,7 @@ function WeekTab() {
                           <td style={numStyle}>{s.belowBaseNet > 0 ? fmtKsh(s.belowBaseNet) : '—'}</td>
                           <td style={numStyle}>
                             {fmtKsh(s.commission)}
-                            {(s.premiumCommission > 0 || s.outsourcedCommission > 0) && (
-                              <div className="text-muted" style={{ fontSize: 11 }}>
-                                {fmtKsh(s.baseCommission)} bands{s.premiumCommission > 0 ? ` + ${fmtKsh(s.premiumCommission)} above base` : ''}{s.outsourcedCommission > 0 ? ` + ${fmtKsh(s.outsourcedCommission)} outsourced jobs (on profit)` : ''}
-                              </div>
-                            )}
+                            {s.premiumCommission > 0 && <div className="text-muted" style={{ fontSize: 11 }}>{fmtKsh(s.baseCommission)} bands + {fmtKsh(s.premiumCommission)} above base</div>}
                           </td>
                           <td style={numStyle}>
                             {s.withholdingTax > 0 ? fmtKsh(s.withholdingTax) : '—'}
@@ -272,50 +265,6 @@ function WeekTab() {
                                 <p className="note" style={{ marginTop: 0 }}>
                                   In the <b>{s.band.rate}%</b> band{s.band.toNext != null && s.band.nextRate != null ? <> — {fmtKsh(s.band.toNext)} more takes the next slice to {s.band.nextRate}%</> : null}.
                                 </p>
-                                {s.outsourcedJobs.length > 0 && (
-                                  <>
-                                    <div className="card-kicker">Outsourced jobs — a share of the gross profit, on what the client has paid the company</div>
-                                    <table className="table">
-                                      <thead>
-                                        <tr>
-                                          <th>Order</th>
-                                          <th>Customer</th>
-                                          {s.outsourcedJobs[0]?.grossProfit != null && (
-                                            <>
-                                              <th style={numStyle}>Net sales</th>
-                                              <th style={numStyle}>Net cost</th>
-                                              <th style={numStyle}>Gross profit</th>
-                                              <th style={numStyle}>Margin</th>
-                                              <th style={numStyle}>Share</th>
-                                            </>
-                                          )}
-                                          <th style={numStyle}>Paid to us</th>
-                                          <th style={numStyle}>Commission</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {s.outsourcedJobs.map((j) => (
-                                          <tr key={j.orderNo}>
-                                            <td>{j.orderNo}</td>
-                                            <td>{j.customer}</td>
-                                            {j.grossProfit != null && (
-                                              <>
-                                                <td style={numStyle}>{fmtKsh(j.netSales ?? 0)}</td>
-                                                <td style={numStyle}>{fmtKsh(j.netCost ?? 0)}</td>
-                                                <td style={numStyle}>{fmtKsh(j.grossProfit)}</td>
-                                                <td style={numStyle}>{j.marginPct == null ? '—' : `${fmtNum(j.marginPct, 1)}%`}</td>
-                                                <td style={numStyle}>{j.ratePct}%</td>
-                                              </>
-                                            )}
-                                            <td style={numStyle}>{fmtKsh(j.moneyIn)} of {fmtKsh(j.orderTotal)}</td>
-                                            <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(j.commission)}</td>
-                                          </tr>
-                                        ))}
-                                      </tbody>
-                                    </table>
-                                  </>
-                                )}
-                                {s.orders.length > 0 && (
                                 <table className="table">
                                   <thead>
                                     <tr>
@@ -342,7 +291,6 @@ function WeekTab() {
                                     ))}
                                   </tbody>
                                 </table>
-                                )}
                               </div>
                             </td>
                           </tr>

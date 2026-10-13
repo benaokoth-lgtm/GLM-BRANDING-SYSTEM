@@ -42,9 +42,6 @@ interface Config {
   minimumWage: number;
   /** The day of the month people on the pay bands are paid, for the month before. */
   payday: number;
-  /** Outsourced orders: a job's margin % → the % of its net gross profit paid as commission. */
-  outsourcedBands: Band[];
-  outsourcedBandWeightPct: number;
 }
 interface Pay {
   onBands: boolean;
@@ -87,12 +84,6 @@ interface Statement {
     commission: number;
     band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
     orders: { orderNo: string; customer: string; received: number; refunded: number }[];
-  };
-  outsourced: {
-    commission: number;
-    /** False when the viewer may not see costs: a job then shows only what the client has paid and the commission it earned. */
-    detail?: boolean;
-    jobs: { orderNo: string; customer: string; netSales: number | null; netCost: number | null; grossProfit: number | null; marginPct: number | null; ratePct: number | null; orderTotal: number; moneyIn: number; commission: number }[];
   };
   film: { commission: number; sales: { orderNo: string; customer: string; metres: number; pricePerM: number; premiumPerM: number; orderTotal: number; moneyIn: number; commission: number }[] };
   artwork: { commission: number; jobs: { orderNo: string; customer: string; pieces: number; systemPerPiece: number; chargedPerPiece: number; orderTotal: number; moneyIn: number; commission: number }[] };
@@ -318,56 +309,6 @@ function StatementDetail({ s, config, you, open }: { s: Statement; config: Confi
         )}
       </div>
 
-      {(s.outsourced.jobs.length > 0 || s.outsourced.commission > 0) && (
-        <div>
-          <div className="card-kicker">Outsourced jobs — {fmtKsh(s.outsourced.commission)}</div>
-          <p className="note" style={{ marginTop: 0 }}>
-            A share of each job's <b>net gross profit</b> — sales without output VAT, less cost without the input VAT that can be claimed back — earned only on what the client has paid <b>directly to the company</b> (money paid to the supplier does not count). The share steps up with the job's margin (
-            {[...config.outsourcedBands].sort((a, b) => a.from - b.from).map((b) => `from ${b.from}% margin: ${pct(b.rate)}`).join(' · ')}).
-          </p>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>Customer</th>
-                  {s.outsourced.detail !== false && (
-                    <>
-                      <th style={numStyle}>Net sales</th>
-                      <th style={numStyle}>Net cost</th>
-                      <th style={numStyle}>Gross profit</th>
-                      <th style={numStyle}>Margin</th>
-                      <th style={numStyle}>Share</th>
-                    </>
-                  )}
-                  <th style={numStyle}>Paid so far</th>
-                  <th style={numStyle}>Commission</th>
-                </tr>
-              </thead>
-              <tbody>
-                {s.outsourced.jobs.map((j) => (
-                  <tr key={j.orderNo}>
-                    <td>{j.orderNo}</td>
-                    <td>{j.customer}</td>
-                    {s.outsourced.detail !== false && (
-                      <>
-                        <td style={numStyle}>{j.netSales == null ? '—' : fmtKsh(j.netSales)}</td>
-                        <td style={numStyle}>{j.netCost == null ? '—' : fmtKsh(j.netCost)}</td>
-                        <td style={numStyle}>{j.grossProfit == null ? '—' : fmtKsh(j.grossProfit)}</td>
-                        <td style={numStyle}>{j.marginPct == null ? '—' : pct(j.marginPct)}</td>
-                        <td style={numStyle}>{j.ratePct == null ? '—' : pct(j.ratePct)}</td>
-                      </>
-                    )}
-                    <td style={numStyle}>{fmtKsh(j.moneyIn)} of {fmtKsh(j.orderTotal)}</td>
-                    <td style={{ ...numStyle, fontWeight: 700 }}>{fmtKsh(j.commission)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
       <div>
         <div className="card-kicker">DTF film sold above the base price — {fmtKsh(s.film.commission)}</div>
         {s.film.sales.length === 0 ? (
@@ -471,10 +412,7 @@ function SchemeNote({ config }: { config: Config }) {
         <li>
           <b>Artwork:</b> you may charge more than the system’s recommended price; you earn {pct(config.artworkRatePct)} of the amount above it, and nothing on the recommended price itself.
         </li>
-        <li>
-          <b>Outsourced jobs:</b> work a supplier makes and you sell on is paid on its <b>gross profit</b>, not its sales — {[...config.outsourcedBands].sort((a, b) => a.from - b.from).map((b) => `from ${b.from}% margin ${pct(b.rate)}`).join(' · ')} of the profit — and only on what the client pays directly to the company.
-        </li>
-        <li>Film, artwork and outsourced-job commission is earned as the customer pays — a half-paid order earns half — and is paid on top of the band payout.</li>
+        <li>Film and artwork commission is earned as the customer pays — a half-paid order earns half — and is paid on top of the band payout.</li>
       </ul>
     );
   }
@@ -525,7 +463,6 @@ function MyTab({ period }: { period: string }) {
         {s.pay.onBands && s.pay.topUp > 0 && <Stat label="Minimum wage" value={fmtKsh(s.pay.minimumWage)} sub={`your band pays ${fmtKsh(s.total)}, so ${fmtKsh(s.pay.topUp)} is added to reach it`} />}
         <Stat label="Sales you sourced" value={fmtKsh(s.general.commission)} sub={steps ? `${fmtKsh(s.scheme.sales)} net received · pay band ${s.scheme.step?.index ?? 0}` : s.target.held ? `${fmtKsh(s.general.netSales)} net received · below your sales target` : `${fmtKsh(s.general.netSales)} net received · ${pct(s.general.band.rate)} band`} />
         <Stat label="Film" value={fmtKsh(s.film.commission)} />
-        {(s.outsourced.jobs.length > 0 || s.outsourced.commission > 0) && <Stat label="Outsourced jobs" value={fmtKsh(s.outsourced.commission)} sub="a share of the gross profit" />}
         <Stat label="Artwork" value={fmtKsh(s.artwork.commission)} />
       </div>
       {!steps && s.target.applies && (
@@ -627,7 +564,6 @@ function TeamTab({ period }: { period: string }) {
                 <th>Target status</th>
                 <th style={numStyle}>Sourced sales</th>
                 <th style={numStyle}>Film</th>
-                <th style={numStyle}>Outsourced</th>
                 <th style={numStyle}>Artwork</th>
                 <th style={numStyle}>Total</th>
                 <th>Payout</th>
@@ -659,7 +595,6 @@ function TeamTab({ period }: { period: string }) {
                     </td>
                     <td style={numStyle}>{fmtKsh(s.general.commission)}</td>
                     <td style={numStyle}>{fmtKsh(s.film.commission)}</td>
-                    <td style={numStyle}>{fmtKsh(s.outsourced.commission)}</td>
                     <td style={numStyle}>{fmtKsh(s.artwork.commission)}</td>
                     <td style={{ ...numStyle, fontWeight: 700 }} title={s.pay.topUp > 0 ? `Earned ${fmtKsh(s.total)}; topped up to the minimum wage of ${fmtKsh(s.pay.minimumWage)}` : undefined}>
                       {fmtKsh(s.pay.amount)}
@@ -688,7 +623,7 @@ function TeamTab({ period }: { period: string }) {
                   </tr>
                   {open === s.staffId && (
                     <tr>
-                      <td colSpan={10} style={{ background: 'var(--color-surface-2, transparent)' }}>
+                      <td colSpan={9} style={{ background: 'var(--color-surface-2, transparent)' }}>
                         <div style={{ padding: 'var(--space-3)' }}>
                           <StatementDetail s={s} config={data.config} open={data.open} />
                         </div>
@@ -1073,8 +1008,6 @@ function RatesTab() {
   const [general, setGeneral] = useState<{ from: string; rate: string }[]>([]);
   const [film, setFilm] = useState<{ from: string; rate: string }[]>([]);
   const [freelance, setFreelance] = useState<{ from: string; rate: string }[]>([]);
-  const [outsrc, setOutsrc] = useState<{ from: string; rate: string }[]>([]);
-  const [outsrcWeight, setOutsrcWeight] = useState('0');
   const [artwork, setArtwork] = useState('');
   const [months, setMonths] = useState('');
   const [flMonths, setFlMonths] = useState('');
@@ -1092,8 +1025,6 @@ function RatesTab() {
     setGeneral(data.generalBands.map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setFilm(data.filmBands.map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setFreelance((data.freelanceBands ?? []).map((b) => ({ from: String(b.from), rate: String(b.rate) })));
-    setOutsrc((data.outsourcedBands ?? []).map((b) => ({ from: String(b.from), rate: String(b.rate) })));
-    setOutsrcWeight(String(data.outsourcedBandWeightPct ?? 0));
     setArtwork(String(data.artworkRatePct));
     setMonths(String(data.ownershipMonths));
     setFlMonths(String(data.freelanceOwnershipMonths ?? 12));
@@ -1112,14 +1043,14 @@ function RatesTab() {
   if (!data) return <Loading loading={loading} error={error} />;
   const toBands = (rows: { from: string; rate: string }[]): Band[] => rows.map((r) => ({ from: Number(r.from), rate: Number(r.rate) }));
   const toSteps = payBands.map((r) => ({ from: Number(r.from), payout: Number(r.payout) }));
-  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? bandsProblem(toBands(outsrc), 'Outsourced commission scale') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null) ?? (genMode === 'steps' && !(Number(minWage) >= 0) ? 'Enter the minimum wage' : null) ?? (genMode === 'steps' && !(Number.isInteger(Number(payday)) && Number(payday) >= 1 && Number(payday) <= 28) ? 'The payday must be a day of the month from 1 to 28' : null);
+  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null) ?? (genMode === 'steps' && !(Number(minWage) >= 0) ? 'Enter the minimum wage' : null) ?? (genMode === 'steps' && !(Number.isInteger(Number(payday)) && Number(payday) >= 1 && Number(payday) <= 28) ? 'The payday must be a day of the month from 1 to 28' : null);
 
   async function save() {
     setBusy(true);
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), outsourcedBands: toBands(outsrc), outsourcedBandWeightPct: Number(outsrcWeight), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor), minimumWage: Number(minWage), payday: Number(payday) });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor), minimumWage: Number(minWage), payday: Number(payday) });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -1200,18 +1131,6 @@ function RatesTab() {
         />
         )}
         <BandEditor
-          title="Outsourced jobs — share of the gross profit"
-          hint="Work a supplier makes and the sales person sells on (Sales → Outsourced Order) is paid a share of its NET gross profit: sales without output VAT, less cost without the input VAT that can be claimed back. The share depends on the job's margin: a job earns the 'Pays' share of its profit once its margin reaches the 'From' figure (a step, not a slice), so a thin-margin job earns little or nothing. It is earned only on what the client pays directly to the company, as it is paid. Withholding VAT and withholding tax held by a customer do not change the profit."
-          unit="% margin on net sales"
-          bands={outsrc}
-          onChange={setOutsrc}
-        />
-        <div className="field" style={{ margin: 0, maxWidth: 360 }}>
-          <label>How much of an outsourced job's sales also counts towards the pay bands and the floor (%)</label>
-          <input className="input" style={{ maxWidth: 120 }} inputMode="decimal" value={outsrcWeight} onChange={(e) => setOutsrcWeight(e.target.value)} />
-          <p className="note" style={{ margin: 0 }}>0 = none: these jobs are paid on their profit, so their sales do not also lift the band. Set 50 to count half.</p>
-        </div>
-        <BandEditor
           title="Film sold above the base price"
           hint="Ksh per metre charged above the base price (the DTF minimum price) → the share of that slice that is paid. The last band has no upper limit: there is no ceiling price."
           unit="Ksh/m above base"
@@ -1226,9 +1145,6 @@ function RatesTab() {
           onChange={setFreelance}
         />
         <BigSaleScenario bands={toBands(freelance)} whtRate={Number(flTax) || 0} />
-        <p className="note" style={{ margin: 0 }}>
-          Freelancers who bring an <b>Outsourced Order</b> are not paid on this scale: they get the Outsourced jobs scale (above) as a share of the job's net gross profit, only on what the client pays the company.
-        </p>
         <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
           <div className="field" style={{ margin: 0 }}>
             <label>Freelancers: % of the amount charged above base that they keep</label>

@@ -78,7 +78,7 @@ export interface OrderSummary {
   id: number;
   orderNo: string;
   kind: 'walkin' | 'corporate';
-  channel: 'general' | 'dtf' | 'outsourced';
+  channel: 'general' | 'dtf';
   customerName: string | null;
   phone: string | null;
   corporateClient: { id: number; name: string; email: string; phone: string; contactPerson?: string } | null;

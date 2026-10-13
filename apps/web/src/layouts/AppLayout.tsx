@@ -30,7 +30,6 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   }
   // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
   if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/embroidery', 'Embroidery Order']);
-  // The Outsourced Order screen (/orders/new/outsourced) is not in the menu for now; its route and everything behind it are unchanged.
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
@@ -71,7 +70,6 @@ const GROUP_OF: Record<string, Group> = {
   '/orders/new/film': 'sales',
   '/orders/new/artwork': 'sales',
   '/orders/new/embroidery': 'sales',
-  '/orders/new/outsourced': 'sales',
   '/orders/all': 'sales',
   '/commission': 'sales',
   '/production': 'operations',
@@ -90,7 +88,6 @@ const ICON_OF: Record<string, string> = {
   '/orders/new/film': 'film',
   '/orders/new/artwork': 'artwork',
   '/orders/new/embroidery': 'embroidery',
-  '/orders/new/outsourced': 'outsourced',
   '/orders/all': 'orders',
   '/commission': 'commission',
   '/production': 'production',

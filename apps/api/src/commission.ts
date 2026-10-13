@@ -6,9 +6,6 @@ import {
   DEFAULT_PERFORMANCE_FLOOR,
   DEFAULT_MINIMUM_WAGE,
   DEFAULT_PAYDAY,
-  DEFAULT_OUTSOURCED_BANDS,
-  outsourcedFigures,
-  outsourcedCommission,
   salesPay,
   GENERAL_MODES,
   payStepsProblem,
@@ -111,10 +108,6 @@ export interface CommissionConfig {
   minimumWage: number;
   /** The day of the month people on the pay bands are paid, for the month before. */
   payday: number;
-  /** Outsourced orders: margin % of the job → % of its net gross profit paid as commission. */
-  outsourcedBands: Band[];
-  /** How much of an outsourced job's sales also counts towards the pay bands and the floor (0 = none: it is paid on profit instead). */
-  outsourcedBandWeightPct: number;
 }
 
 function readBands(json: string | null | undefined, fallback: Band[]): Band[] {
@@ -157,8 +150,6 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
     minimumWage: row?.minimumWage ?? DEFAULT_MINIMUM_WAGE,
     payday: row?.payday ?? DEFAULT_PAYDAY,
-    outsourcedBands: readBands(row?.outsourcedBandsJson, DEFAULT_OUTSOURCED_BANDS),
-    outsourcedBandWeightPct: row?.outsourcedBandWeightPct ?? 0,
   };
 }
 
@@ -394,17 +385,6 @@ const toInput = (li: StatementOrder['lineItems'][number]): LineItemInput => ({
 const orderTotal = (o: StatementOrder) =>
   computeOrderTotals({ lineItems: o.lineItems.map(toInput), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }).grandTotal;
 
-/** The figures for an outsourced order: its sale and its supplier cost (the quotes on the lines, or what the supplier actually billed if that is more), with VAT treated as in the shared rules. */
-export function outsourcedJobFigures(o: StatementOrder, billedIncl = 0) {
-  const sale = orderTotal(o);
-  const quoted = o.lineItems.filter((li) => li.supplierCost != null).map((li) => ({ qty: li.qty, unitCost: li.supplierCost ?? 0, vatClaimable: li.supplierVatClaimable }));
-  const quoteTotal = quoted.reduce((a, l) => a + l.qty * l.unitCost, 0);
-  const claimableShare = quoteTotal > 0 ? quoted.filter((l) => l.vatClaimable).reduce((a, l) => a + l.qty * l.unitCost, 0) / quoteTotal : 0;
-  // the supplier billed more than quoted: the overrun is a cost too, treated like the rest of the order
-  const lines = billedIncl > quoteTotal + 0.005 ? [...quoted, { qty: 1, unitCost: billedIncl - quoteTotal, vatClaimable: claimableShare >= 0.5 }] : quoted;
-  return { sale, figures: outsourcedFigures(sale, lines, VAT_RATE), quoteTotal, billedIncl };
-}
-
 const customerOf = (o: StatementOrder) => o.corporateClient?.name || o.customerName || 'Walk-in customer';
 
 export interface StaffStatement {
@@ -431,11 +411,6 @@ export interface StaffStatement {
     commission: number;
     band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
     orders: { orderNo: string; customer: string; received: number; refunded: number }[];
-  };
-  /** Outsourced orders: a share of each job's net gross profit, earned as the customer pays. */
-  outsourced: {
-    commission: number;
-    jobs: { orderNo: string; customer: string; netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; orderTotal: number; moneyIn: number; commission: number }[];
   };
   film: {
     commission: number;
@@ -470,7 +445,6 @@ export function blankStatement(staffId: number, staffName = '', target?: SalesTa
     pay: { onBands: false, minimumWage: 0, amount: 0, topUp: 0 },
     scheme: { mode: DEFAULT_GENERAL_MODE, sales: 0, floor: DEFAULT_PERFORMANCE_FLOOR, belowFloor: false, step: null },
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
-    outsourced: { commission: 0, jobs: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
     productivity: { ordersCaptured: 0, ordersSourced: 0, sourcedValue: 0, filmSales: 0, filmMetres: 0, filmAvgPricePerM: null, filmAvgPremiumPerM: null, artworkJobs: 0, artworkPieces: 0, artworkExtraCharged: 0 },
@@ -524,9 +498,6 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
 
   const orderIds = [...flows.keys()];
   const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
-  const outsourcedIds = flowOrders.filter((o) => o.channel === 'outsourced').map((o) => o.id);
-  const billedRows = outsourcedIds.length ? await prisma.expense.groupBy({ by: ['orderId'], where: { orderId: { in: outsourcedIds } }, _sum: { amount: true } }) : [];
-  const billed = new Map(billedRows.map((r) => [r.orderId as number, r._sum.amount ?? 0]));
 
   // Net sales (VAT out, money received) on the film and artwork orders each person captured — they count towards the sales target
   const dtfNet = new Map<number, number>();
@@ -571,15 +542,6 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
         addDtfNet(o.staffId, net);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net), commission: c });
       }
-    } else if (o.channel === 'outsourced') {
-      // paid on the job's net gross profit, as the customer pays; credited to the sales person the order is for
-      const job = outsourcedJobFigures(o, billed.get(o.id) ?? 0);
-      const oc = outsourcedCommission(job.figures, config.outsourcedBands, share);
-      const st = who(o.staffId);
-      st.outsourced.commission = round2(st.outsourced.commission + oc.earned);
-      st.outsourced.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), netSales: job.figures.netSales, netCost: job.figures.netCost, grossProfit: job.figures.grossProfit, marginPct: job.figures.marginPct, ratePct: oc.ratePct, orderTotal: round2(total), moneyIn: round2(net), commission: oc.earned });
-      // a share of the sale may also count towards the pay bands and the floor (none by default)
-      if (config.outsourcedBandWeightPct > 0) st.general.received = round2(st.general.received + (net * config.outsourcedBandWeightPct) / 100);
     } else if (o.channel !== 'dtf' && o.sourcedByStaffId && o.status !== 'Quote') {
       const st = who(o.sourcedByStaffId);
       st.general.received = round2(st.general.received + net);
@@ -651,7 +613,7 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       st.scheme = { mode: 'steps', sales, floor, belowFloor: floor > 0 && sales < floor, step };
       st.general.commission = step.payout;
       st.general.band = { rate: 0, nextFrom: step.nextFrom, nextRate: null, toNext: step.toNext };
-      st.total = round2(st.general.commission + st.film.commission + st.artwork.commission + st.outsourced.commission);
+      st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
       payFor(st);
       continue;
     }
@@ -670,7 +632,7 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       st.general.commission = bandedAmount(config.generalBands, target.eligibleSales);
     }
     st.general.band = bandPosition(config.generalBands, target.eligibleSales);
-    st.total = round2(st.general.commission + st.film.commission + st.artwork.commission + st.outsourced.commission);
+    st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
     payFor(st);
   }
 
@@ -704,12 +666,9 @@ export interface FreelanceStatement {
   baseNet: number;
   /** Net of VAT charged above base prices on those lines: the premium. */
   premiumNet: number;
-  /** The commission is in up to three parts. */
+  /** The two parts of the commission. */
   baseCommission: number;
   premiumCommission: number;
-  /** Outsourced orders they brought: a share of each job's NET gross profit, as the client pays the company (not on sales). */
-  outsourcedCommission: number;
-  outsourcedJobs: { orderNo: string; customer: string; netSales: number; netCost: number; grossProfit: number; marginPct: number | null; ratePct: number; orderTotal: number; moneyIn: number; commission: number }[];
   /** Net of VAT that did not qualify (sold below a base price): earns nothing. */
   belowBaseNet: number;
   commission: number;
@@ -742,31 +701,17 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
   for (const p of payments) flow(p.orderId).received += p.amount;
   for (const n of notes) if (n.orderId) flow(n.orderId).refunded += n.creditAmt;
   const orders = flows.size ? await prisma.order.findMany({ where: { id: { in: [...flows.keys()] }, freelanceAgentId: only ?? { not: null } }, include: orderInc }) : [];
-  // what suppliers have billed on the outsourced orders (a bill above the quote is a cost too)
-  const outIds = orders.filter((o) => o.channel === 'outsourced').map((o) => o.id);
-  const billedRows = outIds.length ? await prisma.expense.groupBy({ by: ['orderId'], where: { orderId: { in: outIds } }, _sum: { amount: true } }) : [];
-  const billed = new Map(billedRows.map((r) => [r.orderId as number, r._sum.amount ?? 0]));
 
   const people = new Map<number, FreelanceStatement>();
   for (const o of orders) {
     const id = o.freelanceAgentId!;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, outsourcedCommission: 0, outsourcedJobs: [], commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id)!;
     const net = f.received - f.refunded;
-    if (o.channel === 'outsourced') {
-      // paid on the job's net gross profit (the same scale as staff), only on what the client has paid the company — never on the sale
-      const total = orderTotal(o);
-      const job = outsourcedJobFigures(o, billed.get(o.id) ?? 0);
-      const oc = outsourcedCommission(job.figures, config.outsourcedBands, total > 0 ? Math.max(0, net) / total : 0);
-      st.received = round2(st.received + net);
-      st.outsourcedCommission = round2(st.outsourcedCommission + oc.earned);
-      st.outsourcedJobs.push({ orderNo: o.orderNo, customer: customerOf(o), netSales: job.figures.netSales, netCost: job.figures.netCost, grossProfit: job.figures.grossProfit, marginPct: job.figures.marginPct, ratePct: oc.ratePct, orderTotal: round2(total), moneyIn: round2(net), commission: oc.earned });
-      continue;
-    }
     const share = o.freelanceQualifyingShare;
     const qual = (net * share) / (1 + VAT_RATE);
     // the order's qualifying part divides into the base price (banded; thin-margin lines at a reduced weight) and the premium above it (a share)
@@ -787,7 +732,7 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
     const basis = Math.max(0, st.baseNet);
     st.baseCommission = bandedAmount(config.freelanceBands, basis);
     st.premiumCommission = round2((Math.max(0, st.premiumNet) * config.freelancePremiumPct) / 100);
-    st.commission = round2(st.baseCommission + st.premiumCommission + st.outsourcedCommission);
+    st.commission = round2(st.baseCommission + st.premiumCommission);
     st.band = bandPosition(config.freelanceBands, basis);
   }
   const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });

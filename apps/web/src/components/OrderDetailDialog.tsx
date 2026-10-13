@@ -7,7 +7,6 @@ import { printCorporateDocument, printOrderDocument } from '../utils/printInvoic
 import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
-import OutsourcedMarginCard from './OutsourcedMarginCard';
 import { useAuth } from '../state/AuthContext';
 import type { PaymentRow } from './SplitPayments';
 
@@ -334,7 +333,6 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             <div>Grand total: {fmtKsh(detail.totals.grandTotal)}</div>
           </div>
 
-          {detail.channel === 'outsourced' && <OutsourcedMarginCard orderId={orderId} />}
           {seeCosts && detail.lineItems.some((l) => l.outsourced) && <OutsourcedCostingPanel orderId={orderId} onChanged={onChanged} />}
 
           <div

@@ -1467,3 +1467,28 @@ model AuditLog {
 
   @@index([at])
 }
+
+// ── Job costing (Sales → Job Costing; the rates are kept in Master Data → Costing Rates) ──
+// A supplier rate: the cost to us of one material or one service, and where it is used.
+model CostingRate {
+  id        Int     @id @default(autoincrement())
+  kind      String // 'material' | 'service'
+  name      String
+  basis     String // 'sheet' | 'sqm_waste' | 'sqm' | 'unit' | 'job'
+  cost      Float   @default(0)
+  jobTypes  String  @default("") // comma list of 'cards' | 'indoor' | 'outdoor'
+  onlyFor   String  @default("") // business cards: '' | 'lam' | 'frost'
+  defaultOn Boolean @default(true)
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
+}
+
+// The settings of each kind of job: the markup, the wastage allowed for, and (cards) how many fit an A3 sheet.
+model CostingJobType {
+  key           String @id // 'cards' | 'indoor' | 'outdoor'
+  label         String
+  marginPct     Float  @default(40)
+  wastagePct    Float  @default(0)
+  cardsPerSheet Int    @default(21)
+  spareSheets   Int    @default(1)
+}

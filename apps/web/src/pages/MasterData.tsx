@@ -16,8 +16,9 @@ import StaffEditDialog from '../components/StaffEditDialog';
 import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
+import CostingRatesPanel from '../components/CostingRatesPanel';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'discount' | 'company' | 'mpesa' | 'ncba' | 'embroidery' | 'email' | 'whatsapp' | 'backup' | 'security';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'costing' | 'discount' | 'company' | 'mpesa' | 'ncba' | 'embroidery' | 'email' | 'whatsapp' | 'backup' | 'security';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -25,6 +26,7 @@ const TABS: [MasterTab, string][] = [
   ['services', 'Service Price List'],
   ['heads', 'Business Heads'],
   ['materials', 'Stock Price List'],
+  ['costing', 'Costing Rates'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
   ['mpesa', 'M-Pesa'],
@@ -1381,6 +1383,7 @@ export default function MasterData() {
 
       {tab === 'mpesa' && <MpesaSettingsPanel />}
       {tab === 'ncba' && <NcbaSettingsPanel />}
+      {tab === 'costing' && <CostingRatesPanel />}
       {tab === 'embroidery' && <EmbroiderySettingsPanel />}
 
       {tab === 'email' && <MailSettingsPanel />}

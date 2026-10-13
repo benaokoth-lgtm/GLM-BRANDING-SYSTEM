@@ -169,10 +169,10 @@ var PAYE_BANDS = [
 function payeBand(monthlyPay) {
   let tax = 0;
   let remaining = monthlyPay;
-  for (const [width, rate] of PAYE_BANDS) {
+  for (const [width, rate2] of PAYE_BANDS) {
     if (remaining <= 0) break;
     const x = Math.min(remaining, width);
-    tax += x * rate;
+    tax += x * rate2;
     remaining -= x;
   }
   return tax;
@@ -403,6 +403,40 @@ function splitGross(gross, vatRate) {
   const vat = round2(total - total / (1 + vatRate));
   return { net: round2(total - vat), vat, total };
 }
+
+// packages/shared/src/costing.ts
+var COSTING_JOB_LABEL = { cards: "Business cards", indoor: "Indoor signage", outdoor: "Outdoor signage" };
+var COSTING_DEFAULT_JOB_TYPES = [
+  { key: "cards", label: COSTING_JOB_LABEL.cards, marginPct: 40, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "indoor", label: COSTING_JOB_LABEL.indoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "outdoor", label: COSTING_JOB_LABEL.outdoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 }
+];
+var rate = (kind, name, basis, cost, jobTypes, extra = {}) => ({ kind, name, basis, cost, jobTypes, onlyFor: "", defaultOn: true, ...extra });
+var COSTING_DEFAULT_RATES = [
+  // business cards (per A3 sheet)
+  rate("service", "Printing on A3 art paper", "sheet", 120, ["cards"]),
+  rate("material", "Lamination film", "sheet", 60, ["cards"], { onlyFor: "lam" }),
+  rate("material", "Frosting film", "sheet", 90, ["cards"], { onlyFor: "frost" }),
+  rate("service", "Cutting", "sheet", 40, ["cards"]),
+  rate("service", "Delivery", "job", 0, ["cards"], { defaultOn: false }),
+  // signage
+  rate("material", "Substrate / vinyl / board (indoor)", "sqm_waste", 800, ["indoor"]),
+  rate("material", "Substrate / banner / ACP (outdoor)", "sqm_waste", 900, ["outdoor"]),
+  rate("service", "Printing (indoor)", "sqm", 700, ["indoor"]),
+  rate("service", "Printing (outdoor)", "sqm", 800, ["outdoor"]),
+  rate("material", "Laminate (indoor)", "sqm", 250, ["indoor"]),
+  rate("material", "UV laminate (outdoor)", "sqm", 300, ["outdoor"]),
+  rate("service", "Mounting / backing", "sqm", 600, ["indoor"]),
+  rate("material", "Frame / structure / mounting", "sqm", 1800, ["outdoor"]),
+  rate("service", "Finishing (cut, edge, hang kit)", "unit", 200, ["indoor"]),
+  rate("service", "Finishing (eyelets, hems, caps)", "unit", 500, ["outdoor"]),
+  rate("service", "Installation (indoor)", "unit", 1e3, ["indoor"]),
+  rate("service", "Installation (outdoor)", "unit", 3e3, ["outdoor"]),
+  rate("service", "Transport & permits", "job", 2e3, ["outdoor"]),
+  // every kind of job
+  rate("service", "Design & setup", "job", 500, ["cards", "indoor"]),
+  rate("service", "Design & setup (outdoor)", "job", 800, ["outdoor"])
+];
 
 // apps/api/src/db.ts
 var import_client = require("@prisma/client");

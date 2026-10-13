@@ -1544,7 +1544,7 @@ var require_browser = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.storage = "undefined" != typeof chrome && "undefined" != typeof chrome.storage ? chrome.storage.local : localstorage();
     exports2.colors = [
@@ -1602,7 +1602,7 @@ var require_browser = __commonJS({
       } catch (e) {
       }
     }
-    function load() {
+    function load2() {
       var r;
       try {
         r = exports2.storage.debug;
@@ -1613,7 +1613,7 @@ var require_browser = __commonJS({
       }
       return r;
     }
-    exports2.enable(load());
+    exports2.enable(load2());
     function localstorage() {
       try {
         return window.localStorage;
@@ -1633,7 +1633,7 @@ var require_node = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
@@ -1691,7 +1691,7 @@ var require_node = __commonJS({
         process.env.DEBUG = namespaces;
       }
     }
-    function load() {
+    function load2() {
       return process.env.DEBUG;
     }
     function createWritableStdioStream(fd2) {
@@ -1739,7 +1739,7 @@ var require_node = __commonJS({
         debug.inspectOpts[keys[i]] = exports2.inspectOpts[keys[i]];
       }
     }
-    exports2.enable(load());
+    exports2.enable(load2());
   }
 });
 
@@ -14950,14 +14950,14 @@ var require_object_inspect = __commonJS({
     var gPO = (typeof Reflect === "function" ? Reflect.getPrototypeOf : Object.getPrototypeOf) || ([].__proto__ === Array.prototype ? function(O) {
       return O.__proto__;
     } : null);
-    function addNumericSeparator(num, str) {
-      if (num === Infinity || num === -Infinity || num !== num || num && num > -1e3 && num < 1e3 || $test.call(/e/, str)) {
+    function addNumericSeparator(num2, str) {
+      if (num2 === Infinity || num2 === -Infinity || num2 !== num2 || num2 && num2 > -1e3 && num2 < 1e3 || $test.call(/e/, str)) {
         return str;
       }
       var sepRegex = /[0-9](?=(?:[0-9]{3})+(?![0-9]))/g;
-      if (typeof num === "number") {
-        var int = num < 0 ? -$floor(-num) : $floor(num);
-        if (int !== num) {
+      if (typeof num2 === "number") {
+        var int = num2 < 0 ? -$floor(-num2) : $floor(num2);
+        if (int !== num2) {
           var intStr = String(int);
           var dec = $slice.call(str, intStr.length + 1);
           return $replace.call(intStr, sepRegex, "$&_") + "." + $replace.call($replace.call(dec, /([0-9]{3})/g, "$&_"), /_$/, "");
@@ -17989,7 +17989,7 @@ var require_browser2 = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.storage = "undefined" != typeof chrome && "undefined" != typeof chrome.storage ? chrome.storage.local : localstorage();
     exports2.colors = [
@@ -18047,7 +18047,7 @@ var require_browser2 = __commonJS({
       } catch (e) {
       }
     }
-    function load() {
+    function load2() {
       var r;
       try {
         r = exports2.storage.debug;
@@ -18058,7 +18058,7 @@ var require_browser2 = __commonJS({
       }
       return r;
     }
-    exports2.enable(load());
+    exports2.enable(load2());
     function localstorage() {
       try {
         return window.localStorage;
@@ -18078,7 +18078,7 @@ var require_node2 = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
@@ -18136,7 +18136,7 @@ var require_node2 = __commonJS({
         process.env.DEBUG = namespaces;
       }
     }
-    function load() {
+    function load2() {
       return process.env.DEBUG;
     }
     function createWritableStdioStream(fd2) {
@@ -18184,7 +18184,7 @@ var require_node2 = __commonJS({
         debug.inspectOpts[keys[i]] = exports2.inspectOpts[keys[i]];
       }
     }
-    exports2.enable(load());
+    exports2.enable(load2());
   }
 });
 
@@ -18708,7 +18708,7 @@ var require_browser3 = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.storage = "undefined" != typeof chrome && "undefined" != typeof chrome.storage ? chrome.storage.local : localstorage();
     exports2.colors = [
@@ -18766,7 +18766,7 @@ var require_browser3 = __commonJS({
       } catch (e) {
       }
     }
-    function load() {
+    function load2() {
       var r;
       try {
         r = exports2.storage.debug;
@@ -18777,7 +18777,7 @@ var require_browser3 = __commonJS({
       }
       return r;
     }
-    exports2.enable(load());
+    exports2.enable(load2());
     function localstorage() {
       try {
         return window.localStorage;
@@ -18797,7 +18797,7 @@ var require_node3 = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
@@ -18855,7 +18855,7 @@ var require_node3 = __commonJS({
         process.env.DEBUG = namespaces;
       }
     }
-    function load() {
+    function load2() {
       return process.env.DEBUG;
     }
     function createWritableStdioStream(fd2) {
@@ -18903,7 +18903,7 @@ var require_node3 = __commonJS({
         debug.inspectOpts[keys[i]] = exports2.inspectOpts[keys[i]];
       }
     }
-    exports2.enable(load());
+    exports2.enable(load2());
   }
 });
 
@@ -20274,7 +20274,7 @@ var require_browser4 = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.storage = "undefined" != typeof chrome && "undefined" != typeof chrome.storage ? chrome.storage.local : localstorage();
     exports2.colors = [
@@ -20332,7 +20332,7 @@ var require_browser4 = __commonJS({
       } catch (e) {
       }
     }
-    function load() {
+    function load2() {
       var r;
       try {
         r = exports2.storage.debug;
@@ -20343,7 +20343,7 @@ var require_browser4 = __commonJS({
       }
       return r;
     }
-    exports2.enable(load());
+    exports2.enable(load2());
     function localstorage() {
       try {
         return window.localStorage;
@@ -20363,7 +20363,7 @@ var require_node4 = __commonJS({
     exports2.log = log2;
     exports2.formatArgs = formatArgs;
     exports2.save = save;
-    exports2.load = load;
+    exports2.load = load2;
     exports2.useColors = useColors;
     exports2.colors = [6, 2, 3, 4, 5, 1];
     exports2.inspectOpts = Object.keys(process.env).filter(function(key2) {
@@ -20421,7 +20421,7 @@ var require_node4 = __commonJS({
         process.env.DEBUG = namespaces;
       }
     }
-    function load() {
+    function load2() {
       return process.env.DEBUG;
     }
     function createWritableStdioStream(fd2) {
@@ -20469,7 +20469,7 @@ var require_node4 = __commonJS({
         debug.inspectOpts[keys[i]] = exports2.inspectOpts[keys[i]];
       }
     }
-    exports2.enable(load());
+    exports2.enable(load2());
   }
 });
 
@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router24 = require_router();
+    var Router25 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router24({
+        this._router = new Router25({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router24 = require_router();
+    var Router25 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router24;
+    exports2.Router = Router25;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -26440,7 +26440,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r24 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r24, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r25 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r25, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -27528,9 +27528,9 @@ var require_semver = __commonJS({
         } else {
           this.prerelease = m[4].split(".").map((id) => {
             if (/^[0-9]+$/.test(id)) {
-              const num = +id;
-              if (num >= 0 && num < MAX_SAFE_INTEGER) {
-                return num;
+              const num2 = +id;
+              if (num2 >= 0 && num2 < MAX_SAFE_INTEGER) {
+                return num2;
               }
             }
             return id;
@@ -28966,10 +28966,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r24, options) => {
+    var intersects = (r1, r25, options) => {
       r1 = new Range(r1, options);
-      r24 = new Range(r24, options);
-      return r1.intersects(r24, options);
+      r25 = new Range(r25, options);
+      return r1.intersects(r25, options);
     };
     module2.exports = intersects;
   }
@@ -30645,11 +30645,11 @@ var require_strings = __commonJS({
     exports2.toCodePoint = function(character) {
       return character.codePointAt(0);
     };
-    exports2.toHexStringOfMinLength = function(num, minLength) {
-      return exports2.padStart(num.toString(16), minLength, "0").toUpperCase();
+    exports2.toHexStringOfMinLength = function(num2, minLength) {
+      return exports2.padStart(num2.toString(16), minLength, "0").toUpperCase();
     };
-    exports2.toHexString = function(num) {
-      return exports2.toHexStringOfMinLength(num, 2);
+    exports2.toHexString = function(num2) {
+      return exports2.toHexStringOfMinLength(num2, 2);
     };
     exports2.charFromCode = function(code) {
       return String.fromCharCode(code);
@@ -31079,25 +31079,25 @@ var require_numbers = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.bytesFor = exports2.sizeInBytes = exports2.numberToString = void 0;
-    exports2.numberToString = function(num) {
-      var numStr = String(num);
-      if (Math.abs(num) < 1) {
-        var e = parseInt(num.toString().split("e-")[1]);
+    exports2.numberToString = function(num2) {
+      var numStr = String(num2);
+      if (Math.abs(num2) < 1) {
+        var e = parseInt(num2.toString().split("e-")[1]);
         if (e) {
-          var negative = num < 0;
+          var negative = num2 < 0;
           if (negative)
-            num *= -1;
-          num *= Math.pow(10, e - 1);
-          numStr = "0." + new Array(e).join("0") + num.toString().substring(2);
+            num2 *= -1;
+          num2 *= Math.pow(10, e - 1);
+          numStr = "0." + new Array(e).join("0") + num2.toString().substring(2);
           if (negative)
             numStr = "-" + numStr;
         }
       } else {
-        var e = parseInt(num.toString().split("+")[1]);
+        var e = parseInt(num2.toString().split("+")[1]);
         if (e > 20) {
           e -= 20;
-          num /= Math.pow(10, e);
-          numStr = num.toString() + new Array(e + 1).join("0");
+          num2 /= Math.pow(10, e);
+          numStr = num2.toString() + new Array(e + 1).join("0");
         }
       }
       return numStr;
@@ -46452,11 +46452,11 @@ var require_objects2 = __commonJS({
     exports2.asPDFName = function(name2) {
       return name2 instanceof core_1.PDFName ? name2 : core_1.PDFName.of(name2);
     };
-    exports2.asPDFNumber = function(num) {
-      return num instanceof core_1.PDFNumber ? num : core_1.PDFNumber.of(num);
+    exports2.asPDFNumber = function(num2) {
+      return num2 instanceof core_1.PDFNumber ? num2 : core_1.PDFNumber.of(num2);
     };
-    exports2.asNumber = function(num) {
-      return num instanceof core_1.PDFNumber ? num.asNumber() : num;
+    exports2.asNumber = function(num2) {
+      return num2 instanceof core_1.PDFNumber ? num2.asNumber() : num2;
     };
   }
 });
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express23 = __toESM(require_express2());
+var import_express24 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -65418,10 +65418,10 @@ var PAYE_BANDS = [
 function payeBand(monthlyPay) {
   let tax = 0;
   let remaining = monthlyPay;
-  for (const [width, rate] of PAYE_BANDS) {
+  for (const [width, rate2] of PAYE_BANDS) {
     if (remaining <= 0) break;
     const x = Math.min(remaining, width);
-    tax += x * rate;
+    tax += x * rate2;
     remaining -= x;
   }
   return tax;
@@ -66319,6 +66319,123 @@ function embroiderySettingsProblem(s) {
   return null;
 }
 
+// packages/shared/src/costing.ts
+var COSTING_JOB_TYPES = ["cards", "indoor", "outdoor"];
+var isCostingJobType = (v) => COSTING_JOB_TYPES.includes(v);
+var COSTING_BASIS_LABEL = { sheet: "per A3 sheet", sqm_waste: "per sqm (+ wastage)", sqm: "per sqm", unit: "per unit", job: "per job" };
+var SIGN_BASES = ["sqm_waste", "sqm", "unit", "job"];
+var COSTING_BASES_FOR = { cards: ["sheet", "unit", "job"], indoor: SIGN_BASES, outdoor: SIGN_BASES };
+function costingBasesFor(types) {
+  if (types.length === 0) return [];
+  return COSTING_BASES_FOR[types[0]].filter((b) => types.every((t) => COSTING_BASES_FOR[t].includes(b)));
+}
+var CARD_FINISH_LABEL = { plain: "Plain", lam: "Laminated", frost: "Frosted" };
+var COSTING_JOB_LABEL = { cards: "Business cards", indoor: "Indoor signage", outdoor: "Outdoor signage" };
+var COSTING_CARD_TIERS = [100, 250, 500, 1e3, 2e3];
+var r24 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var num = (v) => typeof v === "number" && Number.isFinite(v) && v > 0 ? v : 0;
+function ratesFor(rates, jobType, finish = "plain") {
+  return rates.filter((r) => r.active && r.jobTypes.includes(jobType) && (jobType !== "cards" || !r.onlyFor || r.onlyFor === finish)).sort((a2, b) => a2.sortOrder - b.sortOrder || a2.id - b.id);
+}
+function isTicked(r, input) {
+  return (input.on ?? []).includes(r.id) || r.defaultOn && !(input.off ?? []).includes(r.id);
+}
+function costingQuote(types, rates, input) {
+  const t = types.find((x) => x.key === input.jobType);
+  if (!t) throw new Error(`Unknown kind of job: ${input.jobType}`);
+  const cards = input.jobType === "cards";
+  const finish = input.finish ?? "plain";
+  const qty = Math.floor(num(input.qty));
+  const area = cards ? 0 : num(input.widthM) * num(input.heightM);
+  const sheets = cards && qty > 0 ? Math.ceil(qty / Math.max(1, t.cardsPerSheet)) + Math.max(0, t.spareSheets) : 0;
+  const materialSqm = area * (1 + t.wastagePct / 100) * qty;
+  const printSqm = area * qty;
+  const lines = [];
+  for (const r of ratesFor(rates, input.jobType, finish)) {
+    if (!isTicked(r, input) || !(r.cost > 0)) continue;
+    let quantity = 0;
+    let note = "";
+    if (r.basis === "sheet") {
+      quantity = sheets;
+      note = `${sheets} A3 \xD7 ${r.cost}`;
+    } else if (r.basis === "sqm_waste") {
+      quantity = materialSqm;
+      note = `${materialSqm.toFixed(2)} sqm incl. wastage \xD7 ${r.cost}`;
+    } else if (r.basis === "sqm") {
+      quantity = printSqm;
+      note = `${printSqm.toFixed(2)} sqm \xD7 ${r.cost}`;
+    } else if (r.basis === "unit") {
+      quantity = qty;
+      note = `${qty} \xD7 ${r.cost}`;
+    } else {
+      quantity = 1;
+      note = "per job";
+    }
+    lines.push({ rateId: r.id, kind: r.kind, name: r.name, basis: r.basis, note, amount: r24(quantity * r.cost) });
+  }
+  const cost = r24(lines.reduce((a2, l) => a2 + l.amount, 0));
+  const marginPct = input.marginPct != null && Number.isFinite(input.marginPct) && input.marginPct >= 0 ? input.marginPct : t.marginPct;
+  const price = r24(cost * (1 + marginPct / 100));
+  const vat = r24(price * VAT_RATE);
+  const total = r24(price + vat);
+  const profit = r24(price - cost);
+  const summary = cards ? `${qty} cards \xB7 ${CARD_FINISH_LABEL[finish]} \xB7 ${sheets} A3 sheets` : `${num(input.widthM)} \xD7 ${num(input.heightM)} m \xB7 ${qty} unit(s) \xB7 ${(area * qty).toFixed(2)} sqm`;
+  return {
+    jobType: input.jobType,
+    qty,
+    sheets,
+    area: r24(area),
+    summary,
+    lines,
+    cost,
+    marginPct,
+    price,
+    vat,
+    total,
+    profit,
+    profitOnPricePct: price > 0 ? r24(profit / price * 100) : 0,
+    unitPrice: qty > 0 ? r24(price / qty) : 0,
+    unitTotal: qty > 0 ? r24(total / qty) : 0
+  };
+}
+function costingCardTiers(types, rates, input) {
+  return COSTING_CARD_TIERS.map((qty) => {
+    const q = costingQuote(types, rates, { ...input, jobType: "cards", qty });
+    return { qty, sheets: q.sheets, cost: q.cost, price: q.price, total: q.total, each: q.unitPrice, eachTotal: q.unitTotal };
+  });
+}
+var COSTING_DEFAULT_JOB_TYPES = [
+  { key: "cards", label: COSTING_JOB_LABEL.cards, marginPct: 40, wastagePct: 0, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "indoor", label: COSTING_JOB_LABEL.indoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 },
+  { key: "outdoor", label: COSTING_JOB_LABEL.outdoor, marginPct: 45, wastagePct: 10, cardsPerSheet: 21, spareSheets: 1 }
+];
+var rate = (kind, name2, basis, cost, jobTypes, extra = {}) => ({ kind, name: name2, basis, cost, jobTypes, onlyFor: "", defaultOn: true, ...extra });
+var COSTING_DEFAULT_RATES = [
+  // business cards (per A3 sheet)
+  rate("service", "Printing on A3 art paper", "sheet", 120, ["cards"]),
+  rate("material", "Lamination film", "sheet", 60, ["cards"], { onlyFor: "lam" }),
+  rate("material", "Frosting film", "sheet", 90, ["cards"], { onlyFor: "frost" }),
+  rate("service", "Cutting", "sheet", 40, ["cards"]),
+  rate("service", "Delivery", "job", 0, ["cards"], { defaultOn: false }),
+  // signage
+  rate("material", "Substrate / vinyl / board (indoor)", "sqm_waste", 800, ["indoor"]),
+  rate("material", "Substrate / banner / ACP (outdoor)", "sqm_waste", 900, ["outdoor"]),
+  rate("service", "Printing (indoor)", "sqm", 700, ["indoor"]),
+  rate("service", "Printing (outdoor)", "sqm", 800, ["outdoor"]),
+  rate("material", "Laminate (indoor)", "sqm", 250, ["indoor"]),
+  rate("material", "UV laminate (outdoor)", "sqm", 300, ["outdoor"]),
+  rate("service", "Mounting / backing", "sqm", 600, ["indoor"]),
+  rate("material", "Frame / structure / mounting", "sqm", 1800, ["outdoor"]),
+  rate("service", "Finishing (cut, edge, hang kit)", "unit", 200, ["indoor"]),
+  rate("service", "Finishing (eyelets, hems, caps)", "unit", 500, ["outdoor"]),
+  rate("service", "Installation (indoor)", "unit", 1e3, ["indoor"]),
+  rate("service", "Installation (outdoor)", "unit", 3e3, ["outdoor"]),
+  rate("service", "Transport & permits", "job", 2e3, ["outdoor"]),
+  // every kind of job
+  rate("service", "Design & setup", "job", 500, ["cards", "indoor"]),
+  rate("service", "Design & setup (outdoor)", "job", 800, ["outdoor"])
+];
+
 // apps/api/src/pins.ts
 var PIN_ROUNDS = 10;
 var MAX_ATTEMPTS = 5;
@@ -66829,9 +66946,9 @@ async function buildFreelanceStatements(weekStartDate, only) {
     const a2 = byId.get(s.agentId);
     return { ...s, agentName: a2?.name ?? `Agent #${s.agentId}`, status: a2?.status ?? "", phone: a2?.phone ?? "", mpesaNumber: a2?.mpesaNumber || a2?.phone || "", payMethod: a2?.payMethod || "M-Pesa", kraPin: a2?.kraPin ?? "" };
   }).map((s) => {
-    const rate = byId.get(s.agentId)?.whtRate ?? config.freelanceWhtRate;
-    const tax = withholdingOn(s.commission, rate);
-    return { ...s, whtRate: rate, withholdingTax: tax, netPay: round2(s.commission - tax) };
+    const rate2 = byId.get(s.agentId)?.whtRate ?? config.freelanceWhtRate;
+    const tax = withholdingOn(s.commission, rate2);
+    return { ...s, whtRate: rate2, withholdingTax: tax, netPay: round2(s.commission - tax) };
   }).sort((a2, b) => b.commission - a2.commission || a2.agentName.localeCompare(b.agentName));
   return { config, statements };
 }
@@ -73473,7 +73590,7 @@ async function computeYear(year, cfg, withPrior = true) {
     prisma.taxYear.findUnique({ where: { year } }),
     prisma.taxPayment.findMany({ where: { taxYear: year }, orderBy: [{ date: "asc" }, { id: "asc" }] })
   ]);
-  const rate = cfg.corporationRate;
+  const rate2 = cfg.corporationRate;
   const paidFor = (period) => round2(payments.filter((p) => p.period === period).reduce((a2, p) => a2 + p.amount, 0));
   const profit = pl.netProfit;
   const autoAddBacks = pl.expenses.rows.filter((r) => r.amount > 4e-3 && (r.code === ACCT.depreciation || NOT_DEDUCTIBLE.test(r.name))).map((r) => ({ label: r.code === ACCT.depreciation ? `${r.name} (replaced by capital allowances)` : `Not deductible: ${r.name}`, amount: round2(r.amount) }));
@@ -73484,7 +73601,7 @@ async function computeYear(year, cfg, withPrior = true) {
   const taxLoss = beforeLosses < 0 ? round2(-beforeLosses) : 0;
   const lossesUsed = beforeLosses > 0 ? round2(Math.min(adj?.lossesUsed ?? 0, beforeLosses)) : 0;
   const taxable = round2(Math.max(0, beforeLosses - lossesUsed));
-  const tax = round2(taxable * rate / 100);
+  const tax = round2(taxable * rate2 / 100);
   const credits = adj?.whtCredits ?? 0;
   const taxAfterCredits = round2(Math.max(0, tax - credits));
   const today = todayStr();
@@ -73526,7 +73643,7 @@ async function computeYear(year, cfg, withPrior = true) {
     year,
     period: { start: per.start, end: per.end },
     regime: cfg.regime,
-    rate,
+    rate: rate2,
     profit,
     autoAddBacks,
     manualAddBacks,
@@ -78249,8 +78366,8 @@ productionRouter.get("/queue", async (req, res) => {
     const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
     const eligible = [];
     for (const u of users) if (await canWorkProduction(u.role)) eligible.push(u);
-    const load = await prisma.productionTask.groupBy({ by: ["assigneeId"], where: { status: { in: ACTIVE_TASK_STATUSES } }, _count: true });
-    staff = eligible.map((u) => ({ id: u.id, name: u.name, role: u.role, active: load.find((l) => l.assigneeId === u.id)?._count ?? 0 }));
+    const load2 = await prisma.productionTask.groupBy({ by: ["assigneeId"], where: { status: { in: ACTIVE_TASK_STATUSES } }, _count: true });
+    staff = eligible.map((u) => ({ id: u.id, name: u.name, role: u.role, active: load2.find((l) => l.assigneeId === u.id)?._count ?? 0 }));
   }
   res.json({
     manager,
@@ -80383,13 +80500,148 @@ whatsappRouter.get("/log", async (req, res) => {
   res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
 });
 
+// apps/api/src/routes/costing.ts
+var import_express23 = __toESM(require_express2());
+var costingRouter = (0, import_express23.Router)();
+costingRouter.use(requireAuth);
+var mayCost = requirePermission("canCaptureOrders", "canAccessFinance");
+var admin2 = requireRole("Admin");
+var seeding2 = null;
+function ensureCostingDefaults() {
+  if (!seeding2) {
+    seeding2 = (async () => {
+      if (await prisma.costingJobType.count() === 0) await prisma.costingJobType.createMany({ data: COSTING_DEFAULT_JOB_TYPES });
+      if (await prisma.costingRate.count() === 0) {
+        await prisma.costingRate.createMany({ data: COSTING_DEFAULT_RATES.map((r, i) => ({ kind: r.kind, name: r.name, basis: r.basis, cost: r.cost, jobTypes: r.jobTypes.join(","), onlyFor: r.onlyFor, defaultOn: r.defaultOn, sortOrder: (i + 1) * 10 })) });
+      }
+    })().finally(() => seeding2 = null);
+  }
+  return seeding2;
+}
+var toRate = (r) => ({
+  id: r.id,
+  kind: r.kind,
+  name: r.name,
+  basis: r.basis,
+  cost: r.cost,
+  jobTypes: r.jobTypes.split(",").filter(isCostingJobType),
+  onlyFor: r.onlyFor === "lam" || r.onlyFor === "frost" ? r.onlyFor : "",
+  defaultOn: r.defaultOn,
+  active: r.active,
+  sortOrder: r.sortOrder
+});
+var toType = (t) => ({ ...t, key: t.key });
+async function load() {
+  await ensureCostingDefaults();
+  const [types, rates] = await Promise.all([prisma.costingJobType.findMany(), prisma.costingRate.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }] })]);
+  const order = new Map(COSTING_JOB_TYPES.map((k, i) => [k, i]));
+  return { types: types.map(toType).sort((a2, b) => order.get(a2.key) - order.get(b.key)), rates: rates.map(toRate) };
+}
+costingRouter.get("/config", mayCost, async (req, res) => {
+  const sees = await canSeeCosts(req.user.role);
+  const { types, rates } = await load();
+  res.json({
+    canSeeCosts: sees,
+    jobTypes: types.map((t) => ({ key: t.key, label: t.label, wastagePct: t.wastagePct, cardsPerSheet: t.cardsPerSheet, spareSheets: t.spareSheets, ...sees ? { marginPct: t.marginPct } : {} })),
+    // what is ticked in a costing: each rate, what it costs and where it applies
+    rates: rates.filter((r) => r.active).map((r) => ({ id: r.id, kind: r.kind, name: r.name, basis: r.basis, jobTypes: r.jobTypes, onlyFor: r.onlyFor, defaultOn: r.defaultOn, sortOrder: r.sortOrder, cost: r.cost }))
+  });
+});
+var quoteSchema2 = external_exports.object({
+  jobType: external_exports.enum(COSTING_JOB_TYPES),
+  qty: external_exports.number().min(0).max(1e6).default(0),
+  widthM: external_exports.number().min(0).max(1e3).optional(),
+  heightM: external_exports.number().min(0).max(1e3).optional(),
+  finish: external_exports.enum(["plain", "lam", "frost"]).default("plain"),
+  on: external_exports.array(external_exports.number().int()).max(200).default([]),
+  off: external_exports.array(external_exports.number().int()).max(200).default([]),
+  marginPct: external_exports.number().min(0).max(1e3).optional()
+});
+costingRouter.post("/quote", mayCost, async (req, res) => {
+  const parsed = quoteSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const sees = await canSeeCosts(req.user.role);
+  const { types, rates } = await load();
+  const input = { ...parsed.data, marginPct: sees ? parsed.data.marginPct : void 0 };
+  const q = costingQuote(types, rates, input);
+  const tiers = input.jobType === "cards" ? costingCardTiers(types, rates, input) : [];
+  if (!sees) {
+    const { qty, summary, sheets, area, lines, cost, price, vat, total, unitPrice, unitTotal } = q;
+    res.json({ canSeeCosts: false, jobType: q.jobType, qty, summary, sheets, area, lines, cost, price, vat, total, unitPrice, unitTotal, tiers });
+    return;
+  }
+  res.json({ canSeeCosts: true, ...q, tiers });
+});
+costingRouter.get("/rates", admin2, async (_req, res) => {
+  const { types, rates } = await load();
+  res.json({ jobTypes: types, rates });
+});
+var rateSchema = external_exports.object({
+  kind: external_exports.enum(["material", "service"]),
+  name: external_exports.string().trim().min(2, "Give it a name").max(80),
+  basis: external_exports.enum(Object.keys(COSTING_BASIS_LABEL)),
+  cost: external_exports.number().min(0, "The cost cannot be negative").max(1e8),
+  jobTypes: external_exports.array(external_exports.enum(COSTING_JOB_TYPES)).min(1, "Choose at least one kind of job"),
+  onlyFor: external_exports.enum(["", "lam", "frost"]).default(""),
+  defaultOn: external_exports.boolean().default(true),
+  active: external_exports.boolean().default(true)
+});
+function checkRate(d) {
+  const types = [...new Set(d.jobTypes)];
+  if (!costingBasesFor(types).includes(d.basis)) {
+    const allowed = costingBasesFor(types).map((b) => COSTING_BASIS_LABEL[b]);
+    return `"${COSTING_BASIS_LABEL[d.basis]}" cannot be used on every kind of job you chose${allowed.length ? ` \u2014 choose ${allowed.join(", ")}` : " \u2014 they have no way of being charged in common"}`;
+  }
+  if (d.onlyFor && !types.includes("cards")) return "Laminated-only and frosted-only apply to business cards";
+  return null;
+}
+costingRouter.post("/rates", admin2, async (req, res) => {
+  const parsed = rateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const bad = checkRate(parsed.data);
+  if (bad) return res.status(400).json({ error: bad });
+  await ensureCostingDefaults();
+  const last2 = await prisma.costingRate.aggregate({ _max: { sortOrder: true } });
+  const d = parsed.data;
+  const row = await prisma.costingRate.create({ data: { kind: d.kind, name: d.name, basis: d.basis, cost: d.cost, jobTypes: [...new Set(d.jobTypes)].join(","), onlyFor: d.onlyFor, defaultOn: d.defaultOn, active: d.active, sortOrder: (last2._max.sortOrder ?? 0) + 10 } });
+  res.status(201).json(toRate(row));
+});
+costingRouter.put("/rates/:id", admin2, async (req, res) => {
+  const parsed = rateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const bad = checkRate(parsed.data);
+  if (bad) return res.status(400).json({ error: bad });
+  const d = parsed.data;
+  const row = await prisma.costingRate.update({ where: { id: Number(req.params.id) }, data: { kind: d.kind, name: d.name, basis: d.basis, cost: d.cost, jobTypes: [...new Set(d.jobTypes)].join(","), onlyFor: d.onlyFor, defaultOn: d.defaultOn, active: d.active } }).catch(() => null);
+  if (!row) return res.status(404).json({ error: "Rate not found" });
+  res.json(toRate(row));
+});
+costingRouter.delete("/rates/:id", admin2, async (req, res) => {
+  await prisma.costingRate.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
+  res.status(204).end();
+});
+var typeSchema = external_exports.object({
+  marginPct: external_exports.number().min(0, "The margin cannot be negative").max(1e3),
+  wastagePct: external_exports.number().min(0).max(100, "Wastage cannot be more than 100%"),
+  cardsPerSheet: external_exports.number().int().min(1, "At least one card fits an A3 sheet"),
+  spareSheets: external_exports.number().int().min(0).max(1e3)
+});
+costingRouter.put("/job-types/:key", admin2, async (req, res) => {
+  if (!isCostingJobType(req.params.key)) return res.status(404).json({ error: "Unknown kind of job" });
+  const parsed = typeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  await ensureCostingDefaults();
+  const row = await prisma.costingJobType.update({ where: { key: req.params.key }, data: parsed.data });
+  res.json(toType(row));
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express23.default)();
+var app = (0, import_express24.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express23.default.json({ limit: "5mb" }));
+app.use(import_express24.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -80432,6 +80684,7 @@ app.use("/api/backup", backupRouter);
 app.use("/api/security", securityRouter);
 app.use("/api/freelance", freelanceRouter);
 app.use("/api/whatsapp", whatsappRouter);
+app.use("/api/costing", costingRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });

@@ -143,14 +143,17 @@ authRouter.post('/login-code', loginLimiter, async (req, res) => {
   return completeLogin(req, res, user);
 });
 
-// ── Emailed PIN reset (Admin only) ──────────────────────────────────────────
-// Only a user with role 'Admin' AND a stored email can use this — staff PINs are
-// reset by the Admin under Master Data. The 6-digit code is stored as a bcrypt
-// hash, expires in 15 minutes, allows 5 guesses, and is single-use.
+// ── Emailed PIN reset (anyone with an email on their record) ────────────────
+// Any active user who has an email address recorded (an Admin sets it under Master Data → Staff & Users)
+// can reset their own PIN: a 6-digit code goes to that address, and with it they choose a new PIN that
+// follows the rules for their role (an Admin's is 6 digits). The code is stored as a bcrypt hash, expires
+// in 15 minutes, allows 5 guesses, and is single-use. Someone with no email on record asks an Admin.
 const RESET_CODE_MINUTES = 15;
 const RESET_MAX_ATTEMPTS = 5;
 const resetLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false });
-const GENERIC_FORGOT_REPLY = { ok: true, message: 'If that email belongs to an Admin, a reset code has been sent.' };
+const GENERIC_FORGOT_REPLY = { ok: true, message: 'If that email is on a staff record, a reset code has been sent.' };
+// A second code is not sent to the same person within this time: the mailbox cannot be flooded by repeated requests.
+const RESET_RESEND_SECONDS = 60;
 
 function normalizeEmail(v: unknown): string {
   return typeof v === 'string' ? v.trim().toLowerCase() : '';
@@ -166,7 +169,9 @@ authRouter.post('/forgot-pin', resetLimiter, async (req, res) => {
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.active || user.role !== 'Admin') return res.json(GENERIC_FORGOT_REPLY);
+  if (!user || !user.active) return res.json(GENERIC_FORGOT_REPLY);
+  // a code was sent a moment ago: the reply is the same, and the first code stays valid
+  if (user.resetCodeExpires && user.resetCodeExpires.getTime() - Date.now() > (RESET_CODE_MINUTES * 60 - RESET_RESEND_SECONDS) * 1000) return res.json(GENERIC_FORGOT_REPLY);
 
   const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
   await prisma.user.update({
@@ -182,8 +187,9 @@ authRouter.post('/forgot-pin', resetLimiter, async (req, res) => {
     await mailer.sendMail({
       to: email,
       subject: `${await systemName()} — PIN reset code`,
-      text: `Your PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.\n\nIf you didn't ask for this, ignore this email — your PIN has not changed.`,
+      text: `Hello ${user.name},\n\nYour PIN reset code is ${code}. It expires in ${RESET_CODE_MINUTES} minutes.\n\nIf you didn't ask for this, ignore this email — your PIN has not changed.`,
     });
+    await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: 'AUTH', action: 'PIN RESET CODE EMAILED', ip: ipOf(req) });
   } catch (e) {
     return res.status(502).json({ error: `The reset email could not be sent. ${explainMailError(e, mailer.config)}` });
   }
@@ -195,12 +201,9 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
   const email = normalizeEmail((req.body as { email?: string }).email);
   if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
   if (!newPin || typeof newPin !== 'string') return res.status(400).json({ error: 'A new PIN is required' });
-  const weak = await pinProblemFor(newPin, 'Admin'); // this reset is for the Admin only
-  if (weak) return res.status(400).json({ error: weak });
-
   const invalid = { error: 'That code is invalid or has expired. Request a new one.' };
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !user.active || user.role !== 'Admin' || !user.resetCodeHash || !user.resetCodeExpires || user.resetCodeExpires < new Date()) {
+  if (!user || !user.active || !user.resetCodeHash || !user.resetCodeExpires || user.resetCodeExpires < new Date()) {
     return res.status(400).json(invalid);
   }
   if (user.resetAttempts >= RESET_MAX_ATTEMPTS) {
@@ -213,6 +216,9 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
     await prisma.user.update({ where: { id: user.id }, data: { resetAttempts: user.resetAttempts + 1 } });
     return res.status(400).json(invalid);
   }
+  // the PIN must follow the rules for this person's role (an Admin's is 6 digits); a code that was right stays valid so another PIN can be tried
+  const weak = await pinProblemFor(newPin, user.role);
+  if (weak) return res.status(400).json({ error: weak });
 
   await prisma.user.update({
     where: { id: user.id },
@@ -229,6 +235,7 @@ authRouter.post('/reset-pin', resetLimiter, async (req, res) => {
       mustChangePin: false,
     },
   });
+  await writeAudit({ userId: user.id, userName: user.name, role: user.role, method: 'AUTH', action: 'PIN RESET BY EMAIL', ip: ipOf(req) });
   res.json({ ok: true });
 });
 

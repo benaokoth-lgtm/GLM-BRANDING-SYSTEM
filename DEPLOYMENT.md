@@ -286,7 +286,9 @@ node reset-pin.js "Your Name"            # new random 4-digit PIN (also clears a
 node reset-pin.js "Your Name" 4821       # or choose the PIN yourself
 ```
 
-**Emailed reset for the Admin ("Admin: forgot PIN?" on the login screen).** Give the Admin a recovery email once, from the same folder and environment:
+**Emailed reset for everyone with an email on their record ("Forgot your PIN?" on the login screen) — no database change.** It used to be for the Admin only; now any active user with an email recorded (Master Data → Staff & Users, or `reset-pin.js ... --email`) can reset their own PIN: POST /auth/forgot-pin emails a 6-digit code (valid 15 minutes, 5 tries, single use; a second request within a minute sends nothing more), POST /auth/reset-pin sets the new PIN, which must follow the rules for their role (an Admin's is 6 digits, others 4 to 6, never an obvious one), ends their other sessions and clears any lockout. The reply never says whether an email is on file. The code sent and the reset are written to the audit log. Someone with no email on their record still asks an Admin.
+
+**Emailed reset for the Admin (the original description).** Give the Admin a recovery email once, from the same folder and environment:
 
 ```bash
 node reset-pin.js "Your Name" --email you@example.com

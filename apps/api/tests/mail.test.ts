@@ -381,4 +381,49 @@ describe('email settings and emailing login PINs', () => {
     assert.equal(Buffer.from(await file.arrayBuffer()).subarray(0, 5).toString(), '%PDF-');
     assert.equal((await fetch(`${base}/api/orders/${invoice.id}/pdf`, { headers: { Authorization: `Bearer ${otherToken}` } })).status, 403);
   });
+
+  it('anyone with an email on their record can reset their own PIN with an emailed code', async () => {
+    const bcrypt = (await import('bcryptjs')).default;
+    const person = await prisma.user.create({ data: { name: 'Resetter (mail test)', role: 'Staff', email: 'reset.me@test.local', pinHash: await bcrypt.hash('4455', 4), pinLength: 4 } });
+    const gone = await prisma.user.create({ data: { name: 'Gone (mail test)', role: 'Staff', email: 'gone@test.local', pinHash: await bcrypt.hash('4455', 4), pinLength: 4, active: false } });
+    const codeFor = (to: string) => {
+      const mail = [...inbox].reverse().find((m) => m.to.includes(to));
+      return /reset code is (\d{6})/.exec(mail?.data.replace(/=\r\n/g, '') ?? '')?.[1];
+    };
+    const sentBefore = inbox.length;
+
+    // a staff member (not an Admin) is sent a code; asking again at once sends nothing more, and the reply never says whether an email is on file
+    const first = await call(null, 'POST', '/auth/forgot-pin', { email: 'Reset.Me@test.local' });
+    assert.equal(first.status, 200);
+    assert.equal(inbox.length, sentBefore + 1);
+    const code = codeFor('reset.me@test.local');
+    assert.match(code ?? '', /^\d{6}$/);
+    const again = await call(null, 'POST', '/auth/forgot-pin', { email: 'reset.me@test.local' });
+    assert.deepEqual(again.body, first.body);
+    assert.equal(inbox.length, sentBefore + 1);
+    const unknown = await call(null, 'POST', '/auth/forgot-pin', { email: 'nobody@test.local' });
+    assert.deepEqual(unknown.body, first.body);
+    assert.equal(inbox.length, sentBefore + 1);
+
+    // a wrong code, then the right code with a PIN the role does not allow: nothing changes, and the right code is still good
+    assert.equal((await call(null, 'POST', '/auth/reset-pin', { email: 'reset.me@test.local', code: code === '000000' ? '111111' : '000000', newPin: '7391' })).status, 400);
+    const weak = await call(null, 'POST', '/auth/reset-pin', { email: 'reset.me@test.local', code, newPin: '1234' });
+    assert.equal(weak.status, 400);
+    assert.match(weak.body.error, /too easy|at least/);
+    assert.equal((await call(null, 'POST', '/auth/login', { userId: person.id, pin: '4455' })).status, 200);
+
+    // the right code and a good PIN: the old PIN stops working, the new one signs in, and the code cannot be used twice
+    const done = await call(null, 'POST', '/auth/reset-pin', { email: 'reset.me@test.local', code, newPin: '7391' });
+    assert.equal(done.status, 200, JSON.stringify(done.body));
+    assert.equal((await call(null, 'POST', '/auth/login', { userId: person.id, pin: '4455' })).status, 401);
+    assert.equal((await call(null, 'POST', '/auth/login', { userId: person.id, pin: '7391' })).status, 200);
+    assert.equal((await call(null, 'POST', '/auth/reset-pin', { email: 'reset.me@test.local', code, newPin: '8264' })).status, 400);
+    assert.ok(await prisma.auditLog.findFirst({ where: { userId: person.id, action: 'PIN RESET BY EMAIL' } }));
+
+    // a switched-off sign-in is sent nothing
+    await call(null, 'POST', '/auth/forgot-pin', { email: 'gone@test.local' });
+    assert.equal(inbox.length, sentBefore + 1);
+    assert.equal(codeFor('gone@test.local'), undefined);
+    void gone;
+  });
 });

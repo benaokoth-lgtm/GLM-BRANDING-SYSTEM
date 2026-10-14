@@ -206,7 +206,7 @@ export default function Login() {
             style={{ marginTop: 'var(--space-3)', width: '100%' }}
             onClick={() => setForgot(true)}
           >
-            Admin: forgot PIN?
+            Forgot your PIN?
           </button>
           <a href="/privacy" className="text-muted" style={{ display: "block", textAlign: "center", fontSize: 12, marginTop: "var(--space-2)" }}>
             Privacy policy
@@ -217,9 +217,9 @@ export default function Login() {
   );
 }
 
-// Admin-only emailed reset: enter the recovery email → get a 6-digit code →
-// enter it with a new 6-digit PIN. The server replies identically whether or
-// not the email matches an Admin, so this can't be used to probe accounts.
+// Emailed reset for anyone with an email on their staff record: enter the email → get a 6-digit code →
+// enter it with a new PIN (4–6 digits; an Admin's is 6, and the server says if the role needs more). The server
+// replies identically whether or not the email matches anyone, so this can't be used to probe accounts.
 function ForgotPin({ onDone }: { onDone: () => void }) {
   const branding = useBranding();
   const [step, setStep] = useState<'email' | 'code' | 'done'>('email');
@@ -262,7 +262,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
         <i className="corner br"></i>
         <div className="card-kicker">{branding?.systemName ?? ''}</div>
         <div className="card-title" style={{ marginBottom: 'var(--space-3)' }}>
-          Reset Admin PIN
+          Reset your PIN
         </div>
 
         {step === 'email' && (
@@ -273,13 +273,13 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
             }}
           >
             <p className="text-muted" style={{ fontSize: 13 }}>
-              Enter the Admin's recovery email. We'll send a 6-digit code.
+              Enter the email address on your staff record (the one your login was sent to). We'll send a 6-digit code. No email on your record? Ask an Admin to set it or to reset your PIN.
             </p>
             <input
               className="input"
               type="email"
               autoFocus
-              placeholder="admin@example.com"
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               style={{ width: '100%' }}
@@ -299,7 +299,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
             }}
           >
             <p className="text-muted" style={{ fontSize: 13 }}>
-              If that email belongs to an Admin, a code is on its way (valid 15 minutes). Enter it with a new 6-digit PIN (not an obvious one like 123456).
+              If that email is on a staff record, a code is on its way (valid 15 minutes). Enter it with a new PIN of 4 to 6 digits (an Admin's is 6), and not an obvious one like 1234.
             </p>
             <input
               className="input"
@@ -316,7 +316,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
               type="password"
               inputMode="numeric"
               maxLength={6}
-              placeholder="New 6-digit PIN"
+              placeholder="New PIN (4–6 digits)"
               value={newPin}
               onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
               style={{ width: '100%' }}
@@ -325,7 +325,7 @@ function ForgotPin({ onDone }: { onDone: () => void }) {
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={busy || code.length !== 6 || newPin.length !== 6}
+              disabled={busy || code.length !== 6 || newPin.length < 4}
               style={{ width: '100%' }}
             >
               {busy ? 'Saving…' : 'Set new PIN'}

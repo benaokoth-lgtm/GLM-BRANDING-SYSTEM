@@ -65238,6 +65238,8 @@ var PERMISSION_KEYS = [
   "canAccessQuality",
   "canReceiveStock",
   "canManageCommission",
+  "canCapturePettyCash",
+  // Petty cash desk: see the float and log what is spent from it, without Finance access (the front office)
   "canCaptureForOthers",
   // Front office: capture General / Film / Artwork orders in a sales person's name, and for freelancers
   "canBeAssignedOrders"
@@ -65295,7 +65297,7 @@ var DEFAULT_ROLE_PERMISSIONS = {
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
   Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
   // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
-  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true },
+  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -66735,6 +66737,12 @@ async function ensureFrontOfficeAccess() {
     await prisma.role.create({ data: { name: "Front Office", ...DEFAULT_ROLE_PERMISSIONS["Front Office"] } });
   }
   await prisma.setting.update({ where: { id: 1 }, data: { frontOfficeSeeded: true } });
+}
+async function ensurePettyCashAccess() {
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  if (settings.pettyCashAccessSeeded) return;
+  await prisma.role.updateMany({ where: { canCaptureForOthers: true, canCapturePettyCash: false }, data: { canCapturePettyCash: true } });
+  await prisma.setting.update({ where: { id: 1 }, data: { pettyCashAccessSeeded: true } });
 }
 var seeding = null;
 function ensureFrontOfficeOnce() {
@@ -73970,7 +73978,16 @@ async function taxOfYear(year, cfg) {
 
 // apps/api/src/routes/finance.ts
 var financeRouter = (0, import_express4.Router)();
-financeRouter.use(requireAuth, requirePermission("canAccessFinance"));
+financeRouter.use(requireAuth);
+financeRouter.use(async (req, res, next) => {
+  const perms = await permissionsForRole(req.user.role);
+  if (perms.canAccessFinance) return next();
+  if (perms.canCapturePettyCash && (req.method === "GET" && req.path === "/petty-cash" || req.method === "POST" && req.path === "/expenses")) return next();
+  res.status(403).json({ error: "Not permitted for your role" });
+});
+async function pettyDeskOnly(role) {
+  return !(await permissionsForRole(role)).canAccessFinance;
+}
 function inRange2(d, from, to) {
   return d >= from && d <= to;
 }
@@ -74456,6 +74473,7 @@ financeRouter.post("/expenses", async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
+  if (await pettyDeskOnly(req.user.role) && (!d.paid || d.method !== PETTY_CASH_METHOD)) return res.status(403).json({ error: "You can log petty cash expenses only" });
   if (!(await expenseHeadNames()).includes(d.category)) return res.status(400).json({ error: "Choose one of the expense heads (add new ones under Accounting \u2192 Chart of Accounts)" });
   if (!d.paid && !(d.supplier || "").trim()) return res.status(400).json({ error: "A supplier is required for an expense bought on credit" });
   if (d.businessHeadId != null && !await prisma.businessHead.findUnique({ where: { id: d.businessHeadId } })) return res.status(400).json({ error: "That business head does not exist" });
@@ -74634,9 +74652,11 @@ financeRouter.get("/petty-cash", async (req, res) => {
     balance,
     periodTopUpsTotal: rows.reduce((a2, r) => a2 + r.amountIn, 0),
     periodExpensesTotal: rows.reduce((a2, r) => a2 + r.amountOut, 0),
-    cashSalesInPeriod: cashPayments.reduce((a2, p) => a2 + p.amount, 0),
+    // what the till took is Finance's to see; the petty cash desk sees the float
+    cashSalesInPeriod: await pettyDeskOnly(req.user.role) ? 0 : cashPayments.reduce((a2, p) => a2 + p.amount, 0),
     ledger: rows,
-    pettyCashSources: PETTY_CASH_SOURCES
+    pettyCashSources: PETTY_CASH_SOURCES,
+    expenseCategories: await expenseHeadNames()
   });
 });
 var pettyCashSchema = external_exports.object({
@@ -81601,5 +81621,5 @@ app.listen(port, () => {
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePettyCashAccess(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

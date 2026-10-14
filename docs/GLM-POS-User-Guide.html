@@ -144,7 +144,7 @@ footer.doc { margin-top: 50px; border-top: 1px solid var(--rule); padding-top: 1
 <table>
   <tr><th style="width:150px">Role</th><th>Typically does</th></tr>
   <tr><td><b>Staff</b> (sales person)</td><td>Takes General, Film, Artwork and Embroidery orders; works the production jobs assigned to them; sees their own orders and their own commission.</td></tr>
-  <tr><td><b>Front Office</b></td><td>The receptionist or cashier: captures orders for the sales persons, takes payments, sees every order. Sees no costs and no commission.</td></tr>
+  <tr><td><b>Front Office</b></td><td>The receptionist or cashier: captures orders for the sales persons, takes payments, sees every order, and logs petty cash expenses (its <b>Petty Cash</b> entry). Sees no costs and no commission, and nothing else in Finance.</td></tr>
   <tr><td><b>Supervisor</b></td><td>Assigns jobs, inspects quality, raises purchase requisitions, approves discounts above the ceiling, watches payments and every order.</td></tr>
   <tr><td><b>Finance Manager</b></td><td>Finance, Compliance, Accounting, Reports, purchase approval, supplier costs, DTF costs and profit, commission payouts.</td></tr>
   <tr><td><b>General Manager</b></td><td>Everything financial and operational, except the Master Data set-up screens.</td></tr>
@@ -600,6 +600,7 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
 </ul>
 
 <h3>Petty Cash</h3>
+<p><b>The petty cash desk.</b> A role with the <b>Petty cash desk</b> permission (the Front Office role has it; an Admin sets it for any role under <span class="path">Master Data → Roles &amp; Access</span>) has a <b>Petty Cash</b> entry of its own in the menu, without the rest of Finance. It shows what is in the float, what was fed in and paid out, and the petty cash ledger, and it lets them <b>log an expense</b> paid from the float: the date, what it was for, the amount, details and an optional receipt number. It is refused if the float cannot cover it. Feeding the float, bills on credit, other ways of paying and removing entries stay with Finance.</p>
 <p><span class="path">Finance → Petty Cash</span>: the float. <b>Top-ups</b> (bank withdrawal or cash-sales allocation) add to it; petty-cash expenses and wages take from it. The balance is the top-ups less what has been spent. A payment from petty cash is refused if the float cannot cover it on that date and every later day.</p>
 
 

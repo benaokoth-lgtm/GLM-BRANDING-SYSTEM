@@ -72,6 +72,14 @@ export async function ensureFrontOfficeAccess(): Promise<void> {
   }
   await prisma.setting.update({ where: { id: 1 }, data: { frontOfficeSeeded: true } });
 }
+/** Once, on databases that pre-date the petty cash desk: the roles that act as the front office are given it (an Admin can untick it under Roles & Access, and it is not given again). */
+export async function ensurePettyCashAccess(): Promise<void> {
+  const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  if (settings.pettyCashAccessSeeded) return;
+  await prisma.role.updateMany({ where: { canCaptureForOthers: true, canCapturePettyCash: false }, data: { canCapturePettyCash: true } });
+  await prisma.setting.update({ where: { id: 1 }, data: { pettyCashAccessSeeded: true } });
+}
+
 let seeding: Promise<void> | null = null;
 export function ensureFrontOfficeOnce(): Promise<void> {
   if (!seeding) seeding = ensureFrontOfficeAccess().catch((e) => console.error('Front office set-up failed', e)).finally(() => (seeding = null));

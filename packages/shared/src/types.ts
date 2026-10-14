@@ -26,6 +26,7 @@ export const PERMISSION_KEYS = [
   'canAccessQuality',
   'canReceiveStock',
   'canManageCommission',
+  'canCapturePettyCash', // Petty cash desk: see the float and log what is spent from it, without Finance access (the front office)
   'canCaptureForOthers', // Front office: capture General / Film / Artwork orders in a sales person's name, and for freelancers
   'canBeAssignedOrders', // Sales person: orders can be captured for (and credited to) this role by the front office
 ] as const;

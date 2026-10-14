@@ -41,6 +41,8 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   if (isAdmin || p.canAccessProduction || p.canManageProduction) tabs.push(['/production', 'Production']);
   if (isAdmin || p.canAccessQuality) tabs.push(['/quality', 'Quality Control']);
   if (!hasFinance && (isAdmin || p.canManagePayments)) tabs.push(['/payments', 'Payments']);
+  // The petty cash desk: someone who logs petty cash without Finance access (the front office) gets just that, as its own entry (Finance has it as a tab).
+  if (!hasFinance && p.canCapturePettyCash) tabs.push(['/petty-cash', 'Petty Cash']);
   if (isAdmin) tabs.push(['/master-data', 'Master Data']);
   if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
   // Accounting (books, statements, notes, M-Pesa matching). Someone who can manage payments but isn't in Accounting
@@ -85,6 +87,7 @@ const GROUP_OF: Record<string, Group> = {
   '/compliance': 'finance',
   '/accounting': 'finance',
   '/payments': 'finance',
+  '/petty-cash': 'finance',
   '/reports': 'finance',
   '/master-data': 'admin',
 };
@@ -106,6 +109,7 @@ const ICON_OF: Record<string, string> = {
   '/compliance': 'compliance',
   '/accounting': 'accounting',
   '/payments': 'payments',
+  '/petty-cash': 'payments',
   '/reports': 'reports',
   '/master-data': 'masterdata',
 };

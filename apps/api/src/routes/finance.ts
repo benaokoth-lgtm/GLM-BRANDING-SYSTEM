@@ -2,6 +2,7 @@ import { Request, Response, Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
+import { permissionsForRole } from '../permissions';
 import {
   computeOrderTotals,
   computePay,
@@ -26,7 +27,19 @@ import { ensureChartOnce, accountIdForNewExpenseHead } from '../accounting/chart
 import { loadLedger, pettyCashBalance, pettyCashShortfall } from '../accounting/ledger';
 
 export const financeRouter = Router();
-financeRouter.use(requireAuth, requirePermission('canAccessFinance'));
+financeRouter.use(requireAuth);
+// Finance is for people with Finance access. The petty cash desk (the front office) may use two routes of it and nothing else: see the float, and log what is spent from it.
+financeRouter.use(async (req, res, next) => {
+  const perms = await permissionsForRole(req.user!.role);
+  if (perms.canAccessFinance) return next();
+  if (perms.canCapturePettyCash && ((req.method === 'GET' && req.path === '/petty-cash') || (req.method === 'POST' && req.path === '/expenses'))) return next();
+  res.status(403).json({ error: 'Not permitted for your role' });
+});
+
+/** Someone at the petty cash desk without Finance access: limited to petty cash. */
+async function pettyDeskOnly(role: string): Promise<boolean> {
+  return !(await permissionsForRole(role)).canAccessFinance;
+}
 
 function inRange(d: string, from: string, to: string): boolean {
   return d >= from && d <= to;
@@ -618,6 +631,8 @@ financeRouter.post('/expenses', async (req, res) => {
   const parsed = expenseSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
+  // the petty cash desk logs what is paid out of the petty cash float, now — not bills on credit or payments by other methods
+  if ((await pettyDeskOnly(req.user!.role)) && (!d.paid || d.method !== PETTY_CASH_METHOD)) return res.status(403).json({ error: 'You can log petty cash expenses only' });
   if (!(await expenseHeadNames()).includes(d.category)) return res.status(400).json({ error: 'Choose one of the expense heads (add new ones under Accounting → Chart of Accounts)' });
   if (!d.paid && !(d.supplier || '').trim()) return res.status(400).json({ error: 'A supplier is required for an expense bought on credit' });
   if (d.businessHeadId != null && !(await prisma.businessHead.findUnique({ where: { id: d.businessHeadId } }))) return res.status(400).json({ error: 'That business head does not exist' });
@@ -834,9 +849,11 @@ financeRouter.get('/petty-cash', async (req, res) => {
     balance,
     periodTopUpsTotal: rows.reduce((a, r) => a + r.amountIn, 0),
     periodExpensesTotal: rows.reduce((a, r) => a + r.amountOut, 0),
-    cashSalesInPeriod: cashPayments.reduce((a, p) => a + p.amount, 0),
+    // what the till took is Finance's to see; the petty cash desk sees the float
+    cashSalesInPeriod: (await pettyDeskOnly(req.user!.role)) ? 0 : cashPayments.reduce((a, p) => a + p.amount, 0),
     ledger: rows,
     pettyCashSources: PETTY_CASH_SOURCES,
+    expenseCategories: await expenseHeadNames(),
   });
 });
 

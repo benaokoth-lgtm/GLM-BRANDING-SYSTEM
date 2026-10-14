@@ -107,6 +107,7 @@ model Role {
   canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
   canReceiveStock     Boolean @default(false) // Stores: receive purchased goods into the store (enter the quantities that physically arrived)
   canManageCommission Boolean @default(false) // Sales Commission: settings, every staff member's statement, client ownership, approving and paying commission
+  canCapturePettyCash Boolean @default(false) // Petty cash desk: see the float and log what is spent from it (the front office), without access to the rest of Finance
   canCaptureForOthers Boolean @default(false) // Front office: capture General / Film / Artwork orders in a sales person's name (or for a freelancer), and take the money
   canBeAssignedOrders Boolean @default(false) // Sales person: the front office can capture orders for this role and credit them to the person
 }
@@ -255,6 +256,7 @@ model Setting {
   nextOutsourcedNo Int   @default(7001)
   // The old per-sqm "Embroidery" service was retired once, when stitch-priced embroidery orders arrived (see embroideryLegacy.ts).
   embroideryLegacyRetired Boolean @default(false)
+  pettyCashAccessSeeded Boolean @default(false) // the petty cash desk was given to the front office once
   frontOfficeSeeded Boolean @default(false) // the Front Office role has been offered once (it can then be edited or deleted freely)
 
   // Company profile — used on printed invoices, quotations, and receipts.

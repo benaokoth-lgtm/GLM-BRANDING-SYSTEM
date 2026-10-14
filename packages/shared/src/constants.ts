@@ -27,7 +27,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
   Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
   // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
-  'Front Office': { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true },
+  'Front Office': { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,

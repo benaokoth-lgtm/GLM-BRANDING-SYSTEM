@@ -53,6 +53,7 @@ const PERMISSION_LABELS: Record<PermissionKey, string> = {
   canManageProduction: 'Production: assign staff & productivity',
   canAccessQuality: 'Quality control: inspect orders',
   canReceiveStock: 'Stores: receive purchased goods',
+  canCapturePettyCash: 'Petty cash desk: see the float and log what is spent from it (no other Finance access)',
   canCaptureForOthers: 'Front office: capture orders for sales persons and freelancers, and take the money',
   canBeAssignedOrders: 'Sales person: the front office can give orders to this role',
   canManageCommission: 'Commission: rates, team statements & payouts',

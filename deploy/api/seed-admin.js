@@ -1870,6 +1870,8 @@ var PERMISSION_KEYS = [
   "canAccessQuality",
   "canReceiveStock",
   "canManageCommission",
+  "canCapturePettyCash",
+  // Petty cash desk: see the float and log what is spent from it, without Finance access (the front office)
   "canCaptureForOthers",
   // Front office: capture General / Film / Artwork orders in a sales person's name, and for freelancers
   "canBeAssignedOrders"
@@ -1886,7 +1888,7 @@ var DEFAULT_ROLE_PERMISSIONS = {
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
   Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
   // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
-  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true },
+  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,

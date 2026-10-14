@@ -1537,3 +1537,16 @@ model PrintCostSetting {
   id   Int    @id
   data String
 }
+
+// Compliance → Corporation tax → Tax set-aside planner: what has actually been moved into the tax savings, for the year's income tax. For information and planning only: nothing is posted to the books.
+model TaxSetAside {
+  id             Int      @id @default(autoincrement())
+  taxYear        Int // the year the tax is for (the year it ends in)
+  date           String
+  amount         Float
+  note           String   @default("")
+  capturedByName String
+  createdAt      DateTime @default(now())
+
+  @@index([taxYear])
+}

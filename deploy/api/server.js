@@ -73975,6 +73975,66 @@ async function incomeTaxByMonth(months, cfg) {
 async function taxOfYear(year, cfg) {
   return (await computeYear(year, cfg, false)).tax;
 }
+async function computeSetAside(year, cfg) {
+  const per = yearPeriod(year, cfg.yearEndMonth);
+  const [pl, adj, setAsides, tax] = await Promise.all([
+    buildProfitLoss(per.start, per.end),
+    prisma.taxYear.findUnique({ where: { year } }),
+    prisma.taxSetAside.findMany({ where: { taxYear: year }, orderBy: [{ date: "asc" }, { id: "asc" }] }),
+    computeYear(year, cfg, false)
+  ]);
+  const turnover = cfg.regime === "turnover";
+  const rate2 = turnover ? cfg.turnoverRate : cfg.corporationRate;
+  const today = todayStr();
+  const thisMonth2 = today.slice(0, 7);
+  const addBackByMonth = pl.months.map((_, i) => round2(pl.expenses.rows.filter((r) => r.code === ACCT.depreciation || NOT_DEDUCTIBLE.test(r.name)).reduce((a2, r) => a2 + Math.max(0, r.byMonth[i] ?? 0), 0)));
+  const yearAdjust = (adj?.addBacks ?? 0) - (adj?.capitalAllowances ?? 0) - (adj?.lossesUsed ?? 0);
+  const credits = adj?.whtCredits ?? 0;
+  let cumTaxable = 0;
+  let cumTurnover = 0;
+  let cumSetAside = 0;
+  let prevRequired = 0;
+  const months = pl.months.map((month, i) => {
+    const profit = pl.netByMonth[i] ?? 0;
+    const sales = pl.income.byMonth[i] ?? 0;
+    const future = month > thisMonth2;
+    cumTaxable += profit + addBackByMonth[i];
+    cumTurnover += sales;
+    const required = future ? prevRequired : turnover ? round2(cumTurnover * rate2 / 100) : round2(Math.max(0, (cumTaxable + yearAdjust) * rate2 / 100 - credits));
+    const put = round2(setAsides.filter((s) => s.date.slice(0, 7) === month).reduce((a2, s) => a2 + s.amount, 0));
+    cumSetAside = round2(cumSetAside + put);
+    const row = { month, future, profit: round2(profit), addBacks: addBackByMonth[i], sales: round2(sales), requiredToDate: required, planThisMonth: round2(required - prevRequired), setAside: put, setAsideToDate: cumSetAside, shortfall: future ? 0 : round2(required - cumSetAside) };
+    prevRequired = required;
+    return row;
+  });
+  const current = months.filter((m) => !m.future);
+  const last2 = current[current.length - 1];
+  const requiredToDate = last2?.requiredToDate ?? 0;
+  const setAsideTotal = round2(setAsides.reduce((a2, s) => a2 + s.amount, 0));
+  const elapsed = Math.max(1, current.length);
+  const projectedTax = turnover ? round2(pl.income.total * rate2 / 100 * (12 / elapsed)) : round2(Math.max(0, (cumTaxableOf(current, addBackByMonth) * 12 / elapsed + yearAdjust) * rate2 / 100 - credits));
+  const instalments = tax.items.filter((it) => it.outstanding > 4e-3).map((it) => ({ key: it.key, label: it.label, dueDate: it.dueDate, outstanding: it.outstanding }));
+  const soon = new Date(Date.parse(today + "T00:00:00Z") + 60 * 864e5).toISOString().slice(0, 10);
+  const dueSoon = round2(instalments.filter((it) => it.dueDate <= soon).reduce((a2, it) => a2 + it.outstanding, 0));
+  const held = round2(setAsideTotal - tax.totalPaid);
+  return {
+    year,
+    period: { start: per.start, end: per.end },
+    regime: cfg.regime,
+    rate: rate2,
+    asOf: today,
+    months,
+    ytd: { profit: round2(current.reduce((a2, m) => a2 + m.profit, 0)), requiredToDate, setAside: setAsideTotal, shortfall: round2(requiredToDate - setAsideTotal), paidToKra: tax.totalPaid, held },
+    // what to move into the tax savings now to be on track
+    moveNow: round2(Math.max(0, requiredToDate - setAsideTotal)),
+    projection: { tax: projectedTax, perMonthFromNow: pl.months.length > elapsed ? round2(Math.max(0, projectedTax - requiredToDate) / (pl.months.length - elapsed)) : 0 },
+    dueSoon: { amount: dueSoon, covered: held + 4e-3 >= dueSoon, instalments: instalments.filter((it) => it.dueDate <= soon) },
+    entries: setAsides.map((s) => ({ id: s.id, date: s.date, amount: s.amount, note: s.note, capturedByName: s.capturedByName }))
+  };
+}
+function cumTaxableOf(months, addBacks) {
+  return months.reduce((a2, m, i) => a2 + m.profit + (addBacks[i] ?? 0), 0);
+}
 
 // apps/api/src/routes/finance.ts
 var financeRouter = (0, import_express4.Router)();
@@ -77610,6 +77670,38 @@ taxRouter.get("/year/:year", async (req, res) => {
   const year = yearSchema.safeParse(req.params.year);
   if (!year.success) return res.status(400).json({ error: "Enter a valid year" });
   res.json(await computeYear(year.data, await loadTaxConfig()));
+});
+taxRouter.get("/set-aside/current", async (_req, res) => {
+  const cfg = await loadTaxConfig();
+  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const year = Number(today.slice(0, 4)) + (Number(today.slice(5, 7)) > cfg.yearEndMonth ? 1 : 0);
+  res.json(await computeSetAside(year, cfg));
+});
+taxRouter.get("/year/:year/set-aside", async (req, res) => {
+  const year = yearSchema.safeParse(req.params.year);
+  if (!year.success) return res.status(400).json({ error: "Enter a valid year" });
+  res.json(await computeSetAside(year.data, await loadTaxConfig()));
+});
+var setAsideSchema = external_exports.object({
+  date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter the date it was moved"),
+  amount: external_exports.number().positive("Enter the amount").max(1e12),
+  note: external_exports.string().trim().max(300).default("")
+});
+taxRouter.post("/year/:year/set-aside", async (req, res) => {
+  const year = yearSchema.safeParse(req.params.year);
+  if (!year.success) return res.status(400).json({ error: "Enter a valid year" });
+  const parsed = setAsideSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid entry" });
+  await prisma.taxSetAside.create({ data: { taxYear: year.data, ...parsed.data, capturedByName: req.user.name } });
+  res.status(201).json(await computeSetAside(year.data, await loadTaxConfig()));
+});
+taxRouter.delete("/set-aside/:id", async (req, res) => {
+  const id = external_exports.coerce.number().int().positive().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: "Invalid entry" });
+  const row = await prisma.taxSetAside.findUnique({ where: { id: id.data } });
+  if (!row) return res.status(404).json({ error: "Entry not found" });
+  await prisma.taxSetAside.delete({ where: { id: id.data } });
+  res.json(await computeSetAside(row.taxYear, await loadTaxConfig()));
 });
 var adjustSchema = external_exports.object({
   addBacks: money2,

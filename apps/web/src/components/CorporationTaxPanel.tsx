@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
+import TaxSetAside from './TaxSetAside';
 
 interface TaxConfig {
   regime: 'corporation' | 'turnover';
@@ -210,6 +211,8 @@ export default function CorporationTaxPanel() {
           This is worked out from the books and kept apart from them: Accounting still shows the profit before income tax.
         </p>
       </div>
+
+      <TaxSetAside year={year} />
 
       {!turnoverMode && (
         <>

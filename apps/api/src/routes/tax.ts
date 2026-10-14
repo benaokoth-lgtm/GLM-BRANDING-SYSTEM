@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
-import { computeYear, loadTaxConfig } from '../incomeTax';
+import { computeSetAside, computeYear, loadTaxConfig } from '../incomeTax';
 
 // Income tax (Compliance → Corporation tax). Anyone with Finance access can read the working and the payment schedule; only an Admin changes the
 // settings, the adjustments or records a payment to KRA.
@@ -34,6 +34,46 @@ taxRouter.get('/year/:year', async (req, res) => {
   const year = yearSchema.safeParse(req.params.year);
   if (!year.success) return res.status(400).json({ error: 'Enter a valid year' });
   res.json(await computeYear(year.data, await loadTaxConfig()));
+});
+
+// The set-aside planner: month by month, what to hold back for the year's income tax and what has been. Information only; nothing is posted to the books.
+// the planner for the accounting year we are in now (the year that ends in or after this month)
+taxRouter.get('/set-aside/current', async (_req, res) => {
+  const cfg = await loadTaxConfig();
+  const today = new Date().toISOString().slice(0, 10);
+  const year = Number(today.slice(0, 4)) + (Number(today.slice(5, 7)) > cfg.yearEndMonth ? 1 : 0);
+  res.json(await computeSetAside(year, cfg));
+});
+
+taxRouter.get('/year/:year/set-aside', async (req, res) => {
+  const year = yearSchema.safeParse(req.params.year);
+  if (!year.success) return res.status(400).json({ error: 'Enter a valid year' });
+  res.json(await computeSetAside(year.data, await loadTaxConfig()));
+});
+
+const setAsideSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Enter the date it was moved'),
+  amount: z.number().positive('Enter the amount').max(1e12),
+  note: z.string().trim().max(300).default(''),
+});
+
+// anyone with Finance access may record what was moved into the tax savings; it changes no figure of the tax itself
+taxRouter.post('/year/:year/set-aside', async (req, res) => {
+  const year = yearSchema.safeParse(req.params.year);
+  if (!year.success) return res.status(400).json({ error: 'Enter a valid year' });
+  const parsed = setAsideSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid entry' });
+  await prisma.taxSetAside.create({ data: { taxYear: year.data, ...parsed.data, capturedByName: req.user!.name } });
+  res.status(201).json(await computeSetAside(year.data, await loadTaxConfig()));
+});
+
+taxRouter.delete('/set-aside/:id', async (req, res) => {
+  const id = z.coerce.number().int().positive().safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: 'Invalid entry' });
+  const row = await prisma.taxSetAside.findUnique({ where: { id: id.data } });
+  if (!row) return res.status(404).json({ error: 'Entry not found' });
+  await prisma.taxSetAside.delete({ where: { id: id.data } });
+  res.json(await computeSetAside(row.taxYear, await loadTaxConfig()));
 });
 
 const adjustSchema = z.object({

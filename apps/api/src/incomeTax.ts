@@ -197,3 +197,84 @@ export async function incomeTaxByMonth(months: string[], cfg: TaxConfig): Promis
 async function taxOfYear(year: number, cfg: TaxConfig): Promise<number> {
   return (await computeYear(year, cfg, false)).tax;
 }
+
+/**
+ * The tax set-aside planner (Compliance → Corporation tax): month by month, how much of the profit should be put aside for the year's income tax, and how much has been.
+ * It is for information and planning only — nothing is posted to the books.
+ *
+ * How much to hold by the end of a month is the tax on the profit of the year SO FAR, not a share of each month on its own: so a loss month brings the figure down instead of going
+ * negative, and the amount to move this month is whatever brings what has been set aside up to it. The profit is the books' profit plus the same add-backs the tax working makes
+ * (depreciation, entertainment, fines, donations, and the adjustments an Admin has recorded for the year), at the corporation tax rate set in Compliance. A business on turnover tax holds
+ * that tax's rate of each month's sales instead.
+ */
+export async function computeSetAside(year: number, cfg: TaxConfig) {
+  const per = yearPeriod(year, cfg.yearEndMonth);
+  const [pl, adj, setAsides, tax] = await Promise.all([
+    buildProfitLoss(per.start, per.end),
+    prisma.taxYear.findUnique({ where: { year } }),
+    prisma.taxSetAside.findMany({ where: { taxYear: year }, orderBy: [{ date: 'asc' }, { id: 'asc' }] }),
+    computeYear(year, cfg, false),
+  ]);
+  const turnover = cfg.regime === 'turnover';
+  const rate = turnover ? cfg.turnoverRate : cfg.corporationRate;
+  const today = todayStr();
+  const thisMonth = today.slice(0, 7);
+
+  // what the Act does not let the business deduct, month by month (the same rows the tax working adds back)
+  const addBackByMonth = pl.months.map((_, i) => round2(pl.expenses.rows.filter((r) => r.code === ACCT.depreciation || NOT_DEDUCTIBLE.test(r.name)).reduce((a, r) => a + Math.max(0, r.byMonth[i] ?? 0), 0)));
+  // adjustments recorded for the whole year apply from the start, so the running figure always agrees with the year's tax working
+  const yearAdjust = (adj?.addBacks ?? 0) - (adj?.capitalAllowances ?? 0) - (adj?.lossesUsed ?? 0);
+  const credits = adj?.whtCredits ?? 0;
+
+  let cumTaxable = 0;
+  let cumTurnover = 0;
+  let cumSetAside = 0;
+  let prevRequired = 0;
+  const months = pl.months.map((month, i) => {
+    const profit = pl.netByMonth[i] ?? 0;
+    const sales = pl.income.byMonth[i] ?? 0;
+    const future = month > thisMonth;
+    cumTaxable += profit + addBackByMonth[i]!;
+    cumTurnover += sales;
+    const required = future
+      ? prevRequired
+      : turnover
+        ? round2((cumTurnover * rate) / 100)
+        : round2(Math.max(0, ((cumTaxable + yearAdjust) * rate) / 100 - credits));
+    const put = round2(setAsides.filter((s) => s.date.slice(0, 7) === month).reduce((a, s) => a + s.amount, 0));
+    cumSetAside = round2(cumSetAside + put);
+    const row = { month, future, profit: round2(profit), addBacks: addBackByMonth[i]!, sales: round2(sales), requiredToDate: required, planThisMonth: round2(required - prevRequired), setAside: put, setAsideToDate: cumSetAside, shortfall: future ? 0 : round2(required - cumSetAside) };
+    prevRequired = required;
+    return row;
+  });
+
+  const current = months.filter((m) => !m.future);
+  const last = current[current.length - 1];
+  const requiredToDate = last?.requiredToDate ?? 0;
+  const setAsideTotal = round2(setAsides.reduce((a, s) => a + s.amount, 0));
+  // how the year is likely to end: the year so far, spread over the whole year
+  const elapsed = Math.max(1, current.length);
+  const projectedTax = turnover ? round2((pl.income.total * rate) / 100 * (12 / elapsed)) : round2(Math.max(0, (((cumTaxableOf(current, addBackByMonth) * 12) / elapsed + yearAdjust) * rate) / 100 - credits));
+  const instalments = tax.items.filter((it) => it.outstanding > 0.004).map((it) => ({ key: it.key, label: it.label, dueDate: it.dueDate, outstanding: it.outstanding }));
+  const soon = new Date(Date.parse(today + 'T00:00:00Z') + 60 * 86400000).toISOString().slice(0, 10);
+  const dueSoon = round2(instalments.filter((it) => it.dueDate <= soon).reduce((a, it) => a + it.outstanding, 0));
+  const held = round2(setAsideTotal - tax.totalPaid); // what is still in the tax savings, if the payments to KRA came out of them
+  return {
+    year,
+    period: { start: per.start, end: per.end },
+    regime: cfg.regime,
+    rate,
+    asOf: today,
+    months,
+    ytd: { profit: round2(current.reduce((a, m) => a + m.profit, 0)), requiredToDate, setAside: setAsideTotal, shortfall: round2(requiredToDate - setAsideTotal), paidToKra: tax.totalPaid, held },
+    // what to move into the tax savings now to be on track
+    moveNow: round2(Math.max(0, requiredToDate - setAsideTotal)),
+    projection: { tax: projectedTax, perMonthFromNow: pl.months.length > elapsed ? round2(Math.max(0, projectedTax - requiredToDate) / (pl.months.length - elapsed)) : 0 },
+    dueSoon: { amount: dueSoon, covered: held + 0.004 >= dueSoon, instalments: instalments.filter((it) => it.dueDate <= soon) },
+    entries: setAsides.map((s) => ({ id: s.id, date: s.date, amount: s.amount, note: s.note, capturedByName: s.capturedByName })),
+  };
+}
+
+function cumTaxableOf(months: { profit: number }[], addBacks: number[]): number {
+  return months.reduce((a, m, i) => a + m.profit + (addBacks[i] ?? 0), 0);
+}

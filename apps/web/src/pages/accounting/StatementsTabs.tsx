@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { AsOfBar, Card, DateRangeBar, Loading, Tag, money, numStyle, printPage, useLoad, ymd } from './shared';
+import { SetAsideBanner } from '../../components/TaxSetAside';
 import type { Range } from './shared';
 
 // ── Profit & Loss ─────────────────────────────────────────────────────────
@@ -192,6 +193,7 @@ export function ProfitLossTab({ range }: { range: Range }) {
           </p>
         </>
       )}
+      <SetAsideBanner />
       {data && (
         <Card
           title="Profit & Loss"

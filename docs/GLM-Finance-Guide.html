@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finance Desk Guide — GLM Branding POS</title>
+<style>
+:root {
+  --ink: #14284b; --ink-soft: #e8edf6; --gold: #a8741a; --gold-soft: #f6ecd6;
+  --ok: #1f6b45; --ok-soft: #e0f0e7; --warn: #9b2c2c; --warn-soft: #f8e3e3;
+  --fg: #1b2230; --muted: #5b6475; --rule: #d6d9e0; --red: #d32f2f;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; background: #f3f4f7; color: var(--fg); font: 15px/1.6 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; counter-reset: fig; }
+.page { max-width: 880px; margin: 0 auto; background: #fff; padding: 0 54px 40px; }
+h1, h2, h3, h4 { font-family: "Segoe UI Semibold", "Segoe UI", Arial, sans-serif; color: var(--ink); line-height: 1.2; }
+h2 { font-size: 26px; margin: 44px 0 6px; padding-top: 14px; border-top: 4px solid var(--ink); break-after: avoid; break-inside: avoid; }
+h2 .n { color: var(--gold); margin-right: 8px; }
+h3 { font-size: 18px; margin: 28px 0 6px; break-after: avoid; }
+h4 { font-size: 15px; margin: 18px 0 4px; color: var(--gold); text-transform: uppercase; letter-spacing: .06em; break-after: avoid; }
+p { margin: 8px 0; }
+ul, ol { margin: 8px 0; padding-left: 22px; }
+li { margin: 4px 0; }
+.lead { font-size: 16.5px; color: var(--muted); margin-top: 2px; }
+.path { font-weight: 600; color: var(--ink); background: var(--ink-soft); padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+code { background: #f1f2f5; padding: 1px 5px; border-radius: 3px; font-size: 13.5px; }
+
+.cover { background: var(--ink); color: #fff; margin: 0 -54px; padding: 90px 54px 60px; min-height: 940px; break-after: page; position: relative; }
+.cover .kicker { letter-spacing: .2em; text-transform: uppercase; color: #f1d9a1; font-size: 13px; font-weight: 600; }
+.cover h1 { color: #fff; font-size: 50px; margin: 16px 0 16px; line-height: 1.04; max-width: 700px; }
+.cover p { font-size: 18px; max-width: 600px; color: #dfe6f3; }
+.cover .rule { width: 90px; height: 5px; background: var(--gold); margin: 28px 0; }
+.cover .foot { position: absolute; left: 54px; bottom: 40px; color: #aebbd3; font-size: 13.5px; max-width: 660px; }
+
+.box { border-left: 5px solid var(--ink); background: var(--ink-soft); padding: 11px 15px; margin: 14px 0; break-inside: avoid; }
+.box.ok { border-color: var(--ok); background: var(--ok-soft); }
+.box.warn { border-color: var(--warn); background: var(--warn-soft); }
+.box.gold { border-color: var(--gold); background: var(--gold-soft); }
+.box b.t { display: block; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; margin-bottom: 3px; }
+.box p:first-of-type { margin-top: 0; } .box p:last-child { margin-bottom: 0; }
+
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; break-inside: avoid; }
+th { background: var(--ink); color: #fff; text-align: left; padding: 7px 10px; font-weight: 600; }
+td { border-bottom: 1px solid var(--rule); padding: 7px 10px; vertical-align: top; }
+tr:nth-child(even) td { background: #fafbfd; }
+td.r, th.r { text-align: right; white-space: nowrap; }
+
+/* numbered explanations that match the red circles in the screenshots */
+ol.marks { list-style: none; padding: 0; margin: 10px 0 18px; counter-reset: m; }
+ol.marks > li { counter-increment: m; position: relative; padding: 3px 0 3px 38px; margin: 6px 0; break-inside: avoid; }
+ol.marks > li::before { content: counter(m); position: absolute; left: 0; top: 3px; width: 25px; height: 25px; border-radius: 50%; background: var(--red); color: #fff; font-weight: 700; font-size: 13.5px; text-align: center; line-height: 25px; }
+/* the steps of a task */
+ol.steps { list-style: none; padding: 0; counter-reset: s; margin: 10px 0 16px; }
+ol.steps > li { counter-increment: s; position: relative; padding: 6px 0 6px 44px; margin: 8px 0; }
+ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 4px; width: 30px; height: 30px; background: var(--ink); color: #fff; font-weight: 700; text-align: center; line-height: 30px; }
+ol.steps > li > p { margin: 3px 0; }
+
+figure.shot { margin: 14px 0 20px; break-inside: avoid; counter-increment: fig; }
+figure.shot img { display: block; width: 100%; height: auto; border: 1px solid #c9cdd6; box-shadow: 0 2px 8px rgba(20,40,75,.12); }
+figure.shot.narrow img { max-width: 360px; }
+figure.shot figcaption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+figure.shot figcaption::before { content: "Figure " counter(fig) " — "; font-weight: 700; color: var(--ink); }
+
+.toc { columns: 2; column-gap: 34px; font-size: 14.5px; margin: 10px 0; }
+.toc div { break-inside: avoid; margin: 3px 0; }
+.toc b { color: var(--gold); display: inline-block; width: 26px; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0; }
+.flow .st { flex: 1 1 120px; background: var(--ink); color: #fff; padding: 10px; font-size: 13.5px; break-inside: avoid; }
+.flow .st b { display: block; color: #f1d9a1; font-size: 14px; }
+.flow .st.alt { background: var(--gold); } .flow .st.alt b { color: #fff; }
+
+.check { list-style: none; padding-left: 0; }
+.check li { padding-left: 28px; position: relative; }
+.check li::before { content: "☐"; position: absolute; left: 2px; top: 0; font-size: 17px; color: var(--ink); }
+.pb { break-before: page; }
+dl.gl dt { font-weight: 700; color: var(--ink); margin-top: 10px; }
+dl.gl dd { margin: 2px 0 0 0; }
+
+@page { size: A4; margin: 16mm 14mm 18mm; @bottom-center { content: "GLM Branding POS — Finance desk guide  ·  page " counter(page); font: 9pt "Segoe UI", Arial, sans-serif; color: #5b6475; } }
+@page :first { margin: 0; @bottom-center { content: ""; } }
+@media print {
+  body { background: #fff; }
+  .page { max-width: none; padding: 0 2mm; }
+  .cover { margin: 0 -2mm; padding: 46mm 18mm 20mm; min-height: 297mm; }
+  .cover .foot { left: 18mm; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<section class="cover">
+  <div class="kicker">Self-help guide · Finance desk · October 2026</div>
+  <h1>Running the money side of GLM Branding</h1>
+  <div class="rule"></div>
+  <p>A step-by-step guide for the person who records the business's money: expenses, petty cash, cheques, payroll, tax payments, customer payments and the month-end checks. Written for someone who has never done accounts before.</p>
+  <p style="font-size:15px;margin-top:22px">Every screen in this guide is a real screen of the GLM POS. The red numbered circles on the pictures match the numbered notes underneath them. The names and amounts in the pictures are practice figures, not the real books.</p>
+  <div class="foot">You do not need to know accounting to use this guide. Read Part 1 once, then keep the guide next to you and follow the steps for whatever you are recording.</div>
+</section>
+
+<h2 style="border-top:none;margin-top:30px">What is in this guide</h2>
+<div class="toc">
+  <div><b>1</b> The words you will meet</div>
+  <div><b>2</b> Finding your way around</div>
+  <div><b>3</b> The golden rules</div>
+  <div><b>4</b> Recording an expense</div>
+  <div><b>5</b> Bills you pay later (on credit)</div>
+  <div><b>6</b> Mistakes: amend or delete</div>
+  <div><b>7</b> Petty cash and the cheque you cash</div>
+  <div><b>8</b> The cheque register</div>
+  <div><b>9</b> Money coming in from customers</div>
+  <div><b>10</b> Staff pay (payroll)</div>
+  <div><b>11</b> Paying PAYE, NSSF, SHIF, levy and VAT</div>
+  <div><b>12</b> VAT, step by step</div>
+  <div><b>13</b> Setting money aside for income tax</div>
+  <div><b>14</b> Stock purchases and supplier bills</div>
+  <div><b>15</b> Journals: the few you will need</div>
+  <div><b>16</b> Reports and the Books Check</div>
+  <div><b>17</b> Your daily, weekly and monthly routine</div>
+  <div><b>18</b> Mistakes people make, and questions</div>
+</div>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<h2 class="pb"><span class="n">1</span>The words you will meet</h2>
+<p class="lead">Accounting sounds difficult because of its words. The ideas are simple. Read this page once.</p>
+
+<dl class="gl">
+  <dt>Income (or revenue, or sales)</dt>
+  <dd>Money the business earns by selling printing, branding, embroidery and goods. The POS records this for you when an order is paid. You rarely type income by hand.</dd>
+  <dt>Expense</dt>
+  <dd>Money the business spends to run: rent, electricity, airtime, transport, repairs, refreshments, casual labour. <b>An expense is gone; you do not get it back.</b> Recording expenses is the biggest part of your job.</dd>
+  <dt>Profit</dt>
+  <dd>Income minus expenses (and the cost of the goods sold). If you earn 100 and spend 80, the profit is 20.</dd>
+  <dt>Stock purchase</dt>
+  <dd>Buying materials to sell or to make products (blank T-shirts, DTF film, thread). It is not an expense on the day you buy it; it becomes a cost when the goods are used or sold. It is recorded on the Stock screen (Part 14), not as an expense.</dd>
+  <dt>VAT</dt>
+  <dd>A tax of 16% added to prices. <b>Output VAT</b> is the VAT we charge customers: it belongs to KRA, not to us. <b>Input VAT</b> is the VAT suppliers charge us: we may deduct it. What we owe KRA each month is <b>output minus input</b>. Prices in the POS already include VAT.</dd>
+  <dt>PAYE, NSSF, SHIF, Housing Levy</dt>
+  <dd>Deductions taken from each employee's salary (plus a matching share from us for NSSF and the housing levy). We hold that money for a short while and must pay it over to KRA, NSSF and SHIF by the due dates. It is <b>not</b> ours to spend.</dd>
+  <dt>Petty cash (the float)</dt>
+  <dd>The cash kept in the office for everyday spending and for paying salaries. It is topped up by withdrawing money from the bank with a cheque. The POS tracks it like a cash box: money in, money out, balance.</dd>
+  <dt>Cheque, and "unpresented" cheque</dt>
+  <dd>A cheque is a written instruction to the bank. The day you write it is not the day the bank pays it. A cheque that is written but not yet paid by the bank is <b>unpresented</b> (or "not cleared"). Tracking this is how you match our books to the bank statement.</dd>
+  <dt>Paying "on credit"</dt>
+  <dd>Taking goods or a service now and paying the supplier later. The money we still owe is a <b>payable</b> (a bill to pay). The opposite is a <b>receivable</b>: money a customer still owes us.</dd>
+  <dt>Journal</dt>
+  <dd>A manual entry that moves money between accounts when no other screen does it, for example paying VAT to KRA. Part 15 shows the few you will use.</dd>
+  <dt>The books / the ledger</dt>
+  <dd>The full record of everything. You never write in it directly. Each screen you use posts the right entries for you, and the reports are built from it.</dd>
+</dl>
+
+<div class="box gold"><b class="t">The one idea to remember</b>
+<p>Every shilling that moves must be recorded <b>once, on the right screen, on the day it happens, with the proof number</b> (receipt number, invoice number or cheque number). If you do that, the reports look after themselves.</p></div>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<h2><span class="n">2</span>Finding your way around</h2>
+<p>Your work is in the <b>Finance</b> group of the side menu. You will use four screens.</p>
+<figure class="shot narrow"><img src="img/fg-01-sidebar.jpg" alt="The Finance group of the side menu"><figcaption>The Finance group of the side menu.</figcaption></figure>
+<ol class="marks">
+  <li><b>Finance.</b> Your daily screen. Tabs along the top: Quotation, Invoice, Payments, Expenses, Petty Cash, Cheques, Asset Register, Corporate Clients.</li>
+  <li><b>Compliance.</b> Staff pay and the taxes: VAT, payments due to KRA/NSSF/SHIF, corporation tax, payroll, employees, P9.</li>
+  <li><b>Accounting.</b> The books: Profit &amp; Loss, receivables, payables, credit and debit notes, M-Pesa matching, journals and the Books Check.</li>
+  <li><b>Reports.</b> Sales and performance reports for management.</li>
+</ol>
+<p>Which tabs you can see depends on your role. If a tab is missing, ask the Admin to give your role the access.</p>
+
+<h3>Choosing the dates</h3>
+<p>Most screens show figures for a date range. Set it first, or you will be looking at the wrong month.</p>
+<figure class="shot"><img src="img/fg-02-dates.jpg" alt="The date range buttons"><figcaption>The date range controls that appear at the top of most screens.</figcaption></figure>
+<ol class="marks">
+  <li><b>Quick buttons:</b> This month, This quarter, Year to date, Last 12 months. One click sets both dates.</li>
+  <li><b>From</b> date. Click the box and type or pick a date.</li>
+  <li><b>To</b> date. The figures include this day.</li>
+</ol>
+<p>The <b>Print / PDF</b> button beside them prints exactly what is on the screen, which is how you hand figures to management or the accountant.</p>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<h2><span class="n">3</span>The golden rules</h2>
+<ol>
+  <li><b>No receipt, no entry.</b> Ask for a receipt or invoice every time. If there is none (a boda ride, for example), write a short note on a sheet, have the person sign, and record it with that sheet's date as the reference.</li>
+  <li><b>Record it the same day.</b> You will not remember on Friday what you paid on Monday.</li>
+  <li><b>Record it once.</b> If you put an expense in twice, the books are wrong by that amount. Check the list before adding.</li>
+  <li><b>Right category.</b> The category decides which line of the profit report the money lands on. Rent is Rent, not Miscellaneous.</li>
+  <li><b>Write the note so a stranger understands it.</b> "Printer paper and staples for the front office" beats "paper".</li>
+  <li><b>Always put the cheque number</b> when money leaves by cheque. It is how the bank statement is matched later.</li>
+  <li><b>You cannot approve your own correction.</b> Amending or deleting an expense needs a different manager to agree. This protects you as much as the business.</li>
+  <li><b>Never spend VAT, PAYE or NSSF money.</b> It is held for others (Part 11).</li>
+</ol>
+
+<!-- ───────────────────────── 4 ───────────────────────── -->
+<h2 class="pb"><span class="n">4</span>Recording an expense</h2>
+<p class="lead">An everyday expense: you spent money on something the business needs.</p>
+<p>Go to <span class="path">Finance → Expenses</span>. The form is at the top of the page, and the list of everything already recorded sits below it.</p>
+
+<h3>Example 1 — paid from petty cash</h3>
+<p>You bought printer paper and staples for the front office for Ksh 2,400, receipt RCPT-4471, paid from the cash float.</p>
+<figure class="shot"><img src="img/fg-03-expense-form.jpg" alt="The expense form filled in"><figcaption>The expense form, filled in for the printer paper example.</figcaption></figure>
+<ol class="marks">
+  <li><b>Date.</b> The day the money was spent (the date on the receipt), not the day you are typing it. Today is filled in for you; change it if the spending was earlier.</li>
+  <li><b>Category.</b> Pick the best match from the list: Office Supplies, Refreshments, Transport, Utilities, Airtime/Data, Courier/Delivery, Casual Labour, Equipment Maintenance, Cleaning, Bank Charges and so on. Use Miscellaneous only as a last resort. If unsure, ask the Finance Manager once and then stay consistent.</li>
+  <li><b>Note.</b> A short description of what was bought and why.</li>
+  <li><b>Invoice / receipt #.</b> The number printed on the receipt or supplier invoice. Write it exactly. If a supplier later says you did not pay, this is your proof.</li>
+  <li><b>Amount (Ksh).</b> The <b>full amount you paid, VAT included</b>. Type digits only (2400), no commas and no "Ksh". The system works out the VAT portion itself.</li>
+  <li><b>Business head (optional).</b> Which part of the business this cost belongs to (for example Laser Engraving or DTF Printing). Leave it as <i>Shared — not tagged to one</i> for general costs like rent and electricity. Choose a head when the cost clearly belongs to one line, because it makes the profit-by-head report accurate.</li>
+  <li><b>Paid by.</b> How the money left. See the table below. This one choice changes which other boxes appear.</li>
+  <li><b>Supplier (optional).</b> Who you paid. Needed when paying on credit, and a good habit for everything else.</li>
+  <li><b>Add.</b> Click once. The expense appears in the list below. Do not click twice.</li>
+</ol>
+
+<h3>The "Paid by" choices</h3>
+<table>
+  <tr><th style="width:26%">Choice</th><th>Use it when…</th><th style="width:30%">What the system does</th></tr>
+  <tr><td><b>Petty Cash</b></td><td>You paid in cash from the office float.</td><td>Reduces the petty cash balance.</td></tr>
+  <tr><td><b>Cheque</b></td><td>You wrote a cheque directly to a supplier or person.</td><td>Asks for the cheque number; puts it in the cheque register.</td></tr>
+  <tr><td><b>Cash</b></td><td>You paid in cash that did <b>not</b> come from the petty cash float (for example from the day's takings).</td><td>Reduces cash on hand.</td></tr>
+  <tr><td><b>Bank Transfer</b></td><td>The money went from the bank by transfer, EFT or standing order (rent, bank charges).</td><td>Reduces the bank account.</td></tr>
+  <tr><td><b>M-Pesa</b></td><td>You paid from the business M-Pesa till or paybill.</td><td>Reduces the M-Pesa account.</td></tr>
+  <tr><td><b>Card</b></td><td>You paid with a business bank card.</td><td>Reduces the bank account.</td></tr>
+  <tr><td><b>On credit (pay the supplier later)</b></td><td>You have the goods or service but have not paid yet.</td><td>Creates a bill owed to the supplier (Part 5).</td></tr>
+</table>
+
+<div class="box"><b class="t">Important: the money must exist</b>
+<p>Petty cash cannot go below zero. If the float cannot cover an expense, the system refuses it. That is usually a sign a cheque top-up was not recorded (Part 7), not that the expense is wrong.</p></div>
+
+<h3>Example 2 — paid by cheque to a supplier</h3>
+<p>Change <b>Paid by</b> to <b>Cheque</b>. One extra box appears.</p>
+<figure class="shot"><img src="img/fg-04-expense-cheque.jpg" alt="Paying an expense by cheque"><figcaption>Choosing Cheque adds a mandatory cheque-number box.</figcaption></figure>
+<ol class="marks">
+  <li><b>Paid by: Cheque.</b></li>
+  <li><b>Supplier.</b> Type the name of the person or company the cheque is made out to.</li>
+  <li><b>Cheque number *.</b> The six-digit number printed on the cheque leaf (for example 000458). The star means you cannot save without it. A cheque number can only be used once; the system stops you from using the same one twice.</li>
+</ol>
+<p>The note under the box confirms it: <i>Kept in the cheque register until it clears the bank.</i> You will mark it cleared when you see it on the bank statement (Part 8).</p>
+
+<h3>After you click Add</h3>
+<ul class="check">
+  <li>The expense is now at the top of the list below the form.</li>
+  <li>The date, category, amount and method match your receipt.</li>
+  <li>The receipt is stamped or marked "entered" and filed by date.</li>
+</ul>
+
+<!-- ───────────────────────── 5 ───────────────────────── -->
+<h2 class="pb"><span class="n">5</span>Bills you pay later (on credit)</h2>
+<p class="lead">When a supplier gives you an invoice and you will pay in 30 days.</p>
+
+<h3>Step 1 — record the bill when it arrives</h3>
+<p>Do this on the day you receive the goods or the service, even though no money has moved. That way the books show what we owe.</p>
+<figure class="shot"><img src="img/fg-05-expense-credit.jpg" alt="Recording an expense on credit"><figcaption>An expense paid on credit: service of the large-format printer, Ksh 36,000.</figcaption></figure>
+<ol class="marks">
+  <li><b>Paid by: On credit (pay the supplier later).</b></li>
+  <li><b>Supplier.</b> Required for credit; type it exactly the same way every time (the system groups bills by supplier name).</li>
+  <li><b>Payment due.</b> The date the supplier expects payment. This feeds the Payables report and tells you what to pay this week.</li>
+  <li><b>Invoice / receipt #.</b> The supplier's invoice number.</li>
+</ol>
+<p>Fill the date, category, note and amount as usual and click <b>Add</b>.</p>
+
+<h3>Step 2 — read the list</h3>
+<p>Credit bills appear in the same list as other expenses, with extra columns showing what is still owed.</p>
+<figure class="shot"><img src="img/fg-06-expense-list.jpg" alt="The expense list"><figcaption>The list of expenses. Rows on credit show a Pay button and the amount still owed.</figcaption></figure>
+<ol class="marks">
+  <li><b>Category.</b> Each row shows its category. If you picked the wrong one, change it from the drop-down; the system asks you to confirm and moves the expense (amount and date stay the same).</li>
+  <li><b>Supplier.</b> Who we owe or paid.</li>
+  <li><b>Method.</b> Petty Cash, Credit, Bank Transfer, M-Pesa or Cheque.</li>
+  <li><b>Owed.</b> The part of a credit bill still unpaid. A blank dash means nothing is owed.</li>
+  <li><b>Due.</b> The date payment is expected.</li>
+  <li><b>Pay.</b> Click to record a payment to the supplier (Step 3).</li>
+</ol>
+<p>The <b>Total</b> line at the bottom adds up the amounts and what is still owed. Beside Pay you also see <b>Amend</b> and a small <b>✕</b>; both are explained in Part 6.</p>
+
+<h3>Step 3 — pay the bill</h3>
+<ol class="steps">
+  <li><p>Find the bill in the list and click <b>Pay</b>. A small payment form opens under that row.</p></li>
+  <li><p>Fill the form (below) and click <b>Record payment</b>.</p></li>
+  <li><p>The <b>Owed</b> amount drops. Part-payments are fine: pay 20,000 now and the rest later. The bill disappears from Owed when it reaches zero.</p></li>
+</ol>
+<figure class="shot"><img src="img/fg-07-pay-bill.jpg" alt="Paying part of a supplier bill by cheque"><figcaption>Paying Ksh 20,000 of a bill by cheque.</figcaption></figure>
+<ol class="marks">
+  <li><b>Payment date.</b> The day the payment was made (the date on the cheque or transfer).</li>
+  <li><b>Amount (Ksh).</b> How much you are paying now. It cannot exceed what is owed.</li>
+  <li><b>Paid by.</b> Cheque, Bank Transfer, M-Pesa or Petty Cash.</li>
+  <li><b>Cheque number.</b> Appears when you choose Cheque. Required.</li>
+  <li><b>Record payment.</b> Saves it. <b>Cancel</b> closes the form without saving.</li>
+</ol>
+<div class="box warn"><b class="t">Do not record the same bill twice</b>
+<p>When you pay a credit bill, you use <b>Pay</b> on the existing row. Do not add a new expense for the payment. The expense was already recorded in Step 1; the payment only settles it.</p></div>
+
+<!-- ───────────────────────── 6 ───────────────────────── -->
+<h2 class="pb"><span class="n">6</span>Mistakes: amend or delete</h2>
+<p class="lead">Everyone makes typing mistakes. The system lets you fix them, with a second person agreeing.</p>
+<p>Once an expense is saved you cannot quietly change it. You ask for a change, give a reason, and another manager approves. That record is kept forever, which is what auditors like to see.</p>
+
+<h3>Amending an expense (wrong amount, date, category or note)</h3>
+<ol class="steps">
+  <li><p>In the list, click <b>Amend</b> on the row. A form opens under it.</p></li>
+  <li><p>Change only what is wrong.</p></li>
+  <li><p>Type the reason. Click <b>Submit</b>.</p></li>
+</ol>
+<figure class="shot"><img src="img/fg-08-amend.jpg" alt="The amend form"><figcaption>Correcting a refreshments entry from Ksh 1,500 to Ksh 1,350.</figcaption></figure>
+<ol class="marks">
+  <li><b>Date.</b></li>
+  <li><b>Category.</b></li>
+  <li><b>Note.</b></li>
+  <li><b>Amount.</b> The corrected amount.</li>
+  <li><b>Reason for amendment.</b> Required. Be specific: "Receipt shows 1,350, not 1,500".</li>
+  <li><b>Submit.</b> Sends the request. <b>Cancel</b> abandons it.</li>
+</ol>
+<p>Until it is approved, the original figure stays in the books.</p>
+
+<h3>Deleting an expense (recorded twice, or never happened)</h3>
+<ol class="steps">
+  <li><p>Click the small <b>✕</b> at the end of the row.</p></li>
+  <li><p>Type the reason for deletion and click <b>Submit</b>.</p></li>
+</ol>
+<figure class="shot"><img src="img/fg-09-delete.jpg" alt="Requesting deletion of an expense"><figcaption>Asking to delete a duplicate entry.</figcaption></figure>
+<ol class="marks">
+  <li><b>Reason for deletion.</b> Required. "Entered twice: the courier was paid once."</li>
+  <li><b>Submit.</b> Sends the request for approval.</li>
+</ol>
+
+<h3>The second person approves</h3>
+<p>A different Finance Manager, General Manager or Admin opens <span class="path">Finance → Expenses</span> and scrolls to the request boxes at the bottom. You cannot approve your own request; the screen tells you so.</p>
+<figure class="shot"><img src="img/fg-10-approvals.jpg" alt="Amendment requests waiting for approval"><figcaption>What the approver sees for an amendment.</figcaption></figure>
+<ol class="marks">
+  <li><b>Approve.</b> The change is applied and the books update.</li>
+  <li><b>Reject.</b> The original stays as it was.</li>
+  <li><b>Reason.</b> The explanation you gave. This is why you should write a clear one.</li>
+</ol>
+<figure class="shot"><img src="img/fg-10b-deletion-requests.jpg" alt="Expense deletion requests waiting for approval"><figcaption>Deletion requests are decided the same way.</figcaption></figure>
+<ol class="marks">
+  <li><b>Approve.</b> The expense is removed from the books.</li>
+  <li><b>Reject.</b> The expense stays.</li>
+</ol>
+<div class="box ok"><b class="t">Tip</b>
+<p>Tell the approver you have sent a request. Pending requests sit quietly until someone looks.</p></div>
+
+<!-- ───────────────────────── 7 ───────────────────────── -->
+<h2 class="pb"><span class="n">7</span>Petty cash and the cheque you cash</h2>
+<p class="lead">At GLM, a cheque is usually drawn in the Finance Head's name, cashed, and the cash is used for salaries, purchases and everyday costs. This part shows how to record that so nothing is lost.</p>
+
+<div class="flow">
+  <div class="st"><b>1. Cheque written</b>Made out to the Finance Head, number noted.</div>
+  <div class="st"><b>2. Cashed at the bank</b>Cash comes to the office.</div>
+  <div class="st alt"><b>3. Feed petty cash</b>Record it here with the cheque number.</div>
+  <div class="st"><b>4. Spend it</b>Salaries, purchases, expenses, each recorded.</div>
+  <div class="st"><b>5. Cleared</b>See it on the bank statement; mark cleared.</div>
+</div>
+
+<h3>The Petty Cash screen</h3>
+<p>Go to <span class="path">Finance → Petty Cash</span>.</p>
+<figure class="shot"><img src="img/fg-11-petty-cash.jpg" alt="The Petty Cash screen"><figcaption>The Petty Cash screen.</figcaption></figure>
+<ol class="marks">
+  <li><b>Current balance.</b> The cash that should be in the box right now. Count the real cash and compare. They must agree.</li>
+  <li><b>Top-ups this period.</b> Cash brought in from the bank in the chosen dates.</li>
+  <li><b>Spent this period.</b> Everything paid out of petty cash in those dates (expenses and wages).</li>
+  <li><b>Feed petty cash.</b> Record a top-up (below).</li>
+  <li><b>Log a petty cash expense.</b> A shortcut for entering an expense paid from the float; it is the same as the Expenses screen.</li>
+  <li><b>Petty cash ledger.</b> A running list of money in and out. Wrong top-ups can be removed with the ✕, with the same second-person approval as expenses.</li>
+</ol>
+
+<h3>Recording a cheque cashed for the float</h3>
+<ol class="steps">
+  <li><p>Open <b>Petty Cash</b>. Use the <b>Feed petty cash</b> box.</p></li>
+  <li><p>Fill the boxes below, then click <b>Add</b>.</p></li>
+</ol>
+<figure class="shot"><img src="img/fg-12-feed-petty-cash.jpg" alt="Feeding petty cash with a cheque"><figcaption>Recording cheque 000458 for Ksh 150,000.</figcaption></figure>
+<ol class="marks">
+  <li><b>Date.</b> The day the cash was withdrawn.</li>
+  <li><b>Source.</b> Bank Withdrawal for a cheque cashed at the bank. The other choices are Cash Sales Allocation (setting aside some of the day's cash takings for the float) and Owner Injection (the owner puts cash in).</li>
+  <li><b>Note.</b> Say what the cash is for: "Salaries and weekly purchases". If you withdrew for several purposes, name them all.</li>
+  <li><b>Amount (Ksh).</b> The full amount of the cheque.</li>
+  <li><b>Cheque number.</b> The number on the cheque leaf. Fill this in every time.</li>
+  <li><b>Drawn to.</b> The name on the cheque, for example "Finance Head".</li>
+  <li><b>Add.</b> Saves it. The balance goes up immediately.</li>
+</ol>
+<div class="box warn"><b class="t">One cheque, many purposes</b>
+<p>Do <b>not</b> split a single cheque into several top-ups. Record it once for the full amount. The system shares the later spending across withdrawals, oldest first, and shows you how much of each cheque went to salaries, purchases and expenses (Part 8). Splitting it by hand only creates confusion.</p></div>
+
+<h3>Spending from petty cash</h3>
+<p>Record every item spent from the float as an expense with <b>Paid by: Petty Cash</b> (Part 4), and every salary through Payroll (Part 10; wages are always paid from petty cash). Then the balance on screen stays true.</p>
+<div class="box"><b class="t">Count the cash every week</b>
+<p>Once a week (and at month-end), count the cash in the box and write the figure next to the screen's Current balance. A difference means something was not recorded, or was recorded wrongly. Find it now; it is easy today and hard in three months.</p></div>
+
+<!-- ───────────────────────── 8 ───────────────────────── -->
+<h2 class="pb"><span class="n">8</span>The cheque register</h2>
+<p class="lead">One list of every cheque we have written, and whether the bank has paid it.</p>
+<p>Go to <span class="path">Finance → Cheques</span>. Nothing is typed here for ordinary cheques: they land in the register on their own when you record them in Part 4, 5 or 7.</p>
+<figure class="shot"><img src="img/fg-13-cheques.jpg" alt="The cheque register"><figcaption>The Cheques screen.</figcaption></figure>
+<ol class="marks">
+  <li><b>Not yet cleared (unpresented).</b> The total of cheques written but not yet paid by the bank. The bank balance minus this is what is really ours. The third box counts cash withdrawals that have no cheque number; open each one and fix it.</li>
+  <li><b>Where the cash withdrawals went.</b> For every cash cheque: how much went to salaries, purchases, expenses and other things, and how much is left. Read this to answer "where did that Ksh 150,000 go?".</li>
+  <li><b>The cheque register.</b> The full list. Filter by Not cleared, Cleared, Cancelled or All, or search a number, payee or note.</li>
+</ol>
+
+<h3>Marking a cheque cleared</h3>
+<ol class="steps">
+  <li><p>Open the bank statement (online or the paper copy).</p></li>
+  <li><p>For each cheque that appears on it as paid, find the same number in the register and click <b>Mark cleared</b>, set the date the bank paid it (the date on the statement) and click <b>Cleared</b>.</p></li>
+  <li><p>Cheques still showing "not cleared" are the unpresented ones. They are normal for a few days; more than 30 days old is worth a call to the payee.</p></li>
+</ol>
+
+<h3>A spoilt or cancelled cheque</h3>
+<p>If you spoil a leaf, do not throw it away. At the bottom of the register, type its number, the date and why (for example "spoilt, wrong date") and click <b>Keep it in the register</b>. Then the numbers run in order with no mystery gaps.</p>
+<div class="box ok"><b class="t">Why this matters</b>
+<p>A complete register with every number accounted for is the best proof of control you can give an auditor or the owner.</p></div>
+
+<!-- ───────────────────────── 9 ───────────────────────── -->
+<h2 class="pb"><span class="n">9</span>Money coming in from customers</h2>
+<p class="lead">Most income is recorded by the sales staff when they take orders and receive payments. Your part is to watch what is still owed and to make sure the money really arrived.</p>
+
+<h3>Payments</h3>
+<p><span class="path">Finance → Payments</span> is a report of what customers owe and have paid, order by order. You read it; payments themselves are recorded on the order by the sales staff.</p>
+<figure class="shot"><img src="img/fg-14-payments.jpg" alt="The Payments screen"><figcaption>The Payments screen.</figcaption></figure>
+<ol class="marks">
+  <li><b>Pending Payments.</b> The tab listing orders with money still to collect.</li>
+  <li><b>Paid.</b> The tab listing orders already settled.</li>
+  <li><b>Balance.</b> What the customer still owes on that order (Total minus Paid).</li>
+  <li><b>Status.</b> Settled, Pending, or Overdue when the due date has passed.</li>
+</ol>
+<p>Every Monday, run down the Overdue rows and ask the sales person or the customer for the money. When a payment arrives by M-Pesa or bank and nobody has recorded it, tell the sales staff to record it on the order.</p>
+
+<h3>Customers who owe: Receivables</h3>
+<p><span class="path">Accounting → Receivables</span> groups unpaid invoices by how old they are.</p>
+<figure class="shot"><img src="img/fg-25-receivables.jpg" alt="The Receivables report"><figcaption>Receivables, by age of the debt.</figcaption></figure>
+<ol class="marks">
+  <li><b>Not yet due.</b> Invoices still within the customer's payment terms.</li>
+  <li><b>Age.</b> How many days overdue. Older debts are harder to collect: phone the customer now.</li>
+  <li><b>Owing.</b> The amount to collect.</li>
+</ol>
+
+<h3>M-Pesa receipts that need matching</h3>
+<p>M-Pesa money arrives with a code rather than an order number. <span class="path">Accounting → M-Pesa Matching</span> lets you read the M-Pesa statement and match each receipt to the right order.</p>
+<figure class="shot"><img src="img/fg-27-mpesa.jpg" alt="M-Pesa matching"><figcaption>M-Pesa matching.</figcaption></figure>
+<ol class="marks">
+  <li><b>Read statement.</b> Upload the M-Pesa statement. The system lists each receipt and suggests the order. Confirm the right ones and dismiss the ones that are not sales.</li>
+</ol>
+<p>An unmatched receipt is real money that the books cannot explain. Clear them at least weekly.</p>
+
+<h3>Refunds and corrections to a sale: credit notes</h3>
+<p>If a customer returns goods or is overcharged, you do <b>not</b> delete the sale. You issue a <b>credit note</b>, which takes the sale (and its VAT) back properly. Go to <span class="path">Accounting → Credit / Debit Notes</span>.</p>
+<figure class="shot"><img src="img/fg-24-notes.jpg" alt="Credit and debit notes"><figcaption>The Credit / Debit Notes tab.</figcaption></figure>
+<ol class="marks">
+  <li><b>Credit notes.</b> Reduce what a customer owes us (returns, faulty goods, discounts).</li>
+  <li><b>Debit notes.</b> Increase what a customer owes us (an undercharge).</li>
+  <li><b>Supplier debit notes.</b> Goods we return to a supplier, to reduce what we owe them.</li>
+  <li><b>New credit note.</b> Starts the form below.</li>
+</ol>
+<figure class="shot"><img src="img/fg-24b-new-credit-note.jpg" alt="New credit note form"><figcaption>Issuing a credit note: choose the order, give the reason, then click Issue credit note.</figcaption></figure>
+<p>Choose the <b>Order</b>, type the <b>Reason</b> ("Faulty caps returned") and pick the items being credited. Click <b>Issue credit note</b>. If the customer had already paid, the amount becomes money we owe them, and you can refund it straight away.</p>
+
+<!-- ───────────────────────── 10 ───────────────────────── -->
+<h2 class="pb"><span class="n">10</span>Staff pay (payroll)</h2>
+<p class="lead">Each month every employee is paid, and the taxes are worked out for you.</p>
+
+<h3>Before the first pay: employee details</h3>
+<p>Go to <span class="path">Compliance → Employees</span> and make sure every person has the details KRA and NSSF need.</p>
+<figure class="shot"><img src="img/fg-15-employees.jpg" alt="Employee details"><figcaption>Employee details.</figcaption></figure>
+<ol class="marks">
+  <li><b>National ID.</b></li>
+  <li><b>KRA PIN.</b> Needed for the employee's PAYE return.</li>
+  <li><b>Gross salary.</b> The agreed monthly salary before any deductions.</li>
+  <li><b>Add details.</b> Click for people with a missing record, and fill the form.</li>
+</ol>
+<p>Staff names come from <span class="path">Master Data → Staff &amp; Users</span>. If a new person is not in the list, ask the Admin to add them first.</p>
+
+<h3>Logging the month's pay</h3>
+<p>Go to <span class="path">Compliance → Payroll</span>. Do this once per person per month.</p>
+<figure class="shot"><img src="img/fg-17-payroll-form.jpg" alt="The Log pay form"><figcaption>Logging a month's pay for one employee.</figcaption></figure>
+<ol class="marks">
+  <li><b>Date.</b> The pay date (usually the last working day of the month).</li>
+  <li><b>Staff.</b> Pick the person.</li>
+  <li><b>Type.</b> <i>Employee</i> for permanent staff on a monthly salary. <i>Casual</i> for day-rate workers; casuals carry no statutory deductions.</li>
+  <li><b>Department.</b></li>
+  <li><b>Monthly salary (Ksh).</b> The gross salary. A line under the form shows a gross-pay preview.</li>
+  <li><b>Paid from.</b> Always Petty Cash. The net pay (after deductions) leaves the float and the system refuses it if the float cannot cover it. Feed petty cash first if needed (Part 7).</li>
+  <li><b>Add.</b> Saves the pay. PAYE, NSSF, SHIF and the housing levy are worked out automatically.</li>
+</ol>
+
+<h3>Reading the payroll log</h3>
+<figure class="shot"><img src="img/fg-16-payroll-log.jpg" alt="The payroll log"><figcaption>The payroll log and summary for September.</figcaption></figure>
+<ol class="marks">
+  <li><b>Gross payroll.</b> What the staff earned before deductions.</li>
+  <li><b>Statutory deductions.</b> PAYE, NSSF, SHIF and the housing levy taken from pay. This is money the business must pay over.</li>
+  <li><b>Net payroll.</b> What staff actually receive.</li>
+  <li><b>Payroll log.</b> One row per person: gross, each deduction, net, who captured it. <b>Payslip</b> prints that person's payslip. The ✕ asks to delete a wrong entry (with approval, as for expenses).</li>
+  <li><b>Print payroll (A4)</b> prints the whole month for signing. <b>Print all payslips</b> prints one slip per person.</li>
+</ol>
+<div class="box"><b class="t">What the numbers mean</b>
+<p>Example from the screen: gross Ksh 137,000, less statutory deductions Ksh 28,260, leaves net Ksh 108,740 paid out in cash. The Ksh 28,260 stays in our hands until paid to KRA, NSSF and SHIF (Part 11). The business also owes its own matching NSSF and housing levy on top.</p></div>
+
+<h3>Monthly payroll checklist</h3>
+<ul class="check">
+  <li>All new staff and salary changes entered under Employees.</li>
+  <li>Petty cash balance is at least the net payroll total.</li>
+  <li>Every employee has one pay row for the month (no one missing, no one twice).</li>
+  <li>Payroll printed, signed by each employee when they receive cash, and filed.</li>
+</ul>
+
+<!-- ───────────────────────── 11 ───────────────────────── -->
+<h2 class="pb"><span class="n">11</span>Paying PAYE, NSSF, SHIF, the levy and VAT</h2>
+<p class="lead">The part with deadlines. Late payment brings penalties.</p>
+<p>Go to <span class="path">Compliance → Payments due</span>. Pick the months you want (for example the last two) and the screen tells you what to pay and when.</p>
+<figure class="shot"><img src="img/fg-18-payments-due.jpg" alt="The Payments due screen"><figcaption>Payments due, month by month.</figcaption></figure>
+<ol class="marks">
+  <li><b>Total to pay — write the cheque for.</b> Everything due for the months selected, added together.</li>
+  <li><b>Pay by.</b> The deadline for that month's row.</li>
+  <li><b>PAYE</b> (and the other columns across: NSSF, SHIF, Housing Levy, Withholding tax, Income tax).</li>
+  <li><b>VAT.</b> The net VAT due for that month.</li>
+  <li><b>Still owing on the books today.</b> What the books say is unpaid per tax account after payments already recorded. Use this to check before writing a cheque.</li>
+</ol>
+
+<table>
+  <tr><th>Tax</th><th>Pay to</th><th>Due by</th></tr>
+  <tr><td>PAYE, SHIF, Housing levy</td><td>KRA / SHA / housing levy account</td><td>The 9th of the next month</td></tr>
+  <tr><td>NSSF</td><td>NSSF</td><td>The 15th of the next month</td></tr>
+  <tr><td>VAT and withholding tax</td><td>KRA</td><td>The 20th of the next month</td></tr>
+  <tr><td>Corporation (income) tax</td><td>KRA</td><td>Instalments through the year, with the final balance after the year ends (Part 13)</td></tr>
+</table>
+
+<h3>Recording the payment (so the books show it as paid)</h3>
+<p>Paying the tax at the bank or on iTax is only half the job. You must also tell the POS you paid, otherwise it keeps showing the amount as owing.</p>
+<ol class="steps">
+  <li><p>Make the payment (cheque, bank transfer or the portal). Keep the payment slip or reference.</p></li>
+  <li><p>Go to <span class="path">Accounting → Journals</span> and click <b>Pay VAT / PAYE / NSSF…</b></p></li>
+  <li><p>Choose the account being paid, put the amount in the <b>Debit</b> column, and make sure the other line is the <b>Bank Account</b> (the money left the bank). Click <b>Post journal</b>.</p></li>
+</ol>
+<figure class="shot"><img src="img/fg-23b-journal-pay-tax.jpg" alt="Journal for paying tax"><figcaption>The Pay VAT / PAYE / NSSF journal. Choose the tax account, enter the amount, click Post journal.</figcaption></figure>
+<ol class="marks">
+  <li><b>Pay VAT / PAYE / NSSF…</b> picks the right type of journal and puts the tax account on the first line and the bank on the second.</li>
+  <li><b>The journal form.</b> Date and a description (for example "PAYE and NSSF for September, KRA ref 12345"). The first line is the tax account you are paying and takes the <b>Debit</b> amount. The second line is the bank and takes the same amount in <b>Credit</b>. The two totals must be equal before Post journal turns green.</li>
+</ol>
+<div class="box warn"><b class="t">Never spend this money</b>
+<p>The deductions held from staff pay and the VAT collected from customers are not profit. If the bank balance looks healthy, check Payments due before deciding that you can afford anything.</p></div>
+
+<!-- ───────────────────────── 12 ───────────────────────── -->
+<h2 class="pb"><span class="n">12</span>VAT, step by step</h2>
+<p>Go to <span class="path">Compliance → VAT</span> and choose the month.</p>
+<figure class="shot"><img src="img/fg-19-vat.jpg" alt="The VAT screen"><figcaption>The VAT summary for a period.</figcaption></figure>
+<ol class="marks">
+  <li><b>Output VAT — on sales.</b> The VAT we charged customers.</li>
+  <li><b>Input VAT — on purchases &amp; expenses.</b> The VAT suppliers charged us.</li>
+  <li><b>Net VAT payable to KRA.</b> Output minus input. This is what you pay.</li>
+  <li><b>VAT statement.</b> The detail: sales by income account, and the supplier bills behind input VAT. Click an account to see the documents behind the figure. Print / PDF gives the working to keep with the return.</li>
+</ol>
+<h4>How to do the monthly VAT return</h4>
+<ol class="steps">
+  <li><p>On the 1st of the month, set From and To to the <b>previous month</b> (for example 01/09 to 30/09).</p></li>
+  <li><p>Confirm every expense and stock purchase of that month is recorded with its supplier invoice number. VAT you cannot support with an invoice cannot be claimed.</p></li>
+  <li><p>Click Print / PDF and file the page.</p></li>
+  <li><p>File the return on iTax by the 20th using the Net VAT payable figure.</p></li>
+  <li><p>Pay it, then record the payment with the Pay VAT journal (Part 11).</p></li>
+</ol>
+<div class="box"><b class="t">Reminder</b>
+<p>Only expenses with a proper supplier invoice carry claimable VAT. A bare receipt without the supplier's PIN and VAT detail usually does not.</p></div>
+
+<!-- ───────────────────────── 13 ───────────────────────── -->
+<h2><span class="n">13</span>Setting money aside for income tax</h2>
+<p class="lead">The business pays corporation tax on its profit. The planner tells you how much to put aside each month so there is no shock at filing time.</p>
+<p>Go to <span class="path">Compliance → Corporation tax</span>. It is for information and planning only: it does not move money.</p>
+<figure class="shot"><img src="img/fg-20-tax-planner.jpg" alt="The tax set-aside planner"><figcaption>The tax set-aside planner.</figcaption></figure>
+<ol class="marks">
+  <li><b>The planner.</b> The large figure is what you should have set aside by now (here Ksh 140,161, which is 30% of the year's profit so far). The table below shows each month's profit, what to hold, what you set aside and whether you are on track.</li>
+</ol>
+<h4>Each month</h4>
+<ol class="steps">
+  <li><p>After the month-end checks (Part 17), open the planner and read <b>Plan for the month</b>.</p></li>
+  <li><p>Move that amount into a separate savings account (a separate bank or M-Pesa account is best), so it is not spent by mistake.</p></li>
+  <li><p>At the bottom of the planner enter the date, the amount actually moved and a note, then click <b>Record</b>. This does not post anything to the books; it only lets the planner show whether you are on track.</p></li>
+</ol>
+<p>The red banner at the top lists instalments due to KRA in the next 60 days. When you pay KRA, the Admin records it on the same Corporation tax screen (<b>Record a payment to KRA</b>, below the planner; only an Admin can change the tax settings or record a payment). Give the Admin the KRA payment reference.</p>
+
+<!-- ───────────────────────── 14 ───────────────────────── -->
+<h2 class="pb"><span class="n">14</span>Stock purchases and supplier bills</h2>
+<p class="lead">Buying things to sell or to make products is not an ordinary expense.</p>
+<p>Purchases are recorded on <span class="path">Stock → Purchases</span>. The store manager raises a requisition, a manager approves it, and the purchase is captured with the supplier invoice. It is then received into stock when the goods physically arrive.</p>
+<figure class="shot"><img src="img/fg-32-stock-purchases.jpg" alt="The stock purchase order form"><figcaption>Capturing a stock purchase order against a supplier invoice.</figcaption></figure>
+<p>For each purchase make sure you have:</p>
+<ul class="check">
+  <li>The supplier name, spelled the same way every time.</li>
+  <li>The invoice number and the date on the invoice.</li>
+  <li>Each material, the quantity and the unit price.</li>
+  <li>The business head each item belongs to (or Shared).</li>
+  <li>How it was paid: from petty cash, by cheque (with the number), or on credit.</li>
+</ul>
+<div class="box warn"><b class="t">Do not enter a purchase twice</b>
+<p>A stock purchase already posts its own cost and VAT. Do not also add it on the Expenses screen. When stock is paid from petty cash it shows in the petty cash ledger by itself, as in the earlier screenshot.</p></div>
+
+<h3>What we owe suppliers: Payables</h3>
+<p><span class="path">Accounting → Payables</span> lists unpaid supplier bills. Open it every Monday and decide what to pay this week.</p>
+<figure class="shot"><img src="img/fg-26-payables.jpg" alt="The Payables report"><figcaption>Payables: what we owe suppliers.</figcaption></figure>
+<ol class="marks">
+  <li><b>Supplier.</b></li>
+  <li><b>Due.</b> Pay on or just before this date. Late payment can lose supplier goodwill and discounts.</li>
+  <li><b>Owing.</b> The amount unpaid. Pay it from the expense row (<b>Pay</b>, Part 5) or the purchase.</li>
+</ol>
+
+<h3>Assets we keep for years</h3>
+<p>Machines, computers and furniture are <b>assets</b>, not expenses. Record them in <span class="path">Finance → Asset Register</span> so the system spreads their cost over their useful life (depreciation). Ask the Finance Manager before recording anything above a small value.</p>
+<figure class="shot"><img src="img/fg-30-assets.jpg" alt="The Asset Register"><figcaption>The Asset Register.</figcaption></figure>
+
+<h3>Corporate clients</h3>
+<p><span class="path">Finance → Corporate Clients</span> holds the businesses we invoice on credit, with their payment terms and contacts. Keep their details current so the invoices and statements go to the right place.</p>
+<figure class="shot"><img src="img/fg-31-clients.jpg" alt="Corporate Clients"><figcaption>Corporate Clients.</figcaption></figure>
+
+<!-- ───────────────────────── 15 ───────────────────────── -->
+<h2 class="pb"><span class="n">15</span>Journals: the few you will need</h2>
+<p class="lead">A journal is a hand-made entry. Most days you will not need one.</p>
+<p>Go to <span class="path">Accounting → Journals</span>. The screen offers ready-made types, so you do not need to know which accounts to pick.</p>
+<figure class="shot"><img src="img/fg-23-journals.jpg" alt="The Journals screen"><figcaption>The Journals screen.</figcaption></figure>
+<ol class="marks">
+  <li><b>Pay VAT / PAYE / NSSF…</b> Records tax paid over to the authorities (Part 11).</li>
+  <li><b>Opening balance.</b> Used once, when the books first start, to enter what the business already had. Ask the Finance Manager.</li>
+  <li><b>The new journal form.</b> Every journal needs total <b>Debits</b> equal to total <b>Credits</b>; the Post journal button stays grey until they match.</li>
+</ol>
+<table>
+  <tr><th>Type</th><th>Use it when…</th></tr>
+  <tr><td>Owner puts money in</td><td>The owner pays money into the business bank account.</td></tr>
+  <tr><td>Owner takes money out</td><td>The owner withdraws money for personal use (not an expense).</td></tr>
+  <tr><td>Bank deposit (cash → bank)</td><td>You take sales cash to the bank and deposit it.</td></tr>
+  <tr><td>Pay VAT / PAYE / NSSF…</td><td>You have paid tax to the authorities.</td></tr>
+  <tr><td>Opening balance</td><td>Setting up the books, once.</td></tr>
+  <tr><td>Other journal</td><td>Anything else. Do not use it without asking the Finance Manager.</td></tr>
+</table>
+<div class="box"><b class="t">Debit and credit in one line</b>
+<p>Every movement of money has two sides: where it came from (credit) and where it went (debit). Pay VAT: <b>debit</b> VAT Payable (we owe less), <b>credit</b> Bank (we have less). The ready-made types set those sides for you.</p></div>
+
+<h3>The chart of accounts</h3>
+<p>All accounts are listed in <span class="path">Accounting → Chart of Accounts</span>: assets (what we own), liabilities (what we owe), income, expenses and equity. You normally only look here to find the name of an account.</p>
+<figure class="shot"><img src="img/fg-29-chart.jpg" alt="The chart of accounts"><figcaption>The chart of accounts.</figcaption></figure>
+
+<!-- ───────────────────────── 16 ───────────────────────── -->
+<h2 class="pb"><span class="n">16</span>Reports and the Books Check</h2>
+<p>All the books' reports are in <span class="path">Accounting</span>.</p>
+<figure class="shot"><img src="img/fg-21-accounting-tabs.jpg" alt="The tabs of the Accounting screen"><figcaption>The tabs of the Accounting screen.</figcaption></figure>
+<ol class="marks">
+  <li><b>Profit &amp; Loss.</b> Income minus expenses for the dates chosen: did we make money?</li>
+  <li><b>Receivables.</b> What customers owe us.</li>
+  <li><b>Payables.</b> What we owe suppliers.</li>
+  <li><b>Credit / Debit Notes.</b> Corrections to sales and purchases.</li>
+  <li><b>M-Pesa Matching.</b> Matching M-Pesa receipts to orders.</li>
+  <li><b>Journals.</b> Hand entries (Part 15).</li>
+  <li><b>Books Check.</b> An automatic self-test of the books.</li>
+</ol>
+<p>Others in the row: Balance Sheet (what we own and owe at one date), Cash Flow (where the cash came from and went), Depreciation, General Ledger (every entry, line by line) and Trial Balance (every account's total).</p>
+
+<h3>The Profit &amp; Loss</h3>
+<figure class="shot"><img src="img/fg-22-profit-loss.jpg" alt="Profit and Loss report"><figcaption>The Profit &amp; Loss report.</figcaption></figure>
+<p>Read it from the top: the income lines, then the cost of what we sold, then each expense line, then the profit at the bottom. If an expense line looks too big or too small, click through to see the entries. Often it points to a wrongly categorised expense.</p>
+
+<h3>The Books Check: run it every month-end</h3>
+<p>Go to <span class="path">Accounting → Books Check</span>. It re-works each record and compares it with what the books posted.</p>
+<figure class="shot"><img src="img/fg-28-books-check.jpg" alt="The Books Check"><figcaption>The Books Check, with everything agreeing.</figcaption></figure>
+<ol class="marks">
+  <li><b>All good.</b> The badge turns green when every test passes. If it lists a problem instead, read the description and fix the entry that causes it. Do not ignore it.</li>
+</ol>
+<p>The tests include: debits equal credits, the balance sheet balances, receivables and payables agree to their reports, petty cash never went below zero, and no M-Pesa receipts are waiting to be matched.</p>
+
+<!-- ───────────────────────── 17 ───────────────────────── -->
+<h2 class="pb"><span class="n">17</span>Your daily, weekly and monthly routine</h2>
+<h3>Every day</h3>
+<ul class="check">
+  <li>Record each expense with its receipt (Part 4).</li>
+  <li>Record any cheque cashed or written, with its number (Parts 5, 7).</li>
+  <li>Check Payments for customers who have paid (Part 9).</li>
+  <li>Count the petty cash at close; it must match the screen.</li>
+  <li>File the day's receipts, newest on top.</li>
+</ul>
+<h3>Every week</h3>
+<ul class="check">
+  <li>Review Payables and decide what to pay (Part 14).</li>
+  <li>Match M-Pesa receipts (Part 9).</li>
+  <li>Phone customers with old receivables.</li>
+  <li>Compare the cheque register with the bank statement and mark the cleared ones (Part 8).</li>
+  <li>Ask the second approver to clear any pending requests (Part 6).</li>
+</ul>
+<h3>Every month-end</h3>
+<ul class="check">
+  <li>Record payroll for every employee, print and have it signed (Part 10).</li>
+  <li>Open Payments due, write the cheques, pay on time and post the payment journals (Part 11).</li>
+  <li>Do the VAT return (Part 12).</li>
+  <li>Record the tax set-aside (Part 13).</li>
+  <li>Count petty cash, check every cheque is accounted for (Part 8).</li>
+  <li>Run the Books Check and fix every item (Part 16).</li>
+  <li>Print the Profit &amp; Loss and file it with the month's papers.</li>
+</ul>
+<h3>Every year</h3>
+<ul class="check">
+  <li>Give the accountant the P&amp;L, Balance Sheet, payroll summary, VAT statements, cheque register and Books Check.</li>
+  <li>Confirm the asset register is complete.</li>
+  <li>Reconcile the final bank balance, allowing for unpresented cheques.</li>
+</ul>
+
+<!-- ───────────────────────── 18 ───────────────────────── -->
+<h2><span class="n">18</span>Mistakes people make, and questions</h2>
+<table>
+  <tr><th style="width:36%">The mistake</th><th>What to do instead</th></tr>
+  <tr><td>Entering an expense twice</td><td>Search the list before you add. If it happens, request a deletion with a reason (Part 6).</td></tr>
+  <tr><td>Adding a new expense when paying a credit bill</td><td>Use <b>Pay</b> on the original row (Part 5).</td></tr>
+  <tr><td>Entering a stock purchase on the Expenses screen</td><td>Use Stock → Purchases. It already records the cost.</td></tr>
+  <tr><td>Splitting one cheque into several top-ups</td><td>Record the cheque once; the Cheques screen shows where it went.</td></tr>
+  <tr><td>Leaving the cheque number blank</td><td>Always record it. Fix old ones from the register.</td></tr>
+  <tr><td>Putting the amount without VAT</td><td>Enter the full amount you paid; the system splits the VAT.</td></tr>
+  <tr><td>Using "Miscellaneous" for everything</td><td>Choose the closest real category.</td></tr>
+  <tr><td>Paying tax but not recording it</td><td>Post the payment journal (Part 11).</td></tr>
+  <tr><td>Spending the VAT or payroll tax money</td><td>Check Payments due before spending a surplus.</td></tr>
+  <tr><td>Looking at the wrong dates</td><td>Always check From and To (Part 2).</td></tr>
+  <tr><td>Ignoring a Books Check warning</td><td>Fix it now; it grows.</td></tr>
+</table>
+
+<h3>Questions</h3>
+<dl class="gl">
+  <dt>The system will not accept my petty cash expense.</dt>
+  <dd>The float cannot cover it. Check that the last cheque you cashed is recorded under Petty Cash → Feed petty cash. If the cash exists, record the top-up first.</dd>
+  <dt>I entered the wrong date.</dt>
+  <dd>Use Amend (Part 6) and have it approved.</dd>
+  <dt>I do not have a receipt.</dt>
+  <dd>Write a signed note with the date, what, who and amount. Record it and say so in the Note box. Tell the Finance Manager.</dd>
+  <dt>The cheque number says it is already used.</dt>
+  <dd>Another entry has that number. Open the Cheques screen and search for it. You may be entering the same cheque twice, or the number was mistyped.</dd>
+  <dt>A cheque was cashed for several things.</dt>
+  <dd>Record it once. The "Where the cash withdrawals went" box shows how it was spent (Part 8).</dd>
+  <dt>Can I see who changed something?</dt>
+  <dd>Yes. Every entry shows who captured it, and every amendment or deletion keeps who asked, who approved and why.</dd>
+  <dt>I cannot see a tab.</dt>
+  <dd>Your role does not have access. Ask the Admin.</dd>
+  <dt>Who do I ask for help?</dt>
+  <dd>Your Finance Manager first. Never guess at a journal; ask.</dd>
+</dl>
+
+<div class="box ok"><b class="t">You are ready</b>
+<p>Start with one real expense today, follow Part 4 slowly, and check the result in the list. After a week it will take thirty seconds.</p></div>
+
+</div>
+</body>
+</html>

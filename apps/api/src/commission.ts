@@ -41,7 +41,12 @@ import {
   withholdingOn,
   systemJobCalc,
   todayStr,
+  SALES_TYPES,
+  SALES_TYPE_PAID_AS,
+  blankSalesTypeRows,
+  salesTypeOf,
 } from '@glm/shared';
+import type { SalesType, SalesTypeRow } from '@glm/shared';
 import type { Band, FreelanceSplit, GeneralMode, LineItemInput, PayStep, SalesTarget, TargetMode } from '@glm/shared';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
@@ -368,7 +373,7 @@ export async function claimProblem(
 
 // ── The monthly statement ───────────────────────────────────────────────────
 
-const orderInc = { lineItems: true, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true } satisfies Prisma.OrderInclude;
+const orderInc = { lineItems: { include: { service: { select: { name: true } } } }, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true, embroideryJob: true } satisfies Prisma.OrderInclude;
 type StatementOrder = Prisma.OrderGetPayload<{ include: typeof orderInc }>;
 
 const toInput = (li: StatementOrder['lineItems'][number]): LineItemInput => ({
@@ -420,6 +425,8 @@ export interface StaffStatement {
     commission: number;
     jobs: { orderNo: string; customer: string; pieces: number; systemPerPiece: number; chargedPerPiece: number; orderTotal: number; moneyIn: number; commission: number }[];
   };
+  /** Where the month's sales came from: one row for each kind of sale under Sales (the screen it was captured through), with the commission each earned. */
+  byType: SalesTypeRow[];
   // How much they sold in the month (by the day the order was raised), whether or not it has been paid yet
   productivity: {
     ordersCaptured: number;
@@ -447,6 +454,7 @@ export function blankStatement(staffId: number, staffName = '', target?: SalesTa
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
+    byType: blankSalesTypeRows(),
     productivity: { ordersCaptured: 0, ordersSourced: 0, sourcedValue: 0, filmSales: 0, filmMetres: 0, filmAvgPricePerM: null, filmAvgPremiumPerM: null, artworkJobs: 0, artworkPieces: 0, artworkExtraCharged: 0 },
   };
 }
@@ -503,6 +511,17 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
   const dtfNet = new Map<number, number>();
   const addDtfNet = (id: number, net: number) => dtfNet.set(id, (dtfNet.get(id) ?? 0) + net / (1 + VAT_RATE));
 
+  // Per person and kind of sale (the screen the order came through): what they sold, what they were paid on, what it earned
+  type Cell = { orders: number; sold: number; soldBefore: number; received: number; commission: number };
+  const typed = new Map<number, Map<SalesType, Cell>>();
+  const cell = (staff: number, type: SalesType): Cell => {
+    let m = typed.get(staff);
+    if (!m) typed.set(staff, (m = new Map()));
+    let c = m.get(type);
+    if (!c) m.set(type, (c = { orders: 0, sold: 0, soldBefore: 0, received: 0, commission: 0 }));
+    return c;
+  };
+
   const people = new Map<number, StaffStatement>();
   const who = (id: number) => {
     let s = people.get(id);
@@ -518,18 +537,22 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     const net = f.received - f.refunded;
     const total = orderTotal(o);
     const share = total > 0 ? net / total : 0;
+    const type = salesTypeOf(o);
     if (o.dtfFilmSale) {
+      cell(o.staffId, type).received += net;
       const s = o.dtfFilmSale;
       const full = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
       if (full <= 0) addDtfNet(o.staffId, net);
       if (full > 0) {
         const c = round2(full * share);
+        cell(o.staffId, type).commission += c;
         const st = who(o.staffId);
         st.film.commission = round2(st.film.commission + c);
         addDtfNet(o.staffId, net);
         st.film.sales.push({ orderNo: o.orderNo, customer: customerOf(o), metres: s.metres, pricePerM: s.pricePerM, premiumPerM: filmPremiumPerM(s.pricePerM, s.minPriceAtSale), orderTotal: round2(total), moneyIn: round2(net), commission: c });
       }
     } else if (o.dtfArtworkJob) {
+      cell(o.staffId, type).received += net;
       const j = o.dtfArtworkJob;
       const sys = systemJobCalc({ id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
       const charged = Math.max(sys, j.chargedPerPiece ?? sys);
@@ -537,12 +560,14 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       if (full <= 0) addDtfNet(o.staffId, net);
       if (full > 0) {
         const c = round2(full * share);
+        cell(o.staffId, type).commission += c;
         const st = who(o.staffId);
         st.artwork.commission = round2(st.artwork.commission + c);
         addDtfNet(o.staffId, net);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net), commission: c });
       }
     } else if (o.channel !== 'dtf' && o.sourcedByStaffId && o.status !== 'Quote') {
+      cell(o.sourcedByStaffId, type).received += net;
       const st = who(o.sourcedByStaffId);
       st.general.received = round2(st.general.received + net);
       st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
@@ -555,6 +580,9 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     if (o.freelanceAgentId) continue;
     const cap = who(o.staffId).productivity;
     cap.ordersCaptured++;
+    const soldCell = cell(o.staffId, salesTypeOf(o));
+    soldCell.orders++;
+    soldCell.sold += orderTotal(o) / (1 + VAT_RATE);
     if (o.dtfFilmSale) {
       const s = o.dtfFilmSale;
       cap.filmSales++;
@@ -634,6 +662,47 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     st.general.band = bandPosition(config.generalBands, target.eligibleSales);
     st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
     payFor(st);
+  }
+
+  // What each person sold of each kind last month (the same measure), to show whether a kind of sale is growing
+  const prev = new Date(Date.UTC(py, pm - 2, 1));
+  const prevPeriod = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
+  const before = periodRange(prevPeriod);
+  for (const o of await prisma.order.findMany({ where: { createdDate: { gte: before.start, lte: before.end }, status: { not: 'Quote' }, freelanceAgentId: null }, include: orderInc })) {
+    if (people.has(o.staffId)) cell(o.staffId, salesTypeOf(o)).soldBefore += orderTotal(o) / (1 + VAT_RATE);
+  }
+  for (const st of people.values()) {
+    const mine = typed.get(st.staffId);
+    // film and artwork: each kind's share of what was earned (what is paid may be held back when the target is not met)
+    const rawFilm = SALES_TYPES.filter((t) => SALES_TYPE_PAID_AS[t] === 'film').reduce((a, t) => a + (mine?.get(t)?.commission ?? 0), 0);
+    const rawArtwork = SALES_TYPES.filter((t) => SALES_TYPE_PAID_AS[t] === 'artwork').reduce((a, t) => a + (mine?.get(t)?.commission ?? 0), 0);
+    // the pay bands' commission is shared between the kinds of sale in proportion to the money received on each
+    const generalTypes = SALES_TYPES.filter((t) => SALES_TYPE_PAID_AS[t] === 'general');
+    const generalReceived = generalTypes.reduce((a, t) => a + Math.max(0, mine?.get(t)?.received ?? 0), 0);
+    const generalShare = new Map<SalesType, number>();
+    if (generalReceived > 0 && st.general.commission > 0) {
+      let left = st.general.commission;
+      const sorted = generalTypes.filter((t) => (mine?.get(t)?.received ?? 0) > 0).sort((a, b) => (mine!.get(b)!.received) - (mine!.get(a)!.received));
+      sorted.forEach((t, i) => {
+        const part = i === sorted.length - 1 ? left : round2((st.general.commission * Math.max(0, mine!.get(t)!.received)) / generalReceived);
+        generalShare.set(t, part);
+        left = round2(left - part);
+      });
+    }
+    st.byType = blankSalesTypeRows().map((row) => {
+      const c = mine?.get(row.type);
+      const paidAs = SALES_TYPE_PAID_AS[row.type];
+      const commission = paidAs === 'film' ? (rawFilm > 0 ? round2(((c?.commission ?? 0) / rawFilm) * st.film.commission) : 0) : paidAs === 'artwork' ? (rawArtwork > 0 ? round2(((c?.commission ?? 0) / rawArtwork) * st.artwork.commission) : 0) : generalShare.get(row.type) ?? 0;
+      return { ...row, orders: c?.orders ?? 0, sold: round2(c?.sold ?? 0), soldBefore: round2(c?.soldBefore ?? 0), received: round2((c?.received ?? 0) / (1 + VAT_RATE)), commission };
+    });
+  }
+  // how the team did, so a person can see where they are above or below the average
+  const everyone = [...people.values()];
+  if (everyone.length > 0) {
+    for (const t of SALES_TYPES) {
+      const avg = round2(everyone.reduce((a, st) => a + (st.byType.find((r) => r.type === t)?.sold ?? 0), 0) / everyone.length);
+      for (const st of everyone) st.byType.find((r) => r.type === t)!.teamAvgSold = avg;
+    }
   }
 
   const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });

@@ -69,6 +69,16 @@ interface Target {
   eligibleSales: number;
   held: boolean;
 }
+interface SalesTypeRow {
+  type: string;
+  label: string;
+  orders: number;
+  sold: number;
+  soldBefore: number;
+  received: number;
+  commission: number;
+  teamAvgSold: number;
+}
 interface Statement {
   staffId: number;
   staffName: string;
@@ -87,6 +97,7 @@ interface Statement {
   };
   film: { commission: number; sales: { orderNo: string; customer: string; metres: number; pricePerM: number; premiumPerM: number; orderTotal: number; moneyIn: number; commission: number }[] };
   artwork: { commission: number; jobs: { orderNo: string; customer: string; pieces: number; systemPerPiece: number; chargedPerPiece: number; orderTotal: number; moneyIn: number; commission: number }[] };
+  byType: SalesTypeRow[];
   productivity: {
     ordersCaptured: number;
     ordersSourced: number;
@@ -265,12 +276,89 @@ function TargetCard({ s, you }: { s: Statement; you?: boolean }) {
 }
 
 /** How a month's figure was made up — shown to the staff member themselves and to managers. */
+// Where the month's sales came from: one row for each kind of sale under Sales (the screen it was captured through), what it earned, and how the person compares with the team — to see
+// where they are selling more and where they are behind.
+function SalesByType({ s, you }: { s: Statement; you?: boolean }) {
+  const rows = s.byType ?? [];
+  const totalSold = rows.reduce((a, r) => a + r.sold, 0);
+  const totalBefore = rows.reduce((a, r) => a + r.soldBefore, 0);
+  const totalCommission = rows.reduce((a, r) => a + r.commission, 0);
+  // a kind of sale nobody sold, this month or last, is left out
+  const shown = rows.filter((r) => r.sold > 0 || r.soldBefore > 0 || r.teamAvgSold > 0 || r.commission > 0);
+  const best = shown.reduce<SalesTypeRow | null>((b, r) => (r.sold > (b?.sold ?? 0) ? r : b), null);
+  const status = (r: SalesTypeRow) => {
+    if (r.sold <= 0) return r.teamAvgSold > 0 ? { text: 'Not selling yet', tone: 'tag-outline' } : { text: '—', tone: '' };
+    if (best && r.type === best.type) return { text: 'Selling most here', tone: 'tag-accent' };
+    if (r.teamAvgSold > 0 && r.sold < r.teamAvgSold) return { text: 'Behind the team average', tone: 'tag-outline' };
+    return { text: r.teamAvgSold > 0 ? 'At or above the team average' : 'On track', tone: 'tag-neutral' };
+  };
+  const change = (r: SalesTypeRow) => (r.soldBefore > 0 ? (r.sold >= r.soldBefore ? '▲ ' : '▼ ') + Math.abs(Math.round(((r.sold - r.soldBefore) / r.soldBefore) * 100)) + '%' : r.sold > 0 ? 'new' : '—');
+  return (
+    <div>
+      <div className="card-kicker">Where {you ? 'your' : 'their'} sales come from — {fmtKsh(totalCommission)} earned</div>
+      <p className="note" style={{ marginTop: 0 }}>
+        Each kind of sale under <b>Sales</b>, by the screen it was captured through: what was sold this month (VAT out, by the day the order was raised, paid or not), against last month and against what each person on the team sold of that kind on average. The commission is what each kind earned: the film and artwork premiums on their own lines, and the pay bands' commission shared between the other kinds in proportion to the money received on each.
+      </p>
+      {shown.length === 0 ? (
+        <p className="note">Nothing has been sold this month.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Kind of sale</th>
+                <th style={numStyle}>Orders</th>
+                <th style={numStyle}>Sold</th>
+                <th style={numStyle}>Share</th>
+                <th style={numStyle}>Last month</th>
+                <th style={numStyle}>Team average</th>
+                <th style={numStyle}>Commission</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => {
+                const st = status(r);
+                return (
+                  <tr key={r.type}>
+                    <td>{r.label}</td>
+                    <td style={numStyle}>{r.orders}</td>
+                    <td style={numStyle}>{fmtKsh(r.sold)}</td>
+                    <td style={numStyle}>{totalSold > 0 ? pct((r.sold / totalSold) * 100) : '—'}</td>
+                    <td style={numStyle}>
+                      {fmtKsh(r.soldBefore)} <span className="text-muted" style={{ fontSize: 12 }}>{change(r)}</span>
+                    </td>
+                    <td style={numStyle}>{fmtKsh(r.teamAvgSold)}</td>
+                    <td style={numStyle}>{r.commission > 0 ? fmtKsh(r.commission) : '—'}</td>
+                    <td>{st.tone ? <span className={'tag ' + st.tone}>{st.text}</span> : st.text}</td>
+                  </tr>
+                );
+              })}
+              <tr style={{ fontWeight: 700 }}>
+                <td>All sales</td>
+                <td style={numStyle}>{shown.reduce((a, r) => a + r.orders, 0)}</td>
+                <td style={numStyle}>{fmtKsh(totalSold)}</td>
+                <td style={numStyle}>100%</td>
+                <td style={numStyle}>{fmtKsh(totalBefore)}</td>
+                <td style={numStyle}>{fmtKsh(shown.reduce((a, r) => a + r.teamAvgSold, 0))}</td>
+                <td style={numStyle}>{fmtKsh(totalCommission)}</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatementDetail({ s, config, you, open }: { s: Statement; config: Config; you?: boolean; open?: boolean }) {
   const p = s.productivity;
   const who = you ? 'you' : s.staffName;
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       {s.scheme.mode === 'steps' ? <PayBandCard s={s} config={config} you={you} open={open} /> : <TargetCard s={s} you={you} />}
+      <SalesByType s={s} you={you} />
       <div>
         <div className="card-kicker">Sales {you ? 'you' : 'they'} sourced — {fmtKsh(s.general.commission)}</div>
         <p className="note" style={{ marginTop: 0 }}>

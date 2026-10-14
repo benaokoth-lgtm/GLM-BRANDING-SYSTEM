@@ -18,3 +18,4 @@ export * from './embroidery';
 export * from './costing';
 export * from './pens';
 export * from './printCosting';
+export * from './salesTypes';

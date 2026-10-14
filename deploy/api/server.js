@@ -66598,6 +66598,42 @@ function printSpec(job, s) {
   return `${PRINT_PRODUCT_LABEL[job.product]}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(", ") + " and " + finish[finish.length - 1] : finish[0]}`;
 }
 
+// packages/shared/src/salesTypes.ts
+var SALES_TYPES = ["general", "dtf_film", "dtf_artwork", "uv_film", "uv_artwork", "embroidery", "uv_pens", "costing"];
+var SALES_TYPE_LABEL = {
+  general: "General Order",
+  dtf_film: "DTF Film Order",
+  dtf_artwork: "DTF Artwork Order",
+  uv_film: "UV DTF Film Order",
+  uv_artwork: "UV DTF Artwork Order",
+  embroidery: "Embroidery Order",
+  uv_pens: "UV Pens",
+  costing: "Job Costing (cards, signage, brochures, eulogies)"
+};
+var SALES_TYPE_PAID_AS = {
+  general: "general",
+  dtf_film: "film",
+  dtf_artwork: "artwork",
+  uv_film: "film",
+  uv_artwork: "artwork",
+  embroidery: "general",
+  uv_pens: "general",
+  costing: "general"
+};
+function salesTypeOf(o) {
+  const uv = o.orderNo.startsWith("U-");
+  if (o.dtfFilmSale) return uv ? "uv_film" : "dtf_film";
+  if (o.dtfArtworkJob) return uv ? "uv_artwork" : "dtf_artwork";
+  if (o.embroideryJob) return "embroidery";
+  const names = o.lineItems.map((li) => li.service?.name ?? "");
+  if (names.some((n) => n.startsWith("Costed job"))) return "costing";
+  if (names.some((n) => n === UV_PEN_SERVICE)) return "uv_pens";
+  return "general";
+}
+function blankSalesTypeRows() {
+  return SALES_TYPES.map((type) => ({ type, label: SALES_TYPE_LABEL[type], orders: 0, sold: 0, soldBefore: 0, received: 0, commission: 0, teamAvgSold: 0 }));
+}
+
 // apps/api/src/pins.ts
 var PIN_ROUNDS = 10;
 var MAX_ATTEMPTS = 5;
@@ -66864,7 +66900,7 @@ async function claimProblem(user, o) {
   if (!key2 || !key2.startsWith("p:") || !isNamedClient(o.name)) return "Enter the client's name and phone number so they can be credited to you and recognised on their next order";
   return null;
 }
-var orderInc = { lineItems: true, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true };
+var orderInc = { lineItems: { include: { service: { select: { name: true } } } }, corporateClient: true, dtfFilmSale: true, dtfArtworkJob: true, embroideryJob: true };
 var toInput = (li) => ({
   itemType: li.itemType,
   serviceId: li.serviceId,
@@ -66889,6 +66925,7 @@ function blankStatement(staffId, staffName = "", target) {
     general: { received: 0, netSales: 0, commission: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] },
     film: { commission: 0, sales: [] },
     artwork: { commission: 0, jobs: [] },
+    byType: blankSalesTypeRows(),
     productivity: { ordersCaptured: 0, ordersSourced: 0, sourcedValue: 0, filmSales: 0, filmMetres: 0, filmAvgPricePerM: null, filmAvgPremiumPerM: null, artworkJobs: 0, artworkPieces: 0, artworkExtraCharged: 0 }
   };
 }
@@ -66930,6 +66967,14 @@ async function buildStatements(period, only) {
   const flowOrders = orderIds.length ? await prisma.order.findMany({ where: { id: { in: orderIds } }, include: orderInc }) : [];
   const dtfNet = /* @__PURE__ */ new Map();
   const addDtfNet = (id, net8) => dtfNet.set(id, (dtfNet.get(id) ?? 0) + net8 / (1 + VAT_RATE));
+  const typed = /* @__PURE__ */ new Map();
+  const cell = (staff, type) => {
+    let m = typed.get(staff);
+    if (!m) typed.set(staff, m = /* @__PURE__ */ new Map());
+    let c = m.get(type);
+    if (!c) m.set(type, c = { orders: 0, sold: 0, soldBefore: 0, received: 0, commission: 0 });
+    return c;
+  };
   const people = /* @__PURE__ */ new Map();
   const who = (id) => {
     let s = people.get(id);
@@ -66942,18 +66987,22 @@ async function buildStatements(period, only) {
     const net8 = f.received - f.refunded;
     const total = orderTotal(o);
     const share = total > 0 ? net8 / total : 0;
+    const type = salesTypeOf(o);
     if (o.dtfFilmSale) {
+      cell(o.staffId, type).received += net8;
       const s = o.dtfFilmSale;
       const full2 = filmPremiumCommission(s.metres, s.pricePerM, s.minPriceAtSale, config.filmBands, VAT_RATE);
       if (full2 <= 0) addDtfNet(o.staffId, net8);
       if (full2 > 0) {
         const c = round2(full2 * share);
+        cell(o.staffId, type).commission += c;
         const st = who(o.staffId);
         st.film.commission = round2(st.film.commission + c);
         addDtfNet(o.staffId, net8);
         st.film.sales.push({ orderNo: o.orderNo, customer: customerOf(o), metres: s.metres, pricePerM: s.pricePerM, premiumPerM: filmPremiumPerM(s.pricePerM, s.minPriceAtSale), orderTotal: round2(total), moneyIn: round2(net8), commission: c });
       }
     } else if (o.dtfArtworkJob) {
+      cell(o.staffId, type).received += net8;
       const j = o.dtfArtworkJob;
       const sys = systemJobCalc({ id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
       const charged = Math.max(sys, j.chargedPerPiece ?? sys);
@@ -66961,12 +67010,14 @@ async function buildStatements(period, only) {
       if (full2 <= 0) addDtfNet(o.staffId, net8);
       if (full2 > 0) {
         const c = round2(full2 * share);
+        cell(o.staffId, type).commission += c;
         const st = who(o.staffId);
         st.artwork.commission = round2(st.artwork.commission + c);
         addDtfNet(o.staffId, net8);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net8), commission: c });
       }
     } else if (o.channel !== "dtf" && o.sourcedByStaffId && o.status !== "Quote") {
+      cell(o.sourcedByStaffId, type).received += net8;
       const st = who(o.sourcedByStaffId);
       st.general.received = round2(st.general.received + net8);
       st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
@@ -66977,6 +67028,9 @@ async function buildStatements(period, only) {
     if (o.freelanceAgentId) continue;
     const cap = who(o.staffId).productivity;
     cap.ordersCaptured++;
+    const soldCell = cell(o.staffId, salesTypeOf(o));
+    soldCell.orders++;
+    soldCell.sold += orderTotal(o) / (1 + VAT_RATE);
     if (o.dtfFilmSale) {
       const s = o.dtfFilmSale;
       cap.filmSales++;
@@ -67047,6 +67101,42 @@ async function buildStatements(period, only) {
     st.general.band = bandPosition(config.generalBands, target.eligibleSales);
     st.total = round2(st.general.commission + st.film.commission + st.artwork.commission);
     payFor(st);
+  }
+  const prev = new Date(Date.UTC(py, pm - 2, 1));
+  const prevPeriod = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`;
+  const before = periodRange(prevPeriod);
+  for (const o of await prisma.order.findMany({ where: { createdDate: { gte: before.start, lte: before.end }, status: { not: "Quote" }, freelanceAgentId: null }, include: orderInc })) {
+    if (people.has(o.staffId)) cell(o.staffId, salesTypeOf(o)).soldBefore += orderTotal(o) / (1 + VAT_RATE);
+  }
+  for (const st of people.values()) {
+    const mine = typed.get(st.staffId);
+    const rawFilm = SALES_TYPES.filter((t) => SALES_TYPE_PAID_AS[t] === "film").reduce((a2, t) => a2 + (mine?.get(t)?.commission ?? 0), 0);
+    const rawArtwork = SALES_TYPES.filter((t) => SALES_TYPE_PAID_AS[t] === "artwork").reduce((a2, t) => a2 + (mine?.get(t)?.commission ?? 0), 0);
+    const generalTypes = SALES_TYPES.filter((t) => SALES_TYPE_PAID_AS[t] === "general");
+    const generalReceived = generalTypes.reduce((a2, t) => a2 + Math.max(0, mine?.get(t)?.received ?? 0), 0);
+    const generalShare = /* @__PURE__ */ new Map();
+    if (generalReceived > 0 && st.general.commission > 0) {
+      let left = st.general.commission;
+      const sorted = generalTypes.filter((t) => (mine?.get(t)?.received ?? 0) > 0).sort((a2, b) => mine.get(b).received - mine.get(a2).received);
+      sorted.forEach((t, i) => {
+        const part = i === sorted.length - 1 ? left : round2(st.general.commission * Math.max(0, mine.get(t).received) / generalReceived);
+        generalShare.set(t, part);
+        left = round2(left - part);
+      });
+    }
+    st.byType = blankSalesTypeRows().map((row) => {
+      const c = mine?.get(row.type);
+      const paidAs = SALES_TYPE_PAID_AS[row.type];
+      const commission = paidAs === "film" ? rawFilm > 0 ? round2((c?.commission ?? 0) / rawFilm * st.film.commission) : 0 : paidAs === "artwork" ? rawArtwork > 0 ? round2((c?.commission ?? 0) / rawArtwork * st.artwork.commission) : 0 : generalShare.get(row.type) ?? 0;
+      return { ...row, orders: c?.orders ?? 0, sold: round2(c?.sold ?? 0), soldBefore: round2(c?.soldBefore ?? 0), received: round2((c?.received ?? 0) / (1 + VAT_RATE)), commission };
+    });
+  }
+  const everyone = [...people.values()];
+  if (everyone.length > 0) {
+    for (const t of SALES_TYPES) {
+      const avg = round2(everyone.reduce((a2, st) => a2 + (st.byType.find((r) => r.type === t)?.sold ?? 0), 0) / everyone.length);
+      for (const st of everyone) st.byType.find((r) => r.type === t).teamAvgSold = avg;
+    }
   }
   const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
   const names = new Map(users.map((u) => [u.id, u.name]));

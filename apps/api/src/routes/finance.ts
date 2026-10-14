@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
+import { ChequeError, normChequeNo, recordCheque, withdrawalAccounting } from '../cheques';
 import {
   computeOrderTotals,
   computePay,
@@ -625,6 +626,8 @@ const expenseSchema = z.object({
   dueDate: dateStr.optional().nullable(),
   // The line of business this cost belongs to (see Master Data → Business Heads); blank = shared, not tagged to one.
   businessHeadId: z.number().int().nullable().optional(),
+  // The number of the cheque it was paid with (required when it is paid by cheque now).
+  chequeNo: z.string().trim().max(30).optional(),
 });
 
 financeRouter.post('/expenses', async (req, res) => {
@@ -643,22 +646,35 @@ financeRouter.post('/expenses', async (req, res) => {
     if (check.short) return res.status(400).json({ error: shortMessage(check.available, d.amount) });
   }
 
-  const expense = await prisma.expense.create({
-    data: {
-      date: d.date,
-      category: d.category,
-      note: d.note ?? '',
-      amount: d.amount,
-      invoiceNumber: d.invoiceNumber,
-      method: d.paid ? d.method : PETTY_CASH_METHOD,
-      paid: d.paid,
-      supplier: (d.supplier || '').trim(),
-      dueDate: d.paid ? null : d.dueDate ?? null,
-      businessHeadId: d.businessHeadId ?? null,
-      capturedByName: req.user!.name,
-    },
-  });
-  res.status(201).json(expense);
+  const byCheque = d.paid && d.method === 'Cheque';
+  if (byCheque && !normChequeNo(d.chequeNo)) return res.status(400).json({ error: 'Enter the cheque number it was paid with' });
+  if (!byCheque && normChequeNo(d.chequeNo)) return res.status(400).json({ error: 'A cheque number goes with a payment by cheque' });
+
+  try {
+    const expense = await prisma.$transaction(async (tx) => {
+      const e = await tx.expense.create({
+        data: {
+          date: d.date,
+          category: d.category,
+          note: d.note ?? '',
+          amount: d.amount,
+          invoiceNumber: d.invoiceNumber,
+          method: d.paid ? d.method : PETTY_CASH_METHOD,
+          paid: d.paid,
+          supplier: (d.supplier || '').trim(),
+          dueDate: d.paid ? null : d.dueDate ?? null,
+          businessHeadId: d.businessHeadId ?? null,
+          capturedByName: req.user!.name,
+        },
+      });
+      if (byCheque) await recordCheque(tx, { chequeNo: d.chequeNo!, date: d.date, payee: (d.supplier || '').trim() || d.category, amount: d.amount, kind: 'Payment', note: d.note ?? '', expenseId: e.id, capturedByName: req.user!.name });
+      return e;
+    });
+    res.status(201).json(expense);
+  } catch (e) {
+    if (e instanceof ChequeError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 // Tagging an expense to a line of business (or clearing it) changes no amount, so it needs no amendment request.
@@ -692,7 +708,7 @@ financeRouter.patch('/expenses/:id/category', async (req, res) => {
 });
 
 // Pay down an expense bought on credit — in full or in part, by any method (petty cash included, if the float covers it).
-const expensePaymentSchema = z.object({ date: dateStr, amount: z.number().positive(), method: z.enum(EXPENSE_METHODS), note: z.string().max(200).optional() });
+const expensePaymentSchema = z.object({ date: dateStr, amount: z.number().positive(), method: z.enum(EXPENSE_METHODS), note: z.string().max(200).optional(), chequeNo: z.string().trim().max(30).optional() });
 
 financeRouter.post('/expenses/:id/payments', async (req, res) => {
   const parsed = expensePaymentSchema.safeParse(req.body);
@@ -708,10 +724,22 @@ financeRouter.post('/expenses/:id/payments', async (req, res) => {
     const check = await pettyCashShortfall(parsed.data.amount, parsed.data.date);
     if (check.short) return res.status(400).json({ error: shortMessage(check.available, parsed.data.amount) });
   }
-  const payment = await prisma.expensePayment.create({
-    data: { expenseId: expense.id, date: parsed.data.date, amount: parsed.data.amount, method: parsed.data.method, note: parsed.data.note ?? '', capturedByName: req.user!.name },
-  });
-  res.status(201).json(payment);
+  const byCheque = parsed.data.method === 'Cheque';
+  if (byCheque && !normChequeNo(parsed.data.chequeNo)) return res.status(400).json({ error: 'Enter the cheque number it was paid with' });
+  if (!byCheque && normChequeNo(parsed.data.chequeNo)) return res.status(400).json({ error: 'A cheque number goes with a payment by cheque' });
+  try {
+    const payment = await prisma.$transaction(async (tx) => {
+      const p = await tx.expensePayment.create({
+        data: { expenseId: expense.id, date: parsed.data.date, amount: parsed.data.amount, method: parsed.data.method, note: parsed.data.note ?? '', capturedByName: req.user!.name },
+      });
+      if (byCheque) await recordCheque(tx, { chequeNo: parsed.data.chequeNo!, date: parsed.data.date, payee: expense.supplier || expense.category, amount: parsed.data.amount, kind: 'Payment', note: parsed.data.note ?? '', expenseId: expense.id, expensePaymentId: p.id, capturedByName: req.user!.name });
+      return p;
+    });
+    res.status(201).json(payment);
+  } catch (e) {
+    if (e instanceof ChequeError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 // Expense heads (and the account each posts to) are managed under Accounting → Chart of Accounts.
@@ -800,6 +828,8 @@ async function decideAmendment(req: Request, res: Response, approve: boolean) {
       where: { id: amendment.expenseId },
       data: { date: amendment.proposedDate, category: amendment.proposedCategory, note: amendment.proposedNote, amount: amendment.proposedAmount },
     });
+    // a cheque written for the whole expense follows its date and amount
+    await prisma.cheque.updateMany({ where: { expenseId: amendment.expenseId, expensePaymentId: null }, data: { date: amendment.proposedDate, amount: amendment.proposedAmount } });
   }
 
   const updated = await prisma.expenseAmendment.update({
@@ -862,16 +892,104 @@ const pettyCashSchema = z.object({
   source: z.enum(PETTY_CASH_SOURCES),
   amount: z.number().positive(),
   note: z.string().max(200).optional(),
+  // The cheque it was cashed with, and who it was drawn to (a bank withdrawal).
+  chequeNo: z.string().trim().max(30).optional(),
+  payee: z.string().trim().max(120).optional(),
 });
 
 financeRouter.post('/petty-cash/topups', async (req, res) => {
   const parsed = pettyCashSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const topUp = await prisma.pettyCashTopUp.create({
-    data: { ...parsed.data, note: parsed.data.note ?? '', authorizedByName: req.user!.name },
-  });
-  res.status(201).json(topUp);
+  const { chequeNo, payee, ...data } = parsed.data;
+  if (normChequeNo(chequeNo) && data.source !== 'Bank Withdrawal') return res.status(400).json({ error: 'A cheque number goes with a bank withdrawal' });
+  try {
+    const topUp = await prisma.$transaction(async (tx) => {
+      const t = await tx.pettyCashTopUp.create({ data: { ...data, note: data.note ?? '', authorizedByName: req.user!.name } });
+      if (normChequeNo(chequeNo)) await recordCheque(tx, { chequeNo: chequeNo!, date: data.date, payee: payee ?? '', amount: data.amount, kind: 'Withdrawal', note: data.note ?? '', topUpId: t.id, capturedByName: req.user!.name });
+      return t;
+    });
+    res.status(201).json(topUp);
+  } catch (e) {
+    if (e instanceof ChequeError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
+
+// ── The cheque register ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Every cheque number used (withdrawals cashed for the petty cash float, cheques written to suppliers, spoilt or cancelled numbers), whether it has cleared the bank, and where each
+// withdrawal went. See cheques.ts.
+financeRouter.get('/cheques', async (req, res) => {
+  const [rows, accounting] = await Promise.all([prisma.cheque.findMany({ orderBy: [{ date: 'desc' }, { id: 'desc' }], take: 1000 }), withdrawalAccounting()]);
+  const issued = rows.filter((c) => c.status === 'Issued');
+  const month = new Date().toISOString().slice(0, 7);
+  res.json({
+    cheques: rows,
+    unpresented: { count: issued.length, amount: round2(issued.reduce((a, c) => a + c.amount, 0)) },
+    clearedThisMonth: { count: rows.filter((c) => c.status === 'Cleared' && (c.clearedOn ?? '').startsWith(month)).length, amount: round2(rows.filter((c) => c.status === 'Cleared' && (c.clearedOn ?? '').startsWith(month)).reduce((a, c) => a + c.amount, 0)) },
+    withdrawals: accounting.withdrawals,
+    unallocated: accounting.unallocated,
+    withoutNumber: accounting.withdrawals.filter((w) => !w.chequeNo).length,
+  });
+});
+
+const chequeFields = { chequeNo: z.string().trim().min(1, 'Enter the cheque number').max(30), payee: z.string().trim().max(120).default('') };
+
+// A spoilt or cancelled cheque number: kept so the cheque book has no unexplained gaps.
+financeRouter.post('/cheques', async (req, res) => {
+  const parsed = z.object({ ...chequeFields, date: dateStr, note: z.string().trim().max(300).default('') }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  try {
+    res.status(201).json(await recordCheque(prisma, { chequeNo: parsed.data.chequeNo, date: parsed.data.date, payee: parsed.data.payee, amount: 0, kind: 'Cancelled', note: parsed.data.note || 'Spoilt / cancelled', capturedByName: req.user!.name }));
+  } catch (e) {
+    if (e instanceof ChequeError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+// Seen on the bank statement: cleared on that day (or put back to unpresented).
+financeRouter.post('/cheques/:id/clear', async (req, res) => {
+  const parsed = z.object({ clearedOn: dateStr }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Enter the date it cleared the bank' });
+  const c = await prisma.cheque.findUnique({ where: { id: Number(req.params.id) } });
+  if (!c) return res.status(404).json({ error: 'Cheque not found' });
+  if (c.status === 'Cancelled') return res.status(400).json({ error: 'A cancelled cheque does not clear' });
+  if (parsed.data.clearedOn < c.date) return res.status(400).json({ error: 'A cheque cannot clear before the day it was written' });
+  res.json(await prisma.cheque.update({ where: { id: c.id }, data: { status: 'Cleared', clearedOn: parsed.data.clearedOn } }));
+});
+
+financeRouter.post('/cheques/:id/unclear', async (req, res) => {
+  const c = await prisma.cheque.findUnique({ where: { id: Number(req.params.id) } });
+  if (!c) return res.status(404).json({ error: 'Cheque not found' });
+  if (c.status !== 'Cleared') return res.status(400).json({ error: 'That cheque has not been marked cleared' });
+  res.json(await prisma.cheque.update({ where: { id: c.id }, data: { status: 'Issued', clearedOn: null } }));
+});
+
+// Only a spoilt / cancelled entry typed in by hand can be removed; the others belong to a top-up or an expense.
+financeRouter.delete('/cheques/:id', async (req, res) => {
+  const c = await prisma.cheque.findUnique({ where: { id: Number(req.params.id) } });
+  if (!c) return res.status(404).json({ error: 'Cheque not found' });
+  if (c.kind !== 'Cancelled') return res.status(400).json({ error: 'This cheque belongs to a recorded withdrawal or payment; it goes with that record' });
+  await prisma.cheque.delete({ where: { id: c.id } });
+  res.status(204).end();
+});
+
+// A withdrawal recorded before cheque numbers were kept: put its number on it.
+financeRouter.patch('/petty-cash/topups/:id/cheque', async (req, res) => {
+  const parsed = z.object(chequeFields).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const t = await prisma.pettyCashTopUp.findUnique({ where: { id: Number(req.params.id) } });
+  if (!t) return res.status(404).json({ error: 'Top-up not found' });
+  if (t.source !== 'Bank Withdrawal') return res.status(400).json({ error: 'Only a bank withdrawal has a cheque' });
+  if (await prisma.cheque.findUnique({ where: { topUpId: t.id } })) return res.status(400).json({ error: 'This withdrawal already has a cheque number' });
+  try {
+    res.status(201).json(await recordCheque(prisma, { chequeNo: parsed.data.chequeNo, date: t.date, payee: parsed.data.payee, amount: t.amount, kind: 'Withdrawal', note: t.note, topUpId: t.id, capturedByName: req.user!.name }));
+  } catch (e) {
+    if (e instanceof ChequeError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+
 
 // No direct DELETE for petty cash top-ups — see the generic DeletionRequest flow below.
 
@@ -936,9 +1054,15 @@ async function decideDeletionRequest(req: Request, res: Response, approve: boole
 
   if (approve) {
     const recordType = request.recordType as DeletableType;
-    if (recordType === 'Expense') await prisma.expense.delete({ where: { id: request.recordId } }).catch(() => null);
+    if (recordType === 'Expense') {
+      await prisma.expense.delete({ where: { id: request.recordId } }).catch(() => null);
+      await prisma.cheque.updateMany({ where: { expenseId: request.recordId }, data: { expenseId: null, expensePaymentId: null, note: 'Its expense was deleted — check what this cheque paid' } });
+    }
     else if (recordType === 'PayrollEntry') await prisma.payrollEntry.delete({ where: { id: request.recordId } }).catch(() => null);
-    else await prisma.pettyCashTopUp.delete({ where: { id: request.recordId } }).catch(() => null);
+    else {
+      await prisma.pettyCashTopUp.delete({ where: { id: request.recordId } }).catch(() => null);
+      await prisma.cheque.updateMany({ where: { topUpId: request.recordId }, data: { topUpId: null, note: 'Its withdrawal record was deleted — check this cheque' } });
+    }
   }
 
   const updated = await prisma.deletionRequest.update({

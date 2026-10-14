@@ -1557,3 +1557,25 @@ model TaxSetAside {
 
   @@index([taxYear])
 }
+
+// The cheque register (Finance → Cheques): every cheque number the business uses, once. A Withdrawal is a cheque drawn to the finance head and cashed for the petty cash float (it goes with a Bank
+// Withdrawal top-up); a Payment is a cheque written to a supplier (it goes with an expense or a payment on one); a Cancelled one is a spoilt or cancelled number kept so the cheque book has no gaps.
+model Cheque {
+  id               Int      @id @default(autoincrement())
+  chequeNo         String   @unique // no spaces, upper case
+  date             String
+  payee            String   @default("")
+  amount           Float
+  kind             String // Withdrawal | Payment | Cancelled
+  status           String   @default("Issued") // Issued (not yet seen on the bank statement) | Cleared | Cancelled
+  clearedOn        String?
+  note             String   @default("")
+  topUpId          Int?     @unique
+  expenseId        Int?
+  expensePaymentId Int?
+  capturedByName   String
+  createdAt        DateTime @default(now())
+
+  @@index([status])
+  @@index([expenseId])
+}

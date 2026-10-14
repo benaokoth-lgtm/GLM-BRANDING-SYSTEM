@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { EXPENSE_CATEGORIES, EXPENSE_METHODS, PETTY_CASH_SOURCES, fmtDate, fmtKsh, todayStr } from '@glm/shared';
 import type { ExpenseCategory, PettyCashSource } from '@glm/shared';
 import { useSubTab } from '../state/SubNavContext';
+import ChequeRegister from '../components/ChequeRegister';
 import { api } from '../api/client';
 import type { BusinessHeadRow, DeletableRecordType, DeletionRequest, ExpenseAmendment, ExpensesData, PettyCashData } from '../api/models';
 import DeleteReasonRow from '../components/DeleteReasonRow';
@@ -18,7 +19,7 @@ import Payments from './Payments';
 // payment oversight but not Finance access, still reaches Payments as its
 // own top-level entry. All Orders is not part of Finance: it is its own
 // module, for anyone allowed to see every order.
-type FinanceTab = 'quotation' | 'invoice' | 'payments' | 'expenses' | 'pettycash' | 'assets' | 'clients';
+type FinanceTab = 'quotation' | 'invoice' | 'payments' | 'expenses' | 'pettycash' | 'cheques' | 'assets' | 'clients';
 type Preset = 'month' | 'quarter' | 'year' | 'last12';
 
 const TABS: [FinanceTab, string][] = [
@@ -27,6 +28,7 @@ const TABS: [FinanceTab, string][] = [
   ['payments', 'Payments'],
   ['expenses', 'Expenses'],
   ['pettycash', 'Petty Cash'],
+  ['cheques', 'Cheques'],
   ['assets', 'Asset Register'],
   ['clients', 'Corporate Clients'],
 ];
@@ -34,7 +36,7 @@ const TABS: [FinanceTab, string][] = [
 // Tabs that manage their own data/date-range internally — the shared
 // preset/from-to filter bar below (and the Expenses/Petty Cash data load)
 // isn't relevant to them.
-const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'payments', 'assets', 'clients'];
+const SELF_CONTAINED_TABS: FinanceTab[] = ['quotation', 'invoice', 'payments', 'cheques', 'assets', 'clients'];
 
 function presetRange(preset: Preset, today: string): { from: string; to: string } {
   const y = today.slice(0, 4);
@@ -64,6 +66,8 @@ interface ExpenseDraft {
   dueDate: string;
   // The business head this cost belongs to ('' = shared, not tagged to one).
   businessHeadId: string;
+  // The cheque it was paid with (when the method is Cheque).
+  chequeNo: string;
 }
 
 function ExpenseCaptureForm({
@@ -163,8 +167,15 @@ function ExpenseCaptureForm({
               <label>Supplier (optional)</label>
               <input className="input" value={draft.supplier} onChange={(e) => setDraft((d) => ({ ...d, supplier: e.target.value }))} />
             </div>
-            <span />
-            <span className="note">{draft.method === 'Petty Cash' ? 'Comes out of the petty cash float.' : ''}</span>
+            {draft.method === 'Cheque' ? (
+              <div className="field">
+                <label>Cheque number *</label>
+                <input className="input" value={draft.chequeNo} onChange={(e) => setDraft((d) => ({ ...d, chequeNo: e.target.value }))} placeholder="e.g. 000458" style={!draft.chequeNo.trim() ? { borderColor: 'var(--color-error)' } : undefined} />
+              </div>
+            ) : (
+              <span />
+            )}
+            <span className="note">{draft.method === 'Petty Cash' ? 'Comes out of the petty cash float.' : draft.method === 'Cheque' ? 'Kept in the cheque register until it clears the bank.' : ''}</span>
           </>
         )}
       </div>
@@ -203,6 +214,7 @@ export default function Finance() {
     supplier: '',
     dueDate: '',
     businessHeadId: '',
+    chequeNo: '',
   });
 
   const [newPettyExpense, setNewPettyExpense] = useState<ExpenseDraft>({
@@ -216,6 +228,7 @@ export default function Finance() {
     supplier: '',
     dueDate: '',
     businessHeadId: '',
+    chequeNo: '',
   });
 
   const [newTopUp, setNewTopUp] = useState({
@@ -223,11 +236,13 @@ export default function Finance() {
     source: PETTY_CASH_SOURCES[0] as PettyCashSource,
     note: '',
     amount: '',
+    chequeNo: '',
+    payee: '',
   });
 
   // Paying down an expense bought on credit.
   const [payingId, setPayingId] = useState<number | null>(null);
-  const [payDraft, setPayDraft] = useState({ date: today, amount: '', method: 'Bank Transfer' });
+  const [payDraft, setPayDraft] = useState({ date: today, amount: '', method: 'Bank Transfer', chequeNo: '' });
 
   const [amendingId, setAmendingId] = useState<number | null>(null);
   const [amendDraft, setAmendDraft] = useState({ date: '', category: EXPENSE_CATEGORIES[0] as string, note: '', amount: '', reason: '' });
@@ -296,6 +311,8 @@ export default function Finance() {
   async function submitExpense(draft: ExpenseDraft, reset: () => void) {
     const amount = Number(draft.amount);
     if (!amount || amount <= 0) return setError('Amount must be greater than 0');
+    const byCheque = !draft.onCredit && draft.method === 'Cheque';
+    if (byCheque && !draft.chequeNo.trim()) return setError('Enter the cheque number it was paid with');
     setError(null);
     setBusy(true);
     try {
@@ -310,6 +327,7 @@ export default function Finance() {
         supplier: draft.supplier || undefined,
         dueDate: draft.onCredit && draft.dueDate ? draft.dueDate : undefined,
         businessHeadId: draft.businessHeadId ? Number(draft.businessHeadId) : null,
+        chequeNo: byCheque ? draft.chequeNo.trim() : undefined,
       });
       reset();
       load();
@@ -323,10 +341,11 @@ export default function Finance() {
   async function submitSupplierPayment(expenseId: number) {
     const amount = Number(payDraft.amount);
     if (!amount || amount <= 0) return setError('Amount must be greater than 0');
+    if (payDraft.method === 'Cheque' && !payDraft.chequeNo.trim()) return setError('Enter the cheque number it was paid with');
     setError(null);
     setBusy(true);
     try {
-      await api.post(`/finance/expenses/${expenseId}/payments`, { date: payDraft.date, amount, method: payDraft.method });
+      await api.post(`/finance/expenses/${expenseId}/payments`, { date: payDraft.date, amount, method: payDraft.method, chequeNo: payDraft.method === 'Cheque' ? payDraft.chequeNo.trim() : undefined });
       setPayingId(null);
       load();
     } catch (err) {
@@ -378,8 +397,10 @@ export default function Finance() {
     setError(null);
     setBusy(true);
     try {
-      await api.post('/finance/petty-cash/topups', { ...newTopUp, amount });
-      setNewTopUp((nt) => ({ ...nt, note: '', amount: '' }));
+      const { chequeNo, payee, ...rest } = newTopUp;
+      const withdrawal = newTopUp.source === 'Bank Withdrawal';
+      await api.post('/finance/petty-cash/topups', { ...rest, amount, ...(withdrawal && chequeNo.trim() ? { chequeNo: chequeNo.trim(), payee: payee.trim() } : {}) });
+      setNewTopUp((nt) => ({ ...nt, note: '', amount: '', chequeNo: '', payee: '' }));
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add petty cash top-up');
@@ -517,6 +538,7 @@ export default function Finance() {
       {tab === 'quotation' && <CorporateOrderForm kind="quote" onCreated={(orderNo) => handleOrderCreated('quote', orderNo)} />}
       {tab === 'invoice' && <CorporateOrderForm kind="invoice" onCreated={(orderNo) => handleOrderCreated('invoice', orderNo)} />}
       {tab === 'payments' && <Payments />}
+      {tab === 'cheques' && <ChequeRegister />}
       {tab === 'assets' && <AssetRegister />}
       {tab === 'clients' && <CorporateClientsPanel />}
 
@@ -590,7 +612,7 @@ export default function Finance() {
                       <td className="text-muted">{e.capturedByName || '—'}</td>
                       <td style={{ display: 'flex', gap: 'var(--space-1)' }}>
                         {e.outstanding > 0 && (
-                          <button type="button" className="btn btn-primary" style={{ fontSize: 'inherit' }} onClick={() => { setPayingId(e.id); setPayDraft({ date: today, amount: String(e.outstanding), method: 'Bank Transfer' }); setError(null); }} disabled={busy}>
+                          <button type="button" className="btn btn-primary" style={{ fontSize: 'inherit' }} onClick={() => { setPayingId(e.id); setPayDraft({ date: today, amount: String(e.outstanding), method: 'Bank Transfer', chequeNo: '' }); setError(null); }} disabled={busy}>
                             Pay
                           </button>
                         )}
@@ -614,7 +636,7 @@ export default function Finance() {
                     {payingId === e.id && (
                       <tr>
                         <td colSpan={12} style={{ background: 'var(--color-surface)' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr auto auto', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-2)', alignItems: 'end', padding: 'var(--space-2) 0' }}>
                             <div className="field" style={{ margin: 0 }}>
                               <label>Payment date</label>
                               <input className="input" type="date" value={payDraft.date} onChange={(ev) => setPayDraft((d) => ({ ...d, date: ev.target.value }))} />
@@ -633,6 +655,12 @@ export default function Finance() {
                                 ))}
                               </select>
                             </div>
+                            {payDraft.method === 'Cheque' && (
+                              <div className="field" style={{ margin: 0 }}>
+                                <label>Cheque number *</label>
+                                <input className="input" value={payDraft.chequeNo} onChange={(ev) => setPayDraft((d) => ({ ...d, chequeNo: ev.target.value }))} />
+                              </div>
+                            )}
                             <button type="button" className="btn btn-primary" onClick={() => submitSupplierPayment(e.id)} disabled={busy}>
                               Record payment
                             </button>
@@ -813,7 +841,7 @@ export default function Finance() {
               consider how much of that to allocate below.
             </p>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1.4fr 1fr auto', gap: 'var(--space-3)', alignItems: 'end' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-3)', alignItems: 'end' }}>
               <div className="field">
                 <label>Date</label>
                 <input className="input" type="date" value={newTopUp.date} onChange={(e) => setNewTopUp((nt) => ({ ...nt, date: e.target.value }))} />
@@ -836,6 +864,18 @@ export default function Finance() {
                 <label>Amount (Ksh)</label>
                 <input className="input" value={newTopUp.amount} onChange={(e) => setNewTopUp((nt) => ({ ...nt, amount: e.target.value }))} />
               </div>
+              {newTopUp.source === 'Bank Withdrawal' && (
+                <>
+                  <div className="field">
+                    <label>Cheque number</label>
+                    <input className="input" value={newTopUp.chequeNo} onChange={(e) => setNewTopUp((nt) => ({ ...nt, chequeNo: e.target.value }))} placeholder="e.g. 000457" />
+                  </div>
+                  <div className="field">
+                    <label>Drawn to</label>
+                    <input className="input" value={newTopUp.payee} onChange={(e) => setNewTopUp((nt) => ({ ...nt, payee: e.target.value }))} placeholder="e.g. the finance head" />
+                  </div>
+                </>
+              )}
               <button type="button" className="btn btn-primary blueprint" onClick={addTopUp} disabled={busy}>
                 <i className="corner tl"></i>
                 <i className="corner tr"></i>

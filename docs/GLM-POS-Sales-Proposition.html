@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GLM Branding POS &amp; Accounting — Sales Proposition</title>
+<style>
+:root {
+  --ink: #14284b;
+  --ink-soft: #e8edf6;
+  --gold: #a8741a;
+  --gold-soft: #f6ecd6;
+  --ok: #1f6b45;
+  --ok-soft: #e0f0e7;
+  --warn: #9b2c2c;
+  --fg: #1b2230;
+  --muted: #5b6475;
+  --rule: #d6d9e0;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; background: #f3f4f7; color: var(--fg); font: 15px/1.55 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+.page { max-width: 880px; margin: 0 auto; background: #fff; padding: 0 56px 40px; }
+h1, h2, h3 { font-family: "Segoe UI Semibold", "Segoe UI", Arial, sans-serif; color: var(--ink); line-height: 1.15; }
+h2 { break-inside: avoid; font-size: 28px; margin: 40px 0 6px; break-after: avoid; }
+h2 small { display: block; font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); margin-bottom: 4px; }
+h3 { font-size: 17px; margin: 0 0 4px; }
+p { margin: 8px 0; }
+.lead { font-size: 17px; color: var(--muted); margin-top: 4px; }
+ul { margin: 8px 0; padding-left: 20px; }
+li { margin: 4px 0; }
+
+.cover { background: var(--ink); color: #fff; margin: 0 -56px; padding: 80px 56px 60px; min-height: 940px; break-after: page; position: relative; }
+.cover .kicker { letter-spacing: .2em; text-transform: uppercase; color: #f1d9a1; font-size: 13px; font-weight: 600; }
+.cover h1 { color: #fff; font-size: 52px; margin: 16px 0 18px; line-height: 1.04; max-width: 700px; }
+.cover p { font-size: 20px; max-width: 590px; color: #dfe6f3; }
+.cover .rule { width: 90px; height: 5px; background: var(--gold); margin: 30px 0; }
+.cover .chips { margin-top: 50px; display: flex; flex-wrap: wrap; gap: 8px; max-width: 640px; }
+.cover .chips span { border: 1px solid #5a6e94; color: #f1d9a1; padding: 5px 12px; font-size: 14px; letter-spacing: .04em; }
+.cover .foot { position: absolute; left: 56px; bottom: 40px; color: #aebbd3; font-size: 13px; }
+
+.grid { display: grid; gap: 14px; margin: 16px 0; }
+.g2 { grid-template-columns: 1fr 1fr; }
+.g3 { grid-template-columns: 1fr 1fr 1fr; }
+.card { border: 1px solid var(--rule); border-top: 4px solid var(--ink); padding: 14px 16px; break-inside: avoid; }
+.card.gold { border-top-color: var(--gold); }
+.card.ok { border-top-color: var(--ok); }
+.card h3 { color: var(--ink); }
+.card p, .card li { font-size: 14px; }
+.big { font-size: 34px; font-weight: 700; color: var(--ink); line-height: 1; }
+.stat .cap { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-top: 6px; }
+
+.pain { border-left: 5px solid var(--warn); background: #fbeeee; padding: 8px 14px; margin: 8px 0; break-inside: avoid; }
+.pain b { color: var(--warn); }
+.gain { border-left: 5px solid var(--ok); background: var(--ok-soft); padding: 8px 14px; margin: 8px 0 14px; break-inside: avoid; }
+.gain b { color: var(--ok); }
+
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; break-inside: avoid; }
+th { background: var(--ink); color: #fff; text-align: left; padding: 8px 10px; font-weight: 600; }
+td { border-bottom: 1px solid var(--rule); padding: 8px 10px; vertical-align: top; }
+tr:nth-child(even) td { background: #fafbfd; }
+td.y { color: var(--ok); font-weight: 700; text-align: center; }
+td.n { color: #9aa1af; text-align: center; }
+td.p { color: var(--gold); font-weight: 700; text-align: center; }
+th.c { text-align: center; }
+.hl td { background: var(--gold-soft) !important; font-weight: 600; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0; }
+.flow .st { flex: 1 1 88px; background: var(--ink); color: #fff; padding: 10px; font-size: 13px; break-inside: avoid; }
+.flow .st b { display: block; color: #f1d9a1; font-size: 14px; }
+.flow .st.alt { background: var(--gold); }
+.flow .st.alt b { color: #fff; }
+
+.cta { background: var(--ink); color: #fff; padding: 28px 30px; margin: 30px 0 10px; break-inside: avoid; }
+.cta h2 { color: #fff; margin: 0 0 8px; }
+.cta p { color: #dfe6f3; }
+.cta ol { color: #fff; padding-left: 20px; }
+.note { font-size: 12.5px; color: var(--muted); }
+.pb { break-before: page; }
+
+@page { size: A4; margin: 16mm 14mm 18mm; @bottom-center { content: "GLM Branding POS & Accounting  ·  page " counter(page); font: 9pt "Segoe UI", Arial, sans-serif; color: #5b6475; } }
+@page :first { margin: 0; @bottom-center { content: ""; } }
+@media print {
+  body { background: #fff; }
+  .page { max-width: none; padding: 0 2mm; }
+  .cover { margin: 0 -2mm; padding: 44mm 18mm 20mm; min-height: 297mm; }
+  .cover .foot { left: 18mm; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<section class="cover">
+  <div class="kicker">Sales proposition</div>
+  <h1>Run your branding shop from one screen — from the first enquiry to the tax return.</h1>
+  <div class="rule"></div>
+  <p>GLM Branding POS &amp; Accounting takes the order, protects the price, collects the M-Pesa, runs the job through production, buys the stock, pays the staff, files the VAT and keeps your books — for shops that print and brand with DTF, UV, embroidery, large format and laser.</p>
+  <div class="chips"><span>DTF</span><span>UV PRINTING</span><span>EMBROIDERY</span><span>LARGE FORMAT</span><span>LASER ENGRAVING</span></div>
+  <div class="foot">Built for Kenyan branding businesses · M-Pesa · KRA · NSSF · SHIF</div>
+</section>
+
+<!-- 1 -->
+<h2><small>The problem</small>Branding shops make good money and lose a lot of it</h2>
+<p class="lead">Most shops run on a mix of notebooks, WhatsApp, a spreadsheet and a generic till. It works until the shop is busy — and that is exactly when money leaks.</p>
+
+<div class="pain"><b>"Who gave that discount?"</b> Prices and discounts are set at the counter, with no limit and no trail.</div>
+<div class="pain"><b>"Which line actually makes money?"</b> DTF, UV, embroidery and banners all share one till, so the owner guesses where the profit is.</div>
+<div class="pain"><b>"How much film did we waste this month?"</b> Rolls are bought, used and finished without anyone measuring cost per roll, waste or margin.</div>
+<div class="pain"><b>"Did that customer pay?"</b> M-Pesa messages on someone's phone, deposits in a notebook, corporate invoices chased from memory.</div>
+<div class="pain"><b>"What do we owe KRA this month?"</b> VAT, PAYE, NSSF, SHIF and the housing levy are worked out in a rush, and the cheque is a guess.</div>
+<div class="pain"><b>"Why is the stock out again?"</b> Reorders happen when the shelf is empty; purchases are not checked against what arrived.</div>
+<div class="pain"><b>"Is my sales team motivated?"</b> Commission is argued over, because nobody can show exactly what each person sold.</div>
+
+<!-- 2 -->
+<h2><small>The answer</small>One system. One record. Every step connected.</h2>
+<p class="lead">An order entered once at the counter is also the sale in the books, the VAT on the return, the job on the production floor, the stock deducted, and the commission earned.</p>
+
+<div class="flow">
+  <div class="st"><b>Quote / order</b>Price-checked, any line of business</div>
+  <div class="st"><b>Pay</b>M-Pesa STK push, cash, card, bank</div>
+  <div class="st"><b>Produce</b>Assign, outsource, track</div>
+  <div class="st"><b>Inspect</b>Quality gate, rework</div>
+  <div class="st alt"><b>Hand over</b>Or on credit, as invoice</div>
+  <div class="st alt"><b>Books</b>Sales, VAT, stock, commission</div>
+  <div class="st alt"><b>Comply</b>PAYE, NSSF, SHIF, VAT, income tax</div>
+</div>
+
+<div class="grid g3">
+  <div class="card stat"><div class="big">1</div><div class="cap">entry — the order drives sales, VAT, stock and books</div></div>
+  <div class="card stat gold"><div class="big">5</div><div class="cap">lines of business tracked separately: DTF, UV, embroidery, large format, laser</div></div>
+  <div class="card stat ok"><div class="big">0</div><div class="cap">re-keying between the till, the stores and the accountant</div></div>
+</div>
+
+<!-- 3 -->
+<h2><small>By line of business</small>What it does for your machines</h2>
+<table>
+  <tr><th style="width:150px">Line</th><th>Built-in</th></tr>
+  <tr><td><b>DTF printing</b></td><td>Dedicated <b>roll tracker</b>: install a roll with its real film, ink and powder cost; record film sold by the metre and artwork jobs priced per piece; see wastage against your tolerance, <b>profit per roll</b>, and what discounts cost roll by roll. Minimum price per metre and per piece enforced by the system; lower artwork prices go to a manager for approval.</td></tr>
+  <tr><td><b>Embroidery</b></td><td><b>Stitch-count pricing</b> with a quantity price alongside for comparison, set-up fees and design origination on their own lines, saved designs, per-quantity discounts and an approval queue for below-quantity prices. A profitability report that sets revenue against thread, needles and other costs.</td></tr>
+  <tr><td><b>UV printing</b></td><td>Priced per piece or per sqm from your service list; blanks and consumables stocked with reorder alerts; every sale and cost reported under the UV head.</td></tr>
+  <tr><td><b>Large format</b></td><td>Banners, vinyl, canvas and posters priced per sqm with an area calculator. When a supplier prints for you, the <b>contracted-out</b> workflow records the supplier's quote, the mark-up, the supplier bill and the job's real profit.</td></tr>
+  <tr><td><b>Laser engraving</b></td><td>Services and blanks as separate lines; reported as its own line of business.</td></tr>
+  <tr><td><b>Everything else</b></td><td>Caps, polos, mugs and gifts as stock items; corporate quotations and invoices on credit terms.</td></tr>
+</table>
+<p>Every service and cost belongs to a <b>business head</b>, so you can open <i>Sales by Business Head</i> and see sales, cost and margin for each line side by side.</p>
+
+<!-- 4 -->
+<h2><small>Why it pays for itself</small>Eight reasons owners switch</h2>
+<div class="grid g2">
+  <div class="card ok"><h3>1 · Protects your price</h3><p>Minimum prices on film, artwork and embroidery are enforced on the server. A discount above your ceiling is flagged. Lowering a price needs a named manager's approval, and nobody approves their own.</p></div>
+  <div class="card ok"><h3>2 · Shows true profit by line</h3><p>Real cost of sales (purchases and supplier bills), not a guessed percentage, by business head. Know whether embroidery, DTF or banners deserve the next machine.</p></div>
+  <div class="card ok"><h3>3 · Collects cash faster</h3><p>M-Pesa <b>STK push</b> at the counter (Safaricom Daraja or NCBA Paybill), split payments, deposits, <b>Pending Payments</b>, ageing receivables, and automatic M-Pesa statement matching.</p></div>
+  <div class="card ok"><h3>4 · Knows Kenya's taxes</h3><p>VAT automatic from sales and purchases; PAYE, NSSF, SHIF and housing levy payroll with payslips and P9; a monthly <b>Payments due</b> total to write one cheque; corporation tax or turnover tax schedules; withholding tax on freelancers.</p></div>
+  <div class="card ok"><h3>5 · Real accounting, not a bolt-on</h3><p>Double-entry books that post themselves: profit &amp; loss, balance sheet, cash flow, trial balance, ledger, journals, credit and debit notes, depreciation, and a books check — ready for your accountant.</p></div>
+  <div class="card ok"><h3>6 · Controls production</h3><p>Jobs are assigned in-house or sent to suppliers, inspected before release, reworked when they fail, and only handed over after they pass. No order is "completed" by hand.</p></div>
+  <div class="card ok"><h3>7 · Motivates the sales team</h3><p>Commission on money received, a clear <b>pay-band ladder</b>, a performance floor with warnings, weekly pay for freelance sales persons with tax withheld, and automatic payroll with a minimum-wage floor.</p></div>
+  <div class="card ok"><h3>8 · Keeps people honest</h3><p>Role-based access, maker-and-checker approvals on expenses, payroll and stock, an audit trail, scheduled backups with one-click restore, and an emailed sign-in code for Admins.</p></div>
+</div>
+
+<!-- 5 -->
+<h2><small>Day to day</small>What a busy Saturday looks like</h2>
+<ul>
+  <li><b>8:30</b> — The cashier takes three walk-in orders. The receipt prints on the 80 mm thermal printer (two copies) as the M-Pesa prompt confirms on the customer's phone.</li>
+  <li><b>10:00</b> — A corporate client asks for 300 embroidered polos. The sales person enters the stitch count; the system shows the stitch price and the lower quantity price. Choosing the lower one sends it to the manager's approval queue; the quotation goes to the client by email as a PDF.</li>
+  <li><b>11:30</b> — The supervisor assigns the waiting jobs. A banner job goes to your outside printer; the supplier's bill is recorded against it.</li>
+  <li><b>14:00</b> — A DTF job fails inspection and goes back to production as rework. The failure is on record.</li>
+  <li><b>16:00</b> — The owner opens <b>Sales by Business Head</b> and sees today's margin by line, without asking anyone for a report.</li>
+  <li><b>Month-end</b> — Finance opens <b>Payments due</b>, writes one cheque for PAYE, NSSF, SHIF, levy, VAT and tax, and runs <b>Books Check</b>. The accountant gets statements that already balance.</li>
+</ul>
+
+<!-- 6 -->
+<h2><small>How it compares</small>Against what you use today</h2>
+<table>
+  <tr><th style="width:230px">Capability</th><th class="c">Notebooks &amp; spreadsheets</th><th class="c">Generic POS</th><th class="c">Generic accounting software</th><th class="c">GLM Branding POS</th></tr>
+  <tr><td>Quote → invoice → credit terms</td><td class="n">manual</td><td class="p">partial</td><td class="y">✓</td><td class="y">✓</td></tr>
+  <tr><td>Per-metre, per-sqm, per-stitch pricing</td><td class="n">manual</td><td class="n">no</td><td class="n">no</td><td class="y">✓</td></tr>
+  <tr><td>DTF roll cost, wastage and profit</td><td class="n">manual</td><td class="n">no</td><td class="n">no</td><td class="y">✓</td></tr>
+  <tr><td>Price floors and approval queues</td><td class="n">no</td><td class="p">partial</td><td class="n">no</td><td class="y">✓</td></tr>
+  <tr><td>M-Pesa STK push and statement matching</td><td class="n">no</td><td class="p">add-on</td><td class="p">add-on</td><td class="y">✓</td></tr>
+  <tr><td>Production and quality-control workflow</td><td class="n">no</td><td class="n">no</td><td class="n">no</td><td class="y">✓</td></tr>
+  <tr><td>Outsourced jobs with supplier bills and profit</td><td class="n">manual</td><td class="n">no</td><td class="n">no</td><td class="y">✓</td></tr>
+  <tr><td>PAYE, NSSF, SHIF, housing levy, P9</td><td class="n">manual</td><td class="n">no</td><td class="p">varies</td><td class="y">✓</td></tr>
+  <tr><td>Kenyan VAT, payments-due cheque, income tax schedule</td><td class="n">manual</td><td class="n">no</td><td class="p">varies</td><td class="y">✓</td></tr>
+  <tr><td>Commission on money received, pay bands, freelancers</td><td class="n">manual</td><td class="n">no</td><td class="n">no</td><td class="y">✓</td></tr>
+  <tr><td>Double-entry books posted automatically from sales</td><td class="n">no</td><td class="n">no</td><td class="p">re-keyed</td><td class="y">✓</td></tr>
+  <tr><td>Profit by line of business</td><td class="n">no</td><td class="p">partial</td><td class="p">with set-up</td><td class="y">✓</td></tr>
+</table>
+<p class="note">Categories are general descriptions of typical tools, not statements about a particular product. Features vary by supplier.</p>
+
+<!-- 7 -->
+<h2><small>The numbers</small>What a better-controlled shop recovers</h2>
+<p class="lead">Use your own figures. This worked example is <b>illustrative only</b>, to show where the money comes from.</p>
+<table>
+  <tr><th>Where the money leaks</th><th>Illustrative shop</th><th class="num" style="text-align:right">Recovered a month</th></tr>
+  <tr><td>Uncontrolled discounts — you cap them and approve exceptions (assume 3% of sales given away, brought down to 1%)</td><td>Sales KES 1,500,000 a month</td><td style="text-align:right">KES 30,000</td></tr>
+  <tr><td>Film waste above tolerance — measured per roll so it can be managed (assume 3% of film cost)</td><td>Film KES 300,000 a month</td><td style="text-align:right">KES 9,000</td></tr>
+  <tr><td>Late or forgotten invoices — ageing receivables and pending payments (assume 1% of sales is chased down sooner or saved)</td><td>Sales KES 1,500,000 a month</td><td style="text-align:right">KES 15,000</td></tr>
+  <tr><td>Staff time — no re-keying, no manual VAT and payroll working, automatic bank/M-Pesa matching (assume 3 working days saved)</td><td>Finance / admin time</td><td style="text-align:right">KES 15,000</td></tr>
+  <tr class="hl"><td><b>Illustrative total</b></td><td></td><td style="text-align:right"><b>KES 69,000</b></td></tr>
+</table>
+<p class="note">Assumptions are examples, not promises. The value comes from your own price discipline, wastage and collections. We will work through your numbers with you in the demo.</p>
+
+<div class="grid g2">
+  <div class="card gold"><h3>Fewer arguments</h3><p>Prices, discounts, deposits, rework and commission all have a record, so disputes end quickly and fairly.</p></div>
+  <div class="card gold"><h3>Fewer surprises</h3><p>VAT, payroll deductions and income tax are scheduled before they are due; the cheque total is known in advance.</p></div>
+</div>
+
+<!-- 8 -->
+<h2><small>Getting started</small>From signature to first sale in weeks, not months</h2>
+<table>
+  <tr><th style="width:130px">Step</th><th>What happens</th></tr>
+  <tr><td><b>1 · Fit &amp; demo</b></td><td>A 30-minute walk-through using your own services and prices. We agree your lines of business and who needs which role.</td></tr>
+  <tr><td><b>2 · Set-up</b></td><td>Your company details, logo, price lists (uploaded from Excel), stock items, staff and roles, discount ceiling, M-Pesa and email connections, opening balances.</td></tr>
+  <tr><td><b>3 · Training</b></td><td>Short role-based sessions — counter, supervisor, finance, owner — using the user guide. Everyone practises on real examples before go-live.</td></tr>
+  <tr><td><b>4 · Go-live &amp; support</b></td><td>We stay close for the first month-end: payroll, the Payments-due cheque and the first books check. Backups run on a schedule from day one.</td></tr>
+</table>
+
+<div class="grid g2">
+  <div class="card"><h3>Your data stays yours</h3><p>Hosted on a server you control, backed up on a schedule you set (and optionally copied to Google Drive), with one-click restore and a complete audit trail.</p></div>
+  <div class="card"><h3>Works on the devices you have</h3><p>Any modern browser on a PC, laptop or tablet; the menu adapts to small screens. Prints to an 80 mm thermal receipt printer and an A4 printer; sends PDFs by email and WhatsApp.</p></div>
+</div>
+
+<!-- 9 -->
+<h2><small>Questions owners ask</small>Straight answers</h2>
+<h3>"My team is not good with computers."</h3>
+<p>The counter screens are simple: pick the item, enter the quantity, take the payment. PIN-pad sign-in, one searchable item list, a calculator for artwork size, and prices that fill in for you. Each role sees only the screens it needs.</p>
+<h3>"We already have an accountant."</h3>
+<p>Good — they will like it. The books post themselves, statements always balance, the VAT return and payroll schedules agree with the ledger, and Books Check flags anything out of line. They keep doing the filing and the advice.</p>
+<h3>"We are small. Is this too much?"</h3>
+<p>Switch on only what you need. A single-counter shop can start with orders, payments and receipts, and add stock, payroll and accounting as it grows. Roles and menus adjust automatically.</p>
+<h3>"What if the internet is slow or we change premises?"</h3>
+<p>It runs in a browser against your server, and lists are light and paged. Backups can be downloaded at any time and restored to a new server.</p>
+<h3>"Can it match how we price?"</h3>
+<p>Prices come from your own price list: per piece, per sqm, per metre, per stitch. Rates, bands, minimum prices, the discount ceiling, the commission ladder and the minimum wage are all settings, not code.</p>
+
+<div class="cta">
+  <h2>See it with your own prices</h2>
+  <p>Book a 30-minute demonstration. We will set up one of your real services, take a sample order from quote to paid invoice, and show you your line-of-business margin.</p>
+  <ol>
+    <li>Send us your price list (a spreadsheet is fine).</li>
+    <li>We load it and prepare the demo.</li>
+    <li>You decide with real numbers in front of you.</li>
+  </ol>
+  <p><b>Pricing is tailored to the size of your shop and the modules you need, and is quoted after the demonstration.</b></p>
+</div>
+
+</div>
+</body>
+</html>

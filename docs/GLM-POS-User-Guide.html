@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GLM Branding POS &amp; Accounting — User Guide</title>
+<style>
+:root {
+  --ink: #14284b;
+  --ink-soft: #e8edf6;
+  --gold: #a8741a;
+  --gold-soft: #f6ecd6;
+  --ok: #1f6b45;
+  --ok-soft: #e0f0e7;
+  --warn: #9b2c2c;
+  --warn-soft: #f8e3e3;
+  --fg: #1b2230;
+  --muted: #5b6475;
+  --rule: #d6d9e0;
+  --paper: #ffffff;
+  --bg: #f3f4f7;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+.page { max-width: 880px; margin: 0 auto; background: var(--paper); padding: 0 56px 56px; }
+h1, h2, h3, h4 { font-family: "Segoe UI Semibold", "Segoe UI", Arial, sans-serif; color: var(--ink); line-height: 1.2; }
+h2 { break-inside: avoid; font-size: 26px; margin: 44px 0 6px; padding-top: 14px; border-top: 4px solid var(--ink); break-after: avoid; }
+h2 .n { color: var(--gold); margin-right: 8px; }
+h3 { font-size: 18px; margin: 28px 0 6px; break-after: avoid; }
+h4 { font-size: 15px; margin: 18px 0 4px; color: var(--gold); text-transform: uppercase; letter-spacing: .06em; break-after: avoid; }
+p { margin: 8px 0; }
+ul, ol { margin: 8px 0; padding-left: 22px; }
+li { margin: 3px 0; }
+a { color: var(--ink); }
+code, .k { font-family: Consolas, "Courier New", monospace; font-size: 13px; background: var(--ink-soft); padding: 1px 5px; border-radius: 3px; }
+.path { font-weight: 600; color: var(--ink); }
+.lead { font-size: 17px; color: var(--muted); margin-top: 0; }
+
+/* cover */
+.cover { background: var(--ink); color: #fff; margin: 0 -56px; padding: 90px 56px 70px; break-after: page; min-height: 960px; }
+.cover .kicker { letter-spacing: .18em; text-transform: uppercase; color: #f1d9a1; font-size: 13px; font-weight: 600; }
+.cover h1 { color: #fff; font-size: 54px; margin: 14px 0 12px; line-height: 1.02; }
+.cover p { font-size: 19px; max-width: 560px; color: #dfe6f3; }
+.cover .rule { width: 90px; height: 5px; background: var(--gold); margin: 28px 0; }
+.cover .meta { margin-top: 90px; font-size: 14px; color: #c3cde0; }
+
+/* contents */
+.toc { columns: 2; column-gap: 40px; margin: 12px 0 0; padding: 0; list-style: none; }
+.toc li { margin: 5px 0; break-inside: avoid; }
+.toc a { text-decoration: none; }
+.toc .n { display: inline-block; width: 26px; color: var(--gold); font-weight: 700; }
+
+/* callouts */
+.box { border-left: 5px solid var(--ink); background: var(--ink-soft); padding: 10px 14px; margin: 14px 0; break-inside: avoid; }
+.box.tip { border-color: var(--ok); background: var(--ok-soft); }
+.box.warn { border-color: var(--warn); background: var(--warn-soft); }
+.box.gold { border-color: var(--gold); background: var(--gold-soft); }
+.box b.t { display: block; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; margin-bottom: 2px; }
+
+/* tables */
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; break-inside: avoid; }
+th { background: var(--ink); color: #fff; text-align: left; padding: 7px 10px; font-weight: 600; }
+td { border-bottom: 1px solid var(--rule); padding: 7px 10px; vertical-align: top; }
+tr:nth-child(even) td { background: #fafbfd; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+
+/* steps */
+ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 12px 0; }
+ol.steps > li { counter-increment: s; position: relative; padding: 4px 0 8px 44px; break-inside: avoid; }
+ol.steps > li::before { content: counter(s); position: absolute; left: 0; top: 2px; width: 30px; height: 30px; border-radius: 50%; background: var(--ink); color: #fff; font-weight: 700; display: grid; place-items: center; font-size: 14px; }
+
+/* flow diagram */
+.flow { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; margin: 16px 0; }
+.flow .st { flex: 1 1 88px; background: var(--ink); color: #fff; padding: 10px 10px; font-size: 13px; position: relative; break-inside: avoid; }
+.flow .st b { display: block; font-size: 14px; margin-bottom: 2px; color: #f1d9a1; }
+.flow .st.alt { background: var(--gold); }
+.flow .st.alt b { color: #fff; }
+.who { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; background: var(--gold-soft); color: var(--gold); padding: 1px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+
+.pb { break-before: page; }
+figure.shot { margin: 16px 0 20px; break-inside: avoid; counter-increment: fig; }
+figure.shot img { display: block; width: 100%; height: auto; border: 1px solid #c9cdd6; box-shadow: 0 2px 8px rgba(20,40,75,.12); background: #fff; }
+figure.shot img.c { aspect-ratio: var(--ar); object-fit: cover; object-position: top; }
+figure.shot img.c.b { object-position: bottom; }
+figure.shot.half { max-width: 560px; margin-left: auto; margin-right: auto; }
+figure.shot.wide { margin-left: -36px; margin-right: -36px; }
+figure.shot figcaption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+figure.shot figcaption::before { content: "Figure " counter(fig) " — "; font-weight: 700; color: var(--ink); }
+body { counter-reset: fig; }
+footer.doc { margin-top: 50px; border-top: 1px solid var(--rule); padding-top: 10px; color: var(--muted); font-size: 12px; }
+
+@page { size: A4; margin: 16mm 14mm 18mm; @bottom-center { content: "GLM Branding POS & Accounting — User Guide  ·  page " counter(page); font: 9pt "Segoe UI", Arial, sans-serif; color: #5b6475; } }
+@page :first { margin: 0; @bottom-center { content: ""; } }
+@media print {
+  body { background: #fff; }
+  .page { max-width: none; padding: 0 2mm; }
+  .cover { margin: 0 -2mm; padding: 46mm 18mm 20mm; min-height: 297mm; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<section class="cover">
+  <div class="kicker">User guide · order taking to accounts</div>
+  <h1>GLM Branding<br>POS &amp; Accounting</h1>
+  <div class="rule"></div>
+  <p>One system that takes the order, collects the money, runs the job through production and quality control, buys the stock, pays the staff, files the taxes and keeps the books — for shops that print and brand with <b>DTF, UV, embroidery, large format and laser</b>.</p>
+  <div class="meta">For shop staff, supervisors, finance and the owner<br>Prices are in Kenya shillings (KES), VAT at 16%</div>
+</section>
+
+<h2 style="border-top:0; margin-top:30px;">Contents</h2>
+<ol class="toc">
+  <li><a href="#s1"><span class="n">1</span>How this guide works, and who does what</a></li>
+  <li><a href="#s2"><span class="n">2</span>Signing in and finding your way</a></li>
+  <li><a href="#s3"><span class="n">3</span>Setting the business up (Admin, once)</a></li>
+  <li><a href="#s4"><span class="n">4</span>The life of an order</a></li>
+  <li><a href="#s5"><span class="n">5</span>Taking an order</a></li>
+  <li><a href="#s6"><span class="n">6</span>Taking the money</a></li>
+  <li><a href="#s7"><span class="n">7</span>Production and quality control</a></li>
+  <li><a href="#s8"><span class="n">8</span>Handing over, credit and corrections</a></li>
+  <li><a href="#s9"><span class="n">9</span>Stock and purchasing</a></li>
+  <li><a href="#s10"><span class="n">10</span>The DTF roll tracker</a></li>
+  <li><a href="#s11"><span class="n">11</span>Finance: expenses, petty cash, assets</a></li>
+  <li><a href="#s12"><span class="n">12</span>Compliance: VAT, payroll, taxes</a></li>
+  <li><a href="#s13"><span class="n">13</span>Accounting: the books and statements</a></li>
+  <li><a href="#s14"><span class="n">14</span>Sales commission and staff pay</a></li>
+  <li><a href="#s15"><span class="n">15</span>Reports</a></li>
+  <li><a href="#s16"><span class="n">16</span>Master Data reference (Admin)</a></li>
+  <li><a href="#s17"><span class="n">17</span>Security, backups and audit</a></li>
+  <li><a href="#s18"><span class="n">18</span>Daily, weekly and month-end routines</a></li>
+  <li><a href="#s19"><span class="n">19</span>Troubleshooting and questions</a></li>
+</ol>
+
+<!-- 1 ------------------------------------------------------------------>
+<h2 id="s1"><span class="n">1</span>How this guide works, and who does what</h2>
+<p class="lead">The guide follows the money: an order is taken, paid for, made, checked, handed over, and then it shows up in the stock, the tax and the accounts. Each section says where to click and what happens next.</p>
+
+<p><b>Where to click</b> is written as <span class="path">Module → Tab</span>, for example <span class="path">Finance → Expenses</span>. The modules are in the menu down the left side of the screen. You only see the modules your role allows.</p>
+
+<h3>Roles</h3>
+<p>The system ships with five roles. The Admin can add more, or change what each role can open, under <span class="path">Master Data → Roles &amp; Access</span>. A change takes effect straight away.</p>
+<table>
+  <tr><th style="width:150px">Role</th><th>Typically does</th></tr>
+  <tr><td><b>Staff</b> (sales person)</td><td>Takes General, Film, Artwork and Embroidery orders; works the production jobs assigned to them; sees their own orders and their own commission.</td></tr>
+  <tr><td><b>Front Office</b></td><td>The receptionist or cashier: captures orders for the sales persons, takes payments, sees every order. Sees no costs and no commission.</td></tr>
+  <tr><td><b>Supervisor</b></td><td>Assigns jobs, inspects quality, raises purchase requisitions, approves discounts above the ceiling, watches payments and every order.</td></tr>
+  <tr><td><b>Finance Manager</b></td><td>Finance, Compliance, Accounting, Reports, purchase approval, supplier costs, DTF costs and profit, commission payouts.</td></tr>
+  <tr><td><b>General Manager</b></td><td>Everything financial and operational, except the Master Data set-up screens.</td></tr>
+  <tr><td><b>Admin</b></td><td>Everything, including <b>setting the commission rates</b> and Master Data (staff, roles, price lists, settings, integrations, backups). The Admin role always has full access, so a mistake in role settings can always be fixed.</td></tr>
+</table>
+
+<div class="box tip"><b class="t">Controls built in</b>
+Money records are protected by <i>maker and checker</i>: an expense can only be amended or deleted by raising a request with a reason, and a <b>different</b> manager approves it. Nobody approves their own request. See section 17.</div>
+
+<!-- 2 ------------------------------------------------------------------>
+<h2 id="s2"><span class="n">2</span>Signing in and finding your way</h2>
+<ol class="steps">
+  <li><b>Pick your name</b> on the sign-in screen and tap your <b>4-digit PIN</b> on the pad. The system name and company logo appear at the top of the screen and the sidebar.</li>
+  <li><b>Your name does not show on the screen?</b> The screen says why (for example the list could not be loaded) and offers <b>try again</b>. Some browsers' ad or tracker blockers, VPNs and data-saving modes stop the list from loading: switch the blocker off for this site, or press <b>Sign in with my email instead</b> and enter the email address your login was sent to, with the same PIN. The emailed login says so too.</li>
+  <li>If an Admin has set a temporary PIN for you, you are asked to choose your own the first time you sign in.</li>
+  <li>Admins with an email address on file may be asked for a <b>6-digit code sent to their email</b> after the PIN (Admin sign-in code, <span class="path">Master Data → Security</span>).</li>
+  <li><b>Five wrong PINs lock the account</b> — for 15 minutes the first time, then 30, 60 and so on, up to a day. An Admin can reset a PIN at any time.</li>
+  <li><b>Forgot your PIN?</b> Ask an Admin to reset it (<span class="path">Master Data → Staff &amp; Users</span>). Admins use <b>Admin: forgot PIN?</b> on the sign-in screen to get an emailed reset code.</li>
+</ol>
+
+
+<figure class="shot half"><img src="img/01-login.jpg" alt="The sign-in screen: pick your name, then tap your PIN. The logo and system name come from Master Data → Company Info."><figcaption>The sign-in screen: pick your name, then tap your PIN. The logo and system name come from Master Data → Company Info.</figcaption></figure>
+<h3>The sidebar</h3>
+<p>Your name and role are at the top. Click them to <b>Change PIN</b> or <b>Log out</b>. The modules sit below in four groups:</p>
+<table>
+  <tr><th style="width:130px">Group</th><th>Modules</th></tr>
+  <tr><td><b>Sales</b></td><td>General Order, DTF Film Order, DTF Artwork Order, UV DTF Film Order, UV DTF Artwork Order, Embroidery Order, Job Costing, All Orders (or Orders), Commission</td></tr>
+  <tr><td><b>Operations</b></td><td>Production, Quality Control, Stock, DTF</td></tr>
+  <tr><td><b>Finance</b></td><td>Finance, Compliance, Accounting, Payments, Reports</td></tr>
+  <tr><td><b>Admin</b></td><td>Master Data</td></tr>
+</table>
+<p>At the bottom of the sidebar, <b>Colours</b> switches the look between <b>Organic</b> (the default), <b>Industrial</b> and <b>Nocturne</b> (a dark scheme). <b>Collapse</b> shrinks the sidebar to icons. On a phone or tablet the sidebar becomes a slide-in drawer behind the menu button.</p>
+
+<figure class="shot"><img src="img/02-layout.jpg" alt="The sidebar on the left holds your name and every module you may open; the order form fills the rest of the screen."><figcaption>The sidebar on the left holds your name and every module you may open; the order form fills the rest of the screen.</figcaption></figure>
+
+<figure class="shot half"><img src="img/02b-nocturne.jpg" alt="The Colours buttons at the bottom of the sidebar switch the look. This is the Nocturne (dark) scheme."><figcaption>The Colours buttons at the bottom of the sidebar switch the look. This is the Nocturne (dark) scheme.</figcaption></figure>
+<p>Most lists have a <b>search box</b>, a date range with presets (This month, This quarter, Year to date) and 10 rows to a page. Dates are shown as dd/mm/yyyy.</p>
+
+<!-- 3 ------------------------------------------------------------------>
+<h2 id="s3"><span class="n">3</span>Setting the business up (Admin, once)</h2>
+<p class="lead">Do these in order on day one. Each is under <span class="path">Master Data</span> unless stated. The system works with sensible starting values, but your prices, people and payment details must be yours.</p>
+
+<table>
+  <tr><th style="width:36px">#</th><th style="width:200px">Where</th><th>What to set</th></tr>
+  <tr><td>1</td><td><b>Company Info</b></td><td>Company (trading) name, registered name, address, logo, phone numbers, website and social links, KRA PIN and VAT details. Everything you enter here prints on invoices, quotations and receipts. Also the <i>system name</i> shown on screens, and the on/off switch for the Commission module.</td></tr>
+  <tr><td>2</td><td><b>Staff &amp; Users</b></td><td>Add each person with first and last name (middle name optional), role, email (for PIN emails) and PIN. <b>Edit</b>, <b>Reset PIN</b> and <b>Delete</b> are at the end of each row. Switching someone off ends their sessions at once but keeps their history.</td></tr>
+  <tr><td>3</td><td><b>Roles &amp; Access</b></td><td>Tick which areas each role can open. After creating a custom role, tick <i>View all orders</i> if it should see everyone's orders.</td></tr>
+  <tr><td>4</td><td><b>Business Heads</b></td><td>The lines of business you report on: <i>DTF Printing, UV DTF Printing, UV Printing, Laser Engraving, Large Format Printing, Embroidery, Printing &amp; Publications, General Order</i> are created for you. Add, rename or retire heads.</td></tr>
+  <tr><td>5</td><td><b>Service Price List</b></td><td>Every service you sell with its <b>unit</b> (piece, sqm, metre…), <b>price</b> (VAT included), description, size and <b>business head</b>. Tick <i>Charges pressing fee</i> or <i>Artwork pricing</i> (priced by area) as needed. <b>Download Excel / Upload Excel</b> lets you edit hundreds of lines at once; the upload shows what will be added, changed or refused and applies nothing until you press <i>Apply</i>. <b>Market survey sheet</b> (Admin) downloads a different Excel file for researching competitors: every service and stock item on the lists, and the jobs the system prices by formula (DTF and UV DTF, UV pens, embroidery, business cards, signage, eulogies, company profiles, brochures), each with the exact specification to ask for and empty columns for five competitors' prices — <b>none of our own prices are on it</b>, so it can be handed to whoever does the survey.</td></tr>
+  <tr><td>6</td><td><b>Stock Price List</b></td><td>Items you stock and sell (caps, polos, mugs, blanks, consumables) with size, price, on-hand quantity, <b>reorder level</b> and usual business head.</td></tr>
+  <tr><td>7</td><td><b>Discount Rules</b></td><td>The discount ceiling. A discount above it needs supervisor approval.</td></tr>
+  <tr><td>8</td><td><b>Embroidery Pricing</b></td><td>The stitch-count price, the quantity price table, set-up and design-origination charges. See section 5.5.</td></tr>
+  <tr><td>9</td><td><b>DTF</b> → <b>Setup</b></td><td>Film price band (minimum and standard price per metre), minimum price per piece for artwork, wastage tolerance. Then install your first roll under <b>DTF → Rolls</b>.</td></tr>
+  <tr><td>10</td><td><b>M-Pesa</b> / <b>NCBA</b></td><td>Your Paybill or Till and the Safaricom Daraja keys, then <b>Save → Test the connection → Switch on</b>. Start in <i>Sandbox</i>, move to <i>Production</i> with live keys. NCBA Bank customers can use NCBA's STK push and payment notifications instead.</td></tr>
+  <tr><td>11</td><td><b>Email</b> / <b>WhatsApp</b></td><td>Connect the mail account and the WhatsApp Business number used to send invoices and receipts as PDFs.</td></tr>
+  <tr><td>12</td><td><b>Backup</b> / <b>Security</b></td><td>Set an automatic backup schedule (and optionally Google Drive). Turn on the Admin sign-in code.</td></tr>
+  <tr><td>13</td><td><b>Finance → Petty Cash</b></td><td>Record the opening petty-cash float (top-up).</td></tr>
+  <tr><td>14</td><td><b>Accounting → Journals</b></td><td>Enter the <b>opening balances</b> once: bank, cash on hand, M-Pesa float, owner's capital. The chart of accounts builds itself.</td></tr>
+  <tr><td>15</td><td><b>Compliance → Employees</b></td><td>For each employee: National ID, KRA PIN, SHIF number and gross monthly salary. These print on payslips and the P9.</td></tr>
+</table>
+
+<div class="box warn"><b class="t">Before you go live</b>
+The system is seeded with demonstration users. Add your own Admin, then delete the demonstration accounts. Check every price and rate you entered — figures such as the minimum wage, withholding-tax rate and wastage tolerance are starting values to confirm with your accountant.</div>
+
+<!-- 4 ------------------------------------------------------------------>
+<h2 id="s4"><span class="n">4</span>The life of an order</h2>
+<p class="lead">Every order, whatever the product, takes the same road. Knowing the road makes every screen predictable.</p>
+
+<div class="flow">
+  <div class="st"><b>1 Capture</b>Order or quotation taken. Prices checked against the price list.</div>
+  <div class="st"><b>2 Pay</b>Cash, M-Pesa, bank or card — now, or on completion. Receipt printed.</div>
+  <div class="st"><b>3 Order Received</b>Waiting in Production to be assigned.</div>
+  <div class="st"><b>4 In Production</b>Assigned in-house, or sent to a supplier.</div>
+  <div class="st"><b>5 Quality Check</b>Inspected: pass, or back to production.</div>
+  <div class="st alt"><b>6 Ready</b>Passed. Waiting for the customer.</div>
+  <div class="st alt"><b>7 Completed</b>Handed over. The only way to complete.</div>
+</div>
+<p>In parallel, the money side is keeping up on its own:</p>
+<ul>
+  <li><b>VAT</b> on the sale is recorded the moment the sale is made (output VAT), and VAT on your purchases and expenses is recorded as input VAT.</li>
+  <li>The sale, the payment, the stock used and any supplier bill are posted to the <b>books</b> automatically; there is no second entry.</li>
+  <li><b>Commission</b> is earned as the customer's money arrives.</li>
+  <li>Unpaid balances appear under <b>Pending Payments</b> and in <b>Accounting → Receivables</b>.</li>
+</ul>
+
+<div class="box"><b class="t">Two kinds of order</b>
+<b>Walk-in</b> orders are sales the moment they are captured: customer optional, paid at the counter, thermal receipt printed. <b>Corporate</b> orders start as a <b>Quotation</b> for a registered corporate client, become an <b>Invoice</b> on acceptance, and are collected on credit terms.</div>
+
+<!-- 5 ------------------------------------------------------------------>
+<h2 id="s5"><span class="n">5</span>Taking an order</h2>
+
+<h3 id="s5-1">5.1 General Order (walk-in) <span class="who">Staff · Front Office</span></h3>
+<p>Used for everything that is not film, artwork or embroidery: UV prints, large-format banners, laser engraving, mugs, caps, shirts and plain product sales. Open <span class="path">General Order</span>.</p>
+<ol class="steps">
+  <li><b>Customer.</b> Name and phone are <b>optional</b> for an ordinary walk-in. They become required when the client is to be credited to a sales person (see <i>Who brought this order?</i> below), because the client must be identifiable to be credited.</li>
+  <li><b>Add lines.</b> Search one list that holds both your services and your stock. Each line has a quantity and a price taken from the price list (prices include VAT).
+    <ul>
+      <li><b>Materials and services are separate lines.</b> Selling a printed cap is two lines: the cap (a material) and the printing (a service). A service line with no material line means the customer brought their own item.</li>
+      <li><b>Heat press fee.</b> A service flagged <i>Charges pressing fee</i> (such as DTF Printing) asks you to pick the pressing fee per piece from a fixed list. A tag warns you if it is left blank.</li>
+      <li><b>Priced by area.</b> A service flagged <i>Artwork pricing</i> asks for the artwork size in square metres and the number of pieces; the price per piece is worked out for you. The <b>📐 calculator</b> converts length × width in centimetres to square metres.</li>
+    </ul>
+  </li>
+  <li><b>Discounts.</b> Put a discount on a line, or use <i>+ Add order discount</i> (percentage or amount). If it goes above the ceiling set in Discount Rules, a tag reads <i>Exceeds standard discount — needs supervisor approval</i>.</li>
+  <li><b>Payment timing.</b> <b>Pay now</b> (the default): the customer pays at the counter, and you record how. <b>Pay on completion</b>: the customer pays when they collect.</li>
+  <li><b>Who brought this order?</b> Choose <i>The shop or our own staff</i> — a house sale, or pick the sales person the order is for — or <i>A freelance sales person brought this order</i>. Only when the Commission module is switched on.</li>
+  <li><b>Payment now.</b> Split the amount across cash, M-Pesa, bank transfer and card; <b>Rest</b> fills in what is left. For M-Pesa, enter the phone number and press the <b>STK push</b> button: the customer gets a prompt on their phone (see section 6).</li>
+  <li>Press <b>Capture order</b>. The thermal receipt (80 mm, two copies, heavy black type) opens for printing, and the order is created at the stage <i>Order Received</i>.</li>
+</ol>
+
+
+<figure class="shot"><img src="img/03-general-order.jpg" alt="A General Order: customer, payment timing, who brought the order, the lines picked from the price list, and the payment panel at the bottom. The total updates as lines change."><figcaption>A General Order: customer, payment timing, who brought the order, the lines picked from the price list, and the payment panel at the bottom. The total updates as lines change.</figcaption></figure>
+<h4>Who brought this order? — commission</h4>
+<p>If the Commission module is switched on, every order asks <b>Who brought this order?</b></p>
+<ul>
+  <li><b>The shop or our own staff.</b> Leave it as <i>The shop: no sales person (a house sale)</i> for walk-ins and clients the shop already had — no name or phone is needed, and a house order earns no sourcing commission. If a staff member brought the client in through their own network, tick <i>"[Name] brought this client in — credit them for 12 months"</i>. The client then stays credited to that person for the ownership period, and every order from them counts towards that person's sales, whoever captures it. A client can only be credited to one person; if someone else already owns them, the system says who.</li>
+  <li><b>A freelance sales person brought this order.</b> Pick the freelancer. They are credited on that order alone and paid weekly (section 14). An order is credited to a staff member <i>or</i> a freelancer, never both.</li>
+</ul>
+<p>Front Office staff capturing for a sales person choose the sales person in the same place.</p>
+
+<h3 id="s5-2">5.2 Corporate quotation and invoice <span class="who">Finance · Staff</span></h3>
+<p>For companies buying on account. Corporate clients are kept under <span class="path">Finance → Corporate Clients</span> with their <b>credit days</b>, email, phone and an optional <b>contact person</b>, who is printed as <i>Attn:</i> on their documents.</p>
+<figure class="shot"><img src="img/13b-corporate-clients.jpg" alt="Finance → Corporate Clients: each client with its credit terms, contact person, email and phone."><figcaption>Finance → Corporate Clients: each client with its credit terms, contact person, email and phone.</figcaption></figure>
+
+<ol class="steps">
+  <li><span class="path">Finance → Quotation</span>: choose the client, add the lines as for a General Order, apply any discount and save. The order is a <b>Quotation</b> (it is not yet a sale, so it does not count as revenue or VAT).</li>
+  <li><b>Print</b> it on A4, or press <b>Email</b> or <b>WhatsApp</b> to send it to the client as a PDF. The email or phone is prefilled from the client record.</li>
+  <li>When the client accepts, open the order and press <b>Convert quotation to invoice</b>. It now counts as a sale, and its due date is set from the client's credit days.</li>
+  <li>Invoices are collected under <span class="path">Finance → Invoice</span> and <span class="path">Finance → Payments</span>; what is owed appears in <span class="path">Accounting → Receivables</span>.</li>
+</ol>
+
+<figure class="shot"><img src="img/07-quotation.jpg" alt="Finance → Quotation: choose the corporate client and who prepared it, then add lines as for any order."><figcaption>Finance → Quotation: choose the corporate client and who prepared it, then add lines as for any order.</figcaption></figure>
+
+<figure class="shot"><img src="img/07b-invoices.jpg" class="c" style="--ar:1288/760" alt="Finance → Invoice lists the invoices; balances and due dates show what is still to collect."><figcaption>Finance → Invoice lists the invoices; balances and due dates show what is still to collect.</figcaption></figure>
+<p>The invoice shows <b>Subtotal (incl. VAT)</b>, <b>VAT @ 16%</b>, <b>Total Due</b> and <b>Balance Due</b>.</p>
+
+<h3 id="s5-3">5.3 DTF Film Order (film by the metre) <span class="who">Staff</span></h3>
+<p>Open <span class="path">DTF Film Order</span>. You are selling printed film from the current open roll.</p>
+<ol class="steps">
+  <li>Choose the <b>Roll</b>, add the client (optional), then enter the <b>metres</b> and the <b>price per metre</b>. The price must be inside the band set in DTF → Setup: not below the <b>minimum</b>, and it can go above the <b>standard</b> price.</li>
+  <li>Press <b>Continue</b> to take the payment (in full or part, any mix of methods) as in a General Order; the amount paid cannot exceed the total.</li>
+  <li>The sale is booked against the roll, which reduces its remaining length.</li>
+</ol>
+
+<figure class="shot half"><img src="img/04-film-order.jpg" alt="DTF Film Order: the roll, the length sold and the price per metre. The sale total updates as you type."><figcaption>DTF Film Order: the roll, the length sold and the price per metre. The sale total updates as you type.</figcaption></figure>
+<div class="box gold"><b class="t">Why it matters</b>The premium you charge above the minimum price per metre is what earns film commission, so pricing well is rewarded. Prices below the minimum are refused by the system, not just by the form.</div>
+
+<h3 id="s5-4">5.4 DTF Artwork Order (priced per piece) <span class="who">Staff</span></h3>
+<p>Open <span class="path">DTF Artwork Order</span>. A customer's design printed on transfers and sold per piece.</p>
+<ol class="steps">
+  <li>Enter the client, the number of pieces and the running metres used. The system works out a <b>recommended price per piece</b> from the roll's costs.</li>
+  <li>Choose the <b>heat press fee</b> — this is compulsory; there is no "none".</li>
+  <li>You may charge <b>more</b> than the recommendation (the extra earns commission). You may charge <b>less</b>, but not under the per-piece floor in DTF → Setup. A lower price is the discount: no other discount applies, no commission premium is earned, and the job <b>goes to a DTF manager for approval first</b>.</li>
+  <li>Until approved, the job cannot be paid, queued in Production or assigned; its film stays reserved on the roll; it shows as <i>Awaiting price approval</i> and no receipt prints. Managers decide under <span class="path">DTF → Price Approvals</span>. The person who captured the job cannot approve it. Rejecting (with a reason) removes the order and returns the film to the roll.</li>
+</ol>
+
+
+<figure class="shot half"><img src="img/05-artwork-order.jpg" alt="DTF Artwork Order: the roll, running metres used, pieces, the heat press fee and the price per piece."><figcaption>DTF Artwork Order: the roll, running metres used, pieces, the heat press fee and the price per piece.</figcaption></figure>
+<h3 id="s5-4a">5.4a UV DTF Film Order <span class="who">Staff</span></h3>
+<p>Open <span class="path">UV DTF Film Order</span>. It works exactly like the DTF Film Order, but sells printed <b>UV DTF film</b> from a UV DTF roll (a 30 cm wide, 50 metre roll). Choose the open <b>UV-</b> roll, the client and the metres.</p>
+<ul>
+  <li>The standard price is <b>KES 1,500 a metre, VAT included</b>. The price can be raised; it <b>cannot go below the floor of KES 1,200 a metre</b>.</li>
+  <li>Commission is the same as on DTF film: what you charge <b>above the floor</b> earns a share, by the same table (<span class="path">Commission → Rates</span>), as the customer pays.</li>
+  <li>Press <b>Continue</b> to take the client's details, any blank items sold with it and the payment. The order is numbered <b>U-6001</b> and up and sits under its own line of business, <b>UV DTF Printing</b>.</li>
+</ul>
+<figure class="shot half"><img src="img/UV1-film-order.jpg" alt="UV DTF Film Order: the UV roll, client, metres and price per metre, with the total."><figcaption>UV DTF Film Order: the roll, the metres and the price per metre (KES 1,500 unless changed, never below 1,200), and the sale total.</figcaption></figure>
+
+<h4>UV Pen Costing (a tab on the UV DTF Film Order)</h4>
+<p>The UV DTF Film Order screen has two tabs: <b>Film sale</b> and <b>UV Pen Costing</b>. UV Pen Costing is a <b>price picker</b> for UV-printed pen branding: enter the <b>number of pens</b> (type it, use − and +, or tap a quick pick: 10, 20, 50, 100, 250, 500, 1,000, 1,500) and the screen shows the <b>price per pen</b> and the <b>total to charge</b>, so nobody has to ask for the price. <b>Clear</b> starts again.</p>
+<ul>
+  <li><b>The whole order is charged at one rate</b>, set by its quantity — not stepped. To start with: <b>1–99 pens 20/=</b>, <b>100–499 pens 15/=</b>, <b>500–1000 pens 12/=</b>, <b>1001 and over 10/=</b>. For example 450 pens come to 15/= each, <b>6,750/=</b> (VAT included, as every price in the system is). The tier the order falls in is highlighted.</li>
+  <li><b>Upsell.</b> When the customer is a few pens short of a cheaper tier the screen says so — <i>Add 50 more pens (500 total) → 12/= each. Customer pays 750/= less overall</i> — and <b>Set to 500 pens</b> changes the quantity in one tap. (When the extra pens would cost more in total, it says what the total becomes instead.)</li>
+  <li><b>The rates are kept in the system.</b> Anyone with DTF access sees them; a <b>DTF manager</b> changes a rate by tapping it, or uses <b>Edit tiers</b> to change where a tier starts, add a tier or remove one (the first always starts at 1 pen). A change applies to everyone at once.</li>
+</ul>
+<p><b>Capture as order.</b> Once the customer agrees, press <b>Capture as order</b> under the price. The usual order popup opens — client name and phone, who brought the order, any merchandise sold with it, and how it is paid (in full, part now, or later) — and <b>Print</b> creates the order and prints the receipt or invoice. The pens go on the order at the rate for their quantity (the system works the rate out again itself, so it always matches the tiers), under the price-list service <b>UV Pen Branding</b>. It is an ordinary order: it appears in All Orders with a U- number, goes through Production, and a client you sourced counts as it does on any general order. No roll is used.</p>
+<h3 id="s5-4b">5.4b UV DTF Artwork Order <span class="who">Staff</span></h3>
+<p>Open <span class="path">UV DTF Artwork Order</span>. A customer's design printed on UV DTF film and sold <b>per piece</b>, priced the way DTF artwork is: <b>KES 30 for every piece, plus a fixed KES 1,070 for every running metre, shared across the pieces on it</b>.</p>
+<ul>
+  <li><b>Price per piece = 30 + 1,070 × running metres ÷ pieces.</b> A metre carrying <b>107 pieces</b> is <b>KES 40 each, KES 4,280 for the metre</b>. Fewer pieces on a metre cost more each, more pieces cost less, and it never goes below <b>KES 30</b>.</li>
+  <li>A price <b>above</b> the recommended one earns commission on the extra (the same share as DTF artwork). A price <b>below</b> it, but not under KES 30, is a discount and goes to a manager for approval before it can be paid for or produced.</li>
+  <li>There is <b>no heat press fee</b>: UV DTF stickers are applied cold. Blank items such as mugs or phone cases can still be added from stock when you press <b>Continue</b>.</li>
+</ul>
+<figure class="shot half"><img src="img/UV2-artwork-order.jpg" alt="UV DTF Artwork Order: 107 pieces on one metre, the recommended price per piece and the job total."><figcaption>UV DTF Artwork Order: 107 pieces on one running metre — a fixed charge of KES 10 a piece on top of the KES 30 floor, KES 40 each, KES 4,280 in all.</figcaption></figure>
+
+<h3 id="s5-5">5.5 Embroidery Order <span class="who">Staff</span></h3>
+<p>Embroidery is priced by <b>stitch count first</b>, with a quantity price shown alongside for comparison. Open <span class="path">Embroidery Order</span>.</p>
+<ol class="steps">
+  <li><b>The job.</b> Enter the number of <b>pieces</b> (garments). Tick <i>Client supplies the artwork / design</i> if they bring it — no design-origination fee is then charged; untick it when you make the design.</li>
+  <li><b>Designs — one per placement</b> (left chest, back…). For each, enter the <b>design name</b> and the <b>stitches</b>. Two price cards appear: <b>By stitches</b> and <b>By quantity</b>. The quantity price is always the stitch price less a quantity discount, so it is never higher. <b>Staff choose either.</b> Choosing the lower quantity price can send the job to the <b>approval queue</b>; a different price per piece can be typed, and anything below the amount shown goes to a manager.</li>
+  <li>Tick <b>Keep this design for repeat orders</b> to save it. On the next order press <b>Repeat order — pick a saved design</b> to reuse its stitch count; the set-up fee is waived on a repeat, and from 100 pieces.</li>
+  <li><b>Garments sold with the job.</b> Add blank garments from the stock list with <b>+ Add a garment</b>; they are separate lines.</li>
+  <li><b>What goes on the order</b> lists the embroidery line, the <b>digitizing set-up</b> line and any <b>design origination</b> line — each on its own line so they stay visible on the invoice and in reports. The <b>Compare</b> table prices the same design by stitches and by quantity at 1, 6, 12, 25, 50 and 100 pieces, with this job highlighted.</li>
+  <li>Take the payment as for any order. Embroidery counts towards monthly sales targets like every other sale.</li>
+</ol>
+
+<figure class="shot"><img src="img/06-embroidery-order.jpg" class="c" style="--ar:1288/1010" alt="The job and its designs: pieces, design name, stitches and the two price cards."><figcaption>The job and its designs: pieces, design name, stitches and the two price cards.</figcaption></figure>
+
+<figure class="shot"><img src="img/06-embroidery-order.jpg" class="c b" style="--ar:1288/1100" alt="Further down: what goes on the order, the stitches-versus-quantity comparison, and payment."><figcaption>Further down: what goes on the order, the stitches-versus-quantity comparison, and payment.</figcaption></figure>
+<div class="box tip"><b class="t">Reports</b><span class="path">Reports → Embroidery Profitability</span> shows revenue less thread and needle consumption and the other costs, so you can see whether stitch-count pricing is earning its keep.</div>
+
+<h3 id="s5-6">5.6 UV, large format, laser and everything else</h3>
+<p>These are sold through <b>General Order</b> from the service price list: each service has a unit (piece, sqm, per metre), a price and a business head. Set them up once in <span class="path">Master Data → Service Price List</span> and every sale lands in the right line of business automatically:</p>
+<table>
+  <tr><th style="width:180px">Line of business</th><th>How to sell it</th></tr>
+  <tr><td>UV printing</td><td>Services such as UV flatbed prints priced per piece or per sqm; blanks (phone cases, signage boards) as stock items.</td></tr>
+  <tr><td>Large format</td><td>Banners, vinyl, canvas, posters priced per sqm. Work a supplier prints for you is costed under <span class="path">Sales → Job Costing</span> (section 5.9).</td></tr>
+  <tr><td>Laser engraving</td><td>Engraving services per piece with the item as a separate stock line.</td></tr>
+</table>
+
+<h3 id="s5-7">5.7 Work a supplier makes (outsourced jobs)</h3>
+<p>There is no <i>Contracted out</i> option on the price list, and the General Order does not take a supplier's quote: every service on the price list is sold at its price. Work a supplier makes for you — business cards, signage, eulogies, company profiles, brochures — is <b>costed in Job Costing</b> (section 5.9), saved as a quote and, once the client accepts, captured as an order. That order is sent to the supplier and carries a <b>supplier bill</b>:</p>
+<ol class="steps">
+  <li>On the order, enter the supplier and the amount charged (VAT included). Record the payment: <b>paid in full</b>, a <b>deposit</b> with the balance owing, or not paid yet.</li>
+  <li>The bill is treated as the job's cost, so its profit is visible. The balance sits in <b>Accounts Payable</b> and is paid under <span class="path">Finance → Expenses</span>.</li>
+  <li>The job is sent to the supplier from Production, received back, then goes through Quality Control like any other.</li>
+  <li>Track every outsourced job under <span class="path">Production → Outsourced jobs</span>.</li>
+</ol>
+
+<figure class="shot half"><img src="img/09b-outsourced-costing.jpg" alt="On an outsourced order (visible only to people who can see supplier costs): the supplier's quote and mark-up on each line, and the supplier bills with what has been paid and what is still owing."><figcaption>On an outsourced order (visible only to people who can see supplier costs): the supplier's quote and mark-up on each line, and the supplier bills with what has been paid and what is still owing.</figcaption></figure>
+<h3 id="s5-8">5.8 Freelance sales persons</h3>
+<p>People outside your staff who bring you work are registered under <span class="path">Commission → Freelancers</span> and selected when an order is captured. They are paid weekly commission from their own account, with withholding tax deducted (section 14).</p>
+
+<h3 id="s5-9">5.9 Job costing (outsourced branding jobs, brochures and eulogies) <span class="who">Staff · Finance</span></h3>
+<p>Open <span class="path">Sales → Job Costing</span> to work out the price to quote for a job the suppliers will make. It is a calculator: nothing is saved or sent, and it is for three kinds of job — <b>business cards</b>, <b>indoor signage</b> and <b>outdoor signage</b>.</p>
+<ol class="steps">
+  <li><b>Pick the job.</b> For business cards choose the <b>finish</b> (plain, laminated or frosted) and the number of cards. For signage enter the <b>quantity</b>, <b>width</b> and <b>height</b> in metres.</li>
+  <li><b>See what goes into the cost.</b> The materials and services the job is made of are listed with a tick. <b>Untick</b> a line the job does not need (say no laminate) and <b>tick an optional extra</b> it does (say delivery).</li>
+  <li><b>Quote the price.</b> The screen shows the <b>price to quote before VAT</b>, the <b>VAT (16%)</b>, what the <b>customer pays with VAT</b> and the price <b>per card or per sign</b>. For business cards a table shows the price at 100, 250, 500, 1,000 and 2,000 cards.</li>
+  <li><b>Save as quote to print, email or WhatsApp</b> keeps the costing for the client (see <i>When the client accepts</i> below); until you save it, the calculator stores nothing. The quotation itself — to print, email or send on WhatsApp — is made from the saved quote.</li>
+</ol>
+<p class="note" style="margin-top:0"><b>Saved quotes and capture:</b> after the steps above, see <i>When the client accepts</i> further down.</p>
+<p><b>How the price is worked out.</b> Each material and service is a supplier rate charged <b>per A3 sheet</b> (business cards), <b>per sqm</b> (signage; the material includes the wastage allowed), <b>per unit</b> or <b>once per job</b>. Business cards use 21 to an A3 sheet plus 1 spare sheet (both can be changed). The rates add up to the <b>production cost</b>, and the price is that cost plus the job's <b>margin as a markup on cost</b> — price = cost × (1 + margin %). For example 500 plain cards: 25 A3 sheets × (printing 120 + cutting 40) + design &amp; setup 500 = KES 4,500; with a 40% margin, KES 6,300 before VAT (KES 7,308 with VAT).</p>
+<div class="box"><b class="t">Who sees the margin</b>Everyone who costs a job sees the <b>cost lines</b> — each material and service with its supplier rate and amount — and the <b>production cost</b>, as well as the price to quote. The <b>margin and the profit</b> are shown only to people who may see costs — <b>Finance, the General Manager and Admin</b> (<span class="path">Master Data → Roles &amp; Access</span>) — who can also change the margin for a quote.</div>
+<figure class="shot"><img src="img/JC1-sales-view.jpg" alt="Job costing as a salesperson sees it: the cost lines, the production cost and the price to quote."><figcaption>Sales → Job Costing, as a salesperson sees it: 500 plain business cards — the cost lines, the production cost (KES 4,500) and the price to quote (KES 6,300 before VAT, 7,308 with VAT), without the margin.</figcaption></figure>
+<figure class="shot"><img src="img/JC2-manager-view.jpg" alt="Job costing as Finance or Admin sees it: the cost lines, margin and profit."><figcaption>The same costing as Finance, the General Manager or Admin sees it: the same cost lines and production cost, plus the 40% margin and the profit.</figcaption></figure>
+<h4>The quotation: print, email, WhatsApp</h4>
+<p>Open a quote under <span class="path">Saved quotes</span> and use the same three buttons as on an invoice or quotation in Finance: <b>✉️ Email quotation</b> (type the address; the A4 quotation goes as a PDF attachment), <b>💬 WhatsApp quotation</b> (send it straight from the system when WhatsApp is set up, or share the PDF from your device, or open the customer's chat) and <b>🖶 Print quotation (A4)</b>. It is the house quotation layout, the same as in Finance: your logo and company details, the client, the salesperson, the quote number and date, <b>valid until</b>, one line for the job, the total before VAT, the VAT and the total with VAT, and the terms. It shows the <b>price the client is quoted</b> — the price agreed with them once that is recorded (and approved, if it was under the lowest margin), otherwise the first quoted price — and never the cost lines or the margin. Send it again after the agreed price changes and it carries the new price. The WhatsApp panel keeps a short history of what was sent, to whom and by whom.</p>
+
+<h4>When the client accepts: saved quotes, the agreed price and capture</h4>
+<p>Press <b>Save as quote</b> (with the client's name) to keep a costing as a quote, numbered <b>CQ-1001</b> and up, valid for 14 days. The cost lines are kept as they were, so a later change to a supplier rate does not change a quote already given. The quotes are under <span class="path">Sales → Job Costing → Saved quotes</span>: salespeople see their own, Finance, the General Manager and Admin see them all.</p>
+<ol class="steps">
+  <li><b>Record the price agreed.</b> Open the quote and enter what the client has agreed to pay, <b>VAT included</b> — the same as the quote, or lower after bargaining. The screen tells you the <b>lowest price you may agree without approval</b> (the cost plus the job's <i>lowest margin</i>, 30% to start with).</li>
+  <li><b>Under that limit, a manager decides.</b> A price below it is marked <i>Waiting for approval</i> and the order cannot be captured until <b>Finance, the General Manager or Admin</b> approves it, or rejects it with a reason so a new price can be agreed. They cannot approve a price they quoted themselves. A price below what the job costs us is never accepted.</li>
+  <li><b>Capture as order.</b> Once the price is agreed (and approved if it needed to be), <b>Capture as order</b> makes an ordinary order at the <b>agreed price</b>, in the salesperson's name: confirm the client's name and phone, tick <i>I brought this client</i> if you did, take the payment or choose pay on completion, and the invoice or receipt prints. The job's cost is kept on the order's line so Finance sees its profit and records the supplier's bills against it, and the quote becomes <b>Ordered</b>. A quote the client turns down is marked <b>Lost</b>, with the reason.</li>
+</ol>
+<div class="box"><b class="t">What the salesperson earns</b>Nothing special: it is the order's <b>money received, net of VAT</b>, counted like any other sale to a client they brought, in the month it is paid — so a price agreed lower means a smaller sale and a lower credit, and only money paid to the company counts. A quote cannot be credited to a freelance sales person.</div>
+<figure class="shot half"><img src="img/CQ4-waiting-approval.jpg" alt="A quote with a price agreed below the limit, waiting for approval."><figcaption>A quote with the client's price recorded below the limit: the lowest price that needs no approval is shown, and the order cannot be captured until a manager approves it.</figcaption></figure>
+<figure class="shot half"><img src="img/CQ5-manager-view.jpg" alt="The same quote as a manager sees it, with Approve and Reject, the margin and the profit."><figcaption>The same quote as Finance, the General Manager or Admin sees it: the margin, and <i>Approve this price</i> or a reason to reject it.</figcaption></figure>
+<h4>The rates: Sales → Job Costing → Rates</h4>
+<p>An Admin keeps the rates on the <b>Rates</b> tab of <span class="path">Sales → Job Costing</span> (only an Admin sees that tab), in two lists — <b>Materials</b> (boards, vinyl, banner, laminate and frosting film, frames) and <b>Services</b> (printing, cutting, mounting, finishing, installation, design, transport). Each line has:</p>
+<ul>
+  <li>a <b>name</b> and what the supplier charges <b>us</b> (VAT not included);</li>
+  <li><b>costed on</b> — one or more of business cards, indoor signage and outdoor signage;</li>
+  <li><b>charged</b> — per A3 sheet, per sqm (with or without wastage), per unit or per job (only the ways that suit the jobs it is used on are offered);</li>
+  <li><b>in a new costing</b> — ticked, or an optional extra; for business cards it can be limited to <b>laminated</b> or <b>frosted</b> cards only.</li>
+</ul>
+<p><b>Edit</b> changes a line (a new supplier price shows in the next costing at once), <b>untick "On the list"</b> keeps a line but leaves it out of every costing, and <b>Delete</b> removes it. <b>Add a material</b> and <b>Add a service</b> at the foot of each list add new ones, which then appear in the costing for the jobs you chose. The same screen holds each job's <b>margin</b>, its <b>lowest margin without approval</b> (how far a quote may be bargained down), the signage <b>wastage</b>, and the <b>cards per A3 sheet</b> and <b>spare sheets</b> for business cards. The figures a new system starts with are samples — replace them with the real supplier rates.</p>
+<figure class="shot"><img src="img/JC4-rates.jpg" class="c" style="--ar:1288/1150" alt="Sales → Job Costing → Rates: the margin, wastage and cards per sheet for each kind of job, and the materials list."><figcaption>Sales → Job Costing → Rates: each kind of job's margin, lowest margin without approval, wastage and cards per A3 sheet, then the <i>Materials</i> list (and, below it, <i>Services</i>), each with the supplier cost, how it is charged and where it is used.</figcaption></figure>
+
+<h4>Checking supplier prices</h4>
+<p>On the <b>Rates</b> tab of Job Costing (and on <i>Brochures &amp; eulogies → Rates</i>) an Admin can press <b>Supplier price-check sheet (Excel)</b>. It lists every material, service, paper and fee that Job Costing costs a job from — the card and signage materials and services, the A3 paper for each side, and the stapling, trimming, folding, lamination, design, proofing and delivery fees — with what each is charged on (per A3 sheet, per sqm, per job…), which jobs it is used for, <b>the rate the system holds today</b> (VAT excluded), and blank columns for three suppliers' quotes. Take it to the suppliers, then type the new rates into the Rates tabs.</p>
+
+<h4>Brochures &amp; eulogies</h4>
+<p>Beside <i>Business cards</i>, <i>Indoor signage</i> and <i>Outdoor signage</i> is a fourth tab, <b>Brochures &amp; eulogies</b>, for eulogy booklets, company profiles and brochures that a printer makes for you. It has three parts:</p>
+<ul>
+  <li><b>Calculator.</b> Choose the <b>product</b>. For a <b>eulogy</b> or <b>company profile</b>: the <b>pages</b> (4, 8, 12 … 32 — four pages to an A3 sheet, always printed both sides), the <b>inside paper</b>, and whether to use a <b>separate cover paper</b> (it takes the place of one inside sheet), <b>laminate the cover</b> and <b>fold / crease</b>. For a <b>brochure</b>: the size (<b>A4</b>, two to an A3 sheet, or <b>B5</b>, four), single or double side, the paper, and whether to laminate. Then enter the <b>copies</b> or <b>pieces</b>. The screen shows the <b>price per copy / piece with VAT</b>, the <b>job total</b> and the cost lines behind it (sheets, cover, lamination, stapling, trimming, folding, design, proofing and delivery; brochures add the wastage sheets).</li>
+  <li><b>Price list.</b> The price of one copy (pages 4–32 at 25, 50, 100, 250 and 500 copies) or one piece (A4 / B5, single / double side at 100 to 5,000 pieces), VAT included, for the paper you choose.</li>
+  <li><b>Rates</b> (Admin only). The printer's price for an A3 sheet for each paper (one side, two sides), the fees (stapling, trimming, folding and lamination per set or sheet; design, proofing and delivery per job; brochure wastage) the <b>markup tiers</b> (by default 50% from 1 copy, 35% from 100, 25% from 500) and the <b>lowest margin without approval</b> (30% to start with). The figures that come with the system are placeholders: enter the printer's real quotes before using it.</li>
+</ul>
+<p>The price is the cost plus the markup for the quantity, plus VAT. As elsewhere in Job Costing, everyone sees the cost lines and the price; the <b>markup, the profit and the choice between a markup by quantity and a flat markup</b> are for Finance, the General Manager and Admin only. Press <b>Save as quote</b> with the client's name to keep the costing as a saved quote, numbered <b>CQ-1001</b> and up like the signage quotes, valid for 14 days, with its cost lines frozen as they were. It then goes through the same steps as any other saved quote under <span class="path">Saved quotes</span> (read the section above): record the <b>price agreed</b> with the client (a price below the lowest margin waits for Finance, the General Manager or Admin to approve it; one below cost is refused), and when the client accepts, <b>capture it as an order</b> — one line for the whole job at the agreed price, credited to the salesperson, with the printer's cost kept on the line for Finance. The order goes to the supplier under <span class="path">Production → Outsourced jobs</span> like other costed jobs.</p>
+
+<h3>Finding orders again</h3>
+<p><span class="path">All Orders</span> lists orders with an order date column, search by order number and date, and four summary figures that open to show what is behind them. Staff see their own orders; roles with <i>View all orders</i> see everyone's. Click any order to open its detail: lines, payments, stage, print, email, WhatsApp, and every action in the sections that follow.</p>
+
+
+<figure class="shot"><img src="img/08-all-orders.jpg" alt="All Orders: the four summary figures, a tab for each line of business, search by order number and date, and one row per order with its balance and payment status."><figcaption>All Orders: the four summary figures, a tab for each line of business, search by order number and date, and one row per order with its balance and payment status.</figcaption></figure>
+
+<figure class="shot half"><img src="img/09-order-detail.jpg" alt="An order opened: lines, totals, its position on the production ribbon, payments received, and the buttons to email, WhatsApp or print the receipt. This one has passed quality control and is ready to hand over."><figcaption>An order opened: lines, totals, its position on the production ribbon, payments received, and the buttons to email, WhatsApp or print the receipt. This one has passed quality control and is ready to hand over.</figcaption></figure>
+<!-- 6 ------------------------------------------------------------------>
+<h2 id="s6"><span class="n">6</span>Taking the money</h2>
+
+<h3>At capture</h3>
+<p>The payment panel on the order form accepts any mix of <b>Cash, M-Pesa, Bank Transfer and Card</b> (for example half cash, half M-Pesa). The total must not exceed what is owed.</p>
+
+<h3>Later, on an order</h3>
+<p>Open the order and use <b>Record payment</b>. Recording a payment needs the <i>Payments</i> permission, or being the person who captured that order (the cashier at the till).</p>
+<ul>
+  <li><b>Deposits</b> are normal: pay part now and the rest later. The order shows its <b>balance due</b>.</li>
+  <li><span class="path">Payments → Pending Payments</span> lists every order with a balance; <b>Paid</b> lists settled ones. Both filter by date.</li>
+</ul>
+
+<h3>M-Pesa STK push</h3>
+<ol class="steps">
+  <li>Choose M-Pesa, enter the customer's phone number and press the <b>prompt</b> button. The customer sees a PIN request on their phone.</li>
+  <li>The order's payment fills in automatically when the customer approves, with the M-Pesa receipt code.</li>
+  <li>If the customer paid but the confirmation did not arrive, a manager with the <i>Payments</i> permission can <b>confirm by hand</b> by typing the 10-character code from the M-Pesa SMS. A code that has already been used by another payment is refused.</li>
+</ol>
+<p>Payments made straight to your Paybill or Till without a prompt are caught too, once the addresses are registered with Safaricom (Master Data → M-Pesa). NCBA Bank customers get the same STK push and payment notifications on their NCBA Paybill (Master Data → NCBA).</p>
+
+
+<figure class="shot"><img src="img/40-mpesa-settings.jpg" class="c" style="--ar:1288/880" alt="Master Data → M-Pesa: Paybill or Till, environment, and the keys from Safaricom's Daraja portal. Save, test the connection, then switch on."><figcaption>Master Data → M-Pesa: Paybill or Till, environment, and the keys from Safaricom's Daraja portal. Save, test the connection, then switch on.</figcaption></figure>
+<h3>M-Pesa matching</h3>
+<p><span class="path">Accounting → M-Pesa Matching</span> matches M-Pesa statement lines to orders. Upload the Safaricom statement and the system pairs payments by receipt code, phone number and amount, leaving the exceptions for you. Matching works even if you do not use the live integration.</p>
+
+
+<figure class="shot"><img src="img/28-mpesa-matching.jpg" alt="Accounting → M-Pesa Matching: upload the Safaricom statement and the system pairs payments to orders; the exceptions are left for you."><figcaption>Accounting → M-Pesa Matching: upload the Safaricom statement and the system pairs payments to orders; the exceptions are left for you.</figcaption></figure>
+<h3>Receipts and documents</h3>
+<ul>
+  <li><b>Walk-in sales</b> print on the 80 mm thermal printer, two copies. <b>Invoices and quotations</b> print on A4.</li>
+  <li>Every document carries your logo, registered and trading names, two phone numbers, website and social links from Company Info.</li>
+  <li>On any opened order, <b>Email order receipt</b>, <b>WhatsApp order receipt</b> and <b>Print receipt (2 copies)</b> send or print the document; email and WhatsApp carry it as a <b>PDF</b>.</li>
+</ul>
+
+<!-- 7 ------------------------------------------------------------------>
+<h2 id="s7"><span class="n">7</span>Production and quality control</h2>
+
+<h3>Production <span class="who">Supervisor assigns · Staff work</span></h3>
+<p>Open <span class="path">Production</span>. It has three tabs: <b>Orders &amp; jobs</b>, <b>Staff productivity</b> and <b>Outsourced jobs</b>. Orders captured show under <b>Waiting to be assigned</b>, grouped by line of business.</p>
+<ol class="steps">
+  <li><b>Assign in-house</b>: pick the staff member under <i>Assign to…</i> and press <b>Assign</b>. Use <b>Reassign to…</b> later if the person changes.</li>
+  <li>Or choose <b>or send to a supplier…</b> for contracted-out work, and <b>Receive from supplier</b> when it returns.</li>
+  <li>Under <b>In production</b>, a worker presses <b>Start</b>, then <b>Finish</b> with the units produced. The order is then sent to <i>Quality Check</i>; finishing a job does not complete the order.</li>
+  <li>The supervisor sees <b>productivity</b> (jobs per person, in a date range) on the same screen.</li>
+</ol>
+
+<figure class="shot"><img src="img/14-production-waiting.jpg" class="c" style="--ar:1246/640" alt="Production → Orders & jobs: everything captured and waiting for a worker, grouped by line of business, with search by order number or date."><figcaption>Production → Orders & jobs: everything captured and waiting for a worker, grouped by line of business, with search by order number or date.</figcaption></figure>
+
+<figure class="shot half"><img src="img/14b-production-inprogress.jpg" alt="Below it, In production: Start and Finish buttons, and Reassign."><figcaption>Below it, In production: Start and Finish buttons, and Reassign.</figcaption></figure>
+<p>Artwork jobs waiting for price approval and embroidery jobs awaiting approval are held out of the queue until approved.</p>
+
+
+<figure class="shot"><img src="img/14c-outsourced-jobs.jpg" class="c" style="--ar:1288/560" alt="Production → Outsourced jobs: each contracted-out job, its stage and supplier, what it sold for and what it is expected to cost."><figcaption>Production → Outsourced jobs: each contracted-out job, its stage and supplier, what it sold for and what it is expected to cost.</figcaption></figure>
+<h3>Quality Control <span class="who">Supervisor</span></h3>
+<p>Open <span class="path">Quality Control</span> and press <b>Inspect</b> on a made job.</p>
+<ul>
+  <li><b>Pass</b>: the order becomes <i>Ready for Pickup/Delivery</i>.</li>
+  <li><b>Fail</b>: the order goes back to production as <b>rework</b>. The failure is recorded.</li>
+</ul>
+<figure class="shot"><img src="img/15-quality.jpg" class="c" style="--ar:1288/760" alt="Quality Control: jobs awaiting inspection at the top, and the inspection history with pass rate, failures and units rejected."><figcaption>Quality Control: jobs awaiting inspection at the top, and the inspection history with pass rate, failures and units rejected.</figcaption></figure>
+
+<div class="box"><b class="t">The rule that protects you</b>Production and Quality Control are the only ways an order moves along. Nobody can mark an order completed by hand; it can only be completed by handing it to the customer after it has passed inspection.</div>
+
+<!-- 8 ------------------------------------------------------------------>
+<h2 id="s8"><span class="n">8</span>Handing over, credit and corrections</h2>
+
+<h3>Hand over</h3>
+<p>When an order is <i>Ready for Pickup/Delivery</i>, open it. There are two cases:</p>
+<table>
+  <tr><th style="width:230px">Order is paid in full</th><td>Press <b>Hand over to customer (complete the order)</b>. The order is <i>Completed</i>.</td></tr>
+  <tr><th>A balance is owing</th><td>Either take the payment first, then hand over — or press <b>Hand over on credit…</b> then <b>Hand over &amp; convert to invoice</b>. The customer takes the order, it becomes an <b>invoice</b> for the balance, due after the credit terms, and is collected through Accounts Receivable.</td></tr>
+</table>
+
+
+<figure class="shot half"><img src="img/09c-order-owing.jpg" alt="A finished order with a balance still owing (here on a corporate invoice): take the payment, or hand it over on credit, which keeps it in Accounts Receivable."><figcaption>A finished order with a balance still owing (here on a corporate invoice): take the payment, or hand it over on credit, which keeps it in Accounts Receivable.</figcaption></figure>
+<h3>Credit notes and debit notes</h3>
+<p><span class="path">Accounting → Credit / Debit Notes</span>.</p>
+<ul>
+  <li><b>Credit note</b>: takes part of a sale (and its VAT) back from a customer — a return, a wrong item or a price correction. It is <b>itemised</b>, and if goods come back to stock you can restock them.</li>
+  <li><b>Debit note</b>: charges a customer more after the sale — a change request or an extra.</li>
+  <li><b>Supplier debit notes</b> reduce what you owe a supplier and your input VAT.</li>
+</ul>
+<p>An invoice is never edited after the fact; corrections are always visible notes, so the paper trail is complete.</p>
+<figure class="shot half"><img src="img/29-credit-notes.jpg" alt="Accounting → Credit / Debit Notes."><figcaption>Accounting → Credit / Debit Notes.</figcaption></figure>
+
+
+<!-- 9 ------------------------------------------------------------------>
+<h2 id="s9"><span class="n">9</span>Stock and purchasing</h2>
+<p class="lead">Stock goes up only when goods physically arrive, and down when they are sold or consumed. Reorder alerts tell you what to buy before you run out.</p>
+
+<table>
+  <tr><th style="width:210px">Tab (Stock)</th><th>Use it to</th></tr>
+  <tr><td><b>Stock Levels</b></td><td>See every item with its price, quantity on hand and reorder level. Items at or below their reorder level are flagged; the same flag appears in Master Data → Stock Price List.</td></tr>
+  <tr><td><b>Purchases Requisition</b></td><td>Ask for stock. A requisition has a reference (REQ-0001…) and any number of lines, each with an optional expected unit price (blank = the last price paid).</td></tr>
+  <tr><td><b>Purchases Approval</b></td><td>A manager approves or rejects a requisition. A requester cannot approve their own.</td></tr>
+  <tr><td><b>Purchases</b></td><td>Raise a <b>purchase order</b> (PO-0001…) from an approved requisition, with the real unit price from the supplier's invoice. The order is <i>held</i>: stock does not rise yet. The <b>store manager receives it</b>, entering the quantity that actually arrived on each line, and stock goes up by what was received. Whoever captured the purchase cannot receive it.</td></tr>
+  <tr><td><b>Purchases Reconciliation</b></td><td>Compares, per requisition, what was asked for, bought and received: short deliveries, price variance and quantity variance, each shown separately and adding up to the total.</td></tr>
+  <tr><td><b>Stock Take</b></td><td>Count what is on the shelf. The system corrects the quantity at once and keeps the system figure, the counted figure and the variance as an audit record.</td></tr>
+  <tr><td><b>China Import Costing</b></td><td>A landed-cost calculator for goods imported from China, so the true cost per unit — not just the supplier price — is known before you set a selling price.</td></tr>
+</table>
+
+<figure class="shot"><img src="img/16-stock-levels.jpg" alt="Stock → Stock Levels: every item with its price, quantity on hand and reorder level; low stock is flagged."><figcaption>Stock → Stock Levels: every item with its price, quantity on hand and reorder level; low stock is flagged.</figcaption></figure>
+
+<figure class="shot"><img src="img/17-requisition.jpg" class="c" style="--ar:1288/800" alt="Stock → Purchases Requisition: raise a requisition with lines, quantities and expected unit prices."><figcaption>Stock → Purchases Requisition: raise a requisition with lines, quantities and expected unit prices.</figcaption></figure>
+<p>Every purchase line and expense can be tagged to a <b>business head</b>, so Reports can show the cost of each line of business.</p>
+
+<!-- 10 ------------------------------------------------------------------>
+<h2 id="s10"><span class="n">10</span>The DTF roll tracker</h2>
+<p class="lead">For DTF shops, film is the biggest cost and wastage is the biggest leak. The <span class="path">DTF</span> module follows each roll from the day it is installed to the day it is closed.</p>
+<table>
+  <tr><th style="width:170px">Tab</th><th>What it does</th></tr>
+  <tr><td><b>Dashboard</b></td><td>Roll-by-roll results: revenue, cost, profit, film used and wasted, and a table of <b>what discounts cost</b> — revenue at full price against revenue actually received.</td></tr>
+  <tr><td><b>Rolls</b></td><td><b>Install</b> a new roll with its length and the real film, ink and powder costs. <b>Close</b> it (with confirmation) to work out wastage; <b>Terminate</b> it if it has physically run out while the system still shows a balance; <b>reopen</b> if closed by mistake.</td></tr>
+  <tr><td><b>Film Sales</b></td><td>Printed film sold by the metre, with price, amount paid and who captured it.</td></tr>
+  <tr><td><b>Artwork Jobs</b></td><td>Customer artwork priced per piece, the recommended price, the price charged and its heat press fee.</td></tr>
+  <tr><td><b>Price Approvals</b></td><td>Lower-than-recommended artwork prices waiting for a manager. Shows the discount and the roll's profit with and without it.</td></tr>
+  <tr><td><b>Setup</b></td><td>The film price band, the minimum price per piece, the wastage tolerance (5% to start; set your own).</td></tr>
+</table>
+<div class="box"><b class="t">Who sees what</b>People who only record sales and jobs see Film Sales and Artwork Jobs; roll costs are never sent to them. People with <i>DTF: rolls, costs &amp; profit</i> see the rest. Prices stored with each sale are fixed at the time, so changing Setup never rewrites history.</div>
+
+
+<figure class="shot"><img src="img/18-dtf-dashboard.jpg" alt="DTF → Dashboard: net profit, metres used and wastage, what discounts cost roll by roll, printed film versus artwork, and revenue by roll."><figcaption>DTF → Dashboard: net profit, metres used and wastage, what discounts cost roll by roll, printed film versus artwork, and revenue by roll.</figcaption></figure>
+
+<figure class="shot half"><img src="img/19-dtf-rolls.jpg" alt="DTF → Rolls: install a roll with its real film, ink and powder cost; close it to work out wastage."><figcaption>DTF → Rolls: install a roll with its real film, ink and powder cost; close it to work out wastage.</figcaption></figure>
+<h3>Starting the system with a roll that is already in use</h3>
+<p>When you go live there is usually a roll on the machine that is part-used. Do not install it as a full roll — the system would think the metres already used were still there. Use <span class="path">DTF → Rolls → Install new roll</span> and tick <b>This roll is already partly used</b>:</p>
+<ol class="steps">
+  <li>Measure the film <b>left on the roll</b> and enter it as <b>Metres left on the roll now</b>. It must be less than a full roll (the length set in DTF → Setup).</li>
+  <li>Enter the <b>film</b> and <b>ink / powder cost of the whole roll</b> (what you paid for it). Do not work out the part-used share yourself: the screen shows what the roll will carry before you install it.</li>
+  <li>Press <b>Install roll</b>. The system tracks only the <b>metres left</b>, and gives the roll only the <b>share of the cost that matches them</b> — a roll with 60 of 100 m left carries 60% of its cost. Sales and jobs recorded from now draw it down; profit, cost per metre and wastage are worked out on the part the system actually saw, so they are not distorted by the sales made before it started.</li>
+</ol>
+<p>The roll's card says <i>Installed part-used</i> and how many metres were used before it was recorded. <b>Edit costs</b> on such a roll changes the cost of the metres left, and shows <b>Metres left when it was installed</b> so a wrong entry can be corrected (the costs are re-scaled to the new metres). It cannot be set lower than what has already been sold or used on the roll.</p>
+<figure class="shot half"><img src="img/T5-part-roll-dialog.jpg" alt="Installing a part-used roll"><figcaption>Install new roll, with <i>This roll is already partly used</i> ticked: the metres left, the cost of the whole roll, and what the system will carry.</figcaption></figure>
+<figure class="shot half"><img src="img/T6-part-roll-card.jpg" alt="A part-used roll"><figcaption>The roll afterwards: 60 m tracked, the note about the 40 m used before it was recorded, and the cost of the metres left.</figcaption></figure>
+
+<h3>UV DTF has its own rolls</h3>
+<p>The <span class="path">DTF</span> page has a <b>DTF | UV DTF</b> switch at the top. Choosing <b>UV DTF</b> shows UV DTF's own rolls, film sales, artwork jobs, price approvals, dashboard and setup; nothing is mixed with DTF, and everything works the same way (including a part-used roll and <i>Terminate roll</i>).</p>
+<ul>
+  <li><b>Rolls are numbered UV-001 and up.</b> A roll is <b>two films</b> — <b>Film A (printing)</b> and <b>Film B (laminating)</b> — so installing one asks for the cost of each (for example KES 6,500 and KES 4,500, KES 11,000 for the 50 m, or KES 220 a metre). The costs are entered for each roll, so a price change only affects the next roll; <i>Edit costs</i> corrects a roll.</li>
+  <li><b>Setup</b> holds UV DTF's own figures: roll 50 m × 30 cm, standard price KES 1,500 a metre, floor KES 1,200, wastage tolerance 5%, and for artwork the minimum KES 30 a piece and the fixed KES 1,070 a metre.</li>
+  <li>Sales and jobs are recorded against the price-list services <i>UV DTF Sheet (per metre)</i> and <i>UV DTF Printing</i>, which the system creates the first time they are needed, under the business head <b>UV DTF Printing</b>.</li>
+</ul>
+<figure class="shot half"><img src="img/UV3-install-roll.jpg" alt="Install new roll on the UV DTF page: Film A (printing) cost and Film B (laminating) cost."><figcaption>DTF → UV DTF → Rolls → Install new roll: the cost of each of the two films.</figcaption></figure>
+<h3>When a roll has run out but the system still shows a balance</h3>
+<p>Rolls are drawn down by the sales and jobs recorded against them, so a roll that was used without every sale being recorded — or that is simply finished — can still show metres on the system. <b>Terminate roll</b> (on an open roll in <span class="path">DTF → Rolls</span>) deals with it:</p>
+<ol class="steps">
+  <li>Press <b>Terminate roll</b>. The screen shows the balance the system still holds and what writing it off means in metres, percentage and shillings.</li>
+  <li>Choose the <b>cut-off date</b> (not before the roll was installed, not in the future, and not before its last sale or job) and give the <b>reason</b>.</li>
+  <li>Press <b>Terminate &amp; write off</b>. The roll is closed at the cut-off date, <b>the balance is treated as waste</b>, and the roll takes no more sales. The card says <i>Terminated</i>, who did it and why, and the Dashboard's wastage includes the amount.</li>
+</ol>
+<p>When installing the next roll, <b>Install new roll</b> lists any rolls still open: tick the ones that are finished and they are terminated at the new roll's install date as the new roll goes in — all in one step. A roll with artwork jobs still waiting for a price approval cannot be terminated until those are decided. <i>Reopen</i> undoes a termination.</p>
+<figure class="shot half"><img src="img/T3-terminate-dialog.jpg" alt="Terminate roll"><figcaption>Terminate roll: the balance still on the system, what it will cost as waste, the cut-off date and the reason.</figcaption></figure>
+<figure class="shot half"><img src="img/T4-terminated-card.jpg" alt="A terminated roll"><figcaption>The roll afterwards: tagged <i>Terminated</i>, with the note, who did it, and the wastage.</figcaption></figure>
+
+<!-- 11 ------------------------------------------------------------------>
+<h2 id="s11"><span class="n">11</span>Finance: expenses, petty cash, assets</h2>
+
+<h3>Expenses</h3>
+<p><span class="path">Finance → Expenses</span> is the one ledger for money going out.</p>
+<ol class="steps">
+  <li>Pick the <b>date</b>, <b>category</b> (an expense head), <b>business head</b> (optional, or Shared), amount, how it was paid, and the supplier and invoice number if you have them.</li>
+  <li><b>Paid now</b> or <b>on credit</b>. A bill on credit needs a supplier and due date, and appears in <b>Owed</b>/<b>Due</b> columns until it is paid. Use <b>Pay</b> on the row to record a full or part payment.</li>
+  <li><b>VAT.</b> Each expense head is set once as VAT-claimable or not; every expense under it follows. Claimable VAT becomes input VAT automatically.</li>
+  <li><b>Withholding tax.</b> Expenses that deduct withholding tax (for example freelance commission) record it, and it appears in Payments due.</li>
+</ol>
+<p>The list shows an <b>Order</b> column for supplier bills raised from an order, so every outsourced cost links back to its job.</p>
+<figure class="shot"><img src="img/11-expenses.jpg" class="c" style="--ar:1288/1280" alt="Finance → Expenses: capture form at the top, then the list with category, business head, Order, supplier, amount, method, Owed and Due, and the Pay, Amend and delete buttons."><figcaption>Finance → Expenses: capture form at the top, then the list with category, business head, Order, supplier, amount, method, Owed and Due, and the Pay, Amend and delete buttons.</figcaption></figure>
+
+
+<h4>Corrections need a second person</h4>
+<ul>
+  <li><b>Amend</b>: propose the new values with a reason. A different finance manager approves before anything changes.</li>
+  <li><b>Delete</b> (✕): raises a request with a reason. The record stays fully counted until a different manager approves it.</li>
+  <li>You can move an expense to the right <b>category</b>, or re-tag its <b>business head</b>, without an amendment because no amount changes. Moving it off an outsourced job detaches it from that job.</li>
+</ul>
+
+<h3>Petty Cash</h3>
+<p><span class="path">Finance → Petty Cash</span>: the float. <b>Top-ups</b> (bank withdrawal or cash-sales allocation) add to it; petty-cash expenses and wages take from it. The balance is the top-ups less what has been spent. A payment from petty cash is refused if the float cannot cover it on that date and every later day.</p>
+
+
+<figure class="shot"><img src="img/12-petty-cash.jpg" class="c" style="--ar:1288/1000" alt="Finance → Petty Cash: top-ups, the running balance and the petty-cash expense form."><figcaption>Finance → Petty Cash: top-ups, the running balance and the petty-cash expense form.</figcaption></figure>
+<h3>Asset Register</h3>
+<p><span class="path">Finance → Asset Register</span>: machines, computers, vehicles and furniture — with category, purchase date and cost, condition (Active, Under Repair, Retired) and status. Depreciation runs by itself each month and appears in the books (Accounting → Depreciation).</p>
+
+
+<figure class="shot"><img src="img/13-asset-register.jpg" class="c" style="--ar:1288/900" alt="Finance → Asset Register: tag, name, category, cost and depreciation set-up for each asset."><figcaption>Finance → Asset Register: tag, name, category, cost and depreciation set-up for each asset.</figcaption></figure>
+<h3>Corporate Clients</h3>
+<p><span class="path">Finance → Corporate Clients</span>: the register that quotations and invoices use. Set credit days, an optional contact person (printed as <i>Attn:</i>), email and phone.</p>
+
+<!-- 12 ------------------------------------------------------------------>
+<h2 id="s12"><span class="n">12</span>Compliance: VAT, payroll, taxes</h2>
+<p class="lead"><span class="path">Compliance</span> turns the day's records into what Kenya Revenue Authority, NSSF and SHIF expect. Every figure comes from the books, so it always agrees with them.</p>
+
+<h3>VAT</h3>
+<p>Output VAT is the VAT on sales (walk-in sales and invoices, less credit notes, plus debit notes). Input VAT is the VAT you claimed on purchases and expenses. <b>Net VAT payable = output − input.</b> A <b>VAT statement</b> lists every income and expense account with its VAT, and you can click an account to open the documents behind it.</p>
+
+
+<div class="box tip"><b class="t">Withholding VAT certificates</b>When a customer that is an appointed withholding agent keeps a percentage of the VAT-exclusive value for KRA (2% at the time of writing), they give you a certificate. It is a credit against the VAT you file; it does not change the sale, the profit or anyone's commission. Keep the certificates with the VAT file.</div>
+<figure class="shot"><img src="img/20-vat.jpg" class="c" style="--ar:1288/1150" alt="Compliance → VAT: output VAT, input VAT and net VAT payable for the dates chosen, with the statement by account below."><figcaption>Compliance → VAT: output VAT, input VAT and net VAT payable for the dates chosen, with the statement by account below.</figcaption></figure>
+<h3>Payroll <span class="who">Finance</span></h3>
+<p><span class="path">Compliance → Payroll</span>. Employees are paid a fixed monthly gross; <b>casuals</b> are paid days worked × day rate and carry no statutory deductions.</p>
+<ul>
+  <li>The system works out <b>NSSF</b>, <b>SHIF</b>, the <b>Affordable Housing Levy</b> and <b>PAYE</b> (with personal relief) from the gross, for both employee and employer shares.</li>
+  <li>Wages are paid from petty cash, so the float must cover the net pay.</li>
+  <li>Print the <b>payroll register</b> and individual <b>payslips</b>. <b>NSSF</b> and <b>SHIF</b> tabs give the schedules for remittance.</li>
+  <li><span class="path">Employees</span> holds each person's National ID, KRA PIN, SHIF number and gross salary; <span class="path">P9</span> prints a year's tax deduction card for each employee.</li>
+  <li>Wrong or duplicate payroll entries are deleted only through the two-person approval.</li>
+</ul>
+
+
+<figure class="shot"><img src="img/23-payroll.jpg" class="c" style="--ar:1288/880" alt="Compliance → Payroll: each employee's gross, NSSF, SHIF, housing levy, PAYE and net pay, with printing of the register and payslips."><figcaption>Compliance → Payroll: each employee's gross, NSSF, SHIF, housing levy, PAYE and net pay, with printing of the register and payslips.</figcaption></figure>
+
+<figure class="shot"><img src="img/24-employees.jpg" class="c" style="--ar:1288/800" alt="Compliance → Employees: National ID, KRA PIN, SHIF number and gross salary for each person, and the Paid on sales bands tick."><figcaption>Compliance → Employees: National ID, KRA PIN, SHIF number and gross salary for each person, and the Paid on sales bands tick.</figcaption></figure>
+<h3>Payments due — the monthly cheque</h3>
+<p><span class="path">Compliance → Payments due</span> lists, month by month, everything the business must pay: PAYE, NSSF (employee and employer), SHIF, housing levy (employee and employer), VAT, withholding tax and income tax — with the <b>total at the end</b>. That total is the amount to write one cheque for. Each month shows when to pay: PAYE, SHIF and the levy by the 9th, NSSF by the 15th, VAT and withholding tax by the 20th.</p>
+<div class="box">A month with more VAT on purchases than on sales shows its credit for information. A credit never reduces any other month's VAT, so the cheque always carries each month's full VAT. A second block shows what the books say is still owing on each statutory account, so you can check the cheque.</div>
+
+
+<figure class="shot wide"><img src="img/21-payments-due.jpg" alt="Compliance → Payments due: every statutory payment month by month, with the total to write the cheque for at the top and the true balance still owing on the books underneath. (Zoom in on screen to read the columns.)"><figcaption>Compliance → Payments due: every statutory payment month by month, with the total to write the cheque for at the top and the true balance still owing on the books underneath. (Zoom in on screen to read the columns.)</figcaption></figure>
+<h3>Corporation tax</h3>
+<p><span class="path">Compliance → Corporation tax</span> works out income tax from the books under the Kenyan Income Tax Act:</p>
+<ul>
+  <li><b>Company:</b> 30% of taxable profit. Taxable profit is the book profit, plus what the Act does not allow (depreciation, entertainment, fines and penalties, donations, plus anything you add), less capital allowances and tax losses brought forward. Withholding-tax credits come off the tax.</li>
+  <li><b>Instalments:</b> four equal payments on the 20th of months 4, 6, 9 and 12 of the financial year, and the balance by the last day of the 4th month after year end.</li>
+  <li><b>Small business:</b> switch to <b>Turnover Tax</b> — 3% of each month's sales, due the 20th of the next month (for sales of KES 1 million to 25 million).</li>
+  <li>An Admin enters adjustments and records each payment to KRA with its reference. The tax is kept apart from the books, which show profit before income tax.</li>
+</ul>
+
+
+<figure class="shot"><img src="img/22-corporation-tax.jpg" class="c" style="--ar:1288/1250" alt="Compliance → Corporation tax: from the profit in the books to the tax, then the adjustments you enter."><figcaption>Compliance → Corporation tax: from the profit in the books to the tax, then the adjustments you enter.</figcaption></figure>
+
+<figure class="shot"><img src="img/22-corporation-tax.jpg" class="c b" style="--ar:1288/800" alt="The instalment schedule and where payments to KRA are recorded."><figcaption>The instalment schedule and where payments to KRA are recorded.</figcaption></figure>
+<div class="box warn"><b class="t">Confirm with your accountant</b>Tax rates, allowance treatment and the minimum wage are set as placeholders you can change. The system calculates and schedules; your accountant files.</div>
+
+<!-- 13 ------------------------------------------------------------------>
+<h2 id="s13"><span class="n">13</span>Accounting: the books and statements</h2>
+<p class="lead">Behind every sale, payment, expense, payroll run and note, the system posts balanced double-entry records. There is no re-keying, and the statements are always built from the same ledger.</p>
+
+<table>
+  <tr><th style="width:200px">Accounting tab</th><th>What it gives you</th></tr>
+  <tr><td><b>Profit &amp; Loss</b></td><td>Income, cost of sales and expenses for any date range, with month-by-month columns. Click a line to see the entries behind it. Cost of sales is real (purchases and supplier bills), not an estimate.</td></tr>
+  <tr><td><b>Balance Sheet</b></td><td>Assets, liabilities and equity at a date.</td></tr>
+  <tr><td><b>Cash Flow</b></td><td>Cash in and out for a period, by activity.</td></tr>
+  <tr><td><b>Receivables</b></td><td>Who owes you, aged by how long the invoice has been outstanding.</td></tr>
+  <tr><td><b>Payables</b></td><td>What you owe suppliers, aged, with due dates.</td></tr>
+  <tr><td><b>Credit / Debit Notes</b></td><td>Issue and list customer and supplier notes (section 8).</td></tr>
+  <tr><td><b>M-Pesa Matching</b></td><td>Pair M-Pesa statement lines to orders (section 6).</td></tr>
+  <tr><td><b>Depreciation</b></td><td>The monthly depreciation of registered assets, run automatically.</td></tr>
+  <tr><td><b>Chart of Accounts</b></td><td>The accounts. They build themselves; you can add accounts you need.</td></tr>
+  <tr><td><b>Journals</b></td><td>Manual entries: <b>opening balances</b>, owner's capital, remittances of statutory payments, adjustments. Every journal must balance.</td></tr>
+  <tr><td><b>General Ledger</b></td><td>Every posting for any account, in order.</td></tr>
+  <tr><td><b>Trial Balance</b></td><td>All account balances; debits equal credits.</td></tr>
+  <tr><td><b>Books Check</b></td><td>A health check: confirms the books balance and finds anything out of line. Run it before every month-end.</td></tr>
+</table>
+
+
+<figure class="shot"><img src="img/25-profit-loss.jpg" class="c" style="--ar:1288/1250" alt="Accounting → Profit & Loss: income, cost of sales and expenses, with a click-through on every account to the entries behind it."><figcaption>Accounting → Profit & Loss: income, cost of sales and expenses, with a click-through on every account to the entries behind it.</figcaption></figure>
+
+<figure class="shot"><img src="img/26-balance-sheet.jpg" class="c" style="--ar:1288/900" alt="Accounting → Balance Sheet."><figcaption>Accounting → Balance Sheet.</figcaption></figure>
+
+<figure class="shot"><img src="img/27-receivables.jpg" class="c" style="--ar:1288/800" alt="Accounting → Receivables: who owes you, and how overdue it is."><figcaption>Accounting → Receivables: who owes you, and how overdue it is.</figcaption></figure>
+
+<figure class="shot"><img src="img/30-journals.jpg" class="c" style="--ar:1288/700" alt="Accounting → Journals: opening balances and manual entries; every journal must balance."><figcaption>Accounting → Journals: opening balances and manual entries; every journal must balance.</figcaption></figure>
+
+<figure class="shot"><img src="img/31-books-check.jpg" class="c" style="--ar:1288/800" alt="Accounting → Books Check: confirms the books balance and flags anything out of line."><figcaption>Accounting → Books Check: confirms the books balance and flags anything out of line.</figcaption></figure>
+<div class="box tip"><b class="t">Remitting taxes</b>When you pay PAYE, NSSF, SHIF, the levy or VAT to the authority, record it as a journal against the statutory account (Accounting → Journals). The "still owing" figure under Compliance → Payments due then reduces.</div>
+
+<!-- 14 ------------------------------------------------------------------>
+<h2 id="s14"><span class="n">14</span>Sales commission and staff pay</h2>
+<p>The <b>Commission</b> module appears when an Admin switches it on (Master Data → Company Info). Everyone who captures orders sees <b>My commission</b>: what they earned this month, how it was made up, what they have sold and the clients credited to them. Managers also see <b>Team &amp; payouts</b>, <b>Monthly report</b>, <b>Clients</b>, <b>Freelancers</b> and <b>Rates</b>.</p>
+
+<h3>What counts</h3>
+<p>Commission is earned on <b>money received</b> in the month, <b>net of VAT</b>, on orders credited to the person (clients they sourced, plus the film and artwork they captured).</p>
+
+<h3>Pay bands — a fixed payout by the month's sales</h3>
+<p>The default scheme pays a fixed amount for the band the month's sales reached. It is a step, not a slice: you keep your band's payout until you reach the next band, then it moves up.</p>
+<table>
+  <tr><th>Band</th><th>Monthly sales (net)</th><th class="num">Payout (KES)</th></tr>
+  <tr><td>0</td><td>Below 30,000</td><td class="num">0</td></tr>
+  <tr><td>1</td><td>30,000 – 59,999</td><td class="num">12,000</td></tr>
+  <tr><td>2</td><td>60,000 – 89,999</td><td class="num">18,000</td></tr>
+  <tr><td>3</td><td>90,000 – 119,999</td><td class="num">24,000</td></tr>
+  <tr><td>4</td><td>120,000 – 179,999 (the anchor)</td><td class="num">35,000</td></tr>
+  <tr><td>5</td><td>180,000 – 239,999</td><td class="num">38,000</td></tr>
+  <tr><td>6</td><td>240,000 – 299,999</td><td class="num">42,000</td></tr>
+  <tr><td>7</td><td>300,000 – 359,999</td><td class="num">48,000</td></tr>
+  <tr><td>8</td><td>360,000 – 399,999</td><td class="num">54,000</td></tr>
+  <tr><td>9</td><td>400,000 – 499,999</td><td class="num">58,000</td></tr>
+  <tr><td>10</td><td>500,000 and above</td><td class="num">60,000</td></tr>
+</table>
+<p>These are the starting figures. <b>Only an Admin can change the commission rates</b> (Commission → Rates): managers see them read-only, and staff see the scheme they are paid under. Film and artwork extras are paid on top. <b>Sales below KES 120,000 a month require performance improvement</b>: the person sees a warning on their own screen, and managers see the month marked <i>needs improvement</i>. An alternative scheme (a percentage of the sales above a target of 3 × salary) can be chosen instead in Rates.</p>
+
+
+<figure class="shot"><img src="img/33-commission-team.jpg" alt="Commission → Team & payouts: each person's current sales against the performance floor, sourced sales, film, artwork and total, with approval and payout status."><figcaption>Commission → Team & payouts: each person's current sales against the performance floor, sourced sales, film, artwork and total, with approval and payout status.</figcaption></figure>
+
+<figure class="shot"><img src="img/34-commission-rates.jpg" class="c" style="--ar:1288/1700" alt="Commission → Rates: the pay bands, the performance floor and the minimum monthly wage."><figcaption>Commission → Rates: the pay bands, the performance floor and the minimum monthly wage.</figcaption></figure>
+<h3>Where the sales come from: a heading for each kind of sale</h3>
+<p>On <b>My commission</b> (and, for a manager, when a person is opened on <b>Team &amp; payouts</b>) the block <b>Where your sales come from</b> splits the month by the kind of sale under <b>Sales</b> in the side navigation — <i>General Order</i>, <i>DTF Film Order</i>, <i>DTF Artwork Order</i>, <i>UV DTF Film Order</i>, <i>UV DTF Artwork Order</i>, <i>Embroidery Order</i>, <i>UV Pens</i> and <i>Job Costing</i> (cards, signage, brochures, eulogies). A sale belongs to the screen it was captured through. For each kind the table shows:</p>
+<ul>
+  <li><b>Orders</b> raised and <b>Sold</b> — their worth with the VAT out, by the day the order was raised, paid or not;</li>
+  <li><b>Share</b> — how much of the month's selling this kind is;</li>
+  <li><b>Last month</b> — the same figure last month, with ▲ or ▼ and the change;</li>
+  <li><b>Team average</b> — what each person on the team sold of this kind on average;</li>
+  <li><b>Commission</b> — what this kind earned: the film and artwork premiums sit on their own kinds (DTF and UV DTF apart), and the commission the pay bands pay on sourced clients is shared between the other kinds in proportion to the money received on each;</li>
+  <li>and a note: <i>Selling most here</i> for the biggest, <i>Behind the team average</i> for a kind where the person has sold less than the average, <i>Not selling yet</i> where they have sold none but others have. A kind nobody has sold, this month or last, is left out.</li>
+</ul>
+<p>It changes nothing that is paid: it is only a view of the same month. Use it to see where you sell most and where you are behind.</p>
+
+<h3>The pay guide builds itself from your settings</h3>
+<p>Commission has a tab called <b>How you are paid</b>, open to every employee who sees Commission. It explains the pay model in plain language — what counts as sales, the pay bands and the ladder, the minimum wage, the monthly target, the film and artwork extras, take-home examples at every pay level, and the payday — and <b>every figure in it is read from Commission → Rates</b>. When an Admin changes a band, the target, the minimum wage, the film or artwork rates or the <b>payday</b> (a day from 1 to 28, set under Rates), the guide and each person's My commission screen show the change at once. <b>Print / PDF</b> on that tab gives an up-to-date copy to hand out.</p>
+<h3>Paying it</h3>
+<ul>
+  <li>For people on the percentage scheme, a manager <b>approves the month</b> in Team &amp; payouts (once it is over) and then <b>marks it paid</b>; the payment is posted as a Sales Commission expense.</li>
+  <li><b>Paid on sales bands:</b> in <span class="path">Compliance → Employees</span> tick this for employees whose pay <i>is</i> the band payout. Approving a closed month then puts their pay into <b>payroll</b> automatically (staff are paid on <b>the 5th of the following month</b>), <b>never below the minimum wage</b> (set in Commission → Rates). They carry PAYE, NSSF, SHIF and the levy like any employee, and no second salary is entered for them.</li>
+  <li>The <b>Monthly report</b> shows each person's sales, target and commission month by month for a year, with what has been paid and what is still to pay.</li>
+</ul>
+
+<h3>Freelance sales persons</h3>
+<p>Paid <b>weekly</b> (Monday to Sunday) on <b>money received</b>, <b>net of output VAT</b>, on the orders credited to them. Input VAT never comes into it, because they are paid on sales, not on profit. The rest of this section sets out how.</p>
+<ul>
+  <li><b>Base price part</b> — the part of a sale that is the list price is paid in <b>marginal bands</b> on the week's total: 2% of the first 50,000, 3% to 150,000, 4% to 500,000, then <b>3% to 2 million, 2% to 5 million and 1% above</b>. The rate falls again for the largest deals because they are bargained to a thin margin. A single sale of <b>KES 10 million</b> (8.62 million net) pays about <b>KES 159,207</b>, 1.85% of its net, rather than the roughly KES 345,000 a flat 4% would.</li>
+  <li><b>Premium</b> — 30% of whatever was charged <b>above</b> the list price. A line sold below its list price earns nothing. The base part of contracted-out and stock lines counts at 50%.</li>
+  <li><b>Withholding tax</b> (5% by default; a person can have their own rate, or 0 if exempt) is deducted from what they are paid, and appears under <span class="path">Commission → Freelancers → Tax withheld</span> for the KRA return.</li>
+</ul>
+<p>All the rates are editable (Admin) under <span class="path">Commission → Rates</span>, where <b>Try the scale on one big sale</b> works out what any sale pays: the commission, the tax withheld from the freelancer, and what is left for the company after the commission and the <b>30% income tax</b> on the profit that remains. The commission is a business expense, so the 30% is applied to the profit <i>after</i> it; <b>Compliance → Corporation tax</b> does the same from the books.</p>
+<figure class="shot"><img src="img/FL3-big-sale.jpg" alt="Try the scale on one big sale"><figcaption>Commission → Rates → <i>Try the scale on one big sale</i>: a KES 10 million sale pays KES 159,207 (1.85% of its net); after the 5% tax withheld the freelancer receives KES 151,247, and the company keeps KES 2,000,624 after the commission and 30% income tax, at an assumed 35% gross margin. The margin is your own figure.</figcaption></figure>
+<p><b>Staying compliant at year-end.</b> Every payout is booked as a <b>Freelance Commission</b> expense, so it lowers the profit the income tax is worked out on. Keep each person's <b>KRA PIN and national ID</b> on file (the screens list anyone missing them), pay the tax withheld over to KRA each month, and use <span class="path">Commission → Freelancers → Tax withheld</span> for the <b>Freelancers' year</b>: what each was paid in the calendar year, the tax withheld and what they received, ready to print for them and for your accountant.</p>
+<p>Paid <b>weekly</b> (Monday to Sunday) on the sales they bring at or above base prices, in marginal bands, plus a share of what was charged above base. <b>Withholding tax</b> is deducted from their pay (a standard rate, or their own rate, or exempt) and appears in Payments due. They are paid by any method (M-Pesa, cash, cheque, bank, card).</p>
+
+<!-- 15 ------------------------------------------------------------------>
+<h2 id="s15"><span class="n">15</span>Reports</h2>
+<p class="lead">Open <span class="path">Reports</span> and choose a date range (Today, This month, This year, or any From/To).</p>
+<table>
+  <tr><th style="width:230px">Report</th><th>Answers</th></tr>
+  <tr><td><b>Sales</b></td><td>Every sale in the period with totals. Matches the books and the VAT return exactly.</td></tr>
+  <tr><td><b>Sales by Business Head</b></td><td>For each line of business — DTF, UV, laser, large format, embroidery, general — the orders, sales (net of VAT, after discounts), costs and margin, with the services inside each. Costs that belong to no line show separately as <i>Shared</i> (rent, wages, utilities). How the Sales screens land in it: a service counts under its own business head; <b>a material sold with a service</b> (a shirt on an embroidery order) counts under the head of that service, and a material sold on its own is General Order; <b>DTF Printing</b> and <b>UV DTF Printing</b> show their <b>film sales and artwork sales</b> apart (the costs belong to the head as a whole); <b>UV pens</b> count under UV DTF Printing; costed <b>business cards, eulogies, company profiles and brochures</b> (Job Costing) count under <b>Printing &amp; Publications</b>, and costed signage under Large Format Printing. The <b>Collected</b> column is the money actually received in the period on each head's sales (VAT out, less refunds, by the day it was paid) — the same measure Commission is paid on — to set beside what was sold.</td></tr>
+  <tr><td><b>Sales by Category</b></td><td>Revenue by individual service, with plain product sales in their own bucket, to rank which services and machines earn the most.</td></tr>
+  <tr><td><b>Embroidery Profitability</b></td><td>Embroidery revenue against thread, needles and other costs, with the effect of the quantity price and the set-up lines.</td></tr>
+</table>
+
+<figure class="shot"><img src="img/35-sales-by-head.jpg" alt="Reports → Sales by Business Head: orders, sales, costs and margin for each line of business."><figcaption>Reports → Sales by Business Head: orders, sales, costs and margin for each line of business.</figcaption></figure>
+<p>Elsewhere: <b>DTF → Dashboard</b> for roll profitability, <b>Accounting → Profit &amp; Loss</b> for the full statement, <b>Commission → Monthly report</b> for sales and commission by person.</p>
+
+<!-- 16 ------------------------------------------------------------------>
+<h2 id="s16"><span class="n">16</span>Master Data reference (Admin)</h2>
+<table>
+  <tr><th style="width:190px">Tab</th><th>Purpose</th></tr>
+  <tr><td>Staff &amp; Users</td><td>People, roles, PINs, email, order-taking switch, edit, reset PIN, delete.</td></tr>
+  <tr><td>Roles &amp; Access</td><td>What each role may open or do. Admin is always everything.</td></tr>
+  <tr><td>Service Price List</td><td>Services, units, prices, descriptions, sizes, heads, pressing fee and area pricing; Excel download and upload. The list is shown in two parts: the ordinary services, then <b>Artwork-priced services</b> (priced by the size of one artwork). Ticking or unticking <i>Artwork pricing</i> on a line moves it between the lists.</td></tr>
+  <tr><td>Business Heads</td><td>The lines of business that sales and costs are reported under.</td></tr>
+  <tr><td>Stock Price List</td><td>Stocked items, sizes, prices, reorder levels, usual business head; Excel download and upload.</td></tr>
+  <tr><td>Discount Rules</td><td>The discount ceiling above which supervisor approval is required.</td></tr>
+  <tr><td>Company Info</td><td>Company and system names, logo, addresses, phones, web and social, tax details, the commission switch.</td></tr>
+  <tr><td>M-Pesa</td><td>Daraja connection (Paybill/Till, keys, sandbox/production); register payment addresses.</td></tr>
+  <tr><td>Embroidery Pricing</td><td>Stitch-count rates, quantity table, set-up and design charges.</td></tr>
+  <tr><td>NCBA</td><td>NCBA Bank's STK push and payment notification settings.</td></tr>
+  <tr><td>Email</td><td>Sending account for invoices, quotations and PIN emails.</td></tr>
+  <tr><td>WhatsApp</td><td>WhatsApp Business connection for sending PDFs.</td></tr>
+  <tr><td>Backup</td><td>Back up now, download, schedule, restore, Google Drive.</td></tr>
+  <tr><td>Security</td><td>Protections status, Admin sign-in code, audit log.</td></tr>
+</table>
+
+
+<figure class="shot"><img src="img/41-staff-users.jpg" class="c" style="--ar:1288/800" alt="Master Data → Staff & Users: add a person, reset a PIN, edit, switch off or delete. Names are kept in three parts."><figcaption>Master Data → Staff & Users: add a person, reset a PIN, edit, switch off or delete. Names are kept in three parts.</figcaption></figure>
+
+<figure class="shot"><img src="img/37-roles-access.jpg" class="c" style="--ar:1288/560" alt="Master Data → Roles & Access: tick what each role may open or do."><figcaption>Master Data → Roles & Access: tick what each role may open or do.</figcaption></figure>
+
+<figure class="shot"><img src="img/36-service-price-list.jpg" class="c" style="--ar:1288/1000" alt="Master Data → Service Price List: unit, price, size, business head and the special flags, with Excel download and upload."><figcaption>Master Data → Service Price List: unit, price, size, business head and the special flags, with Excel download and upload.</figcaption></figure>
+<!-- 17 ------------------------------------------------------------------>
+<h2 id="s17"><span class="n">17</span>Security, backups and audit</h2>
+<ul>
+  <li><b>Everyone signs in with their own PIN.</b> Five wrong PINs lock the account — 15 minutes the first time, then 30, 60 and so on, up to a day.</li>
+  <li><b>Permissions are checked on the server</b> at every request, not only by hiding menu items. A person sees every order only if their role says so; everyone else sees the orders they captured.</li>
+  <li><b>Two-person control</b> for amending or deleting expenses, payroll entries and petty-cash top-ups; approving requisitions; approving artwork or embroidery price cuts; receiving purchases. Nobody approves their own work.</li>
+  <li><b>Audit log</b> (<span class="path">Master Data → Security</span>): every change made in the system, every refused request, sign-ins and sensitive downloads — who, when and from where. Passwords, PINs and codes are never recorded. Kept for two years. The same screen lists what is switched on to protect the system and what still needs doing.</li>
+  <li><b>Backups</b> (<span class="path">Master Data → Backup</span>): a complete copy of every record as one file. Set an automatic schedule (every 6 or 12 hours, daily, every 2 days or weekly; the newest N are kept), download copies, and optionally copy them to Google Drive. <b>Restore</b> asks you to type RESTORE and saves the current system first; a failed restore changes nothing.</li>
+  <li><b>Switching a person off</b> ends their sessions immediately but keeps their history.</li>
+</ul>
+
+
+<figure class="shot"><img src="img/39-backup.jpg" class="c" style="--ar:1288/1200" alt="Master Data → Backup & Restore: back up now, download, set the schedule, restore, and connect Google Drive."><figcaption>Master Data → Backup & Restore: back up now, download, set the schedule, restore, and connect Google Drive.</figcaption></figure>
+<!-- 18 ------------------------------------------------------------------>
+<h2 id="s18"><span class="n">18</span>Daily, weekly and month-end routines</h2>
+<table>
+  <tr><th style="width:130px">When</th><th>Who</th><th>Do</th></tr>
+  <tr><td rowspan="4"><b>Every day</b></td><td>Front Office / Staff</td><td>Capture orders, take payments, print receipts. Check <i>Pending Payments</i> before handing over.</td></tr>
+  <tr><td>Supervisor</td><td>Assign waiting jobs in Production. Inspect finished work in Quality Control. Approve discounts above the ceiling.</td></tr>
+  <tr><td>Manager</td><td>Decide DTF and embroidery <i>Price Approvals</i>. Receive purchased goods.</td></tr>
+  <tr><td>Finance</td><td>Record expenses and supplier bills. Confirm M-Pesa payments that were not matched.</td></tr>
+  <tr><td rowspan="3"><b>Every week</b></td><td>Finance</td><td>Pay freelance commission. Upload the M-Pesa statement and match. Chase <i>Receivables</i>.</td></tr>
+  <tr><td>Stock</td><td>Review reorder alerts, raise requisitions, approve, order. Reconcile purchases.</td></tr>
+  <tr><td>Manager</td><td>Check <b>Sales by Business Head</b> and the DTF dashboard.</td></tr>
+  <tr><td rowspan="6"><b>Month-end</b></td><td>Everyone</td><td>Make sure every order is paid or on an invoice, and every expense is recorded.</td></tr>
+  <tr><td>Stock</td><td>Do a <i>Stock Take</i>.</td></tr>
+  <tr><td>Finance</td><td>Enter payroll. Run <b>Books Check</b>. Review the P&amp;L and Balance Sheet.</td></tr>
+  <tr><td>Finance</td><td>Open <b>Payments due</b>, write the cheque, then record the remittances as journals.</td></tr>
+  <tr><td>Manager</td><td><b>Approve the month</b> in Commission → Team &amp; payouts (puts pay-band staff into payroll) <b>before payday, the 5th</b>.</td></tr>
+  <tr><td>Admin</td><td>Confirm a recent backup exists.</td></tr>
+</table>
+
+<!-- 19 ------------------------------------------------------------------>
+<h2 id="s19"><span class="n">19</span>Troubleshooting and questions</h2>
+
+<h4>A correct PIN "does not work"</h4>
+<p>After five wrong tries the account is locked — 15 minutes the first time, then longer each time. Wait, or ask an Admin to reset your PIN (Master Data → Staff &amp; Users → Reset PIN).</p>
+
+<h4>I cannot see a module</h4>
+<p>Your role does not include it. Ask an Admin to adjust your role in Master Data → Roles &amp; Access. After a change, sign out and in so the menu refreshes.</p>
+
+<h4>I cannot see another person's orders</h4>
+<p>You see the orders you captured unless your role has <i>View all orders</i> (or Payments, Production assignment, DTF manager, Quality control, Finance or Accounting).</p>
+
+<h4>The price will not go lower</h4>
+<p>The system enforces minimum prices on film, artwork and embroidery at the server. To go lower, use the route that exists for it: the quantity price on embroidery, or a lower artwork price, and wait for the manager's approval.</p>
+
+<h4>An order will not hand over</h4>
+<p>It must have passed Quality Control (stage <i>Ready for Pickup/Delivery</i>). If money is owing, take the payment or choose <b>Hand over on credit</b>.</p>
+
+<h4>A payment from petty cash is refused</h4>
+<p>The float cannot cover it on that date or a later one. Top up under Finance → Petty Cash, or choose another payment method.</p>
+
+<h4>The M-Pesa prompt did not complete</h4>
+<p>Ask a manager with the Payments permission to confirm by hand with the 10-character code from the customer's SMS. Check the M-Pesa connection test in Master Data → M-Pesa.</p>
+
+<h4>The system is slow to load</h4>
+<p>Hard-refresh the page (Ctrl+Shift+R) after an update. If it persists, tell your administrator; slow requests are logged on the server.</p>
+
+<h4>Where is my data kept, and can I lose it?</h4>
+<p>On your own server. Automatic backups protect it; confirm yours is running under Master Data → Backup.</p>
+
+<footer class="doc">GLM Branding POS &amp; Accounting — User Guide. Figures shown (prices, bands, rates) are the starting values supplied with the system; your own settings may differ.</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Pay at GLM Branding — Salary &amp; Commission Guide</title>
+<style>
+:root {
+  --ink: #14284b; --ink-soft: #e8edf6; --gold: #a8741a; --gold-soft: #f6ecd6;
+  --ok: #1f6b45; --ok-soft: #e0f0e7; --warn: #9b2c2c; --warn-soft: #f8e3e3;
+  --fg: #1b2230; --muted: #5b6475; --rule: #d6d9e0;
+}
+* { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; background: #f3f4f7; color: var(--fg); font: 15.5px/1.6 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; }
+.page { max-width: 860px; margin: 0 auto; background: #fff; padding: 0 54px 40px; }
+h1, h2, h3, h4 { font-family: "Segoe UI Semibold", "Segoe UI", Arial, sans-serif; color: var(--ink); line-height: 1.2; }
+h2 { font-size: 26px; margin: 42px 0 6px; padding-top: 14px; border-top: 4px solid var(--ink); break-after: avoid; break-inside: avoid; }
+h2 .n { color: var(--gold); margin-right: 8px; }
+h3 { font-size: 18px; margin: 26px 0 6px; break-after: avoid; }
+p { margin: 8px 0; }
+ul, ol { margin: 8px 0; padding-left: 22px; }
+li { margin: 4px 0; }
+.lead { font-size: 17px; color: var(--muted); margin-top: 2px; }
+.path { font-weight: 600; color: var(--ink); }
+
+.cover { background: var(--ink); color: #fff; margin: 0 -54px; padding: 90px 54px 60px; min-height: 940px; break-after: page; position: relative; }
+.cover .kicker { letter-spacing: .2em; text-transform: uppercase; color: #f1d9a1; font-size: 13px; font-weight: 600; }
+.cover h1 { color: #fff; font-size: 52px; margin: 16px 0 16px; line-height: 1.04; max-width: 680px; }
+.cover p { font-size: 19px; max-width: 580px; color: #dfe6f3; }
+.cover .rule { width: 90px; height: 5px; background: var(--gold); margin: 28px 0; }
+.cover .foot { position: absolute; left: 54px; bottom: 40px; color: #aebbd3; font-size: 13.5px; max-width: 640px; }
+
+.box { border-left: 5px solid var(--ink); background: var(--ink-soft); padding: 11px 15px; margin: 14px 0; break-inside: avoid; }
+.box.ok { border-color: var(--ok); background: var(--ok-soft); }
+.box.warn { border-color: var(--warn); background: var(--warn-soft); }
+.box.gold { border-color: var(--gold); background: var(--gold-soft); }
+.box b.t { display: block; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; margin-bottom: 3px; }
+
+table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14.5px; break-inside: avoid; }
+th { background: var(--ink); color: #fff; text-align: left; padding: 8px 10px; font-weight: 600; }
+td { border-bottom: 1px solid var(--rule); padding: 8px 10px; vertical-align: top; }
+tr:nth-child(even) td { background: #fafbfd; }
+.r { text-align: right; white-space: nowrap; }
+tr.floor td { background: var(--gold-soft) !important; font-weight: 600; }
+tr.tot td { font-weight: 700; border-top: 2px solid var(--ink); }
+
+/* the pay ladder */
+.ladder { margin: 16px 0; break-inside: avoid; }
+.ladder .row { display: grid; grid-template-columns: 112px 1fr 96px; gap: 10px; align-items: center; margin: 5px 0; font-size: 14px; }
+.ladder .bar { height: 24px; background: var(--ink-soft); position: relative; }
+.ladder .bar i { display: block; height: 100%; background: var(--ink); }
+.ladder .bar i.min { background: var(--muted); }
+.ladder .bar i.fl { background: var(--gold); }
+.ladder .lab { color: var(--muted); }
+.ladder .val { text-align: right; font-weight: 700; }
+.ladder .note { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+.flow { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0; }
+.flow .st { flex: 1 1 110px; background: var(--ink); color: #fff; padding: 10px; font-size: 13.5px; break-inside: avoid; }
+.flow .st b { display: block; color: #f1d9a1; font-size: 14px; }
+.flow .st.alt { background: var(--gold); }
+.flow .st.alt b { color: #fff; }
+
+.big { font-size: 40px; font-weight: 700; color: var(--ink); line-height: 1; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+.card { border: 1px solid var(--rule); border-top: 4px solid var(--ink); padding: 12px 14px; break-inside: avoid; }
+.card.g { border-top-color: var(--gold); } .card.k { border-top-color: var(--ok); }
+.card .cap { font-size: 12.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-top: 5px; }
+
+figure.shot { margin: 16px 0 20px; break-inside: avoid; counter-increment: fig; }
+figure.shot img { display: block; width: 100%; height: auto; border: 1px solid #c9cdd6; box-shadow: 0 2px 8px rgba(20,40,75,.12); }
+figure.shot img.c { aspect-ratio: var(--ar); object-fit: cover; object-position: 0 var(--pos, 0%); }
+figure.shot figcaption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+figure.shot figcaption::before { content: "Figure " counter(fig) " — "; font-weight: 700; color: var(--ink); }
+body { counter-reset: fig; }
+
+.sig { border: 2px solid var(--ink); padding: 20px 24px; margin-top: 18px; break-inside: avoid; }
+.sig .line { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: end; margin: 18px 0 0; }
+.sig .line span.l { border-bottom: 1px solid var(--fg); height: 22px; }
+.pb { break-before: page; }
+
+@page { size: A4; margin: 16mm 14mm 18mm; @bottom-center { content: "Your pay at GLM Branding  ·  page " counter(page); font: 9pt "Segoe UI", Arial, sans-serif; color: #5b6475; } }
+@page :first { margin: 0; @bottom-center { content: ""; } }
+@media print {
+  body { background: #fff; }
+  .page { max-width: none; padding: 0 2mm; }
+  .cover { margin: 0 -2mm; padding: 46mm 18mm 20mm; min-height: 297mm; }
+  .cover .foot { left: 18mm; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+<section class="cover">
+  <div class="kicker">Employee information guide · October 2026</div>
+  <h1>Your pay at GLM Branding</h1>
+  <div class="rule"></div>
+  <p>How your salary and commission work for sales employees: the pay bands, the minimum wage guarantee, the monthly target, the film and artwork extras, what is taken off, and what to expect each month.</p>
+  <div class="foot">The figures in this guide are the current settings in the GLM POS &amp; Accounting system; the <b>How you are paid</b> tab under Commission always shows what is in force now. Management may review them; the date above shows when this guide was issued. This guide explains how the system works and does not replace your contract of employment.</div>
+</section>
+
+<!-- 1 -->
+<h2 style="border-top:0; margin-top:28px;"><span class="n">1</span>The short version</h2>
+<p class="lead">Read this page and you know how you are paid. The rest of the guide explains each point.</p>
+
+<div class="cards">
+  <div class="card"><div class="big">1</div><div class="cap">Your pay for a month depends on how much your customers <b>pay us</b> that month</div></div>
+  <div class="card g"><div class="big">11</div><div class="cap">pay bands — from the minimum wage up to KES 60,000 a month</div></div>
+  <div class="card k"><div class="big">120,000</div><div class="cap">monthly sales to reach band 4 — and the line below which we help you improve</div></div>
+</div>
+
+<ul>
+  <li><b>Your pay is the payout of the band your month's sales reached.</b> A step, not a slice: stay in a band and the payout stays the same; reach the next band and it moves up to that band's payout.</li>
+  <li><b>You are never paid less than the minimum wage</b> (KES 16,113.75 a month at present). If your band payout is lower, the minimum wage is paid instead.</li>
+  <li><b>Sales below KES 120,000 in a month require performance improvement.</b> You will see a notice on your own screen, and the managers who run commission see it too.</li>
+  <li><b>Film and artwork extras are paid on top</b> when you charge above the base or recommended price.</li>
+  <li><b>Payday is the 5th of every month</b> — you are paid on the 5th for the month before (September's pay is paid on 5 October). The month is closed and approved before then, and your pay goes through payroll. PAYE, NSSF, SHIF and the housing levy come off, as for every employee, and you see them on your payslip.</li>
+  <li><b>Every figure traces to an order and a payment.</b> You can see exactly how your month was made up in the system, any time.</li>
+</ul>
+
+<div class="box"><b class="t">Who this guide is for</b>
+Employees whose pay is the sales pay-band payout — management ticks <i>Paid on sales bands</i> on your staff record. If you are on a fixed salary (for example office or finance staff), your pay is set by your contract and this guide does not change it. <b>Freelance sales persons</b> are paid weekly under their own terms.</div>
+
+<!-- 2 -->
+<h2><span class="n">2</span>How a month works</h2>
+<div class="flow">
+  <div class="st"><b>1 · Sell</b>You bring in work and capture orders all month</div>
+  <div class="st"><b>2 · Customers pay</b>Only money <i>received</i> in the month counts</div>
+  <div class="st"><b>3 · Month closes</b>The last day of the month fixes your sales</div>
+  <div class="st alt"><b>4 · Approved</b>A manager approves the month</div>
+  <div class="st alt"><b>5 · Payday: the 5th</b>Paid through payroll, with deductions</div>
+</div>
+<p>Because pay depends on the whole month, <b>your pay for a month is known when that month has ended and been approved</b>, not before — and it is paid on <b>the 5th of the following month</b>. Until then the system shows your sales so far and the band you are in. Each month stands on its own: there is no carrying forward or averaging from one month to the next.</p>
+
+<!-- 3 -->
+<h2><span class="n">3</span>What counts as your sales</h2>
+<p class="lead">Your sales are the money customers have <i>paid</i> in the month, with VAT taken out, on orders credited to you.</p>
+
+<table>
+  <tr><th style="width:44%">Counts towards your month</th><th>Does not count</th></tr>
+  <tr>
+    <td>
+      <ul style="margin:0;padding-left:18px">
+        <li>Money received <b>in that month</b> on orders from <b>clients credited to you</b> — whoever captured the order.</li>
+        <li>Film and artwork orders <b>you captured</b>.</li>
+        <li>Deposits and part-payments, in the month each arrives.</li>
+        <li>Everything at its <b>net</b> value: the VAT (16%) is taken out.</li>
+      </ul>
+    </td>
+    <td>
+      <ul style="margin:0;padding-left:18px">
+        <li>An order that has been raised but <b>not yet paid</b> — it counts in the month the money arrives.</li>
+        <li>House sales (walk-ins and clients the shop already had), where no sales person is credited.</li>
+        <li>Orders credited to a freelance sales person.</li>
+        <li>Money that is <b>refunded</b> or taken back by a credit note — it reduces the month it is refunded in.</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+<div class="box gold"><b class="t">Worked example</b>
+A customer you brought in orders printing worth <b>KES 58,000</b> (VAT included). That is KES 58,000 ÷ 1.16 = <b>KES 50,000</b> of sales. If they pay KES 29,000 on 28 September and the balance on 4 October, then <b>KES 25,000 counts in September and KES 25,000 counts in October</b>. Collecting balances before month-end moves sales into the month you want.</div>
+
+<h3>Clients credited to you</h3>
+<ul>
+  <li>When you bring in a <b>new</b> client through your own network, tick <i>"[your name] brought this client in — credit them for 12 months"</i> when you capture the first order. The client then stays credited to you for 12 months, and every order from them counts towards your sales, whoever captures it.</li>
+  <li><b>A client belongs to one person.</b> If someone else already has the client, the system tells you who — you cannot claim them.</li>
+  <li>Use it honestly: it is for clients you genuinely brought. Walk-ins and clients the shop already had are house sales and earn no sourcing credit. The system records who claimed each client, and when.</li>
+</ul>
+
+<!-- 4 -->
+<h2><span class="n">4</span>The pay bands</h2>
+<p class="lead">Find the band your month's net sales reached. That band's payout is your pay for the month, and never less than the minimum wage.</p>
+
+<table>
+  <tr><th style="width:56px">Band</th><th>Monthly sales (net of VAT)</th><th class="r">Band payout</th><th class="r">You are paid</th></tr>
+  <tr><td>0</td><td>Below 30,000</td><td class="r">0</td><td class="r">16,113.75 <small>(minimum wage)</small></td></tr>
+  <tr><td>1</td><td>30,000 – 59,999</td><td class="r">12,000</td><td class="r">16,113.75 <small>(minimum wage)</small></td></tr>
+  <tr><td>2</td><td>60,000 – 89,999</td><td class="r">18,000</td><td class="r">18,000</td></tr>
+  <tr><td>3</td><td>90,000 – 119,999</td><td class="r">24,000</td><td class="r">24,000</td></tr>
+  <tr class="floor"><td>4</td><td>120,000 – 179,999 &nbsp;<small>(the monthly target)</small></td><td class="r">35,000</td><td class="r">35,000</td></tr>
+  <tr><td>5</td><td>180,000 – 239,999</td><td class="r">38,000</td><td class="r">38,000</td></tr>
+  <tr><td>6</td><td>240,000 – 299,999</td><td class="r">42,000</td><td class="r">42,000</td></tr>
+  <tr><td>7</td><td>300,000 – 359,999</td><td class="r">48,000</td><td class="r">48,000</td></tr>
+  <tr><td>8</td><td>360,000 – 399,999</td><td class="r">54,000</td><td class="r">54,000</td></tr>
+  <tr><td>9</td><td>400,000 – 499,999</td><td class="r">58,000</td><td class="r">58,000</td></tr>
+  <tr><td>10</td><td>500,000 and above</td><td class="r">60,000</td><td class="r">60,000</td></tr>
+</table>
+
+<div class="ladder">
+  <div class="row"><span class="lab">Below 60,000</span><div class="bar"><i class="min" style="width:26.9%"></i></div><span class="val">16,114</span></div>
+  <div class="row"><span class="lab">60,000+</span><div class="bar"><i style="width:30.0%"></i></div><span class="val">18,000</span></div>
+  <div class="row"><span class="lab">90,000+</span><div class="bar"><i style="width:40.0%"></i></div><span class="val">24,000</span></div>
+  <div class="row"><span class="lab"><b>120,000+</b></span><div class="bar"><i class="fl" style="width:58.3%"></i></div><span class="val">35,000</span></div>
+  <div class="row"><span class="lab">180,000+</span><div class="bar"><i style="width:63.3%"></i></div><span class="val">38,000</span></div>
+  <div class="row"><span class="lab">240,000+</span><div class="bar"><i style="width:70.0%"></i></div><span class="val">42,000</span></div>
+  <div class="row"><span class="lab">300,000+</span><div class="bar"><i style="width:80.0%"></i></div><span class="val">48,000</span></div>
+  <div class="row"><span class="lab">360,000+</span><div class="bar"><i style="width:90.0%"></i></div><span class="val">54,000</span></div>
+  <div class="row"><span class="lab">400,000+</span><div class="bar"><i style="width:96.7%"></i></div><span class="val">58,000</span></div>
+  <div class="row"><span class="lab">500,000+</span><div class="bar"><i style="width:100.0%"></i></div><span class="val">60,000</span></div>
+  <div class="note">Your pay by monthly sales. Grey is the minimum wage; gold is the monthly target of KES 120,000.</div>
+</div>
+
+<h3>A step, not a slice</h3>
+<ul>
+  <li>The payout is the <b>whole amount for the band</b>, not a percentage of your sales. At KES 119,999 of sales you are paid <b>24,000</b>; at KES 120,000 you are paid <b>35,000</b>. The extra KES 1 of sales moved you up KES 11,000.</li>
+  <li>That is why the last few thousand shillings of a month matter: a payment collected on the 30th can lift you into the next band.</li>
+  <li>The payout you have earned in a band <b>continues to apply</b> until you reach the next band; there is nothing to lose by selling more.</li>
+</ul>
+
+<div class="box ok"><b class="t">Good to know</b>
+Because the minimum wage (16,113.75) is higher than the payouts of bands 0 and 1, <b>your pay is the minimum wage until your month's sales reach KES 60,000</b>. From KES 60,000 the band payout is higher and becomes your pay.</div>
+
+<!-- 5 -->
+<h2><span class="n">5</span>The minimum wage guarantee</h2>
+<p>If the band payout for your month is lower than the minimum wage, <b>the minimum wage is paid as your pay for the month</b>. The system adds the difference automatically; you will see it on your screen as <i>Minimum wage</i> with a note such as "your band pays 12,000, so 4,114 is added to reach it".</p>
+<ul>
+  <li>This applies even in a month with <b>no sales at all</b>.</li>
+  <li>The minimum wage is a setting that only an Admin can change. 16,113.75 is the figure in use now; management confirms the rate that applies to your job.</li>
+</ul>
+
+<!-- 6 -->
+<h2><span class="n">6</span>The monthly target: KES 120,000</h2>
+<p><b>Sales below KES 120,000 in a month require performance improvement.</b> KES 120,000 is band 4 — the level the shop is built around.</p>
+<h3>What you will see</h3>
+<ul>
+  <li>A <b>red notice</b> at the top of your own commission screen whenever your sales for the month are below the target. During the month it also tells you how much more reaches KES 120,000.</li>
+  <li>The managers who run commission see the same month marked <b>needs improvement</b> once the month has closed below the target.</li>
+</ul>
+<h3>What it means</h3>
+<p>It is a flag, not a deduction: it does not reduce your pay — your pay is set by the bands and the minimum wage above. What follows a month below target (a conversation, a plan, support or training) is for your supervisor and management to arrange under your terms of employment. The system only records it.</p>
+
+<div class="box gold"><b class="t">Ways to reach the target</b>
+<ul style="margin:4px 0 0">
+  <li>Bring in <b>new clients</b> and claim them when you capture their first order — repeat orders then count for 12 months.</li>
+  <li><b>Go back to your existing clients</b>: repeat orders are the easiest sales.</li>
+  <li><b>Collect deposits and balances</b> before the month ends — only money received counts.</li>
+  <li>Offer the extras: <b>embroidery, film and artwork</b> work counts towards your sales and earns extras on top.</li>
+  <li>Quote clearly and sell at the right price. Prices are never relaxed to help you reach a band.</li>
+</ul></div>
+
+<!-- 7 -->
+<h2><span class="n">7</span>Film and artwork extras</h2>
+<p>On top of the band payout, you are rewarded for charging <b>above</b> the price floor on DTF film and artwork. These extras are in addition to your pay; they are earned <b>as the customer pays</b> (a half-paid order earns half).</p>
+
+<h3>DTF film — by the metre</h3>
+<p>The base price is the minimum price per metre (KES 400 at present). Everything you charge <b>above</b> it earns a share, in slices of the extra per metre — the more you earn above base, the bigger the share on the higher slice:</p>
+<table>
+  <tr><th>Extra above base, per metre</th><th class="r">Share paid</th></tr>
+  <tr><td>First 25 (0 – 25)</td><td class="r">10%</td></tr>
+  <tr><td>25 – 50</td><td class="r">25%</td></tr>
+  <tr><td>50 – 75</td><td class="r">40%</td></tr>
+  <tr><td>Over 75</td><td class="r">50%</td></tr>
+</table>
+<div class="box gold"><b class="t">Example</b>
+You sell <b>10 metres</b> at <b>KES 600 per metre</b>. That is KES 200 above base per metre: 25 × 10% + 25 × 25% + 25 × 40% + 125 × 50% = KES 81.25 per metre. For 10 metres, with the VAT taken out (÷ 1.16): <b>about KES 700</b>. At KES 450 per metre (KES 50 above base) the same job earns only about <b>KES 75</b>.</div>
+
+<h3>DTF artwork — per piece</h3>
+<p>The system works out a recommended price per piece. If you charge <b>more</b> than the recommendation, you earn <b>50%</b> of the extra (VAT out), and nothing on the recommended price itself.</p>
+<div class="box gold"><b class="t">Example</b>
+A job of <b>100 pieces</b>, recommended KES 40 a piece, charged at <b>KES 45</b>: the extra is KES 5 × 100 = KES 500; with VAT out and 50% paid: <b>about KES 216</b>.</div>
+<ul>
+  <li>Charging <b>less</b> than the recommendation is a discount: no extra is earned, and the job goes to a manager for approval before it can be paid for or produced. You cannot approve your own.</li>
+  <li>The price can never go below the per-piece floor set by management.</li>
+</ul>
+
+<!-- 8 -->
+<h2><span class="n">8</span>From your pay to what you take home</h2>
+<p>Your pay for the month is your <b>gross pay</b>. As for every employee, statutory deductions come off before you are paid. They are worked out by the payroll and listed on your payslip: <b>NSSF</b> (6%), <b>SHIF</b> (2.75%), the <b>Affordable Housing Levy</b> (1.5%) and <b>PAYE</b> (graduated, after your personal relief). The company pays its own matching NSSF and housing-levy contributions on top; they are <b>not</b> taken from you.</p>
+
+<table>
+  <tr><th>Gross pay</th><th class="r">NSSF</th><th class="r">SHIF</th><th class="r">Housing levy</th><th class="r">PAYE</th><th class="r">Take-home</th></tr>
+  <tr><td>16,113.75 <small>(minimum wage)</small></td><td class="r">966.83</td><td class="r">443.13</td><td class="r">241.71</td><td class="r">0.00</td><td class="r"><b>14,462.09</b></td></tr>
+  <tr><td>24,000.00</td><td class="r">1,440.00</td><td class="r">660.00</td><td class="r">360.00</td><td class="r">0.00</td><td class="r"><b>21,540.00</b></td></tr>
+  <tr class="floor"><td>35,000.00 <small>(band 4)</small></td><td class="r">2,100.00</td><td class="r">962.50</td><td class="r">525.00</td><td class="r">1,853.13</td><td class="r"><b>29,559.38</b></td></tr>
+  <tr><td>38,000.00</td><td class="r">2,280.00</td><td class="r">1,045.00</td><td class="r">570.00</td><td class="r">2,614.85</td><td class="r"><b>31,490.15</b></td></tr>
+  <tr><td>42,000.00</td><td class="r">2,520.00</td><td class="r">1,155.00</td><td class="r">630.00</td><td class="r">3,691.85</td><td class="r"><b>34,003.15</b></td></tr>
+  <tr><td>48,000.00</td><td class="r">2,880.00</td><td class="r">1,320.00</td><td class="r">720.00</td><td class="r">5,307.35</td><td class="r"><b>37,772.65</b></td></tr>
+  <tr><td>54,000.00</td><td class="r">3,240.00</td><td class="r">1,485.00</td><td class="r">810.00</td><td class="r">6,922.85</td><td class="r"><b>41,542.15</b></td></tr>
+  <tr><td>60,000.00</td><td class="r">3,600.00</td><td class="r">1,650.00</td><td class="r">900.00</td><td class="r">8,538.35</td><td class="r"><b>45,311.65</b></td></tr>
+</table>
+<p class="note" style="font-size:13px;color:var(--muted)">Examples use the payroll rates in the system for October 2026, for pay with no extras and no other allowances. Your payslip shows your own figures; statutory rates can change, and the payroll always uses the rates in force at the time.</p>
+<ul>
+  <li>Film and artwork extras form part of your gross pay for the month and are taxed with it.</li>
+  <li>At the end of the year you can ask finance for your <b>P9</b> (tax deduction card), which adds up the year's pay and tax month by month.</li>
+</ul>
+
+<!-- 9 -->
+<h2><span class="n">9</span>When and how you are paid</h2>
+<ol>
+  <li><b>The month ends.</b> The system fixes your sales for the month: money received, net of VAT, on orders credited to you.</li>
+  <li><b>A manager approves the month</b> (Commission → Team &amp; payouts). They see each person's sales, band, pay and any minimum-wage top-up, and any month below the target.</li>
+  <li><b>Your pay goes into payroll automatically</b> — one payroll entry for you, dated the last day of that month, for your band payout (or the minimum wage if higher) plus your film and artwork extras.</li>
+  <li><b>You are paid on the 5th of the month</b>, for the month before: your September pay is paid on 5 October, your October pay on 5 November, and so on. Your payslip lists the gross pay and every deduction. Managers approve the month before the 5th so that payroll is ready.</li>
+</ol>
+<ul>
+  <li>Your pay for a month is fixed once it is in payroll. If you believe something was wrong, raise it straight away (section 11) so it can be corrected in payroll.</li>
+</ul>
+
+<!-- 10 -->
+<h2><span class="n">10</span>Your own screen: Commission</h2>
+<p>Open <span class="path">Commission</span> in the menu (it shows only your own figures). The month at the top-right can be changed to look at earlier months.</p>
+
+<figure class="shot"><img class="c" style="--ar:1288/820" src="img/E1-my-pay-october.jpg" alt="My commission screen, October"><figcaption>Your commission screen part-way through a month: the notice that sales are below KES 120,000, <b>Your pay</b> (here the minimum wage, because the band pays less), the <b>Minimum wage</b> note, <b>Sales you sourced</b> and the band you are in, and a summary of the scheme under <b>How you earn</b>.</figcaption></figure>
+
+<figure class="shot"><img class="c" style="--ar:1288/1100; --pos:52%" src="img/E1-my-pay-october.jpg" alt="Pay band card and orders"><figcaption>Further down, <b>This month in detail</b>: the pay-band table with your band highlighted, how many more shillings reach the next band, and the list of orders — with the amount received on each — that make up your sales.</figcaption></figure>
+
+<figure class="shot"><img class="c" style="--ar:1288/350" src="img/E2-my-pay-september.jpg" alt="My commission screen, September"><figcaption>A full month: net sales of KES 194,362 reach band 5, so <b>Your pay</b> is KES 38,000. The same screen is there for every past month.</figcaption></figure>
+
+<ul>
+  <li><b>Your pay</b> — what goes into payroll for the month (or <i>Your commission</i> if you are not on the sales bands).</li>
+  <li><b>Sales you sourced</b> and <b>pay band</b> — your net sales so far and the band they reach.</li>
+  <li><b>Film</b> and <b>Artwork</b> — your extras for the month.</li>
+  <li><b>Clients credited to you</b> (at the bottom) — each client and the date their credit to you ends.</li>
+</ul>
+
+<!-- 11 -->
+<h2><span class="n">11</span>Rules of the road</h2>
+<ul>
+  <li><b>Prices are protected.</b> Minimum prices at order taking are never relaxed to help anyone reach a band. A discount above the standard ceiling needs supervisor approval; a lower artwork or embroidery price needs a manager's approval first.</li>
+  <li><b>No double credit.</b> A client or order is credited to one person only — a staff member or a freelance sales person, never both.</li>
+  <li><b>Claim honestly.</b> Claim a client only when you genuinely brought them. Claims are recorded with the date and who made them.</li>
+  <li><b>Money must be recorded.</b> Only payments recorded in the system count; take payments through the order screen, not outside it.</li>
+  <li><b>Refunds count against the month they are made.</b> A credit note or refund reduces your sales for that month.</li>
+  <li><b>If a figure looks wrong,</b> talk to your supervisor or to finance straight away. Every figure traces to an order and a payment, so questions are quick to settle — and the system keeps a record of who recorded what.</li>
+</ul>
+
+<!-- 12 -->
+<h2><span class="n">12</span>Questions people ask</h2>
+<h3>My customer pays after the month ends. Which month does it count in?</h3>
+<p>The month the money is <b>received</b>. An order you took in September but that is paid in October counts in October.</p>
+<h3>If I fall to a lower band next month, do I lose what I earned?</h3>
+<p>No — each month stands alone. Your pay for a month is the band that month reached. A good month is not reduced by a weaker one, and a weak month does not use up an earlier good one.</p>
+<h3>Is KES 120,000 my salary?</h3>
+<p>No. It is the monthly <b>sales</b> target (band 4). The pay for reaching it is KES 35,000.</p>
+<h3>Can I earn more than KES 60,000?</h3>
+<p>The top band pays KES 60,000 for sales of KES 500,000 and above. Film and artwork extras come on top of that, and management can review the bands.</p>
+<h3>Who decides the bands, the target and the minimum wage?</h3>
+<p>Only an Admin can change them. A change applies to months that have not yet been approved; managers can see the figures but not change them.</p>
+<h3>Why does my pay show the same in a month of 20,000 and a month of 55,000?</h3>
+<p>Both are below KES 60,000, so you are paid the minimum wage (16,113.75) in both. From KES 60,000 the band payout is higher than the minimum wage and starts to rise.</p>
+<h3>The client accepted my quote at a lower price. What counts?</h3>
+<p>What counts is the order's <b>money received, net of VAT</b>, like any sale: if the quote was agreed at KES 5,850 instead of 6,300, KES 5,850 is the sale. A price agreed below the limit needs a manager's approval first, and only money the client pays to the company counts.</p>
+<h3>When is payday?</h3>
+<p><b>The 5th of every month</b>, for the month just ended.</p>
+<h3>Where is my previous month's payslip?</h3>
+<p>Ask finance for your payslips and your P9; they are printed from the payroll.</p>
+
+<!-- ack -->
+<h2 class="pb"><span class="n">13</span>Acknowledgement</h2>
+<p>Please read this guide, ask your supervisor about anything unclear, then sign and return this page to management.</p>
+<div class="sig">
+  <p>I have read and understood this guide on how my pay is calculated — the pay bands, the minimum wage, the monthly target of KES 120,000, the film and artwork extras and the deductions.</p>
+  <div class="line"><span>Name</span><span class="l"></span></div>
+  <div class="line"><span>Role</span><span class="l"></span></div>
+  <div class="line"><span>Signature</span><span class="l"></span></div>
+  <div class="line"><span>Date</span><span class="l"></span></div>
+  <div class="line"><span>Received by</span><span class="l"></span></div>
+</div>
+
+</div>
+</body>
+</html>

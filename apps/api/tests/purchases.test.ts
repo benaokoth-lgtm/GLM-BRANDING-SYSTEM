@@ -188,7 +188,7 @@ describe('purchases and reconciliation', () => {
   it('the business heads exist, services sit under one, and sales are reported by head', async () => {
     const heads = await call('buyer', 'GET', '/master-data/business-heads');
     assert.equal(heads.status, 200);
-    assert.deepEqual(heads.body.slice(0, 7).map((h: any) => h.name), ['DTF Printing', 'UV DTF Printing', 'UV Printing', 'Laser Engraving', 'Large Format Printing', 'Embroidery', 'General Order']);
+    assert.deepEqual(heads.body.slice(0, 8).map((h: any) => h.name), ['DTF Printing', 'UV DTF Printing', 'UV Printing', 'Laser Engraving', 'Large Format Printing', 'Embroidery', 'Printing & Publications', 'General Order']);
 
     const emb = await prisma.service.create({ data: { name: 'Embroidery — cap logo (heads test)', unit: 'piece', price: 1160 } });
     const eul = await prisma.service.create({ data: { name: 'Odd job (heads test)', unit: 'piece', price: 580 } });

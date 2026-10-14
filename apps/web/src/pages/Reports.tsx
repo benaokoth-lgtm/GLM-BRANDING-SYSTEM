@@ -266,6 +266,7 @@ export default function Reports() {
                   <th style={{ textAlign: 'right' }}>Total costs</th>
                   <th style={{ textAlign: 'right' }}>Margin</th>
                   <th style={{ textAlign: 'right' }}>Margin %</th>
+                  <th style={{ textAlign: 'right' }} title="Money received in the period on the head's sales, VAT out, less refunds — what Commission pays on">Collected (excl. VAT)</th>
                 </tr>
               </thead>
               <tbody>
@@ -297,20 +298,30 @@ export default function Reports() {
                       <td style={{ textAlign: 'right' }}>{fmtKsh(h.costs.total)}</td>
                       <td style={{ textAlign: 'right', fontWeight: 700, color: h.margin < 0 ? 'var(--color-error)' : undefined }}>{fmtKsh(h.margin)}</td>
                       <td style={{ textAlign: 'right', color: h.margin < 0 ? 'var(--color-error)' : undefined }}>{h.marginPct == null ? '—' : `${h.marginPct.toFixed(1)}%`}</td>
+                      <td style={{ textAlign: 'right' }}>{fmtKsh(h.collected)}</td>
                     </tr>
                     {openHead === h.name && (
                       <tr>
-                        <td colSpan={8} style={{ padding: 0 }}>
+                        <td colSpan={9} style={{ padding: 0 }}>
                           <BusinessHeadDetail head={h.name} from={fromDate} to={toDate} onOpenOrder={setDetailOrderId} />
                         </td>
                       </tr>
                     )}
+                    {h.splits.length > 0 &&
+                      h.splits.map((sp) => (
+                        <tr key={h.name + 'split' + sp.name}>
+                          <td style={{ paddingLeft: 'var(--space-5)', fontSize: 13 }}><b>{sp.name}</b></td>
+                          <td style={{ textAlign: 'right', fontSize: 13 }}>{sp.orders}</td>
+                          <td style={{ textAlign: 'right', fontSize: 13, fontWeight: 700 }}>{fmtKsh(sp.sales)}</td>
+                          <td colSpan={6}></td>
+                        </tr>
+                      ))}
                     {h.services.map((s) => (
                       <tr key={h.name + s.name}>
                         <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>{s.name} × {s.qty}</td>
                         <td></td>
                         <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(s.sales)}</td>
-                        <td colSpan={5}></td>
+                        <td colSpan={6}></td>
                       </tr>
                     ))}
                     {h.costs.expenseCategories.map((c) => (
@@ -318,7 +329,7 @@ export default function Reports() {
                         <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>expense: {c.category}</td>
                         <td colSpan={3}></td>
                         <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(c.amount)}</td>
-                        <td colSpan={3}></td>
+                        <td colSpan={4}></td>
                       </tr>
                     ))}
                   </Fragment>
@@ -348,10 +359,11 @@ export default function Reports() {
                   <td style={{ textAlign: 'right' }}>{fmtKsh(heads.unassignedCosts.total)}</td>
                   <td></td>
                   <td></td>
+                  <td></td>
                 </tr>
                 {openHead === '__shared__' && (
                   <tr>
-                    <td colSpan={8} style={{ padding: 0 }}>
+                    <td colSpan={9} style={{ padding: 0 }}>
                       <BusinessHeadDetail head="__shared__" from={fromDate} to={toDate} onOpenOrder={setDetailOrderId} />
                     </td>
                   </tr>
@@ -361,7 +373,7 @@ export default function Reports() {
                     <td className="text-muted" style={{ paddingLeft: 'var(--space-5)', fontSize: 12 }}>expense: {c.category}</td>
                     <td colSpan={3}></td>
                     <td className="text-muted" style={{ textAlign: 'right', fontSize: 12 }}>{fmtKsh(c.amount)}</td>
-                    <td colSpan={3}></td>
+                    <td colSpan={4}></td>
                   </tr>
                 ))}
                 <tr style={{ fontWeight: 700, borderTop: '2px solid var(--color-divider)' }}>
@@ -373,12 +385,13 @@ export default function Reports() {
                   <td style={{ textAlign: 'right' }}>{fmtKsh(heads.totalCosts)}</td>
                   <td style={{ textAlign: 'right', color: heads.totalMargin < 0 ? 'var(--color-error)' : undefined }}>{fmtKsh(heads.totalMargin)}</td>
                   <td style={{ textAlign: 'right' }}>{heads.totalSales > 0 ? `${((heads.totalMargin / heads.totalSales) * 100).toFixed(1)}%` : '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{fmtKsh(heads.totalCollected)}</td>
                 </tr>
               </tbody>
             </table>
           </div>
           <p className="note" style={{ marginTop: 'var(--space-2)' }}>
-            Sales are raised in the period (orders and invoices, not quotations), after discounts and with the 16% VAT taken out, before credit notes. Costs are what was bought for each head
+            Sales are raised in the period (orders and invoices, not quotations), after discounts and with the 16% VAT taken out, before credit notes. A material sold with a service (a shirt on an embroidery order) counts under the head of that service; a material sold on its own is General Order. DTF Printing and UV DTF Printing show their film sales and artwork sales apart (the costs belong to the head as a whole). <b>Collected</b> is the money received in the period, by the day it was paid, on each head's sales (VAT out, less refunds) — the measure Commission is paid on — so a head's sales and what it has actually brought in can be put side by side. Costs are what was bought for each head
             (purchase orders, tagged line by line) plus the expenses tagged to it, as recorded — VAT included (the VAT claimed back on them is in Compliance → VAT). An expense that backs a purchase order is counted once,
             through the purchase. Click a head to see the sales, purchases and expenses behind its figures (and an order in it to open it). Tag a service, a material, a purchase line or an expense to a head to move its figures; whatever is untagged stays under Shared. Rejected purchases cost nothing.
           </p>

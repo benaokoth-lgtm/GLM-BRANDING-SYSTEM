@@ -567,10 +567,16 @@ export interface SalesByBusinessHeadData {
   totalSales: number;
   totalCosts: number;
   totalMargin: number;
+  /** Money received in the period, VAT out (the measure Commission pays on). */
+  totalCollected: number;
   heads: {
     name: string;
     active: boolean;
     sales: number;
+    /** Money received in the period on this head's sales, VAT out, less refunds. */
+    collected: number;
+    /** DTF Printing and UV DTF Printing: their film sales and artwork sales shown apart. */
+    splits: { name: string; sales: number; orders: number }[];
     orders: number;
     sharePct: number;
     costs: HeadCosts;

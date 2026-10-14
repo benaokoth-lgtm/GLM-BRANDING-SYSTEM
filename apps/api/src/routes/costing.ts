@@ -18,6 +18,7 @@ import {
   costingCardTiers,
   costingFloor,
   costingQuote,
+  PRINTING_PUBLICATIONS_HEAD,
   costingJobLabel,
   isCostingJobType,
   printCalc,
@@ -550,7 +551,9 @@ async function costedService(jobType: string) {
   const name = 'Costed job — ' + costingJobLabel(jobType);
   const found = await prisma.service.findFirst({ where: { name } });
   if (found) return found;
-  const head = await prisma.businessHead.findFirst({ where: { name: jobType === 'indoor' || jobType === 'outdoor' ? 'Large Format Printing' : 'General Order' } });
+  // signage is Large Format Printing; business cards, eulogies, company profiles and brochures are Printing & Publications
+  const headName = jobType === 'indoor' || jobType === 'outdoor' ? 'Large Format Printing' : PRINTING_PUBLICATIONS_HEAD;
+  const head = (await prisma.businessHead.findFirst({ where: { name: headName } })) ?? (await prisma.businessHead.create({ data: { name: headName, sortOrder: ((await prisma.businessHead.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0) + 1 } }));
   // contracted out, and kept off the General Order picker (it is only ever used here, at the agreed price)
   return prisma.service.create({ data: { name, item: name, unit: 'piece', price: 0, outsourced: true, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }

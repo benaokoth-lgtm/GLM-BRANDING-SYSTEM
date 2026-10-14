@@ -214,7 +214,8 @@ async function penService(tx: Prisma.TransactionClient) {
     if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
     return found;
   }
-  const head = await tx.businessHead.findFirst({ where: { name: 'UV Printing' } });
+  // UV pens are sold on the UV DTF screen and are counted under UV DTF Printing
+  const head = (await tx.businessHead.findFirst({ where: { name: UV_DTF_HEAD } })) ?? (await tx.businessHead.create({ data: { name: UV_DTF_HEAD, sortOrder: ((await tx.businessHead.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0) + 1 } }));
   return tx.service.create({ data: { name: UV_PEN_SERVICE, item: UV_PEN_SERVICE, unit: 'piece', price: DEFAULT_PEN_TIERS[0]!.rate, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
 

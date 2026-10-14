@@ -14,7 +14,9 @@ export function lineHead(li: HeadLine): string {
 
 /** Every head an order sells for (an order can have lines in more than one). */
 export function orderHeads(lines: HeadLine[]): string[] {
-  return [...new Set(lines.map(lineHead))];
+  // materials sold with a service belong to the head of the work; they count on their own only when there is no service line
+  const services = lines.filter((l) => l.service);
+  return [...new Set((services.length > 0 ? services : lines).map(lineHead))];
 }
 
 /**

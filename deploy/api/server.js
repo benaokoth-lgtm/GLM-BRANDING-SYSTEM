@@ -66144,9 +66144,12 @@ function reconcileRequisition(reqLines, purchases) {
 // packages/shared/src/businessHeads.ts
 var GENERAL_ORDER_HEAD = "General Order";
 var UV_DTF_HEAD = "UV DTF Printing";
-var DEFAULT_BUSINESS_HEADS = ["DTF Printing", UV_DTF_HEAD, "UV Printing", "Laser Engraving", "Large Format Printing", "Embroidery", GENERAL_ORDER_HEAD];
+var PRINTING_PUBLICATIONS_HEAD = "Printing & Publications";
+var DEFAULT_BUSINESS_HEADS = ["DTF Printing", UV_DTF_HEAD, "UV Printing", "Laser Engraving", "Large Format Printing", "Embroidery", PRINTING_PUBLICATIONS_HEAD, GENERAL_ORDER_HEAD];
 function defaultBusinessHeadName(serviceName) {
   const n = serviceName.toLowerCase();
+  if (/uv[\s-]*pen/.test(n)) return UV_DTF_HEAD;
+  if (/^costed job\s*[—-]\s*(business cards|eulogy|company profile|brochure)/.test(n)) return PRINTING_PUBLICATIONS_HEAD;
   if (/uv[\s-]*dtf/.test(n)) return UV_DTF_HEAD;
   if (n.includes("dtf")) return "DTF Printing";
   if (n.includes("embroid")) return "Embroidery";
@@ -71475,77 +71478,6 @@ function ensureMaterialItemsOnce() {
   return ensuring2;
 }
 
-// apps/api/src/embroideryLegacy.ts
-async function removeService(id) {
-  const orders = await prisma.orderLineItem.count({ where: { serviceId: id } });
-  if (orders === 0) {
-    try {
-      await prisma.service.delete({ where: { id } });
-      return { deleted: true, retired: false, orders: 0 };
-    } catch {
-    }
-  }
-  await prisma.service.update({ where: { id }, data: { retired: true } });
-  return { deleted: false, retired: true, orders };
-}
-var done = null;
-function retireLegacyEmbroideryOnce() {
-  return done ??= (async () => {
-    const setting = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-    if (setting.embroideryLegacyRetired) return;
-    const legacy = await prisma.service.findFirst({ where: { name: "Embroidery", soldViaDtfModule: false, retired: false } });
-    if (legacy) {
-      const r = await removeService(legacy.id);
-      console.log(r.deleted ? 'Removed the old "Embroidery" service (no order had used it).' : `Retired the old "Embroidery" service (${r.orders} order lines keep it).`);
-    }
-    await prisma.setting.update({ where: { id: 1 }, data: { embroideryLegacyRetired: true } });
-  })();
-}
-async function clearContractedOutOnce() {
-  const r = await prisma.service.updateMany({ where: { outsourced: true, soldViaDtfModule: false }, data: { outsourced: false } });
-  if (r.count) console.log(`${r.count} service${r.count === 1 ? " was" : "s were"} no longer marked "contracted out" (the option has been removed).`);
-}
-
-// apps/api/src/staffNames.ts
-async function ensureStaffNames() {
-  const users = await prisma.user.findMany({ where: { firstName: "" }, select: { id: true, name: true } });
-  for (const u of users) {
-    const p = splitName(u.name);
-    if (!p.firstName) continue;
-    await prisma.user.update({ where: { id: u.id }, data: p });
-  }
-}
-var ensuring3 = null;
-function ensureStaffNamesOnce() {
-  if (!ensuring3) ensuring3 = ensureStaffNames().finally(() => ensuring3 = null);
-  return ensuring3;
-}
-
-// apps/api/src/costs.ts
-async function canSeeCosts(role) {
-  return role === "Admin" || (await permissionsForRole(role)).canSeeCosts;
-}
-async function ensureCostAccess() {
-  if (await prisma.role.count({ where: { canSeeCosts: true } }) > 0) return;
-  for (const name2 of ["Finance Manager", "General Manager"]) {
-    if (DEFAULT_ROLE_PERMISSIONS[name2]?.canSeeCosts) await prisma.role.updateMany({ where: { name: name2 }, data: { canSeeCosts: true } });
-  }
-}
-var ensuring4 = null;
-function ensureCostAccessOnce() {
-  if (!ensuring4) ensuring4 = ensureCostAccess().finally(() => ensuring4 = null);
-  return ensuring4;
-}
-function costFieldsFor(li, allowed) {
-  if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
-  return {
-    supplierName: li.supplierName?.trim() || null,
-    supplierCost: li.supplierCost != null && li.supplierCost >= 0 ? li.supplierCost : null,
-    markupType: li.markupType === "amount" ? "amount" : li.supplierCost != null || li.markupValue != null ? "percent" : null,
-    markupValue: li.markupValue != null && li.markupValue >= 0 ? li.markupValue : null
-  };
-}
-
 // apps/api/src/purchases.ts
 async function nextPoNumber() {
   const rows = await prisma.purchase.findMany({ where: { poRef: { not: null } }, select: { poRef: true } });
@@ -71592,6 +71524,90 @@ var ensuringHeads = null;
 function ensureBusinessHeadsOnce() {
   if (!ensuringHeads) ensuringHeads = ensureBusinessHeads().finally(() => ensuringHeads = null);
   return ensuringHeads;
+}
+
+// apps/api/src/embroideryLegacy.ts
+async function removeService(id) {
+  const orders = await prisma.orderLineItem.count({ where: { serviceId: id } });
+  if (orders === 0) {
+    try {
+      await prisma.service.delete({ where: { id } });
+      return { deleted: true, retired: false, orders: 0 };
+    } catch {
+    }
+  }
+  await prisma.service.update({ where: { id }, data: { retired: true } });
+  return { deleted: false, retired: true, orders };
+}
+var done = null;
+function retireLegacyEmbroideryOnce() {
+  return done ??= (async () => {
+    const setting = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+    if (setting.embroideryLegacyRetired) return;
+    const legacy = await prisma.service.findFirst({ where: { name: "Embroidery", soldViaDtfModule: false, retired: false } });
+    if (legacy) {
+      const r = await removeService(legacy.id);
+      console.log(r.deleted ? 'Removed the old "Embroidery" service (no order had used it).' : `Retired the old "Embroidery" service (${r.orders} order lines keep it).`);
+    }
+    await prisma.setting.update({ where: { id: 1 }, data: { embroideryLegacyRetired: true } });
+  })();
+}
+async function clearContractedOutOnce() {
+  const r = await prisma.service.updateMany({ where: { outsourced: true, soldViaDtfModule: false }, data: { outsourced: false } });
+  if (r.count) console.log(`${r.count} service${r.count === 1 ? " was" : "s were"} no longer marked "contracted out" (the option has been removed).`);
+}
+async function alignSystemHeadsOnce() {
+  await ensureBusinessHeadsOnce();
+  const heads = new Map((await prisma.businessHead.findMany()).map((h) => [h.name, h.id]));
+  const uvDtf = heads.get(UV_DTF_HEAD);
+  const pub = heads.get(PRINTING_PUBLICATIONS_HEAD);
+  const was = [heads.get("UV Printing"), heads.get(GENERAL_ORDER_HEAD)].filter((x) => x !== void 0);
+  const notYetMoved = { OR: [{ businessHeadId: null }, { businessHeadId: { in: was } }] };
+  if (uvDtf) await prisma.service.updateMany({ where: { name: UV_PEN_SERVICE, ...notYetMoved }, data: { businessHeadId: uvDtf } });
+  if (pub) {
+    const names = ["Business cards", "Eulogy", "Company profile", "Brochure"].map((n) => "Costed job \u2014 " + n);
+    await prisma.service.updateMany({ where: { name: { in: names }, ...notYetMoved }, data: { businessHeadId: pub } });
+  }
+}
+
+// apps/api/src/staffNames.ts
+async function ensureStaffNames() {
+  const users = await prisma.user.findMany({ where: { firstName: "" }, select: { id: true, name: true } });
+  for (const u of users) {
+    const p = splitName(u.name);
+    if (!p.firstName) continue;
+    await prisma.user.update({ where: { id: u.id }, data: p });
+  }
+}
+var ensuring3 = null;
+function ensureStaffNamesOnce() {
+  if (!ensuring3) ensuring3 = ensureStaffNames().finally(() => ensuring3 = null);
+  return ensuring3;
+}
+
+// apps/api/src/costs.ts
+async function canSeeCosts(role) {
+  return role === "Admin" || (await permissionsForRole(role)).canSeeCosts;
+}
+async function ensureCostAccess() {
+  if (await prisma.role.count({ where: { canSeeCosts: true } }) > 0) return;
+  for (const name2 of ["Finance Manager", "General Manager"]) {
+    if (DEFAULT_ROLE_PERMISSIONS[name2]?.canSeeCosts) await prisma.role.updateMany({ where: { name: name2 }, data: { canSeeCosts: true } });
+  }
+}
+var ensuring4 = null;
+function ensureCostAccessOnce() {
+  if (!ensuring4) ensuring4 = ensureCostAccess().finally(() => ensuring4 = null);
+  return ensuring4;
+}
+function costFieldsFor(li, allowed) {
+  if (!allowed || li.itemType === "material") return { supplierName: null, supplierCost: null, markupType: null, markupValue: null };
+  return {
+    supplierName: li.supplierName?.trim() || null,
+    supplierCost: li.supplierCost != null && li.supplierCost >= 0 ? li.supplierCost : null,
+    markupType: li.markupType === "amount" ? "amount" : li.supplierCost != null || li.markupValue != null ? "percent" : null,
+    markupValue: li.markupValue != null && li.markupValue >= 0 ? li.markupValue : null
+  };
 }
 
 // apps/api/src/routes/masterdata.ts
@@ -72383,7 +72399,8 @@ function lineHead(li) {
   return li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
 }
 function orderHeads(lines) {
-  return [...new Set(lines.map(lineHead))];
+  const services2 = lines.filter((l) => l.service);
+  return [...new Set((services2.length > 0 ? services2 : lines).map(lineHead))];
 }
 function primaryHead(lines) {
   if (lines.length === 0) return GENERAL_ORDER_HEAD;
@@ -75427,6 +75444,23 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
     byBand: [...bands.entries()].sort((x, y) => x[0] - y[0]).map(([from, v]) => ({ from, jobs: v.jobs, garments: v.garments, revenue: round(v.revenue), avgPerGarment: v.garments > 0 ? round(v.revenue / v.garments) : null }))
   });
 });
+var headInclude = { lineItems: { include: { service: { include: { businessHead: true } }, material: true } }, corporateClient: true, dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { id: true } } };
+function headLines(o) {
+  const inputs = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+  const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
+  const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+  const scale = subtotal > 0 ? grandTotal / subtotal : 0;
+  const main = primaryHead(o.lineItems.map((li, i) => ({ ...inputs[i], service: li.service })));
+  const hasService = o.lineItems.some((li) => li.service);
+  const kind = o.dtfFilmSale ? "Film sales" : o.dtfArtworkJob ? "Artwork sales" : "Other sales";
+  return {
+    grandTotal,
+    lines: o.lineItems.map((li, i) => {
+      const head = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : hasService ? main : GENERAL_ORDER_HEAD;
+      return { li, head, gross: buildLineTotal(inputs[i]) * scale, split: head === DTF_HEAD || head === UV_DTF_HEAD ? kind : null };
+    })
+  };
+}
 reportsRouter.get("/sales-by-business-head", async (req, res) => {
   const range2 = parseRange2(req);
   if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
@@ -75434,31 +75468,46 @@ reportsRouter.get("/sales-by-business-head", async (req, res) => {
   const heads = await prisma.businessHead.findMany({ orderBy: [{ sortOrder: "asc" }, { id: "asc" }] });
   const orders = await prisma.order.findMany({
     where: { status: { not: "Quote" }, createdDate: { gte: range2.from, lte: range2.to } },
-    include: { lineItems: { include: { service: { include: { businessHead: true } } } } }
+    include: headInclude
   });
   const buckets = /* @__PURE__ */ new Map();
   const bucket = (name2) => {
     let b = buckets.get(name2);
-    if (!b) buckets.set(name2, b = { sales: 0, orders: /* @__PURE__ */ new Set(), services: /* @__PURE__ */ new Map() });
+    if (!b) buckets.set(name2, b = { sales: 0, collected: 0, orders: /* @__PURE__ */ new Set(), services: /* @__PURE__ */ new Map(), splits: /* @__PURE__ */ new Map() });
     return b;
   };
   for (const o of orders) {
-    const inputs = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
-    const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
-    const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-    const scale = subtotal > 0 ? grandTotal / subtotal : 0;
-    o.lineItems.forEach((li, i) => {
-      const gross = buildLineTotal(inputs[i]) * scale;
-      const name2 = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
-      const b = bucket(name2);
-      b.sales += gross / (1 + VAT_RATE);
+    for (const { li, head, gross, split } of headLines(o).lines) {
+      const net8 = gross / (1 + VAT_RATE);
+      const b = bucket(head);
+      b.sales += net8;
       b.orders.add(o.id);
       const label = li.service ? li.service.name : "Materials sold";
       const s = b.services.get(label) ?? { qty: 0, sales: 0 };
       s.qty += li.qty;
-      s.sales += gross / (1 + VAT_RATE);
+      s.sales += net8;
       b.services.set(label, s);
-    });
+      if (split) {
+        const sp = b.splits.get(split) ?? { sales: 0, orders: /* @__PURE__ */ new Set() };
+        sp.sales += net8;
+        sp.orders.add(o.id);
+        b.splits.set(split, sp);
+      }
+    }
+  }
+  const [payments, notes] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: range2.from, lte: range2.to } }, select: { orderId: true, amount: true } }),
+    prisma.adjustmentNote.findMany({ where: { type: "Credit", date: { gte: range2.from, lte: range2.to }, orderId: { not: null } }, select: { orderId: true, creditAmt: true } })
+  ]);
+  const flow = /* @__PURE__ */ new Map();
+  for (const p of payments) flow.set(p.orderId, (flow.get(p.orderId) ?? 0) + p.amount);
+  for (const n of notes) if (n.orderId) flow.set(n.orderId, (flow.get(n.orderId) ?? 0) - n.creditAmt);
+  const flowOrders = flow.size ? await prisma.order.findMany({ where: { id: { in: [...flow.keys()] }, status: { not: "Quote" } }, include: headInclude }) : [];
+  for (const o of flowOrders) {
+    const money5 = flow.get(o.id) ?? 0;
+    const { grandTotal, lines } = headLines(o);
+    if (grandTotal <= 0) continue;
+    for (const l of lines) bucket(l.head).collected += money5 * l.gross / grandTotal / (1 + VAT_RATE);
   }
   const headName = new Map(heads.map((h) => [h.id, h.name]));
   const [purchaseLines, expenses] = await Promise.all([
@@ -75499,6 +75548,9 @@ reportsRouter.get("/sales-by-business-head", async (req, res) => {
       active: head?.active ?? true,
       sales,
       orders: b?.orders.size ?? 0,
+      collected: round(b?.collected ?? 0),
+      // DTF Printing and UV DTF Printing: the film sales and the artwork sales shown apart (the costs belong to the head as a whole)
+      splits: [...b?.splits.entries() ?? []].map(([name3, v]) => ({ name: name3, sales: round(v.sales), orders: v.orders.size })).sort((x, y) => y.sales - x.sales),
       sharePct: total > 0 ? round((b?.sales ?? 0) / total * 100) : 0,
       costs: c,
       margin: round(sales - c.total),
@@ -75513,6 +75565,7 @@ reportsRouter.get("/sales-by-business-head", async (req, res) => {
     toDate: range2.to,
     heads: headRows,
     totalSales: round(total),
+    totalCollected: round([...buckets.values()].reduce((a2, b) => a2 + b.collected, 0)),
     unassignedCosts: unassigned,
     totalCosts: round(taggedCosts + unassigned.total),
     totalMargin: round(total - taggedCosts - unassigned.total)
@@ -75532,17 +75585,12 @@ reportsRouter.get("/business-head-detail", async (req, res) => {
   if (!shared) {
     const orders = await prisma.order.findMany({
       where: { status: { not: "Quote" }, createdDate: { gte: range2.from, lte: range2.to } },
-      include: { corporateClient: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } } },
+      include: headInclude,
       orderBy: [{ createdDate: "desc" }, { id: "desc" }]
     });
     for (const o of orders) {
-      const inputs = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
-      const subtotal = inputs.reduce((a2, li) => a2 + buildLineTotal(li), 0);
-      const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      const scale = subtotal > 0 ? grandTotal / subtotal : 0;
-      o.lineItems.forEach((li, i) => {
-        const name2 = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
-        if (name2 !== headName) return;
+      for (const { li, head: head2, gross } of headLines(o).lines) {
+        if (head2 !== headName) continue;
         salesLines.push({
           date: o.createdDate,
           orderId: o.id,
@@ -75550,9 +75598,9 @@ reportsRouter.get("/business-head-detail", async (req, res) => {
           customer: o.customerName || o.corporateClient?.name || "Walk-in",
           item: li.service?.name ?? li.material?.name ?? "Item",
           qty: li.qty,
-          sales: round(buildLineTotal(inputs[i]) * scale / (1 + VAT_RATE))
+          sales: round(gross / (1 + VAT_RATE))
         });
-      });
+      }
     }
   }
   const headFilter = shared ? null : head.id;
@@ -76266,7 +76314,8 @@ async function costedService(jobType) {
   const name2 = "Costed job \u2014 " + costingJobLabel(jobType);
   const found = await prisma.service.findFirst({ where: { name: name2 } });
   if (found) return found;
-  const head = await prisma.businessHead.findFirst({ where: { name: jobType === "indoor" || jobType === "outdoor" ? "Large Format Printing" : "General Order" } });
+  const headName = jobType === "indoor" || jobType === "outdoor" ? "Large Format Printing" : PRINTING_PUBLICATIONS_HEAD;
+  const head = await prisma.businessHead.findFirst({ where: { name: headName } }) ?? await prisma.businessHead.create({ data: { name: headName, sortOrder: ((await prisma.businessHead.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0) + 1 } });
   return prisma.service.create({ data: { name: name2, item: name2, unit: "piece", price: 0, outsourced: true, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
 var captureSchema = external_exports.object({
@@ -77975,7 +78024,7 @@ async function penService(tx) {
     if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
     return found;
   }
-  const head = await tx.businessHead.findFirst({ where: { name: "UV Printing" } });
+  const head = await tx.businessHead.findFirst({ where: { name: UV_DTF_HEAD } }) ?? await tx.businessHead.create({ data: { name: UV_DTF_HEAD, sortOrder: ((await tx.businessHead.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0) + 1 } });
   return tx.service.create({ data: { name: UV_PEN_SERVICE, item: UV_PEN_SERVICE, unit: "piece", price: DEFAULT_PEN_TIERS[0].rate, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
 dtfRouter.get("/data", async (req, res) => {
@@ -81546,5 +81595,5 @@ app.listen(port, () => {
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

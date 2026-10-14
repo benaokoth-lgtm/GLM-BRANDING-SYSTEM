@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { buildLineTotal, computeOrderTotals, defaultBusinessHeadName, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, EMBROIDERY_ORIGINATION_SERVICE, EMBROIDERY_PIECE_SERVICE, EMBROIDERY_SETUP_SERVICE, GENERAL_ORDER_HEAD, todayStr, VAT_RATE } from '@glm/shared';
+import { buildLineTotal, computeOrderTotals, defaultBusinessHeadName, UV_DTF_HEAD, EMBROIDERY_CONSUMABLE_MATERIAL_NAMES, EMBROIDERY_ORIGINATION_SERVICE, EMBROIDERY_PIECE_SERVICE, EMBROIDERY_SETUP_SERVICE, GENERAL_ORDER_HEAD, todayStr, VAT_RATE } from '@glm/shared';
 import { ensureBusinessHeadsOnce, ensurePurchasesOnce } from '../purchases';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
+import type { Prisma } from '@prisma/client';
+import { DTF_HEAD, primaryHead } from '../orderHeads';
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth, requirePermission('canAccessReports'));
@@ -242,6 +244,30 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
 // Sales by business head: DTF Printing, UV Printing, Laser Engraving, Large Format Printing, Embroidery and General Order. Every
 // service belongs to one head; a material sold over the counter is General Order. Figures are sales raised in the period (orders and
 // invoices, not quotations), after discounts, with the 16% VAT taken out — before any credit notes.
+// ── How an order is counted under the business heads ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// A service line counts under its service's business head (or the head its name suggests). A material sold WITH a service — a shirt on an embroidery order, a blank sold
+// alongside a DTF job — counts under the head of the order's main service, so the work and what was sold with it stay together; a material sold on its own is General Order.
+// DTF Printing and UV DTF Printing are each reported with their film sales and artwork sales shown apart.
+const headInclude = { lineItems: { include: { service: { include: { businessHead: true } }, material: true } }, corporateClient: true, dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { id: true } } } satisfies Prisma.OrderInclude;
+type HeadOrder = Prisma.OrderGetPayload<{ include: typeof headInclude }>;
+
+function headLines(o: HeadOrder) {
+  const inputs: LineItemInput[] = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
+  const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
+  const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
+  const scale = subtotal > 0 ? grandTotal / subtotal : 0; // what the order-level discount leaves of each line
+  const main = primaryHead(o.lineItems.map((li, i) => ({ ...inputs[i]!, service: li.service })));
+  const hasService = o.lineItems.some((li) => li.service);
+  const kind = o.dtfFilmSale ? 'Film sales' : o.dtfArtworkJob ? 'Artwork sales' : 'Other sales';
+  return {
+    grandTotal,
+    lines: o.lineItems.map((li, i) => {
+      const head = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : hasService ? main : GENERAL_ORDER_HEAD;
+      return { li, head, gross: buildLineTotal(inputs[i]!) * scale, split: head === DTF_HEAD || head === UV_DTF_HEAD ? kind : null };
+    }),
+  };
+}
+
 reportsRouter.get('/sales-by-business-head', async (req, res) => {
   const range = parseRange(req);
   if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
@@ -250,34 +276,52 @@ reportsRouter.get('/sales-by-business-head', async (req, res) => {
   const heads = await prisma.businessHead.findMany({ orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }] });
   const orders = await prisma.order.findMany({
     where: { status: { not: 'Quote' }, createdDate: { gte: range.from, lte: range.to } },
-    include: { lineItems: { include: { service: { include: { businessHead: true } } } } },
+    include: headInclude,
   });
 
-  type Bucket = { sales: number; orders: Set<number>; services: Map<string, { qty: number; sales: number }> };
+  type Bucket = { sales: number; collected: number; orders: Set<number>; services: Map<string, { qty: number; sales: number }>; splits: Map<string, { sales: number; orders: Set<number> }> };
   const buckets = new Map<string, Bucket>();
   const bucket = (name: string): Bucket => {
     let b = buckets.get(name);
-    if (!b) buckets.set(name, (b = { sales: 0, orders: new Set(), services: new Map() }));
+    if (!b) buckets.set(name, (b = { sales: 0, collected: 0, orders: new Set(), services: new Map(), splits: new Map() }));
     return b;
   };
 
   for (const o of orders) {
-    const inputs: LineItemInput[] = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
-    const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
-    const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-    const scale = subtotal > 0 ? grandTotal / subtotal : 0; // what the order-level discount leaves of each line
-    o.lineItems.forEach((li, i) => {
-      const gross = buildLineTotal(inputs[i]!) * scale;
-      const name = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
-      const b = bucket(name);
-      b.sales += gross / (1 + VAT_RATE);
+    for (const { li, head, gross, split } of headLines(o).lines) {
+      const net = gross / (1 + VAT_RATE);
+      const b = bucket(head);
+      b.sales += net;
       b.orders.add(o.id);
       const label = li.service ? li.service.name : 'Materials sold';
       const s = b.services.get(label) ?? { qty: 0, sales: 0 };
       s.qty += li.qty;
-      s.sales += gross / (1 + VAT_RATE);
+      s.sales += net;
       b.services.set(label, s);
-    });
+      if (split) {
+        const sp = b.splits.get(split) ?? { sales: 0, orders: new Set<number>() };
+        sp.sales += net;
+        sp.orders.add(o.id);
+        b.splits.set(split, sp);
+      }
+    }
+  }
+
+  // Collected: the money received in the period (by the day it was paid, whenever the order was raised), less refunds, VAT out — shared between the heads by each order's lines.
+  // It is the same measure Commission pays on, so what a head sold and what it collected can be put side by side.
+  const [payments, notes] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: range.from, lte: range.to } }, select: { orderId: true, amount: true } }),
+    prisma.adjustmentNote.findMany({ where: { type: 'Credit', date: { gte: range.from, lte: range.to }, orderId: { not: null } }, select: { orderId: true, creditAmt: true } }),
+  ]);
+  const flow = new Map<number, number>();
+  for (const p of payments) flow.set(p.orderId, (flow.get(p.orderId) ?? 0) + p.amount);
+  for (const n of notes) if (n.orderId) flow.set(n.orderId, (flow.get(n.orderId) ?? 0) - n.creditAmt);
+  const flowOrders = flow.size ? await prisma.order.findMany({ where: { id: { in: [...flow.keys()] }, status: { not: 'Quote' } }, include: headInclude }) : [];
+  for (const o of flowOrders) {
+    const money = flow.get(o.id) ?? 0;
+    const { grandTotal, lines } = headLines(o);
+    if (grandTotal <= 0) continue;
+    for (const l of lines) bucket(l.head).collected += ((money * l.gross) / grandTotal) / (1 + VAT_RATE);
   }
 
   // Costs: what was bought for each line of business (purchase lines, tagged), plus the expenses tagged to it. An expense that backs a
@@ -324,6 +368,9 @@ reportsRouter.get('/sales-by-business-head', async (req, res) => {
       active: head?.active ?? true,
       sales,
       orders: b?.orders.size ?? 0,
+      collected: round(b?.collected ?? 0),
+      // DTF Printing and UV DTF Printing: the film sales and the artwork sales shown apart (the costs belong to the head as a whole)
+      splits: [...(b?.splits.entries() ?? [])].map(([name, v]) => ({ name, sales: round(v.sales), orders: v.orders.size })).sort((x, y) => y.sales - x.sales),
       sharePct: total > 0 ? round(((b?.sales ?? 0) / total) * 100) : 0,
       costs: c,
       margin: round(sales - c.total),
@@ -338,6 +385,7 @@ reportsRouter.get('/sales-by-business-head', async (req, res) => {
     toDate: range.to,
     heads: headRows,
     totalSales: round(total),
+    totalCollected: round([...buckets.values()].reduce((a, b) => a + b.collected, 0)),
     unassignedCosts: unassigned,
     totalCosts: round(taggedCosts + unassigned.total),
     totalMargin: round(total - taggedCosts - unassigned.total),
@@ -361,17 +409,12 @@ reportsRouter.get('/business-head-detail', async (req, res) => {
   if (!shared) {
     const orders = await prisma.order.findMany({
       where: { status: { not: 'Quote' }, createdDate: { gte: range.from, lte: range.to } },
-      include: { corporateClient: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } } },
+      include: headInclude,
       orderBy: [{ createdDate: 'desc' }, { id: 'desc' }],
     });
     for (const o of orders) {
-      const inputs: LineItemInput[] = o.lineItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
-      const subtotal = inputs.reduce((a, li) => a + buildLineTotal(li), 0);
-      const { grandTotal } = computeOrderTotals({ lineItems: inputs, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt });
-      const scale = subtotal > 0 ? grandTotal / subtotal : 0;
-      o.lineItems.forEach((li, i) => {
-        const name = li.service ? li.service.businessHead?.name ?? defaultBusinessHeadName(li.service.name) : GENERAL_ORDER_HEAD;
-        if (name !== headName) return;
+      for (const { li, head, gross } of headLines(o).lines) {
+        if (head !== headName) continue;
         salesLines.push({
           date: o.createdDate,
           orderId: o.id,
@@ -379,9 +422,9 @@ reportsRouter.get('/business-head-detail', async (req, res) => {
           customer: o.customerName || o.corporateClient?.name || 'Walk-in',
           item: li.service?.name ?? li.material?.name ?? 'Item',
           qty: li.qty,
-          sales: round((buildLineTotal(inputs[i]!) * scale) / (1 + VAT_RATE)),
+          sales: round(gross / (1 + VAT_RATE)),
         });
-      });
+      }
     }
   }
 

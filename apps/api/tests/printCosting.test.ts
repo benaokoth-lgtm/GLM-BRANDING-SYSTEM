@@ -8,6 +8,7 @@ import type { PrintJob } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
+import { readXlsx } from '../src/xlsx';
 
 const S = DEFAULT_PRINT_SETTINGS;
 const eulogy: PrintJob = { product: 'eulogy', pages: 8, paper: 0, cover: 4, coverSep: false, lam: false, fold: true, size: 'A4', sides: 2, qty: 100, mode: 'tier' };
@@ -173,5 +174,23 @@ describe('Job Costing: Brochures & Eulogies', () => {
     const looser = await save('seller');
     assert.equal(looser.body.lowestTotal, 25334.4); // 18,200 × 1.2 × 1.16; (a floor can never be above the margin the quote was made at)
     assert.equal((await call('admin', 'PUT', '/costing/print/settings', s)).status, 200);
+  });
+
+  it('the supplier price-check sheet lists every item and service Job Costing costs from, with the current rate and room for quotes', async () => {
+    const get = (who: string) => fetch(`${base}/api/costing/rates.xlsx`, { headers: { Authorization: `Bearer ${tokens[who]}` } });
+    assert.equal((await get('finance')).status, 403); // the rates are an Admin's
+    const res = await get('admin');
+    assert.equal(res.status, 200);
+    const grid = readXlsx(Buffer.from(await res.arrayBuffer()));
+    assert.ok(grid[0]!.includes('Supplier 1 quote') && grid[0]!.includes('Supplier 3 quote'));
+    const rows = grid.slice(1);
+    const sections = new Set(rows.map((r) => r[1]));
+    for (const s of ['Business cards & signage', 'Brochures & eulogies — paper', 'Brochures & eulogies — services & fees']) assert.ok(sections.has(s), s);
+    // a signage rate, a paper at both sides, a fee — each with what it is charged on and today's rate
+    const lam = rows.find((r) => r[2] === 'Lamination film')!;
+    assert.deepEqual([lam[3], lam[5], lam[6], lam[8]], ['Material', 'per A3 sheet', 'Laminated cards only', '60']);
+    assert.equal(rows.find((r) => r[2] === '130gsm gloss, printed both sides')![8], '60');
+    assert.equal(rows.find((r) => r[2] === 'Stapling')![8], '8');
+    assert.equal(rows.some((r) => r[2] === 'Brochure wastage'), false); // an allowance, not a price
   });
 });

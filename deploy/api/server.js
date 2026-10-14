@@ -79417,6 +79417,33 @@ function readXlsx(buf) {
 
 // apps/api/src/routes/costing.ts
 var import_express18 = __toESM(require_express2());
+
+// apps/api/src/costingSheet.ts
+var COSTING_SHEET_HEADERS = ["No.", "Section", "Item", "Kind", "Used for", "Charged", "Finish / note", "Ticked in a new costing", "Current rate in the system (KES, VAT excluded)", "Supplier 1 quote", "Supplier 2 quote", "Supplier 3 quote", "Supplier, date, VAT included or not?"];
+var COSTING_SHEET_WIDTHS = [6, 30, 38, 11, 34, 22, 22, 14, 22, 15, 15, 15, 34];
+var ONLY_FOR = { lam: "Laminated cards only", frost: "Frosted cards only" };
+function costingSheetRows(rates, print) {
+  const out = [COSTING_SHEET_HEADERS];
+  let n = 0;
+  const add = (section, item, kind, usedFor, charged, note, ticked, current) => out.push([++n, section, item, kind, usedFor, charged, note, ticked, current]);
+  const sorted = [...rates].filter((r) => r.active).sort((a2, b) => a2.sortOrder - b.sortOrder || a2.id - b.id);
+  for (const kind of ["material", "service"]) {
+    for (const r of sorted.filter((x) => x.kind === kind)) {
+      add("Business cards & signage", r.name, kind === "material" ? "Material" : "Service", r.jobTypes.map((t) => COSTING_JOB_LABEL[t]).join(", "), COSTING_BASIS_LABEL[r.basis], ONLY_FOR[r.onlyFor] ?? "", r.defaultOn ? "Yes" : "Optional extra", r.cost);
+    }
+  }
+  for (const p of print.papers) {
+    add("Brochures & eulogies \u2014 paper", `${p.name}, printed one side`, "Material", "Eulogies, profiles, brochures", "per A3 sheet", "One side", "Yes", p.one);
+    add("Brochures & eulogies \u2014 paper", `${p.name}, printed both sides`, "Material", "Eulogies, profiles, brochures", "per A3 sheet", "Both sides", "Yes", p.two);
+  }
+  for (const f of PRINT_FEE_LABELS) {
+    if (f.key === "waste") continue;
+    add("Brochures & eulogies \u2014 services & fees", f.label, "Service", f.key === "staple" || f.key === "trim" || f.key === "fold" ? "Eulogies, company profiles" : f.key === "lam" ? "Eulogies, profiles, brochures" : f.key === "designBr" ? "Brochures" : f.key === "designEu" ? "Eulogies" : f.key === "designPr" ? "Company profiles" : "Eulogies, profiles, brochures", f.unit.replace("KES / ", "per "), "", f.key === "fold" ? "Yes (can be switched off)" : "Yes", print.fees[f.key]);
+  }
+  return out;
+}
+
+// apps/api/src/routes/costing.ts
 var costingRouter = (0, import_express18.Router)();
 costingRouter.use(requireAuth);
 var mayCost = requirePermission("canCaptureOrders", "canAccessFinance");
@@ -79490,6 +79517,12 @@ costingRouter.post("/quote", mayCost, async (req, res) => {
 costingRouter.get("/rates", admin, async (_req, res) => {
   const { types, rates } = await load();
   res.json({ jobTypes: types, rates });
+});
+costingRouter.get("/rates.xlsx", admin, async (_req, res) => {
+  const [{ rates }, print] = await Promise.all([load(), printSettings()]);
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", 'attachment; filename="job-costing-supplier-price-check.xlsx"');
+  res.send(writeXlsx("Supplier price check", costingSheetRows(rates, print), COSTING_SHEET_WIDTHS));
 });
 var rateSchema = external_exports.object({
   kind: external_exports.enum(["material", "service"]),

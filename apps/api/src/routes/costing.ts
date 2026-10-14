@@ -32,6 +32,8 @@ import { requireAuth, requirePermission, requireRole } from '../middleware/auth'
 import { canSeeCosts } from '../costs';
 import { permissionsForRole } from '../permissions';
 import { captureWalkin, paymentLineSchema, walkinSchema } from './orders';
+import { costingSheetRows, COSTING_SHEET_WIDTHS } from '../costingSheet';
+import { writeXlsx } from '../xlsx';
 
 // Job costing: what an outsourced branding job (business cards, indoor or outdoor signage) costs and what to quote for it. Anyone who takes orders can cost a job; what the
 // supplier charges us, the cost lines and the cost are shown to everyone who costs a job; our margin and profit only to people who may see costs (Finance, the General Manager, Admin).
@@ -122,6 +124,14 @@ costingRouter.post('/quote', mayCost, async (req, res) => {
 costingRouter.get('/rates', admin, async (_req, res) => {
   const { types, rates } = await load();
   res.json({ jobTypes: types, rates });
+});
+
+// the supplier price-check sheet: what Job Costing costs a job from, the rate held now, and room for what each supplier quotes
+costingRouter.get('/rates.xlsx', admin, async (_req, res) => {
+  const [{ rates }, print] = await Promise.all([load(), printSettings()]);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="job-costing-supplier-price-check.xlsx"');
+  res.send(writeXlsx('Supplier price check', costingSheetRows(rates, print), COSTING_SHEET_WIDTHS));
 });
 
 const rateSchema = z.object({

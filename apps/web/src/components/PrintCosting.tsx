@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PRINT_FEE_LABELS, PRINT_PAGE_OPTIONS, PRINT_PRODUCTS, PRINT_PRODUCT_LABEL, PRINT_UPS, VAT_RATE, fmtKsh, fmtNum, printSettingsProblem } from '@glm/shared';
 import type { PrintJob, PrintProduct, PrintSettings, PrintSize } from '@glm/shared';
-import { api } from '../api/client';
+import { api, downloadFile } from '../api/client';
 import { numStyle } from '../pages/accounting/shared';
 import { useAuth } from '../state/AuthContext';
 import type { CompanySettings } from '../api/models';
@@ -520,6 +520,11 @@ function PrintRates() {
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <p className="note" style={{ margin: 0 }}>The printer's rates, all in KES and as the printer quotes them (the sample figures are placeholders until the real quotes are entered). Prices to the customer include VAT; the rates here do not.</p>
+      <div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => downloadFile('/costing/rates.xlsx', 'job-costing-supplier-price-check.xlsx').catch(() => undefined)} title="Every material, service, paper and fee Job Costing uses, with the rate held now and empty columns for supplier quotes">
+          Supplier price-check sheet (Excel)
+        </button>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-6)', alignItems: 'start' }}>
         <div>
           <div className="card-kicker">A3 sheet cost</div>

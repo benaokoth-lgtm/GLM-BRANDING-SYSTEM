@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import { COSTING_BASIS_LABEL, COSTING_JOB_LABEL, COSTING_JOB_TYPES, costingBasesFor, fmtKsh } from '@glm/shared';
 import type { CostingBasis, CostingJobType, CostingJobTypeRow, CostingKind, CostingRateRow } from '@glm/shared';
-import { api } from '../api/client';
+import { api, downloadFile } from '../api/client';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from '../pages/accounting/shared';
 
 // Sales → Job Costing → Rates (Admin): the numbers behind the costing. Two lists — the MATERIALS we buy and the SERVICES we pay for — each with what the supplier
@@ -256,6 +256,12 @@ export default function CostingRatesPanel() {
       <p className="note" style={{ margin: 0 }}>
         The rates behind <b>Sales → Job Costing</b>. Enter what the supplier charges <b>us</b>, without VAT. A change shows in the next costing straight away; a costing is not saved, so nothing already quoted changes.
       </p>
+      <div>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => downloadFile('/costing/rates.xlsx', 'job-costing-supplier-price-check.xlsx').catch(() => undefined)} title="Every material, service, paper and fee Job Costing uses, with the rate held now and empty columns for supplier quotes">
+          Supplier price-check sheet (Excel)
+        </button>
+        <span className="text-muted" style={{ fontSize: 12, marginLeft: 'var(--space-2)' }}>For checking supplier prices: every item and service used here and under Brochures &amp; eulogies, with today's rate and blank columns for quotes.</span>
+      </div>
       <Card title="Kinds of job" hint="The margin is a markup on cost: price = cost × (1 + margin %). The lowest margin is how far a salesperson may bargain a quote down with a client: a lower price needs Finance, the General Manager or Admin to approve it. Wastage is the extra material allowed for on signage. Business cards: how many fit on an A3 sheet, and the spare sheets added to every job.">
         <div style={{ overflowX: 'auto' }}>
           <table className="table">

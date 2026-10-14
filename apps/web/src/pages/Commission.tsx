@@ -740,6 +740,12 @@ function MonthlyTab() {
   const [year, setYear] = useState(String(thisYear));
   const { data, error, loading } = useLoad<MonthlyData>(`/commission/monthly?year=${year}`);
   const years = [thisYear, thisYear - 1, thisYear - 2, thisYear - 3].map(String);
+  // The month calendar: one month at a time (the latest by default), or every month of the year.
+  const [pick, setPick] = useState<string>('latest');
+  useEffect(() => setPick('latest'), [year]);
+  const periods = data?.months.map((m) => m.period) ?? [];
+  const selected = pick === 'all' ? 'all' : pick !== 'latest' && periods.includes(pick) ? pick : (periods[periods.length - 1] ?? 'all');
+  const shownMonths = data ? (selected === 'all' ? [...data.months].reverse() : data.months.filter((m) => m.period === selected)) : [];
 
   return (
     <>
@@ -809,7 +815,36 @@ function MonthlyTab() {
             </div>
           </Card>
 
-          {[...data.months].reverse().map((m) => (
+          <div className="no-print">
+            <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>Month — choose one, or all of {year}</div>
+            <div role="radiogroup" aria-label="Month" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 'var(--space-2)', maxWidth: 760 }}>
+              <button type="button" role="radio" aria-checked={selected === 'all'} className={'btn btn-sm ' + (selected === 'all' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPick('all')}>
+                All months
+              </button>
+              {Array.from({ length: 12 }, (_, i) => {
+                const period = `${year}-${String(i + 1).padStart(2, '0')}`;
+                const m = data.months.find((x) => x.period === period);
+                return (
+                  <button
+                    key={period}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected === period}
+                    disabled={!m}
+                    title={m ? `${monthName(period)}: ${fmtKsh(m.totals.commission)} commission` : 'No figures for this month yet'}
+                    className={'btn btn-sm ' + (selected === period ? 'btn-primary' : 'btn-secondary')}
+                    style={{ display: 'grid', lineHeight: 1.25, padding: '6px 4px', opacity: m ? 1 : 0.4 }}
+                    onClick={() => setPick(period)}
+                  >
+                    <span>{new Date(`${period}-01T00:00:00`).toLocaleDateString('en-KE', { month: 'short' })}</span>
+                    <span style={{ fontSize: 11, opacity: 0.8 }}>{m ? fmtKsh(m.totals.commission) : '—'}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {shownMonths.map((m) => (
             <Card key={m.period} title={monthName(m.period)} hint={m.open ? 'This month is not over: figures are what has been earned so far.' : undefined}>
               {m.rows.length === 0 ? (
                 <p className="note" style={{ margin: 0 }}>No sales credited to staff this month.</p>

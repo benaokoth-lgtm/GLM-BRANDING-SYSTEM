@@ -4,7 +4,6 @@ import type { PrintJob, PrintProduct, PrintSettings, PrintSize } from '@glm/shar
 import { api, downloadFile } from '../api/client';
 import { numStyle } from '../pages/accounting/shared';
 import { useAuth } from '../state/AuthContext';
-import type { CompanySettings } from '../api/models';
 
 // Job Costing → Brochures & Eulogies: eulogy booklets, company profiles and brochures printed by a supplier. Pick the job and the quantity and the price to quote appears, VAT included,
 // with the cost lines behind it; a price list for the usual quantities; and a client quote to print. The arithmetic is the server's (packages/shared/src/printCosting.ts), so every
@@ -39,7 +38,7 @@ interface PriceList {
   booklets: { pages: number; sheets: number; cells: number[] }[];
   brochures: { name: string; ups: number; cells: number[] }[];
 }
-type View = 'calc' | 'list' | 'quote' | 'rates';
+type View = 'calc' | 'list' | 'rates';
 
 const f2 = (n: number) => n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const label = { fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 } as const;
@@ -65,8 +64,6 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
   });
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState('');
-  const [client, setClient] = useState('');
-  const [company, setCompany] = useState<CompanySettings | null>(null);
   // "Save as quote": keep this costing for a client, to agree the price and capture as an order
   const [saving, setSaving] = useState<{ client: string; phone: string; note: string; busy: boolean; err: string } | null>(null);
 
@@ -79,7 +76,6 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
         setJob((j) => ({ ...j, cover: Math.max(0, c.papers.length - 1) }));
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : 'Could not load the costing'));
-    api.get<CompanySettings>('/master-data/settings').then(setCompany).catch(() => undefined);
   }, []);
 
   const sees = !!config?.canSeeCosts;
@@ -145,10 +141,10 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
         </button>{' '}
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSaving(null)}>Cancel</button>
       </div>
-      <p className="note" style={{ margin: 0 }}>The costing is kept as it is now, for 14 days. Later changes to the printer's rates do not change it. Agree the price with the client under Saved quotes, then capture it as an order.</p>
+      <p className="note" style={{ margin: 0 }}>The costing is kept as it is now, for 14 days. Later changes to the printer's rates do not change it. Under Saved quotes, print it as a quotation, email it or send it on WhatsApp, agree the price with the client, then capture it as an order.</p>
     </div>
   );
-  const startSave = () => setSaving(saving ? null : { client: client.trim(), phone: '', note: '', busy: false, err: '' });
+  const startSave = () => setSaving(saving ? null : { client: '', phone: '', note: '', busy: false, err: '' });
   const chip = (text: string, on: boolean, onClick: () => void) => (
     <button key={text} type="button" className={'btn btn-sm ' + (on ? 'btn-primary' : 'btn-secondary')} aria-pressed={on} onClick={onClick}>
       {text}
@@ -165,7 +161,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
   const papers = config.papers;
   const unitName = brochure ? 'piece' : 'copy';
 
-  const views: [View, string][] = [['calc', 'Calculator'], ['list', 'Price list'], ['quote', 'Quote']];
+  const views: [View, string][] = [['calc', 'Calculator'], ['list', 'Price list']];
   if (isAdmin) views.push(['rates', 'Rates']);
 
   return (
@@ -287,11 +283,8 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
                   {fmtNum(result.sheets)} A3 sheets in total
                 </div>
                 <div className="no-print" style={{ marginTop: 'var(--space-3)', display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setView('quote')}>
-                    Print a quotation
-                  </button>
                   <button type="button" className="btn btn-primary btn-sm blueprint" onClick={startSave}>
-                    Save as quote
+                    Save as quote to print, email or WhatsApp
                   </button>
                 </div>
                 {saveBox}
@@ -302,72 +295,6 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
       )}
 
       {view === 'list' && <PriceListView job={job} papers={papers} sees={sees} set={set} chip={chip} />}
-
-      {view === 'quote' && result && (
-        <>
-          <div className="no-print" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'end', flexWrap: 'wrap' }}>
-            <div className="field" style={{ margin: 0, width: 320 }}>
-              <label>Client name</label>
-              <input className="input" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Client name" />
-            </div>
-            <button type="button" className="btn btn-primary blueprint" onClick={() => window.print()}>
-              Print / save PDF
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={startSave}>
-              Save as quote
-            </button>
-            <span className="note" style={{ margin: 0 }}>This is the job chosen on the Calculator — change it there and the quote follows.</span>
-          </div>
-          {saveBox}
-          <div style={{ background: '#fff', color: '#201e1d', border: '2px solid var(--color-divider)', maxWidth: 820, padding: 40 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontFamily: 'var(--font-heading)', fontSize: 32, fontWeight: 700 }}>Quotation</div>
-                <div style={{ fontSize: 14 }}>{new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} · Valid 14 days</div>
-              </div>
-              {company?.companyName && (
-                <div style={{ textAlign: 'right', fontSize: 14 }}>
-                  <b>{company.companyName}</b>
-                  {company.companyAddress && <div>{company.companyAddress}</div>}
-                  {company.companyPhone && <div>{company.companyPhone}</div>}
-                </div>
-              )}
-            </div>
-            <div style={{ margin: '24px 0', fontSize: 15 }}>
-              <div className="text-muted" style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Prepared for</div>
-              <b>{client.trim() || 'Client'}</b>
-            </div>
-            <table className="table" style={{ width: '100%' }}>
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th style={{ textAlign: 'right' }}>Qty</th>
-                  <th style={{ textAlign: 'right' }}>Unit (ex VAT)</th>
-                  <th style={{ textAlign: 'right' }}>Amount (ex VAT)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{result.spec}</td>
-                  <td style={numStyle}>{fmtNum(result.qty)}</td>
-                  <td style={numStyle}>{f2(result.unitExVat)}</td>
-                  <td style={numStyle}>{f2(result.priceExVat)}</td>
-                </tr>
-              </tbody>
-            </table>
-            <div style={{ marginLeft: 'auto', maxWidth: 300, marginTop: 16, display: 'grid', gap: 4 }}>
-              <Row text="Subtotal" value={f2(result.priceExVat)} />
-              <Row text={`VAT ${Math.round(VAT_RATE * 100)}%`} value={f2(result.vat)} />
-              <div style={{ borderTop: '2px solid #201e1d', paddingTop: 6, marginTop: 4 }}>
-                <Row text="Total KES" value={f2(result.total)} bold big />
-              </div>
-            </div>
-            <p className="text-muted" style={{ fontSize: 13, marginTop: 24, marginBottom: 0 }}>
-              Prices are in Kenya shillings. The total includes VAT. Artwork is proofed with you before printing.
-            </p>
-          </div>
-        </>
-      )}
 
       {view === 'rates' && isAdmin && <PrintRates />}
     </div>

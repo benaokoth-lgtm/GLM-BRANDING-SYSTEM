@@ -129,6 +129,8 @@ export interface PaymentView {
 }
 
 export interface OrderDetail extends OrderSummary {
+  /** A quotation's last day (a Job Costing quote). */
+  validUntil?: string | null;
   /** Whether this person may record a payment on the order (its capturer, or someone who handles payments). */
   canTakePayment?: boolean;
   paymentTiming: PaymentTiming | null;

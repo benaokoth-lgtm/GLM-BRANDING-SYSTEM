@@ -306,11 +306,8 @@ export default function JobCosting() {
                   </div>
                 )}
                 <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', marginTop: 'var(--space-3)' }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>
-                    Print this quote
-                  </button>
                   <button type="button" className="btn btn-primary btn-sm blueprint" disabled={!(quote.cost && quote.cost > 0)} onClick={() => setSaving(saving ? null : { client: '', phone: '', note: '', busy: false, err: '' })}>
-                    Save as quote
+                    Save as quote to print, email or WhatsApp
                   </button>
                 </div>
                 {saving && (

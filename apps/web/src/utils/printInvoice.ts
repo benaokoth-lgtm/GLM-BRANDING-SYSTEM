@@ -184,6 +184,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
         <span class="k">${docWord} #</span><span class="v">${esc(order.orderNo)}</span>
         <span class="k">${docWord} DATE</span><span class="v">${fmtDate(order.createdDate)}</span>
         ${isInvoice && order.dueDate ? `<span class="k">DUE DATE</span><span class="v">${fmtDate(order.dueDate)}</span>` : ''}
+        ${!isInvoice && order.validUntil ? `<span class="k">VALID UNTIL</span><span class="v">${fmtDate(order.validUntil)}</span>` : ''}
       </div>
     </div>
 

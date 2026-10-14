@@ -33,6 +33,8 @@ import { canSeeCosts } from '../costs';
 import { permissionsForRole } from '../permissions';
 import { captureWalkin, paymentLineSchema, walkinSchema } from './orders';
 import { costingSheetRows, COSTING_SHEET_WIDTHS } from '../costingSheet';
+import { quoteDocument } from '../costingDocument';
+import { buildOrderPdf, documentKind } from '../orderPdf';
 import { writeXlsx } from '../xlsx';
 
 // Job costing: what an outsourced branding job (business cards, indoor or outdoor signage) costs and what to quote for it. Anyone who takes orders can cost a job; what the
@@ -395,6 +397,14 @@ async function seesAllQuotes(user: { role: string }): Promise<boolean> {
   return !!(perms.canSeeCosts || perms.canViewAllOrders);
 }
 
+/** A saved quote the person may see (their own, or any if they see costs or all orders), or the reason they may not. */
+export async function quoteForUser(user: { id: number; role: string }, id: number): Promise<{ quote: QuoteRow } | { status: number; error: string }> {
+  const q = await prisma.costingQuote.findUnique({ where: { id } });
+  if (!q) return { status: 404, error: 'Quote not found' };
+  if (q.staffId !== user.id && !(await seesAllQuotes(user))) return { status: 403, error: 'That quote is another salesperson’s' };
+  return { quote: q };
+}
+
 async function openQuote(req: Request, res: Response) {
   const q = await prisma.costingQuote.findUnique({ where: { id: Number(req.params.id) } });
   if (!q) {
@@ -464,6 +474,26 @@ costingRouter.get('/quotes', mayCost, async (req, res) => {
     take: 300,
   });
   res.json({ canSeeCosts: sees, quotes: rows.map((q) => viewOf(q, sees)) });
+});
+
+// the quotation in the house layout: the same document as an invoice or quotation in Finance, so it prints, emails and goes on WhatsApp the same way
+costingRouter.get('/quotes/:id/document', mayCost, async (req, res) => {
+  const r = await quoteForUser(req.user!, Number(req.params.id));
+  if ('error' in r) return res.status(r.status).json({ error: r.error });
+  res.json(quoteDocument(r.quote));
+});
+
+costingRouter.get('/quotes/:id/pdf', mayCost, async (req, res) => {
+  const r = await quoteForUser(req.user!, Number(req.params.id));
+  if ('error' in r) return res.status(r.status).json({ error: r.error });
+  const doc = quoteDocument(r.quote);
+  const company = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  const file = `${documentKind(doc).label}-${doc.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, '-') + '.pdf';
+  const pdf = await buildOrderPdf(doc, company);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${file}"`);
+  res.setHeader('Content-Length', String(pdf.length));
+  res.send(pdf);
 });
 
 costingRouter.get('/quotes/:id', mayCost, async (req, res) => {

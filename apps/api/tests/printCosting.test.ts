@@ -193,4 +193,43 @@ describe('Job Costing: Brochures & Eulogies', () => {
     assert.equal(rows.find((r) => r[2] === 'Stapling')![8], '8');
     assert.equal(rows.some((r) => r[2] === 'Brochure wastage'), false); // an allowance, not a price
   });
+
+  it('a saved quote is the house quotation: printable document, PDF, email and WhatsApp, with the price and never the cost', async () => {
+    const save = await call('seller', 'POST', '/costing/print/quotes', { ...eulogy, clientName: 'Hope Chapel', phone: '0712 000 111' });
+    assert.equal(save.status, 201, JSON.stringify(save.body));
+    const id = save.body.id;
+    const doc = await call('seller', 'GET', `/costing/quotes/${id}/document`);
+    assert.equal(doc.status, 200);
+    // the same shape an order's invoice or quotation has, so the same templates print it
+    assert.deepEqual([doc.body.status, doc.body.kind, doc.body.orderNo, doc.body.customerName, doc.body.phone], ['Quote', 'corporate', save.body.quoteNo, 'Hope Chapel', '0712 000 111']);
+    assert.equal(doc.body.validUntil, save.body.validUntil);
+    assert.equal(doc.body.staff.name, 'seller (print test)');
+    assert.deepEqual([doc.body.totals.grandTotal, doc.body.lineItems.length, doc.body.lineItems[0].lineTotal], [28501.2, 1, 28501.2]);
+    assert.equal(doc.body.lineItems[0].serviceName, 'Eulogy, 8 pages / 130gsm gloss, stapled, trimmed and folded — 100 copies');
+    assert.ok(!JSON.stringify(doc.body).includes('18200'), 'the cost is not on the document'); // 18,200 is what it costs us
+    // the price agreed with the client replaces the quoted one once it stands; one waiting for approval does not
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${id}/agree`, { total: 26000 })).body.approval, 'Pending');
+    assert.equal((await call('seller', 'GET', `/costing/quotes/${id}/document`)).body.totals.grandTotal, 28501.2);
+    await call('finance', 'POST', `/costing/quotes/${id}/approve`);
+    assert.equal((await call('seller', 'GET', `/costing/quotes/${id}/document`)).body.totals.grandTotal, 26000);
+    assert.equal((await call('seller', 'POST', `/costing/quotes/${id}/agree`, { total: 28000 })).body.approval, '');
+    assert.equal((await call('seller', 'GET', `/costing/quotes/${id}/document`)).body.totals.grandTotal, 28000);
+    // the PDF
+    const pdf = await fetch(`${base}/api/costing/quotes/${id}/pdf`, { headers: { Authorization: `Bearer ${tokens.seller}` } });
+    assert.equal(pdf.status, 200);
+    assert.match(pdf.headers.get('content-type') ?? '', /application\/pdf/);
+    assert.match(pdf.headers.get('content-disposition') ?? '', /Quotation-CQ-\d+\.pdf/);
+    assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+    // only the salesperson's own quote (or a manager's): another salesperson and a role that does not cost jobs are refused
+    assert.equal((await call('nobody', 'GET', `/costing/quotes/${id}/document`)).status, 403);
+    const other = await prisma.user.create({ data: { name: 'seller two (print test)', role: 'Seller (print test)', pinHash: 'x' } });
+    tokens.other = signToken({ id: other.id, name: other.name, role: 'Seller (print test)' });
+    assert.equal((await call('other', 'GET', `/costing/quotes/${id}/document`)).status, 403);
+    assert.equal((await fetch(`${base}/api/costing/quotes/${id}/pdf`, { headers: { Authorization: `Bearer ${tokens.other}` } })).status, 403);
+    // sending someone else's quote is refused (501 where mail is not set up at all, which comes first)
+    assert.ok([403, 501].includes((await call('other', 'POST', '/email/send', { costingQuoteId: id, to: 'a@b.co', subject: 'x' })).status));
+    assert.equal((await call('other', 'GET', `/whatsapp/log?costingQuoteId=${id}`)).status, 403);
+    assert.deepEqual((await call('seller', 'GET', `/whatsapp/log?costingQuoteId=${id}`)).body, []);
+    assert.ok([400, 501].includes((await call('seller', 'POST', '/email/send', { to: 'a@b.co', subject: 'x' })).status)); // neither an order nor a quote chosen
+  });
 });

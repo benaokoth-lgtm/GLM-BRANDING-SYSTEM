@@ -5,6 +5,8 @@ import { prisma } from '../db';
 import { requireAuth } from '../middleware/auth';
 import { canAccessOrder, orderInclude, serializeDetail } from './orders';
 import { buildOrderPdf, documentKind } from '../orderPdf';
+import { quoteDocument } from '../costingDocument';
+import { quoteForUser } from './costing';
 import { explainMailError, getMailer, refusal } from '../mailer';
 
 export const emailRouter = Router();
@@ -23,7 +25,9 @@ const sendLimiter = rateLimit({
 
 const sendSchema = z.object({
   // The document is always an order's invoice, quotation or receipt: say which, and the sender must be able to see that order.
-  orderId: z.number().int().positive(),
+  orderId: z.number().int().positive().optional(),
+  // …or a Job Costing quote's quotation
+  costingQuoteId: z.number().int().positive().optional(),
   to: z.string().email(),
   subject: z.string().min(1).max(200),
   // An optional note to the customer, shown above the details in the email.
@@ -45,11 +49,18 @@ emailRouter.post('/send', sendLimiter, async (req, res) => {
 
   const parsed = sendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, include: orderInclude });
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
-
-  const detail = serializeDetail(order);
+  if (!parsed.data.orderId && !parsed.data.costingQuoteId) return res.status(400).json({ error: 'Choose the order or quote to send' });
+  let detail: ReturnType<typeof serializeDetail> | ReturnType<typeof quoteDocument>;
+  if (parsed.data.costingQuoteId) {
+    const r = await quoteForUser(req.user!, parsed.data.costingQuoteId);
+    if ('error' in r) return res.status(r.status).json({ error: r.error });
+    detail = quoteDocument(r.quote);
+  } else {
+    const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId! }, include: orderInclude });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
+    detail = serializeDetail(order);
+  }
   const company = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   const kind = documentKind(detail);
   let pdf: Buffer;

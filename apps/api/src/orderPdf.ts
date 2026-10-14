@@ -12,6 +12,8 @@ export interface PdfOrder {
   status: string;
   createdDate: string;
   dueDate: string | null;
+  /** A quotation's last day (a Job Costing quote). */
+  validUntil?: string | null;
   customerName: string | null;
   phone: string | null;
   corporateClient: { name: string; phone: string | null; email: string | null; contactPerson?: string | null } | null;
@@ -190,6 +192,7 @@ export async function buildOrderPdf(order: PdfOrder, company: PdfCompany): Promi
   }
   const meta: [string, string][] = [[`${kind.word} #`, order.orderNo], [`${kind.word} DATE`, fmtDate(order.createdDate)]];
   if (kind.isInvoice && order.dueDate) meta.push(['DUE DATE', fmtDate(order.dueDate)]);
+  if (!kind.isInvoice && order.validUntil) meta.push(['VALID UNTIL', fmtDate(order.validUntil)]);
   let ym = topInfo;
   for (const [k, v] of meta) {
     text(k, colX[2]!, ym, { size: 11.5, font: bold, color: NAVY });

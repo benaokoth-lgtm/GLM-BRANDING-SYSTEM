@@ -4,6 +4,7 @@ import type { CompanySettings, OrderDetail } from '../api/models';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printOrderDocument } from '../utils/printInvoice';
+import CostingQuoteSend from './CostingQuoteSend';
 import SourcingField from './SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import type { PaymentRow } from './SplitPayments';
@@ -259,6 +260,8 @@ function QuoteDialog({ quote: q, canSeeCosts, onClose, onChanged }: { quote: Quo
         {q.status === 'Lost' && <p className="note" style={{ margin: 0 }}>Lost: {q.lostReason}</p>}
         {q.status === 'Ordered' && <p className="note" style={{ margin: 0 }}>Captured as order <b>{q.orderNo}</b> — the order is under All Orders.</p>}
         {err && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{err}</p>}
+
+        <CostingQuoteSend quoteId={q.id} defaultPhone={q.phone} onError={(m) => setErr(m ?? '')} />
 
         <div className="dialog-actions" style={{ flexWrap: 'wrap' }}>
           <button type="button" className="btn btn-ghost" onClick={onClose}>Close</button>

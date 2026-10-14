@@ -898,7 +898,8 @@ model WhatsappSettings {
 // Every WhatsApp message sent from an order, and whether WhatsApp accepted it.
 model WhatsappMessage {
   id          Int      @id @default(autoincrement())
-  orderId     Int
+  orderId     Int? // the order whose document was sent…
+  costingQuoteId Int? // …or the Job Costing quote's quotation
   toNumber    String
   status      String // Sent | Failed
   mode        String   @default("") // template | document
@@ -908,6 +909,7 @@ model WhatsappMessage {
   createdAt   DateTime @default(now())
 
   @@index([orderId])
+  @@index([costingQuoteId])
 }
 
 // M-Pesa (Daraja) setup, edited by the Admin under Master Data → M-Pesa. One row (id = 1). The consumer secret and passkey are

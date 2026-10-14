@@ -9,6 +9,8 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { seal } from '../crypto';
 import { canAccessOrder, orderInclude, serializeDetail } from './orders';
 import { buildOrderPdf, documentKind } from '../orderPdf';
+import { quoteDocument } from '../costingDocument';
+import { quoteForUser } from './costing';
 import { TEMPLATE_BODY, WhatsappError, checkConnection, loadWhatsappConfig, sendInvoiceDocument } from '../whatsapp';
 
 export const whatsappRouter = Router();
@@ -93,7 +95,9 @@ whatsappRouter.get('/status', async (_req, res) => {
 const money = (n: number) => 'Ksh ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const sendSchema = z.object({
-  orderId: z.number().int().positive(),
+  orderId: z.number().int().positive().optional(),
+  // …or a Job Costing quote's quotation
+  costingQuoteId: z.number().int().positive().optional(),
   // Where to send it; left out, the number on the order is used.
   to: z.string().trim().max(40).optional(),
 });
@@ -103,11 +107,18 @@ whatsappRouter.post('/send', sendLimiter, async (req, res) => {
   if (!cfg) return res.status(501).json({ error: "WhatsApp isn't set up yet — an Admin can set it up under Master Data → WhatsApp" });
   const parsed = sendSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
-  const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId }, include: orderInclude });
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
-
-  const detail = serializeDetail(order);
+  if (!parsed.data.orderId && !parsed.data.costingQuoteId) return res.status(400).json({ error: 'Choose the order or quote to send' });
+  let detail: ReturnType<typeof serializeDetail> | ReturnType<typeof quoteDocument>;
+  if (parsed.data.costingQuoteId) {
+    const r = await quoteForUser(req.user!, parsed.data.costingQuoteId);
+    if ('error' in r) return res.status(r.status).json({ error: r.error });
+    detail = quoteDocument(r.quote);
+  } else {
+    const order = await prisma.order.findUnique({ where: { id: parsed.data.orderId! }, include: orderInclude });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
+    detail = serializeDetail(order);
+  }
   const to = whatsappNumber(parsed.data.to || detail.corporateClient?.phone || detail.phone);
   if (!to) return res.status(400).json({ error: "Enter the customer's WhatsApp number, like 0797 785 033" });
 
@@ -123,7 +134,7 @@ whatsappRouter.post('/send', sendLimiter, async (req, res) => {
   const filename = `${kind.label}-${detail.orderNo}`.replace(/[^A-Za-z0-9._-]+/g, '-') + '.pdf';
 
   const log = (status: 'Sent' | 'Failed', extra: { waMessageId?: string; error?: string; mode?: string }) =>
-    prisma.whatsappMessage.create({ data: { orderId: order.id, toNumber: to, status, mode: extra.mode ?? '', waMessageId: extra.waMessageId ?? null, error: extra.error ?? '', sentByName: req.user!.name } });
+    prisma.whatsappMessage.create({ data: { orderId: parsed.data.costingQuoteId ? null : parsed.data.orderId!, costingQuoteId: parsed.data.costingQuoteId ?? null, toNumber: to, status, mode: extra.mode ?? '', waMessageId: extra.waMessageId ?? null, error: extra.error ?? '', sentByName: req.user!.name } });
 
   try {
     const pdf = await buildOrderPdf(detail, company);
@@ -146,11 +157,20 @@ whatsappRouter.post('/send', sendLimiter, async (req, res) => {
 
 /** The last few WhatsApp messages sent for an order: who sent them, to which number, and whether WhatsApp took them. */
 whatsappRouter.get('/log', async (req, res) => {
+  const quoteId = Number(req.query.costingQuoteId);
   const orderId = Number(req.query.orderId);
-  if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ error: 'Choose the order' });
-  const order = await prisma.order.findUnique({ where: { id: orderId }, select: { staffId: true } });
-  if (!order) return res.status(404).json({ error: 'Order not found' });
-  if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
-  const rows = await prisma.whatsappMessage.findMany({ where: { orderId }, orderBy: { id: 'desc' }, take: 10 });
+  let where: { orderId: number } | { costingQuoteId: number };
+  if (Number.isInteger(quoteId) && quoteId > 0) {
+    const r = await quoteForUser(req.user!, quoteId);
+    if ('error' in r) return res.status(r.status).json({ error: r.error });
+    where = { costingQuoteId: quoteId };
+  } else {
+    if (!Number.isInteger(orderId) || orderId <= 0) return res.status(400).json({ error: 'Choose the order' });
+    const order = await prisma.order.findUnique({ where: { id: orderId }, select: { staffId: true } });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
+    where = { orderId };
+  }
+  const rows = await prisma.whatsappMessage.findMany({ where, orderBy: { id: 'desc' }, take: 10 });
   res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
 });

@@ -16,6 +16,7 @@ const PATHS: Record<string, string> = {
   production: 'M3 20V10l6 3V9l6 3V6h4v14z M3 20h16',
   quality: 'M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z M9 12l2 2 4-4',
   stock: 'M3 8l9-5 9 5v8l-9 5-9-5z M3 8l9 5 9-5 M12 13v8',
+  people: 'M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6 M3 19v-1a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1 M16 5.5a3 3 0 0 1 0 5.5 M18 14a4 4 0 0 1 3 4v1',
   dtf: 'M5 8h14v8H5z M8 8V4h8v4 M8 16v4h8v-4',
   finance: 'M4 20V10 M10 20V4 M16 20v-7 M22 20H2',
   compliance: 'M9 3h6l1 2h3v16H5V5h3z M9 13l2 2 4-4',

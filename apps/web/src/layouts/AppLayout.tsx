@@ -52,6 +52,8 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   if (isAdmin || p.canAccessReports) tabs.push(['/reports', 'Reports']);
   if (isAdmin || p.canAccessStock) tabs.push(['/stock', 'Stock']);
   if (isAdmin || p.canManageDtf) tabs.push(['/dtf', 'DTF']);
+  // People (HR): leave, the off-day calendar and reviews. Everyone with HR access asks for their own leave.
+  if (isAdmin || p.canAccessHr || p.canManageHr) tabs.push(['/hr', 'People (HR)']);
 
   return tabs;
 }
@@ -83,6 +85,7 @@ const GROUP_OF: Record<string, Group> = {
   '/quality': 'operations',
   '/stock': 'operations',
   '/dtf': 'operations',
+  '/hr': 'operations',
   '/finance': 'finance',
   '/compliance': 'finance',
   '/accounting': 'finance',
@@ -105,6 +108,7 @@ const ICON_OF: Record<string, string> = {
   '/quality': 'quality',
   '/stock': 'stock',
   '/dtf': 'dtf',
+  '/hr': 'people',
   '/finance': 'finance',
   '/compliance': 'compliance',
   '/accounting': 'accounting',

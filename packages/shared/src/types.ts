@@ -26,6 +26,8 @@ export const PERMISSION_KEYS = [
   'canAccessQuality',
   'canReceiveStock',
   'canManageCommission',
+  'canAccessHr', // People (HR): see the module — request own leave, see the off-day calendar
+  'canManageHr', // People (HR): decide leave, see everyone's leave, reviews and the policy
   'canCapturePettyCash', // Petty cash desk: see the float and log what is spent from it, without Finance access (the front office)
   'canCaptureForOthers', // Front office: capture General / Film / Artwork orders in a sales person's name, and for freelancers
   'canBeAssignedOrders', // Sales person: orders can be captured for (and credited to) this role by the front office

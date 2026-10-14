@@ -30,6 +30,8 @@ model User {
   // Their basic monthly salary (Ksh). Used for the sales target that must be met before commission is earned (Commission → Rates). When blank, the
   // latest payroll pay-run amount for them is used instead; with neither, their commission is held.
   basicSalary      Float?
+  // The day they started working here (YYYY-MM-DD): leave is earned from it. Set under People (HR) or Compliance → Employees; blank = the day their sign-in was made.
+  hireDate         String?
   role             String // free-text role name — must match a Role.name row (validated at write time, not a DB-level FK so existing rows survive a role rename's own migration)
   pinHash          String
   failedLoginCount Int       @default(0)
@@ -107,6 +109,8 @@ model Role {
   canAccessAccounting Boolean @default(false) // Accounting: chart of accounts, journals, notes, payables/receivables, statements, M-Pesa matching
   canReceiveStock     Boolean @default(false) // Stores: receive purchased goods into the store (enter the quantities that physically arrived)
   canManageCommission Boolean @default(false) // Sales Commission: settings, every staff member's statement, client ownership, approving and paying commission
+  canAccessHr Boolean @default(false) // People (HR): request own leave, see the off-day calendar
+  canManageHr Boolean @default(false) // People (HR): decide leave, see everyone's leave, performance reviews and the leave policy
   canCapturePettyCash Boolean @default(false) // Petty cash desk: see the float and log what is spent from it (the front office), without access to the rest of Finance
   canCaptureForOthers Boolean @default(false) // Front office: capture General / Film / Artwork orders in a sales person's name (or for a freelancer), and take the money
   canBeAssignedOrders Boolean @default(false) // Sales person: the front office can capture orders for this role and credit them to the person
@@ -256,6 +260,7 @@ model Setting {
   nextOutsourcedNo Int   @default(7001)
   // The old per-sqm "Embroidery" service was retired once, when stitch-priced embroidery orders arrived (see embroideryLegacy.ts).
   embroideryLegacyRetired Boolean @default(false)
+  hrAccessSeeded Boolean @default(false) // the People (HR) permissions were given to the roles once
   pettyCashAccessSeeded Boolean @default(false) // the petty cash desk was given to the front office once
   frontOfficeSeeded Boolean @default(false) // the Front Office role has been offered once (it can then be edited or deleted freely)
 
@@ -1571,4 +1576,80 @@ model Cheque {
 
   @@index([status])
   @@index([expenseId])
+}
+
+// ── People (HR) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// The kinds of leave, with their yearly allowance (an Admin edits them under People → Policy).
+model LeaveType {
+  id            Int     @id @default(autoincrement())
+  name          String  @unique
+  paid          Boolean @default(true)
+  daysPerYear   Float   @default(0) // 0 = no limit
+  accrual       String  @default("upfront") // monthly | upfront
+  carryOverCap  Float   @default(0)
+  certAfterDays Int     @default(0) // a medical certificate is needed past this many days (0 = never)
+  active        Boolean @default(true)
+  sortOrder     Int     @default(0)
+}
+
+// A request for leave: its days are the working days between the dates (see packages/shared/src/hr.ts), counted when it is made and kept.
+model LeaveRequest {
+  id             Int      @id @default(autoincrement())
+  staffId        Int
+  leaveTypeId    Int
+  startDate      String
+  endDate        String
+  days           Float
+  status         String   @default("Pending") // Pending | Approved | Rejected | Cancelled
+  reason         String   @default("")
+  certificate    Boolean  @default(false) // a medical certificate was seen / will be provided
+  decidedByName  String   @default("")
+  decidedAt      DateTime?
+  decisionNote   String   @default("")
+  capturedByName String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@index([staffId, startDate])
+  @@index([status])
+}
+
+// Public holidays and company off days: not working days, so a leave does not use them.
+model OffDay {
+  id   Int    @id @default(autoincrement())
+  date String @unique
+  name String
+}
+
+// One row (id = 1): how many people must be at work for the shop to run, and the weekly days off (0 = Sunday … 6 = Saturday, comma-separated).
+model HrSettings {
+  id          Int    @id
+  minCover    Int    @default(0) // 0 = no minimum
+  offWeekdays String @default("0")
+}
+
+// A review of someone for a period (a quarter, "2026-Q4") and the notes from one-to-one talks.
+model PerformanceReview {
+  id            Int      @id @default(autoincrement())
+  staffId       Int
+  period        String
+  goalsMet      Int      @default(0)
+  goalsTotal    Int      @default(0)
+  rating        Float? // 0–100
+  note          String   @default("")
+  status        String   @default("Draft") // Draft | Done
+  reviewerName  String   @default("")
+  updatedAt     DateTime @updatedAt
+
+  @@unique([staffId, period])
+}
+
+model OneToOneNote {
+  id         Int      @id @default(autoincrement())
+  staffId    Int
+  date       String
+  note       String
+  authorName String
+  createdAt  DateTime @default(now())
+
+  @@index([staffId])
 }

@@ -25,9 +25,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
   // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
   // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true, canAccessHr: true },
   // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
-  'Front Office': { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true },
+  'Front Office': { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true, canAccessHr: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -38,6 +38,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canAccessProduction: true,
     canManageProduction: true,
     canAccessQuality: true,
+    canAccessHr: true,
   },
   'Finance Manager': {
     ...ALL_FALSE,
@@ -57,6 +58,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeCosts: true,
     canManageCommission: true,
     canReceiveStock: true,
+    canAccessHr: true,
   },
   'General Manager': {
     ...ALL_FALSE,
@@ -76,6 +78,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permissions> = {
     canSeeCosts: true,
     canManageCommission: true,
     canReceiveStock: true,
+    canAccessHr: true,
+    canManageHr: true,
   },
   Admin: ALL_TRUE,
 };

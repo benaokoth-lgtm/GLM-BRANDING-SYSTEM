@@ -120,7 +120,7 @@ var require_main = __commonJS({
     var packageJson = require_package();
     var version2 = packageJson.version;
     var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
-    function parse2(src) {
+    function parse3(src) {
       const obj = {};
       let lines = src.toString();
       lines = lines.replace(/\r\n?/mg, "\n");
@@ -386,7 +386,7 @@ var require_main = __commonJS({
       _parseVault,
       config,
       decrypt,
-      parse: parse2,
+      parse: parse3,
       populate
     };
     module2.exports.configDotenv = DotenvModule.configDotenv;
@@ -758,7 +758,7 @@ var require_bytes = __commonJS({
     "use strict";
     module2.exports = bytes;
     module2.exports.format = format;
-    module2.exports.parse = parse2;
+    module2.exports.parse = parse3;
     var formatThousandsRegExp = /\B(?=(\d{3})+(?!\d))/g;
     var formatDecimalsRegExp = /(?:\.0*|(\.[^0]+)0+)$/;
     var map2 = {
@@ -772,7 +772,7 @@ var require_bytes = __commonJS({
     var parseRegExp = /^((-|\+)?(\d+(?:\.\d+)?)) *(kb|mb|gb|tb|pb)$/i;
     function bytes(value, options) {
       if (typeof value === "string") {
-        return parse2(value);
+        return parse3(value);
       }
       if (typeof value === "number") {
         return format(value, options);
@@ -816,7 +816,7 @@ var require_bytes = __commonJS({
       }
       return str + unitSeparator + unit;
     }
-    function parse2(val) {
+    function parse3(val) {
       if (typeof val === "number" && !isNaN(val)) {
         return val;
       }
@@ -852,7 +852,7 @@ var require_content_type = __commonJS({
     var QUOTE_REGEXP = /([\\"])/g;
     var TYPE_REGEXP = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
     exports2.format = format;
-    exports2.parse = parse2;
+    exports2.parse = parse3;
     function format(obj) {
       if (!obj || typeof obj !== "object") {
         throw new TypeError("argument obj is required");
@@ -876,7 +876,7 @@ var require_content_type = __commonJS({
       }
       return string;
     }
-    function parse2(string) {
+    function parse3(string) {
       if (!string) {
         throw new TypeError("argument string is required");
       }
@@ -1342,7 +1342,7 @@ var require_ms = __commonJS({
       options = options || {};
       var type = typeof val;
       if (type === "string" && val.length > 0) {
-        return parse2(val);
+        return parse3(val);
       } else if (type === "number" && isNaN(val) === false) {
         return options.long ? fmtLong(val) : fmtShort(val);
       }
@@ -1350,7 +1350,7 @@ var require_ms = __commonJS({
         "val is not a non-empty string or a valid number. val=" + JSON.stringify(val)
       );
     };
-    function parse2(str) {
+    function parse3(str) {
       str = String(str);
       if (str.length > 100) {
         return;
@@ -5668,7 +5668,7 @@ var require_read = __commonJS({
     var unpipe = require_unpipe();
     var zlib4 = require("zlib");
     module2.exports = read;
-    function read(req, res, next, parse2, debug, options) {
+    function read(req, res, next, parse3, debug, options) {
       var length;
       var opts = options;
       var stream;
@@ -5727,7 +5727,7 @@ var require_read = __commonJS({
         try {
           debug("parse body");
           str = typeof body !== "string" && encoding !== null ? iconv.decode(body, encoding) : body;
-          req.body = parse2(str);
+          req.body = parse3(str);
         } catch (err) {
           next(createError(400, err, {
             body: str,
@@ -5795,7 +5795,7 @@ var require_media_typer = __commonJS({
     var typeNameRegExp = /^[A-Za-z0-9][A-Za-z0-9!#$&^_-]{0,126}$/;
     var typeRegExp = /^ *([A-Za-z0-9][A-Za-z0-9!#$&^_-]{0,126})\/([A-Za-z0-9][A-Za-z0-9!#$&^_.+-]{0,126}) *$/;
     exports2.format = format;
-    exports2.parse = parse2;
+    exports2.parse = parse3;
     function format(obj) {
       if (!obj || typeof obj !== "object") {
         throw new TypeError("argument obj is required");
@@ -5830,7 +5830,7 @@ var require_media_typer = __commonJS({
       }
       return string;
     }
-    function parse2(string) {
+    function parse3(string) {
       if (!string) {
         throw new TypeError("argument string is required");
       }
@@ -14663,7 +14663,7 @@ var require_json = __commonJS({
         throw new TypeError("option verify must be function");
       }
       var shouldParse = typeof type !== "function" ? typeChecker(type) : type;
-      function parse2(body) {
+      function parse3(body) {
         if (body.length === 0) {
           return {};
         }
@@ -14711,7 +14711,7 @@ var require_json = __commonJS({
           }));
           return;
         }
-        read(req, res, next, parse2, debug, {
+        read(req, res, next, parse3, debug, {
           encoding: charset,
           inflate,
           limit,
@@ -14790,7 +14790,7 @@ var require_raw = __commonJS({
         throw new TypeError("option verify must be function");
       }
       var shouldParse = typeof type !== "function" ? typeChecker(type) : type;
-      function parse2(buf) {
+      function parse3(buf) {
         return buf;
       }
       return function rawParser(req, res, next) {
@@ -14811,7 +14811,7 @@ var require_raw = __commonJS({
           next();
           return;
         }
-        read(req, res, next, parse2, debug, {
+        read(req, res, next, parse3, debug, {
           encoding: null,
           inflate,
           limit,
@@ -14851,7 +14851,7 @@ var require_text = __commonJS({
         throw new TypeError("option verify must be function");
       }
       var shouldParse = typeof type !== "function" ? typeChecker(type) : type;
-      function parse2(buf) {
+      function parse3(buf) {
         return buf;
       }
       return function textParser(req, res, next) {
@@ -14873,7 +14873,7 @@ var require_text = __commonJS({
           return;
         }
         var charset = getCharset(req) || defaultCharset;
-        read(req, res, next, parse2, debug, {
+        read(req, res, next, parse3, debug, {
           encoding: charset,
           inflate,
           limit,
@@ -17484,11 +17484,11 @@ var require_lib2 = __commonJS({
   "node_modules/qs/lib/index.js"(exports2, module2) {
     "use strict";
     var stringify = require_stringify();
-    var parse2 = require_parse();
+    var parse3 = require_parse();
     var formats = require_formats();
     module2.exports = {
       formats,
-      parse: parse2,
+      parse: parse3,
       stringify
     };
   }
@@ -17525,7 +17525,7 @@ var require_urlencoded = __commonJS({
       }
       var queryparse = extended ? extendedparser(opts) : simpleparser(opts);
       var shouldParse = typeof type !== "function" ? typeChecker(type) : type;
-      function parse2(body) {
+      function parse3(body) {
         return body.length ? queryparse(body) : {};
       }
       return function urlencodedParser(req, res, next) {
@@ -17555,7 +17555,7 @@ var require_urlencoded = __commonJS({
           }));
           return;
         }
-        read(req, res, next, parse2, debug, {
+        read(req, res, next, parse3, debug, {
           debug,
           encoding: charset,
           inflate,
@@ -17567,7 +17567,7 @@ var require_urlencoded = __commonJS({
     function extendedparser(options) {
       var parameterLimit = options.parameterLimit !== void 0 ? options.parameterLimit : 1e3;
       var depth = options.depth !== void 0 ? options.depth : 32;
-      var parse2 = parser("qs");
+      var parse3 = parser("qs");
       if (isNaN(parameterLimit) || parameterLimit < 1) {
         throw new TypeError("option parameterLimit must be a positive number");
       }
@@ -17588,7 +17588,7 @@ var require_urlencoded = __commonJS({
         var arrayLimit = Math.max(100, paramCount);
         debug("parse extended urlencoding");
         try {
-          return parse2(body, {
+          return parse3(body, {
             allowPrototypes: true,
             arrayLimit,
             depth,
@@ -17643,7 +17643,7 @@ var require_urlencoded = __commonJS({
     }
     function simpleparser(options) {
       var parameterLimit = options.parameterLimit !== void 0 ? options.parameterLimit : 1e3;
-      var parse2 = parser("querystring");
+      var parse3 = parser("querystring");
       if (isNaN(parameterLimit) || parameterLimit < 1) {
         throw new TypeError("option parameterLimit must be a positive number");
       }
@@ -17659,7 +17659,7 @@ var require_urlencoded = __commonJS({
           });
         }
         debug("parse urlencoding");
-        return parse2(body, void 0, void 0, { maxKeys: parameterLimit });
+        return parse3(body, void 0, void 0, { maxKeys: parameterLimit });
       };
     }
     function typeChecker(type) {
@@ -17787,7 +17787,7 @@ var require_ms2 = __commonJS({
       options = options || {};
       var type = typeof val;
       if (type === "string" && val.length > 0) {
-        return parse2(val);
+        return parse3(val);
       } else if (type === "number" && isNaN(val) === false) {
         return options.long ? fmtLong(val) : fmtShort(val);
       }
@@ -17795,7 +17795,7 @@ var require_ms2 = __commonJS({
         "val is not a non-empty string or a valid number. val=" + JSON.stringify(val)
       );
     };
-    function parse2(str) {
+    function parse3(str) {
       str = String(str);
       if (str.length > 100) {
         return;
@@ -18265,7 +18265,7 @@ var require_parseurl = __commonJS({
   "node_modules/parseurl/index.js"(exports2, module2) {
     "use strict";
     var url = require("url");
-    var parse2 = url.parse;
+    var parse3 = url.parse;
     var Url = url.Url;
     module2.exports = parseurl;
     module2.exports.original = originalurl;
@@ -18297,7 +18297,7 @@ var require_parseurl = __commonJS({
     }
     function fastparse(str) {
       if (typeof str !== "string" || str.charCodeAt(0) !== 47) {
-        return parse2(str);
+        return parse3(str);
       }
       var pathname = str;
       var query = null;
@@ -18325,7 +18325,7 @@ var require_parseurl = __commonJS({
           /* #  */
           case 160:
           case 65279:
-            return parse2(str);
+            return parse3(str);
         }
       }
       var url2 = Url !== void 0 ? new Url() : {};
@@ -18506,7 +18506,7 @@ var require_ms3 = __commonJS({
       options = options || {};
       var type = typeof val;
       if (type === "string" && val.length > 0) {
-        return parse2(val);
+        return parse3(val);
       } else if (type === "number" && isNaN(val) === false) {
         return options.long ? fmtLong(val) : fmtShort(val);
       }
@@ -18514,7 +18514,7 @@ var require_ms3 = __commonJS({
         "val is not a non-empty string or a valid number. val=" + JSON.stringify(val)
       );
     };
-    function parse2(str) {
+    function parse3(str) {
       str = String(str);
       if (str.length > 100) {
         return;
@@ -19902,7 +19902,7 @@ var require_content_disposition = __commonJS({
   "node_modules/content-disposition/index.js"(exports2, module2) {
     "use strict";
     module2.exports = contentDisposition;
-    module2.exports.parse = parse2;
+    module2.exports.parse = parse3;
     var basename = require("path").basename;
     var Buffer3 = require_safe_buffer().Buffer;
     var ENCODE_URL_ATTR_CHAR_REGEXP = /[\x00-\x20"'()*,/:;<=>?@[\\\]{}\x7f]/g;
@@ -19993,7 +19993,7 @@ var require_content_disposition = __commonJS({
     function getlatin1(val) {
       return String(val).replace(NON_LATIN1_REGEXP, "?");
     }
-    function parse2(string) {
+    function parse3(string) {
       if (!string || typeof string !== "string") {
         throw new TypeError("argument string is required");
       }
@@ -20072,7 +20072,7 @@ var require_ms4 = __commonJS({
       options = options || {};
       var type = typeof val;
       if (type === "string" && val.length > 0) {
-        return parse2(val);
+        return parse3(val);
       } else if (type === "number" && isNaN(val) === false) {
         return options.long ? fmtLong(val) : fmtShort(val);
       }
@@ -20080,7 +20080,7 @@ var require_ms4 = __commonJS({
         "val is not a non-empty string or a valid number. val=" + JSON.stringify(val)
       );
     };
-    function parse2(str) {
+    function parse3(str) {
       str = String(str);
       if (str.length > 100) {
         return;
@@ -20673,7 +20673,7 @@ var require_ms5 = __commonJS({
       options = options || {};
       var type = typeof val;
       if (type === "string" && val.length > 0) {
-        return parse2(val);
+        return parse3(val);
       } else if (type === "number" && isFinite(val)) {
         return options.long ? fmtLong(val) : fmtShort(val);
       }
@@ -20681,7 +20681,7 @@ var require_ms5 = __commonJS({
         "val is not a non-empty string or a valid number. val=" + JSON.stringify(val)
       );
     };
-    function parse2(str) {
+    function parse3(str) {
       str = String(str);
       if (str.length > 100) {
         return;
@@ -21411,7 +21411,7 @@ var require_forwarded = __commonJS({
       if (!req) {
         throw new TypeError("argument req is required");
       }
-      var proxyAddrs = parse2(req.headers["x-forwarded-for"] || "");
+      var proxyAddrs = parse3(req.headers["x-forwarded-for"] || "");
       var socketAddr = getSocketAddr(req);
       var addrs = [socketAddr].concat(proxyAddrs);
       return addrs;
@@ -21419,7 +21419,7 @@ var require_forwarded = __commonJS({
     function getSocketAddr(req) {
       return req.socket ? req.socket.remoteAddress : req.connection.remoteAddress;
     }
-    function parse2(header) {
+    function parse3(header) {
       var end = header.length;
       var list = [];
       var start = header.length;
@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router25 = require_router();
+    var Router26 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router25({
+        this._router = new Router26({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -23249,7 +23249,7 @@ var require_request = __commonJS({
     var http2 = require("http");
     var fresh = require_fresh();
     var parseRange3 = require_range_parser();
-    var parse2 = require_parseurl();
+    var parse3 = require_parseurl();
     var proxyaddr = require_proxy_addr();
     var req = Object.create(http2.IncomingMessage.prototype);
     module2.exports = req;
@@ -23354,7 +23354,7 @@ var require_request = __commonJS({
       return subdomains2.slice(offset);
     });
     defineGetter(req, "path", function path4() {
-      return parse2(this).pathname;
+      return parse3(this).pathname;
     });
     defineGetter(req, "hostname", function hostname() {
       var trust = this.app.get("trust proxy fn");
@@ -23427,7 +23427,7 @@ var require_cookie_signature = __commonJS({
 var require_cookie = __commonJS({
   "node_modules/cookie/index.js"(exports2) {
     "use strict";
-    exports2.parse = parse2;
+    exports2.parse = parse3;
     exports2.serialize = serialize;
     var __toString = Object.prototype.toString;
     var __hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -23435,7 +23435,7 @@ var require_cookie = __commonJS({
     var cookieValueRegExp = /^("?)[\u0021\u0023-\u002B\u002D-\u003A\u003C-\u005B\u005D-\u007E]*\1$/;
     var domainValueRegExp = /^([.]?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)([.][a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
     var pathValueRegExp = /^[\u0020-\u003A\u003D-\u007E]*$/;
-    function parse2(str, opt) {
+    function parse3(str, opt) {
       if (typeof str !== "string") {
         throw new TypeError("argument str must be a string");
       }
@@ -23603,7 +23603,7 @@ var require_vary = __commonJS({
       if (!field) {
         throw new TypeError("field argument is required");
       }
-      var fields = !Array.isArray(field) ? parse2(String(field)) : field;
+      var fields = !Array.isArray(field) ? parse3(String(field)) : field;
       for (var j = 0; j < fields.length; j++) {
         if (!FIELD_NAME_REGEXP.test(fields[j])) {
           throw new TypeError("field argument contains an invalid header name");
@@ -23613,7 +23613,7 @@ var require_vary = __commonJS({
         return header;
       }
       var val = header;
-      var vals = parse2(header.toLowerCase());
+      var vals = parse3(header.toLowerCase());
       if (fields.indexOf("*") !== -1 || vals.indexOf("*") !== -1) {
         return "*";
       }
@@ -23626,7 +23626,7 @@ var require_vary = __commonJS({
       }
       return val;
     }
-    function parse2(header) {
+    function parse3(header) {
       var end = 0;
       var list = [];
       var start = 0;
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router25 = require_router();
+    var Router26 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router25;
+    exports2.Router = Router26;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -27761,7 +27761,7 @@ var require_parse2 = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/parse.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var parse2 = (version2, options, throwErrors = false) => {
+    var parse3 = (version2, options, throwErrors = false) => {
       if (version2 instanceof SemVer) {
         return version2;
       }
@@ -27774,7 +27774,7 @@ var require_parse2 = __commonJS({
         throw er;
       }
     };
-    module2.exports = parse2;
+    module2.exports = parse3;
   }
 });
 
@@ -27782,9 +27782,9 @@ var require_parse2 = __commonJS({
 var require_valid = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/valid.js"(exports2, module2) {
     "use strict";
-    var parse2 = require_parse2();
+    var parse3 = require_parse2();
     var valid = (version2, options) => {
-      const v = parse2(version2, options);
+      const v = parse3(version2, options);
       return v ? v.version : null;
     };
     module2.exports = valid;
@@ -27795,9 +27795,9 @@ var require_valid = __commonJS({
 var require_clean = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/clean.js"(exports2, module2) {
     "use strict";
-    var parse2 = require_parse2();
+    var parse3 = require_parse2();
     var clean3 = (version2, options) => {
-      const s = parse2(version2.trim().replace(/^[=v]+/, ""), options);
+      const s = parse3(version2.trim().replace(/^[=v]+/, ""), options);
       return s ? s.version : null;
     };
     module2.exports = clean3;
@@ -27832,10 +27832,10 @@ var require_inc = __commonJS({
 var require_diff = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/diff.js"(exports2, module2) {
     "use strict";
-    var parse2 = require_parse2();
+    var parse3 = require_parse2();
     var diff = (version1, version2) => {
-      const v1 = parse2(version1, null, true);
-      const v2 = parse2(version2, null, true);
+      const v1 = parse3(version1, null, true);
+      const v2 = parse3(version2, null, true);
       const comparison = v1.compare(v2);
       if (comparison === 0) {
         return null;
@@ -27906,9 +27906,9 @@ var require_patch = __commonJS({
 var require_prerelease = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/prerelease.js"(exports2, module2) {
     "use strict";
-    var parse2 = require_parse2();
+    var parse3 = require_parse2();
     var prerelease = (version2, options) => {
-      const parsed = parse2(version2, options);
+      const parsed = parse3(version2, options);
       return parsed && parsed.prerelease.length ? parsed.prerelease : null;
     };
     module2.exports = prerelease;
@@ -28094,7 +28094,7 @@ var require_coerce = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/coerce.js"(exports2, module2) {
     "use strict";
     var SemVer = require_semver();
-    var parse2 = require_parse2();
+    var parse3 = require_parse2();
     var { safeRe: re, t } = require_re();
     var coerce2 = (version2, options) => {
       if (version2 instanceof SemVer) {
@@ -28129,7 +28129,7 @@ var require_coerce = __commonJS({
       const patch = match[4] || "0";
       const prerelease = options.includePrerelease && match[5] ? `-${match[5]}` : "";
       const build = options.includePrerelease && match[6] ? `+${match[6]}` : "";
-      return parse2(`${major}.${minor}.${patch}${prerelease}${build}`, options);
+      return parse3(`${major}.${minor}.${patch}${prerelease}${build}`, options);
     };
     module2.exports = coerce2;
   }
@@ -28139,7 +28139,7 @@ var require_coerce = __commonJS({
 var require_truncate = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/functions/truncate.js"(exports2, module2) {
     "use strict";
-    var parse2 = require_parse2();
+    var parse3 = require_parse2();
     var constants = require_constants();
     var SemVer = require_semver();
     var truncate = (version2, truncation, options) => {
@@ -28151,7 +28151,7 @@ var require_truncate = __commonJS({
     };
     var cloneInputVersion = (version2, options) => {
       const versionStringToParse = version2 instanceof SemVer ? version2.version : version2;
-      return parse2(versionStringToParse, options);
+      return parse3(versionStringToParse, options);
     };
     var doTruncation = (version2, truncation) => {
       if (isPrerelease(truncation)) {
@@ -29195,7 +29195,7 @@ var require_semver2 = __commonJS({
     var constants = require_constants();
     var SemVer = require_semver();
     var identifiers = require_identifiers();
-    var parse2 = require_parse2();
+    var parse3 = require_parse2();
     var valid = require_valid();
     var clean3 = require_clean();
     var inc = require_inc();
@@ -29234,7 +29234,7 @@ var require_semver2 = __commonJS({
     var simplifyRange = require_simplify();
     var subset = require_subset();
     module2.exports = {
-      parse: parse2,
+      parse: parse3,
       valid,
       clean: clean3,
       inc,
@@ -30760,8 +30760,8 @@ var require_strings = __commonJS({
       return lines;
     };
     var dateRegex2 = /^D:(\d\d\d\d)(\d\d)?(\d\d)?(\d\d)?(\d\d)?(\d\d)?([+\-Z])?(\d\d)?'?(\d\d)?'?$/;
-    exports2.parseDate = function(dateStr6) {
-      var match = dateStr6.match(dateRegex2);
+    exports2.parseDate = function(dateStr7) {
+      var match = dateStr7.match(dateRegex2);
       if (!match)
         return void 0;
       var year = match[1], _a = match[2], month = _a === void 0 ? "01" : _a, _b = match[3], day = _b === void 0 ? "01" : _b, _c = match[4], hours = _c === void 0 ? "00" : _c, _d = match[5], mins = _d === void 0 ? "00" : _d, _e = match[6], secs = _e === void 0 ? "00" : _e, _f = match[7], offsetSign = _f === void 0 ? "Z" : _f, _g = match[8], offsetHours = _g === void 0 ? "00" : _g, _h = match[9], offsetMins = _h === void 0 ? "00" : _h;
@@ -46874,7 +46874,7 @@ var require_svgPath = __commonJS({
       ["Z", 0],
       ["z", 0]
     ]);
-    var parse2 = function(path4) {
+    var parse3 = function(path4) {
       var cmd;
       var ret = [];
       var args = [];
@@ -47196,7 +47196,7 @@ var require_svgPath = __commonJS({
       return result;
     };
     exports2.svgPathToOperators = function(path4) {
-      return apply(parse2(path4));
+      return apply(parse3(path4));
     };
   }
 });
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express24 = __toESM(require_express2());
+var import_express25 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -65238,6 +65238,10 @@ var PERMISSION_KEYS = [
   "canAccessQuality",
   "canReceiveStock",
   "canManageCommission",
+  "canAccessHr",
+  // People (HR): see the module — request own leave, see the off-day calendar
+  "canManageHr",
+  // People (HR): decide leave, see everyone's leave, reviews and the policy
   "canCapturePettyCash",
   // Petty cash desk: see the float and log what is spent from it, without Finance access (the front office)
   "canCaptureForOthers",
@@ -65278,8 +65282,8 @@ function computeOrderTotals(order, payments = []) {
 function isOverdue(kind, status, dueDate, balanceDue, today) {
   return status === "Invoice" && !!dueDate && dueDate < today && balanceDue > 0;
 }
-function addDays(dateStr6, days) {
-  const d = /* @__PURE__ */ new Date(dateStr6 + "T00:00:00");
+function addDays(dateStr7, days) {
+  const d = /* @__PURE__ */ new Date(dateStr7 + "T00:00:00");
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
@@ -65295,9 +65299,9 @@ var DEFAULT_ROLE_PERMISSIONS = {
   // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
   // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true, canAccessHr: true },
   // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
-  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true },
+  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true, canAccessHr: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -65307,7 +65311,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessDtf: true,
     canAccessProduction: true,
     canManageProduction: true,
-    canAccessQuality: true
+    canAccessQuality: true,
+    canAccessHr: true
   },
   "Finance Manager": {
     ...ALL_FALSE,
@@ -65326,7 +65331,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessQuality: true,
     canSeeCosts: true,
     canManageCommission: true,
-    canReceiveStock: true
+    canReceiveStock: true,
+    canAccessHr: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -65345,7 +65351,9 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessQuality: true,
     canSeeCosts: true,
     canManageCommission: true,
-    canReceiveStock: true
+    canReceiveStock: true,
+    canAccessHr: true,
+    canManageHr: true
   },
   Admin: ALL_TRUE
 };
@@ -66637,6 +66645,70 @@ function salesTypeOf(o) {
 }
 function blankSalesTypeRows() {
   return SALES_TYPES.map((type) => ({ type, label: SALES_TYPE_LABEL[type], orders: 0, sold: 0, soldBefore: 0, received: 0, commission: 0, teamAvgSold: 0 }));
+}
+
+// packages/shared/src/hr.ts
+var DEFAULT_LEAVE_TYPES = [
+  { name: "Annual leave", paid: true, daysPerYear: 21, accrual: "monthly", carryOverCap: 5, certAfterDays: 0, active: true, sortOrder: 10 },
+  { name: "Sick leave", paid: true, daysPerYear: 7, accrual: "upfront", carryOverCap: 0, certAfterDays: 2, active: true, sortOrder: 20 },
+  { name: "Off-in-lieu", paid: true, daysPerYear: 4, accrual: "upfront", carryOverCap: 0, certAfterDays: 0, active: true, sortOrder: 30 },
+  { name: "Unpaid leave", paid: false, daysPerYear: 5, accrual: "upfront", carryOverCap: 0, certAfterDays: 0, active: true, sortOrder: 40 },
+  { name: "Maternity leave", paid: true, daysPerYear: 90, accrual: "upfront", carryOverCap: 0, certAfterDays: 0, active: true, sortOrder: 50 },
+  { name: "Paternity leave", paid: true, daysPerYear: 14, accrual: "upfront", carryOverCap: 0, certAfterDays: 0, active: true, sortOrder: 60 }
+];
+var parse2 = (d) => /* @__PURE__ */ new Date(d + "T00:00:00Z");
+var fmt = (d) => d.toISOString().slice(0, 10);
+var addDays2 = (d, n) => fmt(new Date(parse2(d).getTime() + n * 864e5));
+var weekdayOf = (d) => parse2(d).getUTCDay();
+function dateRange(start, end) {
+  const out = [];
+  for (let d = start; d <= end && out.length < 800; d = addDays2(d, 1)) out.push(d);
+  return out;
+}
+function leaveWorkingDays(start, end, offWeekdays, offDates) {
+  return dateRange(start, end).filter((d) => !offWeekdays.includes(weekdayOf(d)) && !offDates.has(d));
+}
+function kenyaFixedHolidays(year) {
+  const list = [
+    [`${year}-01-01`, "New Year's Day"],
+    [`${year}-05-01`, "Labour Day"],
+    [`${year}-06-01`, "Madaraka Day"],
+    [`${year}-10-10`, "Utamaduni Day"],
+    [`${year}-10-20`, "Mashujaa Day"],
+    [`${year}-12-12`, "Jamhuri Day"],
+    [`${year}-12-25`, "Christmas Day"],
+    [`${year}-12-26`, "Boxing Day"]
+  ];
+  const out = list.map(([date, name2]) => ({ date, name: name2 }));
+  const taken = new Set(out.map((h) => h.date));
+  return out.map((h) => {
+    if (weekdayOf(h.date) !== 0) return h;
+    let next = addDays2(h.date, 1);
+    while (taken.has(next)) next = addDays2(next, 1);
+    taken.add(next);
+    return { date: next, name: `${h.name} (observed)` };
+  });
+}
+function monthsServedInYear(hireDate, year, asOf) {
+  const asOfYear = Number(asOf.slice(0, 4));
+  const lastMonth = asOfYear > year ? 12 : asOfYear < year ? 0 : Number(asOf.slice(5, 7));
+  if (!hireDate || hireDate.slice(0, 4) < String(year)) return lastMonth;
+  if (hireDate.slice(0, 4) > String(year)) return 0;
+  return Math.max(0, lastMonth - Number(hireDate.slice(5, 7)) + 1);
+}
+function leaveEntitled(type, hireDate, year, asOf) {
+  if (type.daysPerYear <= 0) return 0;
+  if (type.accrual === "upfront") return hireDate && hireDate.slice(0, 4) > String(year) ? 0 : type.daysPerYear;
+  return Math.round(type.daysPerYear * monthsServedInYear(hireDate, year, asOf) / 12 * 100) / 100;
+}
+function leaveCarriedOver(type, hireDate, year, takenLastYear) {
+  if (type.accrual !== "monthly" || type.carryOverCap <= 0 || type.daysPerYear <= 0) return 0;
+  const lastYearEarned = leaveEntitled(type, hireDate, year - 1, `${year - 1}-12-31`);
+  return Math.max(0, Math.min(type.carryOverCap, Math.round((lastYearEarned - takenLastYear) * 100) / 100));
+}
+function dateSpanLabel(start, end) {
+  const f = (d) => parse2(d).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return start === end ? f(start) : `${f(start)} \u2013 ${f(end)}`;
 }
 
 // apps/api/src/pins.ts
@@ -69816,9 +69888,9 @@ var ZodObject = class _ZodObject extends ZodType {
   _getCached() {
     if (this._cached !== null)
       return this._cached;
-    const shape = this._def.shape();
-    const keys = util3.objectKeys(shape);
-    this._cached = { shape, keys };
+    const shape2 = this._def.shape();
+    const keys = util3.objectKeys(shape2);
+    this._cached = { shape: shape2, keys };
     return this._cached;
   }
   _parse(input) {
@@ -69833,7 +69905,7 @@ var ZodObject = class _ZodObject extends ZodType {
       return INVALID;
     }
     const { status, ctx } = this._processInputParams(input);
-    const { shape, keys: shapeKeys } = this._getCached();
+    const { shape: shape2, keys: shapeKeys } = this._getCached();
     const extraKeys = [];
     if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
       for (const key2 in ctx.data) {
@@ -69844,7 +69916,7 @@ var ZodObject = class _ZodObject extends ZodType {
     }
     const pairs = [];
     for (const key2 of shapeKeys) {
-      const keyValidator = shape[key2];
+      const keyValidator = shape2[key2];
       const value = ctx.data[key2];
       pairs.push({
         key: { status: "valid", value: key2 },
@@ -70050,27 +70122,27 @@ var ZodObject = class _ZodObject extends ZodType {
     });
   }
   pick(mask) {
-    const shape = {};
+    const shape2 = {};
     for (const key2 of util3.objectKeys(mask)) {
       if (mask[key2] && this.shape[key2]) {
-        shape[key2] = this.shape[key2];
+        shape2[key2] = this.shape[key2];
       }
     }
     return new _ZodObject({
       ...this._def,
-      shape: () => shape
+      shape: () => shape2
     });
   }
   omit(mask) {
-    const shape = {};
+    const shape2 = {};
     for (const key2 of util3.objectKeys(this.shape)) {
       if (!mask[key2]) {
-        shape[key2] = this.shape[key2];
+        shape2[key2] = this.shape[key2];
       }
     }
     return new _ZodObject({
       ...this._def,
-      shape: () => shape
+      shape: () => shape2
     });
   }
   /**
@@ -70117,27 +70189,27 @@ var ZodObject = class _ZodObject extends ZodType {
     return createZodEnum(util3.objectKeys(this.shape));
   }
 };
-ZodObject.create = (shape, params) => {
+ZodObject.create = (shape2, params) => {
   return new ZodObject({
-    shape: () => shape,
+    shape: () => shape2,
     unknownKeys: "strip",
     catchall: ZodNever.create(),
     typeName: ZodFirstPartyTypeKind.ZodObject,
     ...processCreateParams(params)
   });
 };
-ZodObject.strictCreate = (shape, params) => {
+ZodObject.strictCreate = (shape2, params) => {
   return new ZodObject({
-    shape: () => shape,
+    shape: () => shape2,
     unknownKeys: "strict",
     catchall: ZodNever.create(),
     typeName: ZodFirstPartyTypeKind.ZodObject,
     ...processCreateParams(params)
   });
 };
-ZodObject.lazycreate = (shape, params) => {
+ZodObject.lazycreate = (shape2, params) => {
   return new ZodObject({
-    shape,
+    shape: shape2,
     unknownKeys: "strip",
     catchall: ZodNever.create(),
     typeName: ZodFirstPartyTypeKind.ZodObject,
@@ -78807,9 +78879,9 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
   const kind = req.query.kind === "sales" ? "sales" : "jobs";
   const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
   const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
-  const dateRange = from || to ? { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } : void 0;
+  const dateRange2 = from || to ? { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } : void 0;
   if (kind === "sales") {
-    const sales = await prisma.dtfFilmSale.findMany({ where: { roll: { product }, ...dateRange ? { soldOn: dateRange } : {} }, include: { order: orderForDaily }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] });
+    const sales = await prisma.dtfFilmSale.findMany({ where: { roll: { product }, ...dateRange2 ? { soldOn: dateRange2 } : {} }, include: { order: orderForDaily }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] });
     const byDay2 = /* @__PURE__ */ new Map();
     for (const s of sales) byDay2.set(s.soldOn, [...byDay2.get(s.soldOn) ?? [], s]);
     const days2 = [...byDay2.entries()].map(([date, list]) => {
@@ -78831,7 +78903,7 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
     });
     return res.json({ kind, days: days2 });
   }
-  const jobs = await prisma.dtfArtworkJob.findMany({ where: { roll: { product }, ...dateRange ? { jobOn: dateRange } : {} }, include: { order: orderForDaily }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] });
+  const jobs = await prisma.dtfArtworkJob.findMany({ where: { roll: { product }, ...dateRange2 ? { jobOn: dateRange2 } : {} }, include: { order: orderForDaily }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] });
   const byDay = /* @__PURE__ */ new Map();
   for (const j of jobs) byDay.set(j.jobOn, [...byDay.get(j.jobOn) ?? [], j]);
   const days = [...byDay.entries()].map(([date, list]) => {
@@ -78910,7 +78982,7 @@ var import_express15 = __toESM(require_express2());
 
 // apps/api/src/accounting/reconcile.ts
 var key = (source, ref) => `${source}\0${ref}`;
-var fmt = (n) => `Ksh ${Math.round(n).toLocaleString("en-KE")}`;
+var fmt2 = (n) => `Ksh ${Math.round(n).toLocaleString("en-KE")}`;
 async function reconcile(from, to, asOf) {
   const ledger = await loadLedger();
   const inWindow = (d) => d >= from && d <= to;
@@ -78994,9 +79066,9 @@ async function reconcile(from, to, asOf) {
   }
   const integrity = [];
   const tb = await buildTrialBalance(asOf);
-  integrity.push({ name: "Debits equal credits (trial balance)", ok: tb.balanced, detail: tb.balanced ? `Both sides total ${fmt(tb.debit)}` : `Debits ${fmt(tb.debit)} vs credits ${fmt(tb.credit)} \u2014 out by ${fmt(Math.abs(tb.debit - tb.credit))}` });
+  integrity.push({ name: "Debits equal credits (trial balance)", ok: tb.balanced, detail: tb.balanced ? `Both sides total ${fmt2(tb.debit)}` : `Debits ${fmt2(tb.debit)} vs credits ${fmt2(tb.credit)} \u2014 out by ${fmt2(Math.abs(tb.debit - tb.credit))}` });
   const bs = await buildBalanceSheet(asOf);
-  integrity.push({ name: "Balance sheet balances (assets = liabilities + equity)", ok: bs.balanced, detail: bs.balanced ? `Assets ${fmt(bs.assets.total)}` : `Assets ${fmt(bs.assets.total)} vs liabilities + equity ${fmt(bs.liabilitiesAndEquity)}` });
+  integrity.push({ name: "Balance sheet balances (assets = liabilities + equity)", ok: bs.balanced, detail: bs.balanced ? `Assets ${fmt2(bs.assets.total)}` : `Assets ${fmt2(bs.assets.total)} vs liabilities + equity ${fmt2(bs.liabilitiesAndEquity)}` });
   const sums = sumByAccount(ledger.postings, (p) => p.date <= asOf);
   const bal = (code) => {
     const a2 = ledger.byCode.get(code);
@@ -79005,13 +79077,13 @@ async function reconcile(from, to, asOf) {
   const ar = await buildReceivablesAging(asOf);
   const arLedger = bal(ACCT.receivables);
   const arExpected = round2(ar.total + ar.overpaidCredits);
-  integrity.push({ name: "Accounts Receivable agrees with the receivables ageing", ok: Math.abs(arLedger - arExpected) < 0.02, detail: `Ledger ${fmt(arLedger)} vs ageing ${fmt(arExpected)}` });
+  integrity.push({ name: "Accounts Receivable agrees with the receivables ageing", ok: Math.abs(arLedger - arExpected) < 0.02, detail: `Ledger ${fmt2(arLedger)} vs ageing ${fmt2(arExpected)}` });
   const ap = await buildPayablesAging(asOf);
   const apLedger = bal(ACCT.payables);
   const unpaidIds = new Set((await prisma.expense.findMany({ where: { paid: false }, select: { id: true } })).map((e) => e.id));
   const looseSupplierNotes = (await prisma.adjustmentNote.findMany({ where: { type: "SupplierDebit", date: { lte: asOf } } })).filter((n) => !n.expenseId || !unpaidIds.has(n.expenseId)).reduce((a2, n) => a2 + n.total, 0);
   const apExpected = round2(ap.total - looseSupplierNotes);
-  integrity.push({ name: "Accounts Payable agrees with the payables ageing", ok: Math.abs(apLedger - apExpected) < 0.02, detail: `Ledger ${fmt(apLedger)} vs ageing ${fmt(apExpected)}` });
+  integrity.push({ name: "Accounts Payable agrees with the payables ageing", ok: Math.abs(apLedger - apExpected) < 0.02, detail: `Ledger ${fmt2(apLedger)} vs ageing ${fmt2(apExpected)}` });
   const petty = ledger.byCode.get(ACCT.pettyCash);
   let pettyLow = null;
   if (petty) {
@@ -79023,14 +79095,14 @@ async function reconcile(from, to, asOf) {
       if (run < -5e-3 && (!pettyLow || run < pettyLow.balance)) pettyLow = { date: d, balance: run };
     }
   }
-  integrity.push({ name: "Petty cash was never overdrawn", ok: !pettyLow, detail: pettyLow ? `Went to ${fmt(pettyLow.balance)} on ${pettyLow.date}` : `Float now ${fmt(bal(ACCT.pettyCash))}` });
+  integrity.push({ name: "Petty cash was never overdrawn", ok: !pettyLow, detail: pettyLow ? `Went to ${fmt2(pettyLow.balance)} on ${pettyLow.date}` : `Float now ${fmt2(bal(ACCT.pettyCash))}` });
   const cf = await buildCashFlowStatement(from, to);
-  integrity.push({ name: "Cash flow statement reconciles to the cash accounts", ok: cf.reconciles, detail: `Opening ${fmt(cf.openingCash)} \u2192 closing ${fmt(cf.closingCash)}` });
+  integrity.push({ name: "Cash flow statement reconciles to the cash accounts", ok: cf.reconciles, detail: `Opening ${fmt2(cf.openingCash)} \u2192 closing ${fmt2(cf.closingCash)}` });
   const unmatched = await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: "Unmatched" } });
   const unmatchedTotal = round2(unmatched.reduce((a2, t) => a2 + t.amount, 0));
-  integrity.push({ name: "No M-Pesa receipts waiting to be matched", ok: unmatched.length === 0, detail: unmatched.length ? `${unmatched.length} receipt(s), ${fmt(unmatchedTotal)}, held in Unallocated M-Pesa Receipts` : "Every M-Pesa receipt is matched or dismissed" });
+  integrity.push({ name: "No M-Pesa receipts waiting to be matched", ok: unmatched.length === 0, detail: unmatched.length ? `${unmatched.length} receipt(s), ${fmt2(unmatchedTotal)}, held in Unallocated M-Pesa Receipts` : "Every M-Pesa receipt is matched or dismissed" });
   const unallocated = bal(ACCT.unallocatedMpesa);
-  integrity.push({ name: "Unallocated M-Pesa account equals the unmatched receipts", ok: Math.abs(unallocated - unmatchedTotal) < 0.02, detail: `Account ${fmt(unallocated)} vs receipts ${fmt(unmatchedTotal)}` });
+  integrity.push({ name: "Unallocated M-Pesa account equals the unmatched receipts", ok: Math.abs(unallocated - unmatchedTotal) < 0.02, detail: `Account ${fmt2(unallocated)} vs receipts ${fmt2(unmatchedTotal)}` });
   const catchAll = [];
   const heads = await prisma.expenseHead.findMany();
   const linkedHeads = new Set(heads.filter((h) => h.accountId).map((h) => h.name));
@@ -81821,13 +81893,433 @@ whatsappRouter.get("/log", async (req, res) => {
   res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
 });
 
+// apps/api/src/routes/hr.ts
+var import_express24 = __toESM(require_express2());
+
+// apps/api/src/hr.ts
+var toType2 = (t) => ({ ...t, accrual: t.accrual === "monthly" ? "monthly" : "upfront" });
+var seeding3 = null;
+function ensureHrDefaults() {
+  if (!seeding3) {
+    seeding3 = (async () => {
+      if (await prisma.leaveType.count() === 0) await prisma.leaveType.createMany({ data: DEFAULT_LEAVE_TYPES });
+      if (await prisma.offDay.count() === 0) {
+        const y = (/* @__PURE__ */ new Date()).getUTCFullYear();
+        await prisma.offDay.createMany({ data: [...kenyaFixedHolidays(y), ...kenyaFixedHolidays(y + 1)] });
+      }
+      await prisma.hrSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+      const settings = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+      if (!settings.hrAccessSeeded) {
+        await prisma.role.updateMany({ data: { canAccessHr: true } });
+        await prisma.role.updateMany({ where: { name: "General Manager" }, data: { canManageHr: true } });
+        await prisma.setting.update({ where: { id: 1 }, data: { hrAccessSeeded: true } });
+      }
+    })().catch((e) => console.error("HR set-up failed", e)).finally(() => seeding3 = null);
+  }
+  return seeding3;
+}
+async function leaveTypes(all = false) {
+  await ensureHrDefaults();
+  return (await prisma.leaveType.findMany({ where: all ? {} : { active: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] })).map(toType2);
+}
+async function workCalendar() {
+  await ensureHrDefaults();
+  const [s, off] = await Promise.all([prisma.hrSettings.findUniqueOrThrow({ where: { id: 1 } }), prisma.offDay.findMany()]);
+  return {
+    offWeekdays: s.offWeekdays.split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6),
+    offDates: new Map(off.map((o) => [o.date, o.name])),
+    minCover: s.minCover
+  };
+}
+var workingDaysOf = (cal, start, end) => leaveWorkingDays(start, end, cal.offWeekdays, new Set(cal.offDates.keys()));
+async function daysIn(staffId, typeId, year, cal) {
+  const reqs = await prisma.leaveRequest.findMany({ where: { staffId, leaveTypeId: typeId, status: { in: ["Approved", "Pending"] }, startDate: { lte: `${year}-12-31` }, endDate: { gte: `${year}-01-01` } } });
+  let approved = 0;
+  let pending = 0;
+  for (const r of reqs) {
+    const n = workingDaysOf(cal, r.startDate, r.endDate).filter((d) => d.startsWith(String(year))).length;
+    if (r.status === "Approved") approved += n;
+    else pending += n;
+  }
+  return { approved, pending };
+}
+async function balancesFor(staffId, year, asOf, cal) {
+  const calendar = cal ?? await workCalendar();
+  const [types, user] = await Promise.all([leaveTypes(), prisma.user.findUnique({ where: { id: staffId }, select: { hireDate: true } })]);
+  const hire = user?.hireDate ?? null;
+  const out = [];
+  for (const t of types) {
+    const unlimited = t.daysPerYear <= 0;
+    const { approved, pending } = await daysIn(staffId, t.id, year, calendar);
+    const entitled = leaveEntitled(t, hire, year, asOf);
+    const carried = !unlimited && t.accrual === "monthly" ? leaveCarriedOver(t, hire, year, (await daysIn(staffId, t.id, year - 1, calendar)).approved) : 0;
+    const remaining = unlimited ? 0 : round2(entitled + carried - approved);
+    out.push({ typeId: t.id, name: t.name, paid: t.paid, unlimited, entitled, carried, taken: approved, pending, remaining, available: unlimited ? 0 : round2(remaining - pending) });
+  }
+  return out;
+}
+var activeStaff = () => prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true, hireDate: true, basicSalary: true }, orderBy: { name: "asc" } });
+async function onLeaveByDay(days, exceptRequestId) {
+  if (days.length === 0) return /* @__PURE__ */ new Map();
+  const first = days[0];
+  const last2 = days[days.length - 1];
+  const reqs = await prisma.leaveRequest.findMany({ where: { status: "Approved", startDate: { lte: last2 }, endDate: { gte: first }, ...exceptRequestId ? { id: { not: exceptRequestId } } : {} } });
+  const out = new Map(days.map((d) => [d, []]));
+  for (const r of reqs) for (const d of days) if (d >= r.startDate && d <= r.endDate) out.get(d).push(r.staffId);
+  return out;
+}
+
+// apps/api/src/routes/hr.ts
+var hrRouter = (0, import_express24.Router)();
+hrRouter.use(requireAuth, requirePermission("canAccessHr", "canManageHr"), async (_req, _res, next) => {
+  await ensureHrDefaults();
+  next();
+});
+var manage3 = requirePermission("canManageHr");
+var dateStr6 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date");
+var canManageHr = async (role) => role === "Admin" || (await permissionsForRole(role)).canManageHr;
+hrRouter.get("/config", async (req, res) => {
+  const mayManage = await canManageHr(req.user.role);
+  const [types, cal, staff, offDays] = await Promise.all([leaveTypes(mayManage), workCalendar(), activeStaff(), prisma.offDay.findMany({ orderBy: { date: "asc" } })]);
+  res.json({
+    canManage: mayManage,
+    me: { id: req.user.id, name: req.user.name },
+    leaveTypes: types,
+    settings: { minCover: cal.minCover, offWeekdays: cal.offWeekdays },
+    staff: (mayManage ? staff : staff.filter((s) => s.id === req.user.id)).map((s) => ({ id: s.id, name: s.name, role: s.role, hireDate: s.hireDate })),
+    offDays: offDays.map((o) => ({ id: o.id, date: o.date, name: o.name }))
+  });
+});
+var targetStaff = async (req, res, wanted) => {
+  const id = wanted == null || wanted === "" ? req.user.id : Number(wanted);
+  if (id !== req.user.id && !await canManageHr(req.user.role)) {
+    res.status(403).json({ error: "You can only see your own leave" });
+    return null;
+  }
+  return id;
+};
+hrRouter.get("/balances", async (req, res) => {
+  const staffId = await targetStaff(req, res, req.query.staffId);
+  if (staffId == null) return;
+  const year = Number(req.query.year) || Number(todayStr().slice(0, 4));
+  const asOf = year === Number(todayStr().slice(0, 4)) ? todayStr() : `${year}-12-31`;
+  res.json({ staffId, year, balances: await balancesFor(staffId, year, asOf) });
+});
+var shape = (r, names, types) => ({
+  id: r.id,
+  staffId: r.staffId,
+  staffName: names.get(r.staffId)?.name ?? `Staff #${r.staffId}`,
+  role: names.get(r.staffId)?.role ?? "",
+  leaveTypeId: r.leaveTypeId,
+  type: types.get(r.leaveTypeId) ?? "Leave",
+  startDate: r.startDate,
+  endDate: r.endDate,
+  label: dateSpanLabel(r.startDate, r.endDate),
+  days: r.days,
+  status: r.status,
+  reason: r.reason,
+  certificate: r.certificate,
+  decidedByName: r.decidedByName,
+  decidedAt: r.decidedAt,
+  decisionNote: r.decisionNote,
+  capturedByName: r.capturedByName,
+  createdAt: r.createdAt
+});
+async function lookups() {
+  const [users, types] = await Promise.all([prisma.user.findMany({ select: { id: true, name: true, role: true } }), prisma.leaveType.findMany()]);
+  return { names: new Map(users.map((u) => [u.id, { name: u.name, role: u.role }])), types: new Map(types.map((t) => [t.id, t.name])) };
+}
+hrRouter.get("/requests", async (req, res) => {
+  const mayManage = await canManageHr(req.user.role);
+  const status = typeof req.query.status === "string" && ["Pending", "Approved", "Rejected", "Cancelled"].includes(req.query.status) ? req.query.status : void 0;
+  const year = req.query.year ? Number(req.query.year) : void 0;
+  const staffFilter = req.query.staffId ? Number(req.query.staffId) : void 0;
+  const where = {
+    ...mayManage ? staffFilter ? { staffId: staffFilter } : {} : { staffId: req.user.id },
+    ...status ? { status } : {},
+    ...year ? { startDate: { lte: `${year}-12-31` }, endDate: { gte: `${year}-01-01` } } : {}
+  };
+  const [rows, { names, types }] = await Promise.all([prisma.leaveRequest.findMany({ where, orderBy: [{ status: "asc" }, { startDate: "desc" }, { id: "desc" }], take: 500 }), lookups()]);
+  const order = { Pending: 0, Approved: 1, Rejected: 2, Cancelled: 3 };
+  res.json(rows.map((r) => shape(r, names, types)).sort((a2, b) => order[a2.status] - order[b.status] || (a2.startDate < b.startDate ? 1 : -1)));
+});
+var requestSchema = external_exports.object({
+  staffId: external_exports.number().int().optional(),
+  leaveTypeId: external_exports.number().int(),
+  startDate: dateStr6,
+  endDate: dateStr6,
+  reason: external_exports.string().trim().max(300).default(""),
+  certificate: external_exports.boolean().default(false)
+});
+async function requestProblem(staffId, type, start, end, certificate, exceptId) {
+  const cal = await workCalendar();
+  const days = workingDaysOf(cal, start, end);
+  if (days.length === 0) return { error: "Those dates are all days off (weekly days off, public holidays or company off days), so there is no leave to take", days };
+  const overlap = await prisma.leaveRequest.findFirst({ where: { staffId, status: { in: ["Pending", "Approved"] }, startDate: { lte: end }, endDate: { gte: start }, ...exceptId ? { id: { not: exceptId } } : {} } });
+  if (overlap) return { error: `These dates overlap another leave request (${dateSpanLabel(overlap.startDate, overlap.endDate)}, ${overlap.status.toLowerCase()})`, days };
+  if (type.certAfterDays > 0 && days.length > type.certAfterDays && !certificate) return { error: `${type.name} of more than ${type.certAfterDays} day${type.certAfterDays === 1 ? "" : "s"} needs a medical certificate \u2014 tick that it is provided`, days };
+  if (type.daysPerYear > 0) {
+    for (const year of [...new Set(days.map((d) => Number(d.slice(0, 4))))]) {
+      const used = days.filter((d) => d.startsWith(String(year))).length;
+      const asOf = days.filter((d) => d.startsWith(String(year))).slice(-1)[0];
+      const bal = (await balancesFor(staffId, year, asOf, cal)).find((b) => b.typeId === type.id);
+      if (used > bal.available + 1e-3) return { error: `Only ${bal.available} day${bal.available === 1 ? "" : "s"} of ${type.name} ${bal.available === 1 ? "is" : "are"} available for ${year} (you asked for ${used})`, days };
+    }
+  }
+  return { error: null, days };
+}
+hrRouter.post("/requests", async (req, res) => {
+  const parsed = requestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
+  const d = parsed.data;
+  const staffId = await targetStaff(req, res, d.staffId);
+  if (staffId == null) return;
+  if (d.endDate < d.startDate) return res.status(400).json({ error: "The last day cannot be before the first day" });
+  const person = await prisma.user.findUnique({ where: { id: staffId } });
+  if (!person || !person.active) return res.status(400).json({ error: "That person cannot be found" });
+  const type = (await leaveTypes()).find((t) => t.id === d.leaveTypeId);
+  if (!type) return res.status(400).json({ error: "Choose a kind of leave" });
+  const check = await requestProblem(staffId, type, d.startDate, d.endDate, d.certificate);
+  if (check.error) return res.status(400).json({ error: check.error });
+  const created = await prisma.leaveRequest.create({
+    data: { staffId, leaveTypeId: type.id, startDate: d.startDate, endDate: d.endDate, days: check.days.length, reason: d.reason, certificate: d.certificate, capturedByName: req.user.name }
+  });
+  const { names, types } = await lookups();
+  res.status(201).json(shape(created, names, types));
+});
+async function coverBreaches(requestId, days) {
+  const [cal, staff, off] = await Promise.all([workCalendar(), activeStaff(), onLeaveByDay(days, requestId)]);
+  if (cal.minCover <= 0) return [];
+  return days.map((date) => ({ date, staffed: staff.length - (off.get(date)?.length ?? 0) - 1, min: cal.minCover })).filter((x) => x.staffed < x.min);
+}
+hrRouter.post("/requests/:id/approve", manage3, async (req, res) => {
+  const r = await prisma.leaveRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!r) return res.status(404).json({ error: "Request not found" });
+  if (r.status !== "Pending") return res.status(400).json({ error: `This request is already ${r.status.toLowerCase()}` });
+  if (r.staffId === req.user.id && req.user.role !== "Admin") return res.status(400).json({ error: "You cannot approve your own leave; another manager must" });
+  const cal = await workCalendar();
+  const breaches = await coverBreaches(r.id, workingDaysOf(cal, r.startDate, r.endDate));
+  if (breaches.length && !req.body.confirm) {
+    return res.status(409).json({ error: `Approving this leaves fewer than ${cal.minCover} people at work on ${breaches.length} day${breaches.length === 1 ? "" : "s"} (${breaches.slice(0, 3).map((b) => `${dateSpanLabel(b.date, b.date)}: ${b.staffed}`).join("; ")}${breaches.length > 3 ? "\u2026" : ""}). Approve it anyway?`, needsConfirm: true, breaches });
+  }
+  const up = await prisma.leaveRequest.update({ where: { id: r.id }, data: { status: "Approved", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date(), decisionNote: breaches.length ? "Approved below the minimum cover" : "" } });
+  const { names, types } = await lookups();
+  res.json(shape(up, names, types));
+});
+hrRouter.post("/requests/:id/reject", manage3, async (req, res) => {
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 300) : "";
+  if (reason.length < 3) return res.status(400).json({ error: "Give a reason for rejecting this request" });
+  const r = await prisma.leaveRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!r) return res.status(404).json({ error: "Request not found" });
+  if (r.status !== "Pending") return res.status(400).json({ error: `This request is already ${r.status.toLowerCase()}` });
+  const up = await prisma.leaveRequest.update({ where: { id: r.id }, data: { status: "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date(), decisionNote: reason } });
+  const { names, types } = await lookups();
+  res.json(shape(up, names, types));
+});
+hrRouter.post("/requests/:id/cancel", async (req, res) => {
+  const r = await prisma.leaveRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!r) return res.status(404).json({ error: "Request not found" });
+  const mayManage = await canManageHr(req.user.role);
+  if (r.staffId !== req.user.id && !mayManage) return res.status(403).json({ error: "That is not your request" });
+  if (r.status === "Rejected" || r.status === "Cancelled") return res.status(400).json({ error: `This request is already ${r.status.toLowerCase()}` });
+  if (r.status === "Approved" && !mayManage) return res.status(400).json({ error: "An approved leave can be cancelled by a manager only" });
+  const up = await prisma.leaveRequest.update({ where: { id: r.id }, data: { status: "Cancelled", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() } });
+  const { names, types } = await lookups();
+  res.json(shape(up, names, types));
+});
+hrRouter.get("/calendar", async (req, res) => {
+  const month = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : todayStr().slice(0, 7);
+  const first = `${month}-01`;
+  const last2 = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  const mayManage = await canManageHr(req.user.role);
+  const [cal, staff, reqs, { names, types }] = await Promise.all([
+    workCalendar(),
+    activeStaff(),
+    prisma.leaveRequest.findMany({ where: { status: { in: ["Approved", "Pending"] }, startDate: { lte: last2 }, endDate: { gte: first } } }),
+    lookups()
+  ]);
+  const days = dateRange(first, last2).map((date) => {
+    const weekend = cal.offWeekdays.includes(weekdayOf(date));
+    const holiday = cal.offDates.get(date) ?? null;
+    const working = !weekend && !holiday;
+    const people = working ? reqs.filter((r) => date >= r.startDate && date <= r.endDate).map((r) => ({ requestId: r.id, staffId: r.staffId, name: names.get(r.staffId)?.name ?? "", type: mayManage || r.staffId === req.user.id ? types.get(r.leaveTypeId) ?? "Leave" : "Leave", status: r.status })) : [];
+    const away = people.filter((p) => p.status === "Approved").length;
+    return { date, weekday: weekdayOf(date), off: holiday ? "holiday" : weekend ? "weekend" : null, name: holiday, people, away, atWork: working ? staff.length - away : 0, belowCover: working && cal.minCover > 0 && staff.length - away < cal.minCover };
+  });
+  res.json({ month, staffTotal: staff.length, minCover: cal.minCover, days });
+});
+hrRouter.get("/overview", manage3, async (_req, res) => {
+  const today = todayStr();
+  const [cal, staff, pending, { names, types }] = await Promise.all([workCalendar(), activeStaff(), prisma.leaveRequest.findMany({ where: { status: "Pending" }, orderBy: { createdAt: "asc" } }), lookups()]);
+  const dow = weekdayOf(today);
+  const monday = new Date(Date.parse(today + "T00:00:00Z") - (dow + 6) % 7 * 864e5).toISOString().slice(0, 10);
+  const weekDays = dateRange(monday, new Date(Date.parse(monday + "T00:00:00Z") + 6 * 864e5).toISOString().slice(0, 10)).filter((d) => !cal.offWeekdays.includes(weekdayOf(d)) && !cal.offDates.has(d));
+  const off = await onLeaveByDay([.../* @__PURE__ */ new Set([today, ...weekDays])].sort());
+  const onToday = off.get(today)?.length ?? 0;
+  const monthStart = today.slice(0, 7) + "-01";
+  const taken = await prisma.leaveRequest.findMany({ where: { status: "Approved", startDate: { lte: today.slice(0, 7) + "-31" }, endDate: { gte: monthStart } } });
+  const daysThisMonth = taken.reduce((a2, r) => a2 + workingDaysOf(cal, r.startDate, r.endDate).filter((d) => d.startsWith(today.slice(0, 7))).length, 0);
+  const year = Number(today.slice(0, 4));
+  let liabilityDays = 0;
+  let liability = 0;
+  let noSalary = 0;
+  for (const s of staff) {
+    const annual = (await balancesFor(s.id, year, today, cal)).find((b) => b.name === "Annual leave");
+    if (!annual || annual.unlimited || annual.remaining <= 0) continue;
+    liabilityDays += annual.remaining;
+    if (s.basicSalary && s.basicSalary > 0) liability += annual.remaining * s.basicSalary / 30;
+    else noSalary++;
+  }
+  res.json({
+    staff: { total: staff.length, onLeaveToday: onToday, working: staff.length - onToday, todayIsWorkingDay: !cal.offWeekdays.includes(dow) && !cal.offDates.has(today) },
+    pending: {
+      count: pending.length,
+      oldestDays: pending[0] ? Math.max(0, Math.floor((Date.now() - pending[0].createdAt.getTime()) / 864e5)) : 0,
+      list: pending.slice(0, 8).map((r) => shape(r, names, types))
+    },
+    leaveThisMonth: { days: daysThisMonth },
+    liability: { days: round2(liabilityDays), amount: Math.round(liability), staffWithoutSalary: noSalary },
+    coverage: weekDays.map((date) => ({ date, staffed: staff.length - (off.get(date)?.length ?? 0), total: staff.length, min: cal.minCover }))
+  });
+});
+var typeSchema2 = external_exports.object({
+  name: external_exports.string().trim().min(2, "Give it a name").max(60),
+  paid: external_exports.boolean(),
+  daysPerYear: external_exports.number().min(0).max(366),
+  accrual: external_exports.enum(["monthly", "upfront"]),
+  carryOverCap: external_exports.number().min(0).max(366),
+  certAfterDays: external_exports.number().int().min(0).max(60),
+  active: external_exports.boolean().default(true)
+});
+hrRouter.post("/leave-types", manage3, async (req, res) => {
+  const parsed = typeSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  await ensureHrDefaults();
+  if (await prisma.leaveType.findUnique({ where: { name: parsed.data.name } })) return res.status(400).json({ error: "There is already a kind of leave with that name" });
+  const last2 = await prisma.leaveType.aggregate({ _max: { sortOrder: true } });
+  res.status(201).json(await prisma.leaveType.create({ data: { ...parsed.data, sortOrder: (last2._max.sortOrder ?? 0) + 10 } }));
+});
+hrRouter.put("/leave-types/:id", manage3, async (req, res) => {
+  const parsed = typeSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const clash = await prisma.leaveType.findFirst({ where: { name: parsed.data.name, id: { not: Number(req.params.id) } } });
+  if (clash) return res.status(400).json({ error: "There is already a kind of leave with that name" });
+  const up = await prisma.leaveType.update({ where: { id: Number(req.params.id) }, data: parsed.data }).catch(() => null);
+  if (!up) return res.status(404).json({ error: "Not found" });
+  res.json(up);
+});
+hrRouter.put("/settings", manage3, async (req, res) => {
+  const parsed = external_exports.object({ minCover: external_exports.number().int().min(0).max(500), offWeekdays: external_exports.array(external_exports.number().int().min(0).max(6)).max(6) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Check the minimum and the weekly days off" });
+  await ensureHrDefaults();
+  const data = { minCover: parsed.data.minCover, offWeekdays: [...new Set(parsed.data.offWeekdays)].sort().join(",") };
+  await prisma.hrSettings.update({ where: { id: 1 }, data });
+  res.json({ minCover: data.minCover, offWeekdays: parsed.data.offWeekdays });
+});
+hrRouter.post("/off-days", manage3, async (req, res) => {
+  const parsed = external_exports.object({ date: dateStr6, name: external_exports.string().trim().min(2).max(80) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Give the date and a name" });
+  if (await prisma.offDay.findUnique({ where: { date: parsed.data.date } })) return res.status(400).json({ error: "That date is already an off day" });
+  res.status(201).json(await prisma.offDay.create({ data: parsed.data }));
+});
+hrRouter.delete("/off-days/:id", manage3, async (req, res) => {
+  await prisma.offDay.delete({ where: { id: Number(req.params.id) } }).catch(() => null);
+  res.status(204).end();
+});
+hrRouter.put("/staff/:id/hire-date", manage3, async (req, res) => {
+  const parsed = external_exports.object({ hireDate: dateStr6.nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Enter the day they started" });
+  const up = await prisma.user.update({ where: { id: Number(req.params.id) }, data: { hireDate: parsed.data.hireDate } }).catch(() => null);
+  if (!up) return res.status(404).json({ error: "Person not found" });
+  res.json({ id: up.id, hireDate: up.hireDate });
+});
+var quarterOf = (d) => `${d.slice(0, 4)}-Q${Math.floor((Number(d.slice(5, 7)) - 1) / 3) + 1}`;
+var periodRe = /^\d{4}-Q[1-4]$/;
+var monthsOfQuarter = (q) => {
+  const y = q.slice(0, 4);
+  const first = (Number(q.slice(6)) - 1) * 3 + 1;
+  return [0, 1, 2].map((i) => `${y}-${String(first + i).padStart(2, "0")}`);
+};
+hrRouter.get("/performance", manage3, async (req, res) => {
+  const period = typeof req.query.period === "string" && periodRe.test(req.query.period) ? req.query.period : quarterOf(todayStr());
+  const months = monthsOfQuarter(period).filter((m) => m <= todayStr().slice(0, 7));
+  const cal = await workCalendar();
+  const [staff, reviews, statements, requests] = await Promise.all([
+    activeStaff(),
+    prisma.performanceReview.findMany({ where: { period } }),
+    Promise.all(months.map((m) => buildStatements(m))),
+    prisma.leaveRequest.findMany({ where: { status: "Approved", startDate: { lte: `${monthsOfQuarter(period)[2]}-31` }, endDate: { gte: `${monthsOfQuarter(period)[0]}-01` } } })
+  ]);
+  const first = `${monthsOfQuarter(period)[0]}-01`;
+  const last2 = `${monthsOfQuarter(period)[2]}-31`;
+  const rows = staff.map((s) => {
+    let sales = 0;
+    let target = 0;
+    let orders = 0;
+    let commission = 0;
+    let sold = false;
+    for (const b of statements) {
+      const st = b.statements.find((x) => x.staffId === s.id);
+      if (!st) continue;
+      sold = true;
+      sales += st.target.achieved;
+      if (st.target.applies) target += st.target.required;
+      orders += st.productivity.ordersCaptured;
+      commission += st.pay.amount;
+    }
+    const leaveDays = requests.filter((r) => r.staffId === s.id).reduce((a2, r) => a2 + workingDaysOf(cal, r.startDate < first ? first : r.startDate, r.endDate > last2 ? last2 : r.endDate).length, 0);
+    const rv = reviews.find((x) => x.staffId === s.id);
+    return {
+      staffId: s.id,
+      name: s.name,
+      role: s.role,
+      hireDate: s.hireDate,
+      sales: sold ? round2(sales) : null,
+      target: target > 0 ? round2(target) : null,
+      salesVsTarget: target > 0 ? Math.round(sales / target * 100) : null,
+      orders: sold ? orders : null,
+      commission: sold ? round2(commission) : null,
+      leaveDays,
+      review: rv ? { goalsMet: rv.goalsMet, goalsTotal: rv.goalsTotal, rating: rv.rating, note: rv.note, status: rv.status, reviewerName: rv.reviewerName } : null
+    };
+  });
+  res.json({ period, months, rows });
+});
+hrRouter.put("/performance/:staffId", manage3, async (req, res) => {
+  const parsed = external_exports.object({
+    period: external_exports.string().regex(periodRe),
+    goalsMet: external_exports.number().int().min(0).max(100),
+    goalsTotal: external_exports.number().int().min(0).max(100),
+    rating: external_exports.number().min(0).max(100).nullable(),
+    note: external_exports.string().trim().max(1e3).default(""),
+    status: external_exports.enum(["Draft", "Done"])
+  }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Check the review: goals met cannot be more than the goals, and the rating is 0 to 100" });
+  const d = parsed.data;
+  if (d.goalsMet > d.goalsTotal) return res.status(400).json({ error: "Goals met cannot be more than the goals set" });
+  const staffId = Number(req.params.staffId);
+  if (!await prisma.user.findUnique({ where: { id: staffId } })) return res.status(404).json({ error: "Person not found" });
+  const data = { goalsMet: d.goalsMet, goalsTotal: d.goalsTotal, rating: d.rating, note: d.note, status: d.status, reviewerName: req.user.name };
+  res.json(await prisma.performanceReview.upsert({ where: { staffId_period: { staffId, period: d.period } }, update: data, create: { staffId, period: d.period, ...data } }));
+});
+hrRouter.get("/notes", manage3, async (req, res) => {
+  const staffId = Number(req.query.staffId);
+  if (!staffId) return res.status(400).json({ error: "Choose a person" });
+  res.json(await prisma.oneToOneNote.findMany({ where: { staffId }, orderBy: [{ date: "desc" }, { id: "desc" }], take: 30 }));
+});
+hrRouter.post("/notes", manage3, async (req, res) => {
+  const parsed = external_exports.object({ staffId: external_exports.number().int(), date: dateStr6, note: external_exports.string().trim().min(3, "Write the note").max(1e3) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid note" });
+  res.status(201).json(await prisma.oneToOneNote.create({ data: { ...parsed.data, authorName: req.user.name } }));
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express24.default)();
+var app = (0, import_express25.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express24.default.json({ limit: "5mb" }));
+app.use(import_express25.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -81871,6 +82363,7 @@ app.use("/api/security", securityRouter);
 app.use("/api/freelance", freelanceRouter);
 app.use("/api/whatsapp", whatsappRouter);
 app.use("/api/costing", costingRouter);
+app.use("/api/hr", hrRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });
@@ -81885,5 +82378,5 @@ app.listen(port, () => {
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePettyCashAccess(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePettyCashAccess(), ensureHrDefaults(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

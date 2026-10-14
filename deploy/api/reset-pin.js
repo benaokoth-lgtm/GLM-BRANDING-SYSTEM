@@ -1871,6 +1871,10 @@ var PERMISSION_KEYS = [
   "canAccessQuality",
   "canReceiveStock",
   "canManageCommission",
+  "canAccessHr",
+  // People (HR): see the module — request own leave, see the off-day calendar
+  "canManageHr",
+  // People (HR): decide leave, see everyone's leave, reviews and the policy
   "canCapturePettyCash",
   // Petty cash desk: see the float and log what is spent from it, without Finance access (the front office)
   "canCaptureForOthers",
@@ -1887,9 +1891,9 @@ var DEFAULT_ROLE_PERMISSIONS = {
   // Order) without exposing roll costs, Dashboard, Rolls, or Setup — those
   // stay canManageDtf-only (Supervisor/Finance/General Manager/Admin below).
   // Staff work the jobs they are assigned in Production; Supervisors assign them and inspect quality.
-  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true },
+  Staff: { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canAccessProduction: true, canBeAssignedOrders: true, canAccessHr: true },
   // The receptionist / cashier: captures orders for the sales persons (or freelancers), takes the money, and sees every order — no costs, no commission.
-  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true },
+  "Front Office": { ...ALL_FALSE, canCaptureOrders: true, canAccessDtf: true, canManagePayments: true, canViewAllOrders: true, canCaptureForOthers: true, canCapturePettyCash: true, canAccessHr: true },
   Supervisor: {
     ...ALL_FALSE,
     canViewAllOrders: true,
@@ -1899,7 +1903,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessDtf: true,
     canAccessProduction: true,
     canManageProduction: true,
-    canAccessQuality: true
+    canAccessQuality: true,
+    canAccessHr: true
   },
   "Finance Manager": {
     ...ALL_FALSE,
@@ -1918,7 +1923,8 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessQuality: true,
     canSeeCosts: true,
     canManageCommission: true,
-    canReceiveStock: true
+    canReceiveStock: true,
+    canAccessHr: true
   },
   "General Manager": {
     ...ALL_FALSE,
@@ -1937,7 +1943,9 @@ var DEFAULT_ROLE_PERMISSIONS = {
     canAccessQuality: true,
     canSeeCosts: true,
     canManageCommission: true,
-    canReceiveStock: true
+    canReceiveStock: true,
+    canAccessHr: true,
+    canManageHr: true
   },
   Admin: ALL_TRUE
 };

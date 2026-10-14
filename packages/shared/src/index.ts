@@ -19,3 +19,4 @@ export * from './costing';
 export * from './pens';
 export * from './printCosting';
 export * from './salesTypes';
+export * from './hr';

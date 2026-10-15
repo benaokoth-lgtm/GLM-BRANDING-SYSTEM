@@ -55,8 +55,10 @@ export interface ApprovalItem {
   decidedByName: string | null;
   decidedAt: string | null;
   note: string | null;
-  /** Where to open it in the system. */
+  /** Where to open it in the system, and what the button says: after an approval it says what to do next ("Continue — capture the order"), and is highlighted. */
   link: string;
+  openLabel: string;
+  openPrimary: boolean;
   /** How to decide it from the inbox; null when it has to be opened (leave can need a confirmation). */
   decide: { approve: string; reject: string; needsReason: boolean } | null;
 }
@@ -101,7 +103,10 @@ async function costing(u: Who, perms: Awaited<ReturnType<typeof permissionsForRo
       decidedByName: q.approvedByName || null,
       decidedAt: q.approvedAt?.toISOString() ?? null,
       note: q.approvalNote || null,
-      link: `/costing?quote=${q.id}`,
+      // approved: on to capturing the order from the quote; already captured: the order itself
+      link: q.status === 'Ordered' && q.orderId ? `/orders/all?order=${q.orderId}` : `/costing?quote=${q.id}`,
+      openLabel: q.status === 'Ordered' && q.orderId ? 'Open the order' : q.approval === 'Approved' ? 'Continue — capture the order' : q.approval === 'Rejected' ? 'Agree another price' : 'Open the quote',
+      openPrimary: q.status !== 'Ordered' && (q.approval === 'Approved' || q.approval === 'Rejected'),
       decide: { approve: `/costing/quotes/${q.id}/approve`, reject: `/costing/quotes/${q.id}/reject`, needsReason: true },
     };
   };
@@ -134,6 +139,9 @@ async function artwork(u: Who, perms: Awaited<ReturnType<typeof permissionsForRo
     note: a.reason,
     // the order itself (a rejected request has no order left)
     link: a.orderId ? `/orders/all?order=${a.orderId}` : '/orders/all',
+    // approved: the order is released, to be paid for and produced
+    openLabel: a.status === 'Approved' && a.orderId ? 'Open the order — it can now go ahead' : a.orderId ? 'Open the order' : 'Open',
+    openPrimary: a.status === 'Approved' && !!a.orderId,
     decide: { approve: `/dtf/approvals/${a.id}/approve`, reject: `/dtf/approvals/${a.id}/reject`, needsReason: true },
   });
   return { waiting: rows.filter((a) => a.status === 'Pending' && a.requestedById !== u.id).map(make), mine: rows.filter((a) => a.requestedById === u.id).map(make) };
@@ -166,6 +174,8 @@ async function discount(u: Who): Promise<Part> {
       note: r.reason,
       // UV Pen Costing or UV Flatbed, with the job of the request filled in (and an approved discount ready to use)
       link: `/orders/new/uv-film?tab=${r.product === 'pens' ? 'pens' : 'flatbed'}&request=${r.id}`,
+      openLabel: r.status === 'Approved' ? 'Continue — capture the order' : 'Open',
+      openPrimary: r.status === 'Approved',
       decide: { approve: `/dtf/discount-requests/${r.id}/approve`, reject: `/dtf/discount-requests/${r.id}/reject`, needsReason: true },
     };
   };
@@ -195,6 +205,8 @@ async function amend(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole
     decidedAt: a.decidedAt?.toISOString() ?? null,
     note: null,
     link: '/finance',
+    openLabel: 'Open',
+    openPrimary: false,
     decide: { approve: `/finance/expenses/amendments/${a.id}/approve`, reject: `/finance/expenses/amendments/${a.id}/reject`, needsReason: false },
   });
   return { waiting: rows.filter((a) => a.status === 'Pending' && a.requestedByName !== u.name).map(make), mine: rows.filter((a) => a.requestedByName === u.name).map(make) };
@@ -223,6 +235,8 @@ async function deletion(u: Who, perms: Awaited<ReturnType<typeof permissionsForR
     decidedAt: d.decidedAt?.toISOString() ?? null,
     note: null,
     link: d.recordType === 'PayrollEntry' ? '/compliance' : '/finance',
+    openLabel: 'Open',
+    openPrimary: false,
     decide: { approve: `/finance/deletion-requests/${d.id}/approve`, reject: `/finance/deletion-requests/${d.id}/reject`, needsReason: false },
   });
   return { waiting: rows.filter((d) => d.status === 'Pending' && d.requestedByName !== u.name).map(make), mine: rows.filter((d) => d.requestedByName === u.name).map(make) };
@@ -254,6 +268,8 @@ async function requisition(u: Who, perms: Awaited<ReturnType<typeof permissionsF
       decidedAt: r.decidedAt?.toISOString() ?? null,
       note: null,
       link: '/stock',
+      openLabel: 'Open',
+      openPrimary: false,
       decide: { approve: `/stock/requisitions/${r.id}/approve`, reject: `/stock/requisitions/${r.id}/reject`, needsReason: false },
     };
   };
@@ -289,6 +305,8 @@ async function leave(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole
     decidedAt: r.decidedAt?.toISOString() ?? null,
     note: r.decisionNote || null,
     link: '/hr',
+    openLabel: 'Open',
+    openPrimary: false,
     decide: null, // deciding leave can need a confirmation (cover below the minimum): it is done on the People (HR) page
   });
   return { waiting: rows.filter((r) => r.status === 'Pending' && r.staffId !== u.id).map(make), mine: rows.filter((r) => r.staffId === u.id).map(make) };

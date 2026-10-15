@@ -608,6 +608,9 @@ model Order {
   // Who keyed the order. staffId is the SALES PERSON it is credited to; when the front office captures for a sales person the two differ. Null on older orders.
   capturedById   Int?
   capturedByName String @default("")
+  // Accounts Receivable: who is responsible for collecting the balance. Blank = the sales person the order is credited to (staffId), whoever keyed it; set when Accounting moves the
+  // collection to someone else. (A plain id, not a relation: it is an assignment, not a link that must always resolve.)
+  collectorId Int?
   // How that qualifying share divides (each a share 0..1 of the order's value): the base-price part, the thin-margin (contracted-out / stock) part of the base, and the premium above base.
   freelanceBaseShare       Float @default(1)
   freelanceLowShare        Float @default(0)

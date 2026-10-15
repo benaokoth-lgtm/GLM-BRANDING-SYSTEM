@@ -229,10 +229,12 @@ export async function buildPayablesAging(asOf: string) {
 export async function buildReceivablesAging(asOf: string) {
   const orders = await prisma.order.findMany({
     where: { createdDate: { lte: asOf } },
-    include: { lineItems: true, payments: true, corporateClient: true, notes: true },
+    include: { lineItems: true, payments: true, corporateClient: true, notes: true, staff: { select: { id: true, name: true } } },
   });
+  // who collects: the sales person the sale is credited to (not whoever keyed it), unless Accounting has handed the balance to someone else
+  const people = new Map((await prisma.user.findMany({ select: { id: true, name: true, active: true } })).map((u) => [u.id, u]));
   let credits = 0; // orders paid or credited beyond what they were worth (owed back to the customer)
-  const rows: { orderId: number; ref: string; party: string; status: string; date: string; dueDate: string | null; amount: number; paid: number; adjustments: number; outstanding: number; ageDays: number; bucket: Bucket }[] = [];
+  const rows: { orderId: number; ref: string; party: string; status: string; date: string; dueDate: string | null; amount: number; paid: number; adjustments: number; outstanding: number; ageDays: number; bucket: Bucket; salesPersonId: number; salesPersonName: string; responsibleId: number; responsibleName: string; reassigned: boolean }[] = [];
   for (const o of orders) {
     if (!(o.kind === 'walkin' || o.status !== 'Quote')) continue;
     const lines: LineItemInput[] = o.lineItems.map((li) => ({
@@ -267,11 +269,27 @@ export async function buildReceivablesAging(asOf: string) {
       outstanding,
       ageDays,
       bucket: ageBucket(ageDays),
+      salesPersonId: o.staffId,
+      salesPersonName: o.staff.name,
+      responsibleId: o.collectorId != null && people.has(o.collectorId) ? o.collectorId : o.staffId,
+      responsibleName: (o.collectorId != null ? people.get(o.collectorId)?.name : undefined) ?? o.staff.name,
+      reassigned: o.collectorId != null && o.collectorId !== o.staffId && people.has(o.collectorId),
     });
   }
   rows.sort((a, b) => b.ageDays - a.ageDays);
   const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a, r) => a + r.outstanding, 0)) }));
-  return { asOf, rows, total: round2(rows.reduce((a, r) => a + r.outstanding, 0)), byBucket, overpaidCredits: round2(credits) };
+  // what each person is responsible for collecting
+  const owed = new Map<number, { id: number; name: string; total: number; count: number; overdue: number }>();
+  for (const r of rows) {
+    const x = owed.get(r.responsibleId) ?? { id: r.responsibleId, name: r.responsibleName, total: 0, count: 0, overdue: 0 };
+    x.total = round2(x.total + r.outstanding);
+    x.count += 1;
+    if (r.bucket !== 'Not yet due') x.overdue = round2(x.overdue + r.outstanding);
+    owed.set(r.responsibleId, x);
+  }
+  const byPerson = [...owed.values()].sort((a, b) => b.total - a.total);
+  const staff = [...people.values()].filter((u) => u.active).map((u) => ({ id: u.id, name: u.name })).sort((a, b) => a.name.localeCompare(b.name));
+  return { asOf, rows, total: round2(rows.reduce((a, r) => a + r.outstanding, 0)), byBucket, byPerson, staff, overpaidCredits: round2(credits) };
 }
 
 type CashBucket = 'Operating' | 'Investing' | 'Financing' | 'Internal';

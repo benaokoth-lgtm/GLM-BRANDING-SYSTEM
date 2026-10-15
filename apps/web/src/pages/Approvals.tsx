@@ -26,6 +26,8 @@ interface Item {
   decidedAt: string | null;
   note: string | null;
   link: string;
+  openLabel: string;
+  openPrimary: boolean;
   decide: { approve: string; reject: string; needsReason: boolean } | null;
 }
 interface Data {
@@ -160,7 +162,7 @@ export default function Approvals() {
               <span className={'tag ' + tone(i.status)}>{i.status === 'Pending' ? 'Waiting for a decision' : i.status === 'Used' ? 'Approved and used' : i.status}</span>
               {i.decidedByName && <span className="text-muted" style={{ fontSize: 13 }}>by {i.decidedByName}{i.decidedAt ? ` on ${when(i.decidedAt)}` : ''}</span>}
               {i.note && <span style={{ fontSize: 13 }}>“{i.note}”</span>}
-              <Link to={i.link} className="btn btn-ghost btn-sm">Open</Link>
+              <Link to={i.link} className={'btn btn-sm ' + (i.openPrimary ? 'btn-primary' : 'btn-secondary')}>{i.openLabel}</Link>
             </div>
           )}
 
@@ -182,7 +184,7 @@ export default function Approvals() {
                   ) : (
                     <span className="text-muted" style={{ fontSize: 13, alignSelf: 'center' }}>Decided on its own page, where it can ask you to confirm.</span>
                   )}
-                  <Link to={i.link} className="btn btn-ghost btn-sm">Open</Link>
+                  <Link to={i.link} className="btn btn-ghost btn-sm">{i.openLabel}</Link>
                 </div>
               )}
             </div>

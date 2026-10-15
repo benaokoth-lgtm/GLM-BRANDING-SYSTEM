@@ -73843,7 +73843,10 @@ async function costing(u, perms) {
       decidedByName: q.approvedByName || null,
       decidedAt: q.approvedAt?.toISOString() ?? null,
       note: q.approvalNote || null,
-      link: `/costing?quote=${q.id}`,
+      // approved: on to capturing the order from the quote; already captured: the order itself
+      link: q.status === "Ordered" && q.orderId ? `/orders/all?order=${q.orderId}` : `/costing?quote=${q.id}`,
+      openLabel: q.status === "Ordered" && q.orderId ? "Open the order" : q.approval === "Approved" ? "Continue \u2014 capture the order" : q.approval === "Rejected" ? "Agree another price" : "Open the quote",
+      openPrimary: q.status !== "Ordered" && (q.approval === "Approved" || q.approval === "Rejected"),
       decide: { approve: `/costing/quotes/${q.id}/approve`, reject: `/costing/quotes/${q.id}/reject`, needsReason: true }
     };
   };
@@ -73875,6 +73878,9 @@ async function artwork(u, perms) {
     note: a2.reason,
     // the order itself (a rejected request has no order left)
     link: a2.orderId ? `/orders/all?order=${a2.orderId}` : "/orders/all",
+    // approved: the order is released, to be paid for and produced
+    openLabel: a2.status === "Approved" && a2.orderId ? "Open the order \u2014 it can now go ahead" : a2.orderId ? "Open the order" : "Open",
+    openPrimary: a2.status === "Approved" && !!a2.orderId,
     decide: { approve: `/dtf/approvals/${a2.id}/approve`, reject: `/dtf/approvals/${a2.id}/reject`, needsReason: true }
   });
   return { waiting: rows.filter((a2) => a2.status === "Pending" && a2.requestedById !== u.id).map(make), mine: rows.filter((a2) => a2.requestedById === u.id).map(make) };
@@ -73906,6 +73912,8 @@ async function discount(u) {
       note: r.reason,
       // UV Pen Costing or UV Flatbed, with the job of the request filled in (and an approved discount ready to use)
       link: `/orders/new/uv-film?tab=${r.product === "pens" ? "pens" : "flatbed"}&request=${r.id}`,
+      openLabel: r.status === "Approved" ? "Continue \u2014 capture the order" : "Open",
+      openPrimary: r.status === "Approved",
       decide: { approve: `/dtf/discount-requests/${r.id}/approve`, reject: `/dtf/discount-requests/${r.id}/reject`, needsReason: true }
     };
   };
@@ -73934,6 +73942,8 @@ async function amend(u, perms) {
     decidedAt: a2.decidedAt?.toISOString() ?? null,
     note: null,
     link: "/finance",
+    openLabel: "Open",
+    openPrimary: false,
     decide: { approve: `/finance/expenses/amendments/${a2.id}/approve`, reject: `/finance/expenses/amendments/${a2.id}/reject`, needsReason: false }
   });
   return { waiting: rows.filter((a2) => a2.status === "Pending" && a2.requestedByName !== u.name).map(make), mine: rows.filter((a2) => a2.requestedByName === u.name).map(make) };
@@ -73961,6 +73971,8 @@ async function deletion(u, perms) {
     decidedAt: d.decidedAt?.toISOString() ?? null,
     note: null,
     link: d.recordType === "PayrollEntry" ? "/compliance" : "/finance",
+    openLabel: "Open",
+    openPrimary: false,
     decide: { approve: `/finance/deletion-requests/${d.id}/approve`, reject: `/finance/deletion-requests/${d.id}/reject`, needsReason: false }
   });
   return { waiting: rows.filter((d) => d.status === "Pending" && d.requestedByName !== u.name).map(make), mine: rows.filter((d) => d.requestedByName === u.name).map(make) };
@@ -73991,6 +74003,8 @@ async function requisition(u, perms) {
       decidedAt: r.decidedAt?.toISOString() ?? null,
       note: null,
       link: "/stock",
+      openLabel: "Open",
+      openPrimary: false,
       decide: { approve: `/stock/requisitions/${r.id}/approve`, reject: `/stock/requisitions/${r.id}/reject`, needsReason: false }
     };
   };
@@ -74025,6 +74039,8 @@ async function leave(u, perms) {
     decidedAt: r.decidedAt?.toISOString() ?? null,
     note: r.decisionNote || null,
     link: "/hr",
+    openLabel: "Open",
+    openPrimary: false,
     decide: null
     // deciding leave can need a confirmation (cover below the minimum): it is done on the People (HR) page
   });
@@ -74313,8 +74329,9 @@ async function buildPayablesAging(asOf) {
 async function buildReceivablesAging(asOf) {
   const orders = await prisma.order.findMany({
     where: { createdDate: { lte: asOf } },
-    include: { lineItems: true, payments: true, corporateClient: true, notes: true }
+    include: { lineItems: true, payments: true, corporateClient: true, notes: true, staff: { select: { id: true, name: true } } }
   });
+  const people = new Map((await prisma.user.findMany({ select: { id: true, name: true, active: true } })).map((u) => [u.id, u]));
   let credits = 0;
   const rows = [];
   for (const o of orders) {
@@ -74350,12 +74367,27 @@ async function buildReceivablesAging(asOf) {
       adjustments,
       outstanding,
       ageDays,
-      bucket: ageBucket(ageDays)
+      bucket: ageBucket(ageDays),
+      salesPersonId: o.staffId,
+      salesPersonName: o.staff.name,
+      responsibleId: o.collectorId != null && people.has(o.collectorId) ? o.collectorId : o.staffId,
+      responsibleName: (o.collectorId != null ? people.get(o.collectorId)?.name : void 0) ?? o.staff.name,
+      reassigned: o.collectorId != null && o.collectorId !== o.staffId && people.has(o.collectorId)
     });
   }
   rows.sort((a2, b) => b.ageDays - a2.ageDays);
   const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
-  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket, overpaidCredits: round2(credits) };
+  const owed = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const x = owed.get(r.responsibleId) ?? { id: r.responsibleId, name: r.responsibleName, total: 0, count: 0, overdue: 0 };
+    x.total = round2(x.total + r.outstanding);
+    x.count += 1;
+    if (r.bucket !== "Not yet due") x.overdue = round2(x.overdue + r.outstanding);
+    owed.set(r.responsibleId, x);
+  }
+  const byPerson = [...owed.values()].sort((a2, b) => b.total - a2.total);
+  const staff = [...people.values()].filter((u) => u.active).map((u) => ({ id: u.id, name: u.name })).sort((a2, b) => a2.name.localeCompare(b.name));
+  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket, byPerson, staff, overpaidCredits: round2(credits) };
 }
 async function buildCashFlowStatement(from, to) {
   const ledger = await loadLedger();
@@ -80211,6 +80243,19 @@ accountingRouter.get("/cash-flow", ...accountingOnly, async (req, res) => {
   res.json(await buildCashFlowStatement(r.from, r.to));
 });
 accountingRouter.get("/receivables", ...accountingOnly, async (req, res) => res.json(await buildReceivablesAging(asOfOf(req))));
+accountingRouter.put("/receivables/:orderId/collector", ...accountingOnly, async (req, res) => {
+  const parsed = external_exports.object({ staffId: external_exports.number().int().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Choose who is to collect it" });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) } });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (parsed.data.staffId != null) {
+    const person = await prisma.user.findUnique({ where: { id: parsed.data.staffId } });
+    if (!person || !person.active) return res.status(400).json({ error: "That person cannot be found, or no longer works here" });
+  }
+  const collectorId = parsed.data.staffId === order.staffId ? null : parsed.data.staffId;
+  await prisma.order.update({ where: { id: order.id }, data: { collectorId } });
+  res.json({ ok: true, collectorId });
+});
 accountingRouter.get("/payables", ...accountingOnly, async (req, res) => res.json(await buildPayablesAging(asOfOf(req))));
 accountingRouter.get("/reconcile", ...accountingOnly, async (req, res) => {
   const r = range(req);

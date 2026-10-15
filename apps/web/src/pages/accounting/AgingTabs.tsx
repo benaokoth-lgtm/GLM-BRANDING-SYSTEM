@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { fmtDate } from '@glm/shared';
+import { api } from '../../api/client';
 import { AsOfBar, Card, Loading, Tag, money, numStyle, printPage, useLoad, ymd } from './shared';
 
 interface Bucket {
@@ -35,15 +36,35 @@ const bucketTone = (b: string) => (b === 'Not yet due' ? 'neutral' : b === '0–
 // ── Accounts receivable ──
 interface ArData {
   asOf: string;
-  rows: { orderId: number; ref: string; party: string; status: string; date: string; dueDate: string | null; amount: number; paid: number; adjustments: number; outstanding: number; ageDays: number; bucket: string }[];
+  rows: { orderId: number; ref: string; party: string; status: string; date: string; dueDate: string | null; amount: number; paid: number; adjustments: number; outstanding: number; ageDays: number; bucket: string; salesPersonId: number; salesPersonName: string; responsibleId: number; responsibleName: string; reassigned: boolean }[];
   total: number;
   byBucket: Bucket[];
+  byPerson: { id: number; name: string; total: number; count: number; overdue: number }[];
+  staff: { id: number; name: string }[];
   overpaidCredits: number;
 }
 
 export function ReceivablesTab() {
   const [asOf, setAsOf] = useState(ymd(new Date()));
-  const { data, error, loading } = useLoad<ArData>(`/accounting/receivables?asOf=${asOf}`);
+  const { data, error, loading, reload } = useLoad<ArData>(`/accounting/receivables?asOf=${asOf}`);
+  // who is responsible for collecting: the sales person the sale is credited to, unless Accounting hands the balance to someone else
+  const [who, setWho] = useState<number | 'all'>('all');
+  const [changing, setChanging] = useState<number | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  async function hand(orderId: number, staffId: number | null) {
+    setBusy(true);
+    setSaveError('');
+    try {
+      await api.put(`/accounting/receivables/${orderId}/collector`, { staffId });
+      setChanging(null);
+      reload();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Could not change who collects it');
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <AsOfBar value={asOf} onChange={setAsOf} />
@@ -51,6 +72,20 @@ export function ReceivablesTab() {
       {data && (
         <>
           <Buckets buckets={data.byBucket} total={data.total} />
+          {data.byPerson.length > 0 && (
+            <Card title="Who is responsible for collecting" hint="The balance each person has to collect from customers: the sales person a sale is credited to, even when someone else keyed it, unless the balance was handed to another person. Choose a name to see only theirs.">
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <button type="button" className={'btn btn-sm ' + (who === 'all' ? 'btn-primary' : 'btn-secondary')} onClick={() => setWho('all')}>
+                  Everyone · {money(data.total)}
+                </button>
+                {data.byPerson.map((p) => (
+                  <button key={p.id} type="button" className={'btn btn-sm ' + (who === p.id ? 'btn-primary' : 'btn-secondary')} onClick={() => setWho(p.id)} title={`${p.count} ${p.count === 1 ? 'invoice' : 'invoices'}${p.overdue > 0 ? `, ${money(p.overdue)} past its due date` : ''}`}>
+                    {p.name} · {money(p.total)}
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
           <Card
             title="Accounts Receivable"
             hint="What customers still owe, aged from the invoice due date (or the order date when none was set). The amount is the sale plus debit notes, less payments and credit notes."
@@ -71,18 +106,19 @@ export function ReceivablesTab() {
                   <th style={numStyle}>Paid</th>
                   <th style={numStyle}>Notes</th>
                   <th style={numStyle}>Owing</th>
+                  <th>Responsible for collection</th>
                   <th>Age</th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="text-muted">
+                    <td colSpan={10} className="text-muted">
                       Nobody owes anything.
                     </td>
                   </tr>
                 )}
-                {data.rows.map((r) => (
+                {data.rows.filter((r) => who === 'all' || r.responsibleId === who).map((r) => (
                   <tr key={r.orderId}>
                     <td>{r.ref}</td>
                     <td>{r.party}</td>
@@ -93,12 +129,36 @@ export function ReceivablesTab() {
                     <td style={numStyle}>{money(r.adjustments)}</td>
                     <td style={{ ...numStyle, fontWeight: 700 }}>{money(r.outstanding)}</td>
                     <td>
+                      {changing === r.orderId ? (
+                        <span className="no-print" style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <select className="input" style={{ width: 170 }} defaultValue={r.responsibleId} disabled={busy} onChange={(e) => hand(r.orderId, Number(e.target.value))} aria-label={`Who collects ${r.ref}`}>
+                            {data.staff.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}{p.id === r.salesPersonId ? ' (the sales person)' : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setChanging(null)}>Cancel</button>
+                        </span>
+                      ) : (
+                        <>
+                          <b>{r.responsibleName}</b>
+                          {r.reassigned && <div className="text-muted" style={{ fontSize: 12 }}>handed over · sold by {r.salesPersonName}</div>}
+                          <button type="button" className="btn btn-ghost btn-sm no-print" style={{ marginLeft: 4 }} onClick={() => { setSaveError(''); setChanging(r.orderId); }} title="Hand the collection to someone else">Change</button>
+                          {r.reassigned && (
+                            <button type="button" className="btn btn-ghost btn-sm no-print" disabled={busy} onClick={() => hand(r.orderId, null)} title="Back to the sales person">Reset</button>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    <td>
                       <Tag tone={bucketTone(r.bucket)}>{r.bucket}</Tag>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {saveError && <p className="note" style={{ color: 'var(--color-error)' }}>{saveError}</p>}
             {Math.abs(data.overpaidCredits) > 0.004 && <p className="note">Customers have also been credited or overpaid {money(-data.overpaidCredits)} in total — shown under Customer Deposits &amp; Credits on the balance sheet.</p>}
           </Card>
         </>

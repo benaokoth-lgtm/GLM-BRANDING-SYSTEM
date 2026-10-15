@@ -857,8 +857,9 @@ async function buildPayablesAging(asOf) {
 async function buildReceivablesAging(asOf) {
   const orders = await prisma.order.findMany({
     where: { createdDate: { lte: asOf } },
-    include: { lineItems: true, payments: true, corporateClient: true, notes: true }
+    include: { lineItems: true, payments: true, corporateClient: true, notes: true, staff: { select: { id: true, name: true } } }
   });
+  const people = new Map((await prisma.user.findMany({ select: { id: true, name: true, active: true } })).map((u) => [u.id, u]));
   let credits = 0;
   const rows = [];
   for (const o of orders) {
@@ -894,12 +895,27 @@ async function buildReceivablesAging(asOf) {
       adjustments,
       outstanding,
       ageDays,
-      bucket: ageBucket(ageDays)
+      bucket: ageBucket(ageDays),
+      salesPersonId: o.staffId,
+      salesPersonName: o.staff.name,
+      responsibleId: o.collectorId != null && people.has(o.collectorId) ? o.collectorId : o.staffId,
+      responsibleName: (o.collectorId != null ? people.get(o.collectorId)?.name : void 0) ?? o.staff.name,
+      reassigned: o.collectorId != null && o.collectorId !== o.staffId && people.has(o.collectorId)
     });
   }
   rows.sort((a2, b) => b.ageDays - a2.ageDays);
   const byBucket = AGE_BUCKETS.map((bucket) => ({ bucket, total: round2(rows.filter((r) => r.bucket === bucket).reduce((a2, r) => a2 + r.outstanding, 0)) }));
-  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket, overpaidCredits: round2(credits) };
+  const owed = /* @__PURE__ */ new Map();
+  for (const r of rows) {
+    const x = owed.get(r.responsibleId) ?? { id: r.responsibleId, name: r.responsibleName, total: 0, count: 0, overdue: 0 };
+    x.total = round2(x.total + r.outstanding);
+    x.count += 1;
+    if (r.bucket !== "Not yet due") x.overdue = round2(x.overdue + r.outstanding);
+    owed.set(r.responsibleId, x);
+  }
+  const byPerson = [...owed.values()].sort((a2, b) => b.total - a2.total);
+  const staff = [...people.values()].filter((u) => u.active).map((u) => ({ id: u.id, name: u.name })).sort((a2, b) => a2.name.localeCompare(b.name));
+  return { asOf, rows, total: round2(rows.reduce((a2, r) => a2 + r.outstanding, 0)), byBucket, byPerson, staff, overpaidCredits: round2(credits) };
 }
 async function buildCashFlowStatement(from, to) {
   const ledger = await loadLedger();

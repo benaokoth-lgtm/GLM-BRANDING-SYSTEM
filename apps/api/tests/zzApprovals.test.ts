@@ -149,6 +149,13 @@ describe('approvals inbox', () => {
     assert.deepEqual([mine('costing').status, mine('costing').decidedByName], ['Approved', 'fin (approvals test)']);
     assert.deepEqual([mine('discount').status, mine('discount').note], ['Rejected', 'Too deep']);
     assert.equal((await call('rep', 'GET', '/approvals/summary')).body.decided.length, 2);
+    // after an approval the button says what to do next; a turned-down request has nothing to continue
+    assert.deepEqual([mine('costing').openLabel, mine('costing').openPrimary], ['Continue — capture the order', true]);
+    assert.deepEqual([mine('discount').openLabel, mine('discount').openPrimary], ['Open', false]);
+    // once the order is captured from the quote, the button opens the order
+    await prisma.costingQuote.update({ where: { id: Number(mineKeys.costing!.split(':')[1]) }, data: { status: 'Ordered', orderId: 4242, orderNo: 'CO-4242' } });
+    const after = (await call('rep', 'GET', '/approvals')).body.mine.find((i: any) => i.key === mineKeys.costing);
+    assert.deepEqual([after.openLabel, after.link, after.openPrimary], ['Open the order', '/orders/all?order=4242', false]);
     assert.equal((await call('fin2', 'GET', '/approvals/summary')).body.decided.length, 2); // the correction and the requisition
   });
 

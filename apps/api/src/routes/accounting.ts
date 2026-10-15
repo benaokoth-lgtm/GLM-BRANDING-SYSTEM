@@ -198,6 +198,22 @@ accountingRouter.get('/cash-flow', ...accountingOnly, async (req, res) => {
   res.json(await buildCashFlowStatement(r.from, r.to));
 });
 accountingRouter.get('/receivables', ...accountingOnly, async (req, res) => res.json(await buildReceivablesAging(asOfOf(req))));
+
+// Who is responsible for collecting what a customer still owes on an order: the sales person it is credited to unless it is handed to someone else here (null hands it back).
+accountingRouter.put('/receivables/:orderId/collector', ...accountingOnly, async (req, res) => {
+  const parsed = z.object({ staffId: z.number().int().nullable() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Choose who is to collect it' });
+  const order = await prisma.order.findUnique({ where: { id: Number(req.params.orderId) } });
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  if (parsed.data.staffId != null) {
+    const person = await prisma.user.findUnique({ where: { id: parsed.data.staffId } });
+    if (!person || !person.active) return res.status(400).json({ error: 'That person cannot be found, or no longer works here' });
+  }
+  // handing it to the sales person it is credited to is the same as the default
+  const collectorId = parsed.data.staffId === order.staffId ? null : parsed.data.staffId;
+  await prisma.order.update({ where: { id: order.id }, data: { collectorId } });
+  res.json({ ok: true, collectorId });
+});
 accountingRouter.get('/payables', ...accountingOnly, async (req, res) => res.json(await buildPayablesAging(asOfOf(req))));
 accountingRouter.get('/reconcile', ...accountingOnly, async (req, res) => {
   const r = range(req);

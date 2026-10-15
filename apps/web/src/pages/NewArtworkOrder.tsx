@@ -61,7 +61,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const system = c.finalPerPiece;
   const floor = settings.minPricePerPiece;
   const priceIn = f.price.trim() === '' ? null : num(f.price);
-  const belowFloor = priceIn != null && pcs > 0 && priceIn < floor - 0.005;
+  const belowFloor = priceIn != null && pcs > 0 && priceIn < Math.max(floor, 0.01) - 0.005; // a price of nothing is never allowed, with or without a minimum
   const chosen = priceIn != null && !belowFloor && Math.abs(priceIn - system) > 0.005 ? priceIn : system;
   const belowSystem = pcs > 0 && chosen < system - 0.005;
   const discountTotal = belowSystem ? Math.round((system - chosen) * pcs * 100) / 100 : 0;
@@ -78,8 +78,10 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
       : null;
 
   const lines: [string, string, string][] = [
-    ['Fixed charge', `${fmtKsh(settings.fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m ÷ ${fmtNum(pcs)} pcs`, pcs > 0 ? fmtKsh((c.finalPerPiece - settings.minPricePerPiece)) : '—'],
-    ['Recommended price / piece', `${fmtKsh(settings.minPricePerPiece)} floor + fixed charge`, fmtKsh(system)],
+    ['Film for this length', `${fmtKsh(settings.fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m — the empty space is paid for too`, run > 0 ? fmtKsh(Math.round(settings.fixedChargePerMetre * run * 100) / 100) : '—'],
+    ['Each artwork\'s share', `÷ ${fmtNum(pcs)} artworks`, pcs > 0 && run > 0 ? fmtKsh(Math.round(((settings.fixedChargePerMetre * run) / pcs) * 100) / 100) : '—'],
+    ...(floor > 0 ? ([['Minimum per piece', 'added to each artwork', fmtKsh(floor)]] as [string, string, string][]) : []),
+    ['Recommended price / piece', floor > 0 ? 'share + minimum' : 'each artwork\'s share of the film', fmtKsh(system)],
     ...(chosen > system + 0.005 ? ([['Price charged / piece', `${fmtKsh(chosen - system)} above recommended`, fmtKsh(chosen)]] as [string, string, string][]) : []),
     ...(belowSystem ? ([['Price charged / piece', `${fmtKsh(system - chosen)} below recommended — needs approval`, fmtKsh(chosen)]] as [string, string, string][]) : []),
   ];
@@ -126,7 +128,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           <label>{sheetOn ? 'Artworks on this length (all sizes, all clients)' : 'Pieces'}</label>
           <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} placeholder="e.g. 108" />
           <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
-            {sheetOn ? 'With the running metres this gives the recommended price below; then share them into rows by size.' : 'More pieces sharing this run means a cheaper price each; fewer means a dearer one — it never drops below the floor.'}
+            {sheetOn ? 'With the running metres this gives the recommended price below; then share them into rows by size.' : 'The film for the running metres is shared between the pieces: more pieces on the run means a cheaper price each, fewer means a dearer one, because the empty space is paid for by the artworks.'}
           </p>
         </div>
       </div>
@@ -144,7 +146,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         <label>Price / piece (optional)</label>
         <input className="input" style={{ maxWidth: 200 }} inputMode="decimal" placeholder={pcs > 0 ? String(system) : 'recommended'} value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} />
         <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
-          Leave blank to charge the recommended price.{artworkRate != null && ' Charge more and you earn commission on the amount above it.'} Charge less (not under {fmtKsh(floor)}) and the job needs a manager’s approval first.
+          Leave blank to charge the recommended price.{artworkRate != null && ' Charge more and you earn commission on the amount above it.'} Charge less{floor > 0 ? <> (not under {fmtKsh(floor)})</> : null} and the job needs a manager’s approval first.
         </p>
         {belowFloor && <p className="note" style={{ color: 'var(--color-error)', margin: 'var(--space-1) 0 0' }}>Blocked — the price cannot be below the minimum of {fmtKsh(floor)} a piece.</p>}
         {belowSystem && (

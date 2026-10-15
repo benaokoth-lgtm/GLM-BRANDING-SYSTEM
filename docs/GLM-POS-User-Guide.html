@@ -315,9 +315,9 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
 <h3 id="s5-4">5.4 DTF Artwork Order (priced per piece) <span class="who">Staff</span></h3>
 <p>Open <span class="path">DTF Artwork Order</span>. A customer's design printed on transfers and sold per piece.</p>
 <ol class="steps">
-  <li>Enter the client, the number of pieces and the running metres used. The system works out a <b>recommended price per piece</b> from the roll's costs.</li>
+  <li>Enter the client, the number of pieces and the running metres used. The system works out a <b>recommended price per piece</b> from the <b>running metres</b>: the <b>charge per running metre</b> (DTF → Setup) × the running metres is the cost of that length of film, and it is <b>shared equally between the artworks on it</b>. The film is paid for whether or not the artworks fill its width, so <b>the client bears the empty space</b>. For example, at 600 a metre, 0.53 m of film carrying 2 artworks costs 600 × 0.53 = 318, so each artwork is <b>159</b>; with 6 artworks on the same film each is 53. (If DTF → Setup also has a <i>minimum price per piece</i> above 0, that amount is added to every artwork; set it to 0 to charge on the running metres alone.)</li>
   <li>Choose the <b>heat press fee</b> — this is compulsory; there is no "none".</li>
-  <li>You may charge <b>more</b> than the recommendation (the extra earns commission). You may charge <b>less</b>, but not under the per-piece floor in DTF → Setup. A lower price is the discount: no other discount applies, no commission premium is earned, and the job <b>goes to a DTF manager for approval first</b>.</li>
+  <li>You may charge <b>more</b> than the recommendation (the extra earns commission). You may charge <b>less</b> (not under the minimum per piece in DTF → Setup, if one is set, and never nothing). A lower price is the discount: no other discount applies, no commission premium is earned, and the job <b>goes to a DTF manager for approval first</b>.</li>
   <li>Until approved, the job cannot be paid, queued in Production or assigned; its film stays reserved on the roll; it shows as <i>Awaiting price approval</i> and no receipt prints. Managers decide under <span class="path">DTF → Price Approvals</span>. The person who captured the job cannot approve it. Rejecting (with a reason) removes the order and returns the film to the roll.</li>
 </ol>
 
@@ -593,7 +593,7 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
   <tr><td><b>Film Sales</b></td><td>Printed film sold by the metre, with price, amount paid and who captured it.</td></tr>
   <tr><td><b>Artwork Jobs</b></td><td>Customer artwork priced per piece, the recommended price, the price charged and its heat press fee.</td></tr>
   <tr><td><b>Price Approvals</b></td><td>Lower-than-recommended artwork prices waiting for a manager. Shows the discount and the roll's profit with and without it.</td></tr>
-  <tr><td><b>Setup</b></td><td>The film price band, the minimum price per piece, the wastage tolerance (5% to start; set your own).</td></tr>
+  <tr><td><b>Setup</b></td><td>The film price band, the <b>charge per running metre</b> for artwork (shared between the artworks on the length) and an optional minimum price per piece (0 for none), the wastage tolerance (5% to start; set your own).</td></tr>
 </table>
 <div class="box"><b class="t">Who sees what</b>People who only record sales and jobs see Film Sales and Artwork Jobs; roll costs are never sent to them. People with <i>DTF: rolls, costs &amp; profit</i> see the rest. Prices stored with each sale are fixed at the time, so changing Setup never rewrites history.</div>
 

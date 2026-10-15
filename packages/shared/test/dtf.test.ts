@@ -109,3 +109,14 @@ test('dashboard: orphans, cost per metre, per-closed-roll profit', () => {
   assert.equal(d.startedCount, 1); assert.equal(d.costPerM, 150);
   assert.equal(d.profitPerClosedRoll, 35000); assert.equal(d.filmMarginPerM, 350);
 });
+
+test('artwork job on running metres alone: (charge per metre × metres) ÷ artworks, the empty space borne by the artworks', () => {
+  // 600 a running metre, 0.53 m of film, 2 artworks on it, no per-piece minimum: (600 × 0.53) ÷ 2 = 159 each
+  const j = jobCalc(0.53, 2, 600, 0);
+  assert.equal(j.finalPerPiece, 159);
+  assert.equal(j.jobTotal, 318);
+  // the same film with 4 artworks on it costs each of them half as much
+  assert.equal(jobCalc(0.53, 4, 600, 0).finalPerPiece, 79.5);
+  // and the whole length is always paid for, whatever the number of artworks
+  assert.equal(jobCalc(0.53, 3, 600, 0).jobTotal, 318);
+});

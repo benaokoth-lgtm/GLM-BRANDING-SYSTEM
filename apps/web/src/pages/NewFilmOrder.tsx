@@ -5,6 +5,7 @@ import type { Band, DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import UvPenCosting from '../components/dtf/UvPenCosting';
+import UvFlatbedCosting from '../components/dtf/UvFlatbedCosting';
 import type { DtfData } from '../components/dtf/shared';
 
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
@@ -23,7 +24,7 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
   const [showOrderDialog, setShowOrderDialog] = useState(false);
   const [filmBands, setFilmBands] = useState<Band[] | null>(null);
   // UV DTF also prices UV-printed pens: its own tab beside the film sale
-  const [tab, setTab] = useState<'film' | 'pens'>('film');
+  const [tab, setTab] = useState<'film' | 'pens' | 'flatbed'>('film');
 
   useEffect(() => {
     // The scheme staff are paid under, to show what a higher price is worth to them (nothing is blocked if it can't be read).
@@ -39,7 +40,7 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
 
   const tabs =
     product === 'uv' ? (
-      <div className="seg" role="radiogroup" aria-label="UV DTF" style={{ maxWidth: 420, marginBottom: 'var(--space-4)' }}>
+      <div className="seg" role="radiogroup" aria-label="UV DTF" style={{ maxWidth: 560, marginBottom: 'var(--space-4)' }}>
         <label className={'seg-opt' + (tab === 'film' ? ' checked' : '')}>
           <input type="radio" name="uvtab" checked={tab === 'film'} onChange={() => setTab('film')} />
           Film sale
@@ -48,6 +49,10 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
           <input type="radio" name="uvtab" checked={tab === 'pens'} onChange={() => setTab('pens')} />
           UV Pen Costing
         </label>
+        <label className={'seg-opt' + (tab === 'flatbed' ? ' checked' : '')}>
+          <input type="radio" name="uvtab" checked={tab === 'flatbed'} onChange={() => setTab('flatbed')} />
+          UV Flatbed
+        </label>
       </div>
     ) : null;
   if (product === 'uv' && tab === 'pens') {
@@ -55,6 +60,15 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
       <>
         {tabs}
         <UvPenCosting />
+      </>
+    );
+  }
+
+  if (product === 'uv' && tab === 'flatbed') {
+    return (
+      <>
+        {tabs}
+        <UvFlatbedCosting />
       </>
     );
   }

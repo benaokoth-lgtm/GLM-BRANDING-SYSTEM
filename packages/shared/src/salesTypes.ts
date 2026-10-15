@@ -1,9 +1,10 @@
 import { UV_PEN_SERVICE } from './pens';
+import { UV_FLATBED_SERVICE } from './flatbed';
 
 // The kinds of sale under Sales in the side navigation, as the Commission page tells them apart: where a salesperson sells more and where they are behind. A sale is one of these by how it was
 // captured — the screen it came through — not by the business head its lines are booked under (that is Reports → Sales by Business Head).
 
-export const SALES_TYPES = ['general', 'dtf_film', 'dtf_artwork', 'uv_film', 'uv_artwork', 'embroidery', 'uv_pens', 'costing'] as const;
+export const SALES_TYPES = ['general', 'dtf_film', 'dtf_artwork', 'uv_film', 'uv_artwork', 'embroidery', 'uv_pens', 'uv_flatbed', 'costing'] as const;
 export type SalesType = (typeof SALES_TYPES)[number];
 
 export const SALES_TYPE_LABEL: Record<SalesType, string> = {
@@ -14,6 +15,7 @@ export const SALES_TYPE_LABEL: Record<SalesType, string> = {
   uv_artwork: 'UV DTF Artwork Order',
   embroidery: 'Embroidery Order',
   uv_pens: 'UV Pens',
+  uv_flatbed: 'UV Flatbed Printing',
   costing: 'Job Costing (cards, signage, brochures, eulogies)',
 };
 
@@ -26,6 +28,7 @@ export const SALES_TYPE_PAID_AS: Record<SalesType, 'film' | 'artwork' | 'general
   uv_artwork: 'artwork',
   embroidery: 'general',
   uv_pens: 'general',
+  uv_flatbed: 'general',
   costing: 'general',
 };
 
@@ -45,6 +48,7 @@ export function salesTypeOf(o: {
   const names = o.lineItems.map((li) => li.service?.name ?? '');
   if (names.some((n) => n.startsWith('Costed job'))) return 'costing';
   if (names.some((n) => n === UV_PEN_SERVICE)) return 'uv_pens';
+  if (names.some((n) => n === UV_FLATBED_SERVICE)) return 'uv_flatbed';
   return 'general';
 }
 

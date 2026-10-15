@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
-import type { DtfProduct, LineItemInput, PaymentMethod } from '@glm/shared';
+import { DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import type { DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
@@ -97,7 +97,7 @@ async function createDtfOrder(
     product?: DtfProduct;
     /** 'dtf' for film sales and artwork jobs; UV pens are an ordinary order ('general'), so a sourced client earns the general-order commission. */
     channel?: 'dtf' | 'general';
-    serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null };
+    serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null; description?: string };
     materialLines: { materialId: number; qty: number; unitPrice?: number }[];
     payments: PaymentLine[];
     // Set to the capturing staff member's own id when they sourced this client (credited to them for 12 months)
@@ -157,7 +157,7 @@ async function createDtfOrder(
       stage: 'Order Received',
       lineItems: {
         create: [
-          { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null },
+          { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null, description: opts.serviceLine.description ?? '' },
           ...materialItems,
         ],
       },
@@ -363,6 +363,116 @@ dtfRouter.post('/pen-orders', async (req, res) => {
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the pen order') });
+  }
+});
+
+// ── UV flatbed printing (diaries and other flat items): the price bands ───────
+// The artwork is priced by its area in bands (at least the minimum for a piece), the run gets a volume discount, and a setup fee is added when it is asked for (see flatbed.ts in shared).
+// Anyone with DTF access reads the settings; a DTF manager changes them. A new database starts with the owner's bands.
+async function flatbedSettings(): Promise<FlatbedSettings> {
+  const row = await prisma.flatbedSetting.findUnique({ where: { id: 1 } });
+  if (!row) return DEFAULT_FLATBED_SETTINGS;
+  try {
+    const s = JSON.parse(row.data) as FlatbedSettings;
+    return { ...DEFAULT_FLATBED_SETTINGS, ...s, bands: sortedFlatbedBands(s.bands ?? DEFAULT_FLATBED_SETTINGS.bands), discounts: sortedFlatbedDiscounts(s.discounts ?? DEFAULT_FLATBED_SETTINGS.discounts) };
+  } catch {
+    return DEFAULT_FLATBED_SETTINGS;
+  }
+}
+
+dtfRouter.get('/flatbed', async (req, res) => {
+  const perms = await permissionsForRole(req.user!.role);
+  res.json({ canManage: perms.canManageDtf, settings: await flatbedSettings() });
+});
+
+const flatbedSettingsSchema = z.object({
+  maxWidthCm: z.number().max(1000),
+  maxLengthCm: z.number().max(1000),
+  minPiecePrice: z.number().max(1_000_000),
+  setupFee: z.number().max(1_000_000),
+  bands: z.array(z.object({ upToCm2: z.number().max(1_000_000), price: z.number().max(1_000_000) })).min(1).max(20),
+  discounts: z.array(z.object({ from: z.number().int(), pct: z.number() })).min(1).max(10),
+});
+
+dtfRouter.put('/flatbed', manageOnly, async (req, res) => {
+  const parsed = flatbedSettingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const settings: FlatbedSettings = { ...parsed.data, bands: sortedFlatbedBands(parsed.data.bands), discounts: sortedFlatbedDiscounts(parsed.data.discounts) };
+  const problem = flatbedSettingsProblem(settings);
+  if (problem) return res.status(400).json({ error: problem });
+  await prisma.flatbedSetting.upsert({ where: { id: 1 }, update: { data: JSON.stringify(settings) }, create: { id: 1, data: JSON.stringify(settings) } });
+  res.json({ canManage: true, settings: await flatbedSettings() });
+});
+
+/** The price-list service flatbed orders are recorded against: found by name, put right if retired, created on the first order under UV Printing. */
+async function flatbedService(tx: Prisma.TransactionClient, price: number) {
+  const found = await tx.service.findFirst({ where: { name: UV_FLATBED_SERVICE } });
+  if (found) {
+    if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
+    return found;
+  }
+  const head = (await tx.businessHead.findFirst({ where: { name: 'UV Printing' } })) ?? (await tx.businessHead.create({ data: { name: 'UV Printing', sortOrder: ((await tx.businessHead.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0) + 1 } }));
+  return tx.service.create({ data: { name: UV_FLATBED_SERVICE, item: UV_FLATBED_SERVICE, unit: 'job', price, soldViaDtfModule: true, businessHeadId: head.id } });
+}
+
+const flatbedOrderSchema = z.object({
+  widthCm: z.number().positive('Enter the artwork width').max(1000),
+  heightCm: z.number().positive('Enter the artwork height').max(1000),
+  pieces: z.number().int().positive('Enter the number of pieces').max(1_000_000),
+  // the setup fee is added to the job only when it is asked for
+  withSetup: z.boolean().default(false),
+  note: z.string().max(100).default(''),
+  client: z.string().max(200).default(''),
+  phone: z.string().max(40).default(''),
+  amountPaid: z.number().min(0).default(0),
+  paymentMethod: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).default('Cash'),
+  payments: z.array(paymentLineSchema).max(6).optional(),
+  materialLines: z.array(materialLineSchema).default([]),
+  sourcedBy: z.number().int().nullable().optional(),
+  freelanceAgentId: z.number().int().nullable().optional(),
+  staffId: z.number().int().nullable().optional(),
+});
+
+// "Capture as order" on UV Flatbed: the run, priced here from the bands — never taken from the screen — becomes an ordinary order with one line for the whole job, whose
+// description says what was printed (size, pieces, band), plus any merchandise sold with it. There is no roll to consume.
+dtfRouter.post('/flatbed-orders', async (req, res) => {
+  const parsed = flatbedOrderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  const settings = await flatbedSettings();
+  const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup);
+  if (!quote.ok) return res.status(400).json({ error: quote.problem ?? 'No price applies to that job' });
+  const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
+  if (claim) return res.status(400).json({ error: claim });
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
+  const merch = await materialLineItems(prisma, d.materialLines).catch(() => null);
+  if (!merch) return res.status(400).json({ error: 'Material not found' });
+  const orderTotal = quote.total + merch.reduce((a, m) => a + m.qty * m.unitPrice, 0);
+  if (paid > orderTotal + 0.005) return res.status(400).json({ error: 'Amount paid cannot exceed the order total' });
+  try {
+    const order = await prisma.$transaction(async (tx) => {
+      const service = await flatbedService(tx, quote.unitPrice);
+      return createDtfOrder(tx, {
+        product: 'uv',
+        channel: 'general',
+        customerName: d.client.trim() || WALK_IN_CLIENT,
+        phone: d.phone.trim(),
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
+        serviceLine: { itemType: 'service', serviceId: service.id, qty: 1, unitPrice: quote.total, description: flatbedDescription(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup, d.note) },
+        materialLines: d.materialLines,
+        payments: paymentLines,
+        sourcedBy: d.sourcedBy,
+        freelanceAgentId: d.freelanceAgentId,
+        serviceBase: quote.total, // sold at the quoted price, with nothing above it to earn a premium on
+      });
+    });
+    res.status(201).json({ order: serializeDetail(order) });
+  } catch (err) {
+    res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the flatbed order') });
   }
 });
 

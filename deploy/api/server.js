@@ -26440,7 +26440,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r28 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r28, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r29 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r29, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -28966,10 +28966,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r28, options) => {
+    var intersects = (r1, r29, options) => {
       r1 = new Range(r1, options);
-      r28 = new Range(r28, options);
-      return r1.intersects(r28, options);
+      r29 = new Range(r29, options);
+      return r1.intersects(r29, options);
     };
     module2.exports = intersects;
   }
@@ -66497,6 +66497,119 @@ function penQuote(tiers, qty) {
   return { qty: q, tier, rate: rate2, total, upsell };
 }
 
+// packages/shared/src/flatbed.ts
+var UV_FLATBED_SERVICE = "UV Flatbed Printing";
+var DEFAULT_FLATBED_SETTINGS = {
+  maxWidthCm: 30,
+  maxLengthCm: 50,
+  minPiecePrice: 100,
+  setupFee: 200,
+  bands: [
+    { upToCm2: 300, price: 100 },
+    { upToCm2: 450, price: 150 },
+    { upToCm2: 600, price: 200 },
+    { upToCm2: 750, price: 250 },
+    { upToCm2: 900, price: 300 },
+    { upToCm2: 1050, price: 350 },
+    { upToCm2: 1200, price: 400 },
+    { upToCm2: 1350, price: 450 },
+    { upToCm2: 1500, price: 500 }
+  ],
+  discounts: [
+    { from: 1, pct: 0 },
+    { from: 20, pct: 5 },
+    { from: 50, pct: 10 },
+    { from: 100, pct: 15 }
+  ]
+};
+var r26 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var sortedFlatbedBands = (bands) => [...bands].sort((a2, b) => a2.upToCm2 - b.upToCm2);
+var sortedFlatbedDiscounts = (d) => [...d].sort((a2, b) => a2.from - b.from);
+var flatbedMaxArea = (s) => r26(s.maxWidthCm * s.maxLengthCm);
+function flatbedSettingsProblem(s) {
+  for (const [name2, v] of [["largest width", s.maxWidthCm], ["largest length", s.maxLengthCm]]) if (!(v > 0) || !Number.isFinite(v)) return `The ${name2} must be more than 0`;
+  for (const [name2, v] of [["minimum price for a piece", s.minPiecePrice], ["setup fee", s.setupFee]]) if (!(v >= 0) || !Number.isFinite(v)) return `The ${name2} cannot be negative`;
+  if (s.bands.length === 0) return "There must be at least one band";
+  const b = sortedFlatbedBands(s.bands);
+  for (const x of b) {
+    if (!(x.upToCm2 > 0) || !Number.isFinite(x.upToCm2)) return "Each band must cover an area of more than 0 cm\xB2";
+    if (!(x.price >= 0) || !Number.isFinite(x.price)) return "A price cannot be negative";
+  }
+  for (let i = 1; i < b.length; i++) if (b[i].upToCm2 === b[i - 1].upToCm2) return `Two bands end at ${b[i].upToCm2} cm\xB2`;
+  if (b[b.length - 1].upToCm2 < flatbedMaxArea(s)) return `The last band must reach the largest artwork (${flatbedMaxArea(s)} cm\xB2), or it has no price`;
+  if (s.discounts.length === 0) return "There must be at least one discount line (0% from 1 piece if you give none)";
+  const d = sortedFlatbedDiscounts(s.discounts);
+  for (const x of d) {
+    if (!Number.isInteger(x.from) || x.from < 1) return "Each discount must start at a whole number of pieces, 1 or more";
+    if (!(x.pct >= 0 && x.pct < 100) || !Number.isFinite(x.pct)) return "A discount must be from 0% to under 100%";
+  }
+  if (d[0].from !== 1) return "The first discount line must start at 1 piece";
+  for (let i = 1; i < d.length; i++) if (d[i].from === d[i - 1].from) return `Two discounts start at ${d[i].from} pieces`;
+  return null;
+}
+function flatbedBandFor(bands, areaCm2) {
+  const b = sortedFlatbedBands(bands);
+  const index = b.findIndex((x) => areaCm2 <= x.upToCm2);
+  return index < 0 ? null : { band: b[index], index };
+}
+function flatbedRangeLabel(bands, index) {
+  const b = sortedFlatbedBands(bands);
+  const prev = b[index - 1];
+  return prev ? `${Math.floor(prev.upToCm2) + 1}\u2013${b[index].upToCm2} cm\xB2` : `up to ${b[index].upToCm2} cm\xB2`;
+}
+var flatbedFitsArtwork = (s, w, h) => w <= s.maxWidthCm && h <= s.maxLengthCm || h <= s.maxWidthCm && w <= s.maxLengthCm;
+var none = (problem, pieces = 0, areaCm2 = 0) => ({
+  ok: false,
+  problem,
+  pieces,
+  areaCm2,
+  band: null,
+  bandIndex: -1,
+  unitPrice: 0,
+  minApplied: false,
+  discountPct: 0,
+  discountIndex: -1,
+  gross: 0,
+  discount: 0,
+  printTotal: 0,
+  setupFee: 0,
+  total: 0,
+  perPiece: 0,
+  upsell: null
+});
+function flatbedQuote(s, widthCm, heightCm, pieces, withSetup = false) {
+  const n = Number.isFinite(pieces) && pieces > 0 ? Math.floor(pieces) : 0;
+  if (!(widthCm > 0) || !(heightCm > 0) || !Number.isFinite(widthCm) || !Number.isFinite(heightCm)) return none(null, n);
+  const areaCm2 = r26(widthCm * heightCm);
+  if (n === 0) return none(null, 0, areaCm2);
+  if (!flatbedFitsArtwork(s, widthCm, heightCm)) return none(`${widthCm} \xD7 ${heightCm} cm is bigger than the largest artwork (${s.maxWidthCm} \xD7 ${s.maxLengthCm} cm)`, n, areaCm2);
+  const found = flatbedBandFor(s.bands, areaCm2);
+  if (!found) return none(`No band covers ${areaCm2} cm\xB2`, n, areaCm2);
+  const unitPrice = Math.max(found.band.price, s.minPiecePrice);
+  const ds = sortedFlatbedDiscounts(s.discounts);
+  let discountIndex = 0;
+  ds.forEach((d, i) => {
+    if (n >= d.from) discountIndex = i;
+  });
+  const discountPct = ds[discountIndex]?.pct ?? 0;
+  const gross = r26(n * unitPrice);
+  const discount = r26(gross * discountPct / 100);
+  const printTotal = r26(gross - discount);
+  const setupFee = withSetup ? s.setupFee : 0;
+  const total = r26(printTotal + setupFee);
+  const next = ds.find((d) => d.from > n && d.pct > discountPct);
+  const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r26(printTotal - r26(next.from * unitPrice * (1 - next.pct / 100))) } : null;
+  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, discountPct, discountIndex, gross, discount, printTotal, setupFee, total, perPiece: r26(total / n), upsell };
+}
+function flatbedDescription(s, widthCm, heightCm, pieces, withSetup = false, note = "") {
+  const q = flatbedQuote(s, widthCm, heightCm, pieces, withSetup);
+  const parts = [`${pieces} \xD7 ${widthCm} \xD7 ${heightCm} cm${q.band ? ` (${flatbedRangeLabel(s.bands, q.bandIndex)} band)` : ""}`];
+  if (q.discountPct > 0) parts.push(`${q.discountPct}% volume discount`);
+  if (withSetup) parts.push("setup");
+  if (note.trim()) parts.push(note.trim());
+  return parts.join(" \xB7 ").slice(0, 160);
+}
+
 // packages/shared/src/printCosting.ts
 var PRINT_PRODUCTS = ["eulogy", "profile", "brochure"];
 var PRINT_PRODUCT_LABEL = { eulogy: "Eulogy", profile: "Company profile", brochure: "Brochure" };
@@ -66612,7 +66725,7 @@ function printSpec(job, s) {
 }
 
 // packages/shared/src/salesTypes.ts
-var SALES_TYPES = ["general", "dtf_film", "dtf_artwork", "uv_film", "uv_artwork", "embroidery", "uv_pens", "costing"];
+var SALES_TYPES = ["general", "dtf_film", "dtf_artwork", "uv_film", "uv_artwork", "embroidery", "uv_pens", "uv_flatbed", "costing"];
 var SALES_TYPE_LABEL = {
   general: "General Order",
   dtf_film: "DTF Film Order",
@@ -66621,6 +66734,7 @@ var SALES_TYPE_LABEL = {
   uv_artwork: "UV DTF Artwork Order",
   embroidery: "Embroidery Order",
   uv_pens: "UV Pens",
+  uv_flatbed: "UV Flatbed Printing",
   costing: "Job Costing (cards, signage, brochures, eulogies)"
 };
 var SALES_TYPE_PAID_AS = {
@@ -66631,6 +66745,7 @@ var SALES_TYPE_PAID_AS = {
   uv_artwork: "artwork",
   embroidery: "general",
   uv_pens: "general",
+  uv_flatbed: "general",
   costing: "general"
 };
 function salesTypeOf(o) {
@@ -66641,6 +66756,7 @@ function salesTypeOf(o) {
   const names = o.lineItems.map((li) => li.service?.name ?? "");
   if (names.some((n) => n.startsWith("Costed job"))) return "costing";
   if (names.some((n) => n === UV_PEN_SERVICE)) return "uv_pens";
+  if (names.some((n) => n === UV_FLATBED_SERVICE)) return "uv_flatbed";
   return "general";
 }
 function blankSalesTypeRows() {
@@ -75963,10 +76079,10 @@ reportsRouter.get("/business-head-detail", async (req, res) => {
 var import_express8 = __toESM(require_express2());
 
 // apps/api/src/costingDocument.ts
-var r26 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r27 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function quotedTotal(q) {
   const agreed = q.agreedPrice != null && (q.approval === "" || q.approval === "Approved");
-  return r26((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
+  return r27((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
 }
 function quoteDocument(q) {
   const total = quotedTotal(q);
@@ -76390,7 +76506,7 @@ costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
   const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
   const o = { ...parsed.data, mode: sees ? parsed.data.mode : "tier" };
   if (o.paper >= s.papers.length || o.cover >= s.papers.length) return res.status(400).json({ error: "That paper is not on the list" });
-  const unit = (job) => r27(printCalc({ ...o, ...job }, s).unitTotal);
+  const unit = (job) => r28(printCalc({ ...o, ...job }, s).unitTotal);
   res.json({
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
@@ -76463,11 +76579,11 @@ costingRouter.put("/print/settings", admin, async (req, res) => {
   await prisma.printCostSetting.upsert({ where: { id: 1 }, update: { data }, create: { id: 1, data } });
   res.json(next);
 });
-var r27 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r28 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function viewOf(q, sees) {
-  const vat = r27(q.price * VAT_RATE);
+  const vat = r28(q.price * VAT_RATE);
   const floor2 = costingFloor(q.cost, q.floorMarginPct);
-  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r27(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
+  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r28(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
   return {
     id: q.id,
     quoteNo: q.quoteNo,
@@ -76488,7 +76604,7 @@ function viewOf(q, sees) {
     cost: q.cost,
     price: q.price,
     vat,
-    total: r27(q.price + vat),
+    total: r28(q.price + vat),
     // the lowest the price may be agreed at without approval (a price, not a margin)
     lowestPrice: floor2.price,
     lowestTotal: floor2.total,
@@ -76499,7 +76615,7 @@ function viewOf(q, sees) {
     lostReason: q.lostReason,
     orderId: q.orderId,
     orderNo: q.orderNo,
-    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r27(q.price - q.cost) } : {}
+    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r28(q.price - q.cost) } : {}
   };
 }
 async function seesAllQuotes(user) {
@@ -76667,7 +76783,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
   if (q.approval === "Pending") return res.status(400).json({ error: "The agreed price is under the floor and is waiting for a manager\u2019s approval" });
   if (q.approval === "Rejected") return res.status(400).json({ error: "The agreed price was not approved \u2014 agree another price" });
   const service = await costedService(q.jobType);
-  const total = r27(q.agreedPrice * (1 + VAT_RATE));
+  const total = r28(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
     customerName: body.data.customerName?.trim() || q.clientName,
     phone: body.data.phone ?? q.phone,
@@ -76678,7 +76794,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
     paymentTiming: body.data.paymentTiming,
     payments: body.data.paymentTiming === "onAcceptance" ? body.data.payments : void 0,
     // one line for the whole job at the price agreed (VAT included), with what the job costs us (VAT included, as a supplier bills it) kept on it for Finance
-    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r27(q.cost * (1 + VAT_RATE)) }]
+    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r28(q.cost * (1 + VAT_RATE)) }]
   });
   if (!form.success) return res.status(400).json({ error: form.error.issues[0]?.message ?? "Invalid input" });
   const quoteId = q.id;
@@ -78342,7 +78458,7 @@ async function createDtfOrder(tx, opts) {
       stage: "Order Received",
       lineItems: {
         create: [
-          { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null },
+          { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null, description: opts.serviceLine.description ?? "" },
           ...materialItems
         ]
       }
@@ -78521,6 +78637,104 @@ dtfRouter.post("/pen-orders", async (req, res) => {
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the pen order") });
+  }
+});
+async function flatbedSettings() {
+  const row = await prisma.flatbedSetting.findUnique({ where: { id: 1 } });
+  if (!row) return DEFAULT_FLATBED_SETTINGS;
+  try {
+    const s = JSON.parse(row.data);
+    return { ...DEFAULT_FLATBED_SETTINGS, ...s, bands: sortedFlatbedBands(s.bands ?? DEFAULT_FLATBED_SETTINGS.bands), discounts: sortedFlatbedDiscounts(s.discounts ?? DEFAULT_FLATBED_SETTINGS.discounts) };
+  } catch {
+    return DEFAULT_FLATBED_SETTINGS;
+  }
+}
+dtfRouter.get("/flatbed", async (req, res) => {
+  const perms = await permissionsForRole(req.user.role);
+  res.json({ canManage: perms.canManageDtf, settings: await flatbedSettings() });
+});
+var flatbedSettingsSchema = external_exports.object({
+  maxWidthCm: external_exports.number().max(1e3),
+  maxLengthCm: external_exports.number().max(1e3),
+  minPiecePrice: external_exports.number().max(1e6),
+  setupFee: external_exports.number().max(1e6),
+  bands: external_exports.array(external_exports.object({ upToCm2: external_exports.number().max(1e6), price: external_exports.number().max(1e6) })).min(1).max(20),
+  discounts: external_exports.array(external_exports.object({ from: external_exports.number().int(), pct: external_exports.number() })).min(1).max(10)
+});
+dtfRouter.put("/flatbed", manageOnly, async (req, res) => {
+  const parsed = flatbedSettingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const settings = { ...parsed.data, bands: sortedFlatbedBands(parsed.data.bands), discounts: sortedFlatbedDiscounts(parsed.data.discounts) };
+  const problem = flatbedSettingsProblem(settings);
+  if (problem) return res.status(400).json({ error: problem });
+  await prisma.flatbedSetting.upsert({ where: { id: 1 }, update: { data: JSON.stringify(settings) }, create: { id: 1, data: JSON.stringify(settings) } });
+  res.json({ canManage: true, settings: await flatbedSettings() });
+});
+async function flatbedService(tx, price) {
+  const found = await tx.service.findFirst({ where: { name: UV_FLATBED_SERVICE } });
+  if (found) {
+    if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
+    return found;
+  }
+  const head = await tx.businessHead.findFirst({ where: { name: "UV Printing" } }) ?? await tx.businessHead.create({ data: { name: "UV Printing", sortOrder: ((await tx.businessHead.aggregate({ _max: { sortOrder: true } }))._max.sortOrder ?? 0) + 1 } });
+  return tx.service.create({ data: { name: UV_FLATBED_SERVICE, item: UV_FLATBED_SERVICE, unit: "job", price, soldViaDtfModule: true, businessHeadId: head.id } });
+}
+var flatbedOrderSchema = external_exports.object({
+  widthCm: external_exports.number().positive("Enter the artwork width").max(1e3),
+  heightCm: external_exports.number().positive("Enter the artwork height").max(1e3),
+  pieces: external_exports.number().int().positive("Enter the number of pieces").max(1e6),
+  // the setup fee is added to the job only when it is asked for
+  withSetup: external_exports.boolean().default(false),
+  note: external_exports.string().max(100).default(""),
+  client: external_exports.string().max(200).default(""),
+  phone: external_exports.string().max(40).default(""),
+  amountPaid: external_exports.number().min(0).default(0),
+  paymentMethod: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).default("Cash"),
+  payments: external_exports.array(paymentLineSchema).max(6).optional(),
+  materialLines: external_exports.array(materialLineSchema).default([]),
+  sourcedBy: external_exports.number().int().nullable().optional(),
+  freelanceAgentId: external_exports.number().int().nullable().optional(),
+  staffId: external_exports.number().int().nullable().optional()
+});
+dtfRouter.post("/flatbed-orders", async (req, res) => {
+  const parsed = flatbedOrderSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const settings = await flatbedSettings();
+  const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup);
+  if (!quote.ok) return res.status(400).json({ error: quote.problem ?? "No price applies to that job" });
+  const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
+  if (claim) return res.status(400).json({ error: claim });
+  const { lines: paymentLines, paid } = resolvePaymentLines(d);
+  const merch = await materialLineItems(prisma, d.materialLines).catch(() => null);
+  if (!merch) return res.status(400).json({ error: "Material not found" });
+  const orderTotal2 = quote.total + merch.reduce((a2, m) => a2 + m.qty * m.unitPrice, 0);
+  if (paid > orderTotal2 + 5e-3) return res.status(400).json({ error: "Amount paid cannot exceed the order total" });
+  try {
+    const order = await prisma.$transaction(async (tx) => {
+      const service = await flatbedService(tx, quote.unitPrice);
+      return createDtfOrder(tx, {
+        product: "uv",
+        channel: "general",
+        customerName: d.client.trim() || WALK_IN_CLIENT,
+        phone: d.phone.trim(),
+        staffId: cap.staffId,
+        capturedById: cap.capturedById,
+        capturedByName: cap.capturedByName,
+        serviceLine: { itemType: "service", serviceId: service.id, qty: 1, unitPrice: quote.total, description: flatbedDescription(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup, d.note) },
+        materialLines: d.materialLines,
+        payments: paymentLines,
+        sourcedBy: d.sourcedBy,
+        freelanceAgentId: d.freelanceAgentId,
+        serviceBase: quote.total
+        // sold at the quoted price, with nothing above it to earn a premium on
+      });
+    });
+    res.status(201).json({ order: serializeDetail(order) });
+  } catch (err) {
+    res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the flatbed order") });
   }
 });
 var settingsSchema6 = external_exports.object({

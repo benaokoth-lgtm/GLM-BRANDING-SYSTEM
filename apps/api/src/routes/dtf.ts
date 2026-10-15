@@ -1058,6 +1058,8 @@ const sheetSchema = z.object({
   client: z.string().max(200).default(''),
   phone: z.string().max(40).default(''),
   runningMetres: z.number().positive('Running metres must be greater than 0'),
+  /** The number of artworks on the length, as entered beside the metres (the base price comes from it); the rows must add up to it. */
+  pieces: z.number().int().positive().optional(),
   heatPressFee: z.number().positive('Choose the heat press fee — a job cannot be processed without it').optional(),
   rows: z
     .array(
@@ -1087,7 +1089,7 @@ dtfRouter.post('/sheets', async (req, res) => {
   if (product === 'dtf' && d.heatPressFee == null) return res.status(400).json({ error: 'Choose the heat press fee — a job cannot be processed without it' });
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const settings = await getSettings(product);
-  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone);
+  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces ?? 0);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The sheet cannot be priced' });
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });

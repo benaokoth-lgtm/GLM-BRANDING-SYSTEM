@@ -66,7 +66,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const belowSystem = pcs > 0 && chosen < system - 0.005;
   const discountTotal = belowSystem ? Math.round((system - chosen) * pcs * 100) / 100 : 0;
   const jobTotal = Math.round(chosen * pcs * 100) / 100;
-  const sheet = sheetCalc(toSheetRows(sheetRows), run, settings.fixedChargePerMetre, settings.minPricePerPiece, f.client);
+  const sheet = sheetCalc(toSheetRows(sheetRows), run, settings.fixedChargePerMetre, settings.minPricePerPiece, f.client, '', pcs);
   const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && !belowFloor;
   // What this discount does to the roll's profit (managers see roll costs; staff just see the discount).
   const impact =
@@ -122,15 +122,13 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
             The actual length printed on film — must already cover every piece below (a transfer is single-use).
           </p>
         </div>
-        {!sheetOn && (
         <div className="field" style={{ margin: 0 }}>
-          <label>Pieces</label>
+          <label>{sheetOn ? 'Artworks on this length (all sizes, all clients)' : 'Pieces'}</label>
           <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} placeholder="e.g. 108" />
           <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
-            More pieces sharing this run means a cheaper price each; fewer means a dearer one — it never drops below the floor.
+            {sheetOn ? 'With the running metres this gives the recommended price below; then share them into rows by size.' : 'More pieces sharing this run means a cheaper price each; fewer means a dearer one — it never drops below the floor.'}
           </p>
         </div>
-        )}
       </div>
 
       <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 'var(--space-3)', fontWeight: 400 }}>
@@ -138,7 +136,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         <span>Artworks of different sizes, or for different clients — price each size</span>
       </label>
       {sheetOn && (
-        <ArtworkSheetPanel rows={sheetRows} onChange={setSheetRows} run={run} fixedChargePerMetre={settings.fixedChargePerMetre} minPricePerPiece={settings.minPricePerPiece} defaultClient={f.client} artworkRate={artworkRate} />
+        <ArtworkSheetPanel rows={sheetRows} onChange={setSheetRows} run={run} fixedChargePerMetre={settings.fixedChargePerMetre} minPricePerPiece={settings.minPricePerPiece} defaultClient={f.client} artworkRate={artworkRate} pieces={pcs} />
       )}
 
       {!sheetOn && (
@@ -171,9 +169,8 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
 
       {open.length === 0 && <p className="note" style={{ marginTop: 'var(--space-3)' }}>No open {label} film roll — ask a manager to install one under DTF → {label} → Rolls before capturing a job.</p>}
 
-      {!sheetOn && (
       <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--color-divider)' }}>
-        {lines.map(([l, fm, v]) => (
+        {(sheetOn ? lines.slice(0, 2) : lines).map(([l, fm, v]) => (
           <div key={l} style={{ display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2) 2px', borderBottom: '1px solid var(--color-divider)', fontSize: 13 }}>
             <span style={{ flex: 1 }}>{l}</span>
             <span className="text-muted">{fm}</span>
@@ -181,7 +178,6 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           </div>
         ))}
       </div>
-      )}
 
       {overRoll && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
@@ -216,6 +212,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           jobOn={todayStr()}
           run={run}
           rows={sheetRows}
+          pieces={pcs}
           fixedChargePerMetre={settings.fixedChargePerMetre}
           minPricePerPiece={settings.minPricePerPiece}
           defaultClient={f.client}

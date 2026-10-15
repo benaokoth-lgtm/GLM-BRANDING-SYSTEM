@@ -60,7 +60,11 @@ export function sheetClientKey(client: string, phone: string): string {
   return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, ' ')}`;
 }
 
-export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre: number, minPricePerPiece: number, defaultClient = '', defaultPhone = ''): SheetCalc {
+/**
+ * `expectedPieces` is the number of artworks on the length as the sales person entered it (the number that, with the metres, gives the base price); when it is given the rows must add up to it,
+ * so the recommended price every artwork is judged against is the one they saw. Left out, the rows themselves say how many there are.
+ */
+export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre: number, minPricePerPiece: number, defaultClient = '', defaultPhone = '', expectedPieces = 0): SheetCalc {
   const problems: string[] = [];
   const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.label.trim() || r.client.trim());
   if (!(metres > 0)) problems.push('Enter the running metres');
@@ -71,7 +75,10 @@ export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre:
     if (!(r.price >= minPricePerPiece - 0.005)) problems.push(`Row ${n}: the price of an artwork cannot be below the minimum of ${minPricePerPiece}`);
   });
   const pieces = live.reduce((a, r) => a + (Number.isInteger(r.qty) && r.qty > 0 ? r.qty : 0), 0);
-  const rec = pieces > 0 && metres > 0 ? jobCalc(metres, pieces, fixedChargePerMetre, minPricePerPiece) : { finalPerPiece: 0, jobTotal: 0 };
+  if (expectedPieces > 0 && pieces > 0 && pieces !== expectedPieces) problems.push(`The rows add up to ${pieces} artworks but the length has ${expectedPieces} — ${pieces < expectedPieces ? `${expectedPieces - pieces} still to place` : `${pieces - expectedPieces} too many`}`);
+  // the recommended price is the one the sales person saw: worked out on the artworks entered beside the metres when they gave them
+  const basis = expectedPieces > 0 ? expectedPieces : pieces;
+  const rec = pieces > 0 && metres > 0 ? jobCalc(metres, basis, fixedChargePerMetre, minPricePerPiece) : { finalPerPiece: 0, jobTotal: 0 };
   const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0);
   const enteredTotal = r2(valid.reduce((a, r) => a + r.qty * r.price, 0));
 
@@ -94,7 +101,7 @@ export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre:
   clients.forEach((g, i) => {
     g.metres = i === clients.length - 1 ? r2to(left) : r2to(pieces > 0 ? (metres * g.pieces) / pieces : 0);
     left -= g.metres;
-    g.fairShare = pieces > 0 ? r2((rec.jobTotal * g.pieces) / pieces) : 0;
+    g.fairShare = basis > 0 ? r2((rec.jobTotal * g.pieces) / basis) : 0;
     g.pctOfFairShare = g.fairShare > 0 ? r2((g.amount / g.fairShare) * 100) : 0;
   });
   const surplus = r2(enteredTotal - rec.jobTotal);

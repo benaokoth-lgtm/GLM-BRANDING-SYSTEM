@@ -66681,7 +66681,7 @@ function sheetClientKey(client, phone) {
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
-function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultClient = "", defaultPhone = "") {
+function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultClient = "", defaultPhone = "", expectedPieces = 0) {
   const problems = [];
   const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.label.trim() || r.client.trim());
   if (!(metres > 0)) problems.push("Enter the running metres");
@@ -66692,7 +66692,9 @@ function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultC
     if (!(r.price >= minPricePerPiece - 5e-3)) problems.push(`Row ${n}: the price of an artwork cannot be below the minimum of ${minPricePerPiece}`);
   });
   const pieces = live.reduce((a2, r) => a2 + (Number.isInteger(r.qty) && r.qty > 0 ? r.qty : 0), 0);
-  const rec = pieces > 0 && metres > 0 ? jobCalc(metres, pieces, fixedChargePerMetre, minPricePerPiece) : { finalPerPiece: 0, jobTotal: 0 };
+  if (expectedPieces > 0 && pieces > 0 && pieces !== expectedPieces) problems.push(`The rows add up to ${pieces} artworks but the length has ${expectedPieces} \u2014 ${pieces < expectedPieces ? `${expectedPieces - pieces} still to place` : `${pieces - expectedPieces} too many`}`);
+  const basis = expectedPieces > 0 ? expectedPieces : pieces;
+  const rec = pieces > 0 && metres > 0 ? jobCalc(metres, basis, fixedChargePerMetre, minPricePerPiece) : { finalPerPiece: 0, jobTotal: 0 };
   const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0);
   const enteredTotal = r28(valid.reduce((a2, r) => a2 + r.qty * r.price, 0));
   const groups = /* @__PURE__ */ new Map();
@@ -66712,7 +66714,7 @@ function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultC
   clients.forEach((g, i) => {
     g.metres = i === clients.length - 1 ? r2to(left) : r2to(pieces > 0 ? metres * g.pieces / pieces : 0);
     left -= g.metres;
-    g.fairShare = pieces > 0 ? r28(rec.jobTotal * g.pieces / pieces) : 0;
+    g.fairShare = basis > 0 ? r28(rec.jobTotal * g.pieces / basis) : 0;
     g.pctOfFairShare = g.fairShare > 0 ? r28(g.amount / g.fairShare * 100) : 0;
   });
   const surplus = r28(enteredTotal - rec.jobTotal);
@@ -79704,6 +79706,8 @@ var sheetSchema = external_exports.object({
   client: external_exports.string().max(200).default(""),
   phone: external_exports.string().max(40).default(""),
   runningMetres: external_exports.number().positive("Running metres must be greater than 0"),
+  /** The number of artworks on the length, as entered beside the metres (the base price comes from it); the rows must add up to it. */
+  pieces: external_exports.number().int().positive().optional(),
   heatPressFee: external_exports.number().positive("Choose the heat press fee \u2014 a job cannot be processed without it").optional(),
   rows: external_exports.array(
     external_exports.object({
@@ -79729,7 +79733,7 @@ dtfRouter.post("/sheets", async (req, res) => {
   if (product === "dtf" && d.heatPressFee == null) return res.status(400).json({ error: "Choose the heat press fee \u2014 a job cannot be processed without it" });
   const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
   const settings = await getSettings(product);
-  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone);
+  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces ?? 0);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? "The sheet cannot be priced" });
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });

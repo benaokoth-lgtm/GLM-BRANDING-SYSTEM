@@ -37,17 +37,19 @@ interface PanelProps {
   minPricePerPiece: number;
   defaultClient: string;
   artworkRate: number | null;
+  /** The artworks on the length, as entered beside the metres: the rows must add up to it. */
+  pieces: number;
 }
 
 /** The rows of the sheet, and what they come to against the recommended total. */
-export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, minPricePerPiece, defaultClient, artworkRate }: PanelProps) {
-  const calc = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient || 'Walk-in');
+export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, minPricePerPiece, defaultClient, artworkRate, pieces: expected }: PanelProps) {
+  const calc = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient || 'Walk-in', '', expected);
   const set = (key: number, patch: Partial<UiRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const rec = calc.recommendedPerPiece;
   return (
     <div style={{ marginTop: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
       <div className="note" style={{ margin: 0 }}>
-        One row for each size: how many artworks and the price of each. The rows must add up to at least the recommended total for the whole length
+        Share the {expected > 0 ? <b>{fmtNum(expected)} artworks</b> : 'artworks'} of this length into rows, one for each size: how many, and the price of each. The rows must add up to at least the recommended total for the whole length
         {calc.pieces > 0 && run > 0 ? <> — about <b>{fmtKsh(rec)}</b> an artwork if they were all charged alike</> : ''}. Name the client on a row to give them their own order.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.1fr 0.7fr 0.8fr auto', gap: 6, fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -82,8 +84,8 @@ export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, mi
       <div style={{ borderTop: '1px solid var(--color-divider)', marginTop: 4 }}>
         {(
           [
-            ['Artworks on the sheet', `${fmtNum(calc.pieces)} on ${fmtNum(run, 2)} m`, fmtNum(calc.pieces)],
-            ['Recommended total', `${fmtKsh(fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m + ${fmtKsh(minPricePerPiece)} × ${fmtNum(calc.pieces)}`, calc.pieces > 0 && run > 0 ? fmtKsh(calc.recommendedTotal) : '—'],
+            ['Artworks placed in rows', expected > 0 ? `of the ${fmtNum(expected)} on ${fmtNum(run, 2)} m` : `on ${fmtNum(run, 2)} m`, fmtNum(calc.pieces)],
+            ['Recommended total', `${fmtKsh(fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m + ${fmtKsh(minPricePerPiece)} × ${fmtNum(expected > 0 ? expected : calc.pieces)}`, calc.pieces > 0 && run > 0 ? fmtKsh(calc.recommendedTotal) : '—'],
             ['Your total', 'the rows added up', fmtKsh(calc.enteredTotal)],
           ] as [string, string, string][]
         ).map(([l, fm, v]) => (
@@ -127,6 +129,8 @@ export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, mi
 
 interface DialogProps {
   product: DtfProduct;
+  /** The artworks on the length, as entered beside the metres. */
+  pieces: number;
   rollId: string;
   jobOn: string;
   run: number;
@@ -139,7 +143,7 @@ interface DialogProps {
 }
 
 /** Completes the sheet: the heat press fee, who it is credited to, each client's phone and what they pay now. Print records the orders — one for each client — and offers each one's receipt. */
-export function ArtworkSheetDialog({ product, rollId, jobOn, run, rows, fixedChargePerMetre, minPricePerPiece, defaultClient, onClose, onDone }: DialogProps) {
+export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, run, rows, fixedChargePerMetre, minPricePerPiece, defaultClient, onClose, onDone }: DialogProps) {
   const { user } = useAuth();
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
   const salesPeople = useSalesPeople(forOthers);
@@ -154,13 +158,13 @@ export function ArtworkSheetDialog({ product, rollId, jobOn, run, rows, fixedCha
   const noPress = product === 'uv';
 
   // clients are told apart by name here; once a phone is typed it tells them apart on the server
-  const base = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient);
+  const base = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient, '', expected);
   const nameKey = (client: string) => sheetClientKey(client, '');
   const withPhones = toSheetRows(rows).map((r) => {
     const c = r.client.trim() || defaultClient.trim();
     return { ...r, phone: phones[nameKey(c)] ?? '' };
   });
-  const calc = sheetCalc(withPhones, run, fixedChargePerMetre, minPricePerPiece, defaultClient);
+  const calc = sheetCalc(withPhones, run, fixedChargePerMetre, minPricePerPiece, defaultClient, '', expected);
   useEffect(() => {
     api.get<CompanySettings>('/master-data/settings').then(setCompany).catch(() => undefined);
   }, []);
@@ -183,6 +187,7 @@ export function ArtworkSheetDialog({ product, rollId, jobOn, run, rows, fixedCha
         jobOn,
         client: defaultClient,
         runningMetres: run,
+        ...(expected > 0 ? { pieces: expected } : {}),
         ...(noPress ? {} : { heatPressFee: feeNum }),
         rows: withPhones.map((x) => ({ client: x.client, phone: x.phone, label: x.label, qty: x.qty, price: x.price })),
         clientPayments,

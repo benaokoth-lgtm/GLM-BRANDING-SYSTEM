@@ -67,6 +67,12 @@ describe('artwork sheets', () => {
     assert.match(sheetCalc([], 1, 2160, 30).problems.join(), /at least one row/);
     assert.match(sheetCalc([row('A', 'a', 10, 500)], 0, 2160, 30).problems.join(), /running metres/);
     assert.equal(sheetCalc([row('A', 'a', 10, 500)], 1, 2160, 30).ok, true); // exactly at, or above, is fine
+    // the artworks on the length, as entered beside the metres, are the artworks the rows must add up to
+    const rows = [row('A', 'a', 100, 60), row('B', 'b', 40, 160)];
+    assert.equal(sheetCalc(rows, 3, 2160, 30, '', '', 140).ok, true);
+    assert.match(sheetCalc(rows, 3, 2160, 30, '', '', 150).problems[0]!, /add up to 140 artworks but the length has 150 — 10 still to place/);
+    assert.match(sheetCalc(rows, 3, 2160, 30, '', '', 130).problems[0]!, /but the length has 130 — 10 too many/);
+    assert.equal(sheetCalc(rows, 3, 2160, 30, '', '', 0).ok, true); // not given: the rows say how many there are
   });
 
   it('on a sheet the clients are judged together: only what the sheet earns above the recommendation counts, shared by what each was charged', () => {
@@ -113,6 +119,9 @@ describe('artwork sheets', () => {
     assert.equal(low.status, 400);
     assert.match(low.body.error, /below the recommended total/);
     assert.equal((await sheet({ rows: [row('A', 'x', 10, 25)] })).status, 400);
+    const placed = await sheet({ pieces: 150, rows: [row('Client A', '5 × 5 cm', 100, 60), row('Client B', '15 × 20 cm', 40, 160)] });
+    assert.equal(placed.status, 400);
+    assert.match(placed.body.error, /10 still to place/);
     const noFee = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 3, rows: [row('A', 'x', 10, 900)] });
     assert.equal(noFee.status, 400);
     assert.match(noFee.body.error, /heat press fee/);
@@ -125,7 +134,7 @@ describe('artwork sheets', () => {
 
   it('one client with several sizes is one order with a line each (the single-client case)', async () => {
     // 1.5 m over 60 artworks: 30 + 3,240 ÷ 60 = 84 each, 5,040 in all
-    const r = await sheet({ runningMetres: 1.5, client: 'Hope Chapel', rows: [row('', 'small', 50, 60), row('', 'large', 10, 250)] });
+    const r = await sheet({ runningMetres: 1.5, pieces: 60, client: 'Hope Chapel', rows: [row('', 'small', 50, 60), row('', 'large', 10, 250)] });
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.equal(r.body.orders.length, 1);
     const o = r.body.orders[0];

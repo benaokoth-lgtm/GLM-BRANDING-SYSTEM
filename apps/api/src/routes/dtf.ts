@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { notifyApprovers } from '../approvals';
-import { DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import { randomUUID } from 'node:crypto';
+import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -99,6 +100,8 @@ async function createDtfOrder(
     /** 'dtf' for film sales and artwork jobs; UV pens are an ordinary order ('general'), so a sourced client earns the general-order commission. */
     channel?: 'dtf' | 'general';
     serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null; description?: string };
+    /** More lines of the same service at other prices (the sizes of an artwork sheet): the first line is serviceLine. */
+    moreServiceLines?: { qty: number; unitPrice: number; description?: string; heatPressFee?: number | null }[];
     materialLines: { materialId: number; qty: number; unitPrice?: number }[];
     payments: PaymentLine[];
     // Set to the capturing staff member's own id when they sourced this client (credited to them for 12 months)
@@ -121,6 +124,7 @@ async function createDtfOrder(
   const materialItems = await materialLineItems(tx, opts.materialLines);
   const lineItemInputs: LineItemInput[] = [
     { itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
+    ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: l.qty, unitPrice: l.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: l.heatPressFee ?? null })),
     ...materialItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: null, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: 0, discountAmt: 0 })),
   ];
   const sourcing = await resolveSourcing(tx, {
@@ -159,6 +163,7 @@ async function createDtfOrder(
       lineItems: {
         create: [
           { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null, description: opts.serviceLine.description ?? '' },
+          ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: l.qty, unitPrice: l.unitPrice, heatPressFee: l.heatPressFee ?? null, description: l.description ?? '' })),
           ...materialItems,
         ],
       },
@@ -281,6 +286,8 @@ dtfRouter.get('/data', async (req, res) => {
       fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob,
       minPricePerPieceAtJob: j.minPricePerPieceAtJob,
       chargedPerPiece: j.chargedPerPiece,
+      chargedTotal: j.chargedTotal,
+      sheetId: j.sheetId,
       approvalStatus: j.approvalStatus,
       orderId: j.orderId,
     })),
@@ -1039,6 +1046,119 @@ dtfRouter.post('/jobs', async (req, res) => {
   }
 });
 
+// ── Artwork sheets: artworks of different sizes (and clients) on one length of film ───────────────────────────
+// The sales person enters rows — a size, how many artworks, the price of each — and the rows must add up to at least the recommended total for the whole length (see dtfSheet.ts in shared;
+// the cost is shared by number of artworks). Each client's rows become that client's own order, one line per size, with their own payment; the film is taken from the roll once, as the metres
+// entered, each order carrying its share by number of artworks. A client may pay less than their share when another pays more. Nothing waits for approval, because the total is never below the
+// recommendation; commission is on what the sheet brings in above it (see jobExtras).
+const sheetSchema = z.object({
+  rollId: z.string().min(1),
+  jobOn: dateStr.optional(),
+  /** The client for rows that name none. */
+  client: z.string().max(200).default(''),
+  phone: z.string().max(40).default(''),
+  runningMetres: z.number().positive('Running metres must be greater than 0'),
+  heatPressFee: z.number().positive('Choose the heat press fee — a job cannot be processed without it').optional(),
+  rows: z
+    .array(
+      z.object({
+        client: z.string().max(200).default(''),
+        phone: z.string().max(40).default(''),
+        label: z.string().max(80).default(''),
+        qty: z.number().int('Enter a whole number of artworks').positive('Enter how many artworks'),
+        price: z.number().positive('Enter the price of an artwork'),
+      }),
+    )
+    .min(1, 'Add at least one row of artworks')
+    .max(60),
+  /** What each client pays now, by the key of the client in the sheet's calculation. */
+  clientPayments: z.array(z.object({ key: z.string(), payments: z.array(paymentLineSchema).max(6) })).default([]),
+  sourcedBy: z.number().int().nullable().optional(),
+  staffId: z.number().int().nullable().optional(),
+});
+
+dtfRouter.post('/sheets', async (req, res) => {
+  const parsed = sheetSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  const found = await openRoll(d.rollId);
+  if ('error' in found) return res.status(400).json({ error: found.error });
+  const product = productOf(found.roll.product);
+  if (product === 'dtf' && d.heatPressFee == null) return res.status(400).json({ error: 'Choose the heat press fee — a job cannot be processed without it' });
+  const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
+  const settings = await getSettings(product);
+  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone);
+  if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The sheet cannot be priced' });
+  const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  for (const c of calc.clients) {
+    const claim = await claimProblem(req.user!, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
+    if (claim) return res.status(400).json({ error: claim });
+  }
+  // what each client pays now, and no more than their order comes to
+  const payFor = new Map(d.clientPayments.map((p) => [p.key, p.payments]));
+  for (const c of calc.clients) {
+    const paid = (payFor.get(c.key) ?? []).reduce((a, p) => a + p.amount, 0);
+    const total = round2(c.amount + (heatPressFee ?? 0) * c.pieces);
+    if (paid > total + 0.005) return res.status(400).json({ error: `${c.client || 'Walk-in'}: the amount paid cannot exceed their order total of ${total}` });
+  }
+  const sheetId = randomUUID();
+  try {
+    const made = await prisma.$transaction(async (tx) => {
+      const service = await dtfService(tx, 'artwork', product);
+      const out: { order: Awaited<ReturnType<typeof createDtfOrder>>; key: string }[] = [];
+      for (const c of calc.clients) {
+        const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: r.label.trim(), heatPressFee }));
+        const [first, ...rest] = lines;
+        const order = await createDtfOrder(tx, {
+          product,
+          customerName: c.client.trim() || WALK_IN_CLIENT,
+          phone: c.phone.trim(),
+          staffId: cap.staffId,
+          capturedById: cap.capturedById,
+          capturedByName: cap.capturedByName,
+          serviceLine: { itemType: 'service', serviceId: service.id, ...first! },
+          moreServiceLines: rest,
+          materialLines: [],
+          payments: payFor.get(c.key) ?? [],
+          sourcedBy: d.sourcedBy,
+          freelanceAgentId: null,
+          serviceBase: calc.recommendedPerPiece, // the recommended price of every artwork on the sheet is the same
+        });
+        const avg = round2(c.amount / c.pieces);
+        await tx.dtfArtworkJob.create({
+          data: {
+            rollId: d.rollId,
+            jobOn: d.jobOn ?? todayStr(),
+            client: c.client.trim() || WALK_IN_CLIENT,
+            runningMetres: c.metres,
+            pieces: c.pieces,
+            fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
+            minPricePerPieceAtJob: settings.minPricePerPiece,
+            chargedPerPiece: Math.abs(avg - calc.recommendedPerPiece) > 0.005 ? avg : null,
+            chargedTotal: c.amount,
+            sheetId,
+            approvalStatus: 'Approved',
+            capturedByName: req.user!.name,
+            orderId: order.id,
+          },
+        });
+        out.push({ order, key: c.key });
+      }
+      return out;
+    });
+    res.status(201).json({
+      sheetId,
+      recommendedTotal: calc.recommendedTotal,
+      enteredTotal: calc.enteredTotal,
+      surplus: calc.surplus,
+      orders: made.map((m) => serializeDetail(m.order)),
+    });
+  } catch (err) {
+    res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the sheet') });
+  }
+});
+
 // A day at a time. For each date: the number of artwork jobs (or film sales), what was printed or sold, the average prices, and the money —
 // total, paid and balance, taken from the orders those jobs generated (so a payment taken later through the order counts). Each day lists the
 // individual orders behind it. Jobs waiting for a price approval are listed but kept out of the day's figures until they are approved.
@@ -1087,7 +1207,7 @@ dtfRouter.get('/daily', manageOnly, async (req, res) => {
   for (const j of jobs) byDay.set(j.jobOn, [...(byDay.get(j.jobOn) ?? []), j]);
   const days = [...byDay.entries()].map(([date, list]) => {
     const orders = list.map((j) => {
-      const calc = { id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece };
+      const calc = { id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal };
       const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
       const final = jobTotals(calc).finalPerPiece;
       const money = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };

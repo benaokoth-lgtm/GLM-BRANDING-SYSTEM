@@ -323,6 +323,15 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
 
 
 <figure class="shot half"><img src="img/05-artwork-order.jpg" alt="DTF Artwork Order: the roll, running metres used, pieces, the heat press fee and the price per piece."><figcaption>DTF Artwork Order: the roll, running metres used, pieces, the heat press fee and the price per piece.</figcaption></figure>
+<h4>Artworks of different sizes, or for different clients, on one length (price each size)</h4>
+<p>On <span class="path">DTF Artwork Order</span> and <span class="path">UV DTF Artwork Order</span>, tick <b>Artworks of different sizes, or for different clients — price each size</b> when one length of film carries artworks that should not all cost the same, or that belong to different clients. Enter the roll, the <b>running metres</b> as usual, then one <b>row</b> for each size: the <b>client</b> (leave it blank for the order's own client), the <b>size or what it is</b> (for example <i>5 × 5 cm</i>), <b>how many</b> artworks and the <b>price of each</b>. <b>+ Add a row</b> adds more.</p>
+<ul>
+  <li><b>The rows must add up to at least the recommended total for the whole length</b>: the usual formula, worked out on <b>all</b> the artworks together — <i>the fixed charge per metre × the metres + the minimum price × the number of artworks</i> (for example 3 m with 140 artworks: 2,160 × 3 + 30 × 140 = <b>10,680</b>). The cost is shared by the <b>number of artworks</b>, not by their size, so the recommended price of every artwork is the same; the rows are free to charge sizes differently — the large ones more, the small ones less — as long as the total is not below it. The screen shows the recommended total, your total, and what is above (or short). A sheet that is short cannot be recorded, and no artwork may be priced under the minimum per piece.</li>
+  <li><b>One order for each client.</b> Rows with the same client make that client's order, with one line for each size (<i>100 × 5 × 5 cm</i>); a row with no client goes to the order's own client. In the box that opens (<b>Continue</b>) you choose the heat press fee (DTF), who the sale is credited to (the front office), and for each client their phone and what they pay now — in full, part or later — then <b>Record</b> creates the orders and offers each client's receipt or invoice to print.</li>
+  <li><b>A client may pay less than their share when another pays more.</b> The screen shows each client's total as a percentage of their share of the recommended total so it is clear who is paying more. Nothing waits for approval, because the sheet as a whole is never below the recommendation.</li>
+  <li><b>The film comes off the roll once</b>, as the metres entered. Each client's order carries its share of those metres by number of artworks, and they add up to the metres entered.</li>
+  <li><b>Commission</b> is on what the <b>whole sheet</b> brings in above the recommended total (the usual artwork share of the extra, as the clients pay), not on each client's own premium: moving a price from one client's artworks to another's earns nothing. A freelance sales person cannot be credited with a sheet.</li>
+</ul>
 <h3 id="s5-4a">5.4a UV DTF Film Order <span class="who">Staff</span></h3>
 <p>Open <span class="path">UV DTF Film Order</span>. It works exactly like the DTF Film Order, but sells printed <b>UV DTF film</b> from a UV DTF roll (a 30 cm wide, 50 metre roll). Choose the open <b>UV-</b> roll, the client and the metres.</p>
 <ul>
@@ -523,6 +532,16 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
 
 <!-- 8 ------------------------------------------------------------------>
 <h2 id="s8"><span class="n">8</span>Handing over, credit and corrections</h2>
+
+<h3 id="s8-sales-person">Correcting the sales person on an order</h3>
+<p>If an order was captured without the sales person it belongs to, or the wrong one was chosen, open the order: under <b>Staff</b> there is <b>Change sales person</b> (or <b>Ask to change sales person</b>). Choose the right person, say why, and send it.</p>
+<ul>
+  <li><b>Admin and those who manage commission</b> change it straight away.</li>
+  <li><b>The front office, the sales person it is credited to, and whoever keyed the order</b> ask: the request waits in <b>Approvals</b> (under the screen the order came through) until Admin or a commission manager approves it or turns it down. Only one correction can wait on an order at a time, and nobody decides their own request.</li>
+  <li>Only people whose role is set up to be given orders can be chosen. The order moves to the new person's orders, and <b>their commission and sales target follow it</b>, for the money received on it; <b>captured by</b> does not change. A client credited to the same person goes with the order; a client credited to somebody else stays theirs.</li>
+  <li>An order paid in a month whose commission has <b>already been approved</b> cannot be moved, because the approved figures would no longer match: the month's approval has to be undone first.</li>
+  <li>Every correction is kept under <b>Show sales person history</b> on the order: who it was, who it became, why, who asked and who decided.</li>
+</ul>
 
 <h3>Hand over</h3>
 <p>When an order is <i>Ready for Pickup/Delivery</i>, open it. There are two cases:</p>

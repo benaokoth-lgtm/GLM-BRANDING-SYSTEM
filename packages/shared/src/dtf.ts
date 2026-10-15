@@ -104,6 +104,10 @@ export interface DtfArtworkJob {
   approvalStatus?: 'Pending' | 'Approved';
   /** The order this job generated. */
   orderId?: number | null;
+  /** What the client was charged for the artworks in all (VAT included, before the heat press fee), set when the artworks of a sheet were priced row by row; then it is the price, and chargedPerPiece is only its average. */
+  chargedTotal?: number | null;
+  /** The jobs that came from one sheet (artworks of several sizes, perhaps several clients, on one length of film) share this. The recommended price is judged on the sheet as a whole, not on each client. */
+  sheetId?: string | null;
 }
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -183,6 +187,7 @@ export function systemJobCalc(j: DtfArtworkJob): JobCalc {
 /** What the job really brings in: the price actually charged per piece (higher or lower than recommended), else the recommended price. */
 export function jobTotals(j: DtfArtworkJob): JobCalc {
   const sys = systemJobCalc(j);
+  if (j.chargedTotal != null && j.chargedTotal > 0 && j.pieces > 0) return { finalPerPiece: r2(j.chargedTotal / j.pieces), jobTotal: r2(j.chargedTotal) };
   if (j.chargedPerPiece != null && j.chargedPerPiece > 0 && Math.abs(j.chargedPerPiece - sys.finalPerPiece) > 0.004) {
     return { finalPerPiece: r2(j.chargedPerPiece), jobTotal: r2(j.chargedPerPiece * j.pieces) };
   }
@@ -192,6 +197,36 @@ export function jobTotals(j: DtfArtworkJob): JobCalc {
 /** Per-piece amount charged below the recommended price (0 when charged at or above it). */
 export function jobDiscountPerPiece(j: DtfArtworkJob): number {
   return r2(Math.max(0, systemJobCalc(j).finalPerPiece - jobTotals(j).finalPerPiece));
+}
+
+/**
+ * What each job earned above the recommended price, and what it gave away below it (Ksh). A job on its own is judged on its own price. The jobs of one sheet are judged together: a client
+ * who paid less than their share is made up by another who paid more, so only what the SHEET brought in above (or, never, below) the recommended total counts, shared between its jobs by
+ * what each was charged. Commission and the roll's figures use this, so moving a price from one client to another earns nothing.
+ */
+export function jobExtras(jobs: DtfArtworkJob[]): Map<string, { excess: number; short: number }> {
+  const out = new Map<string, { excess: number; short: number }>();
+  const sheets = new Map<string, DtfArtworkJob[]>();
+  for (const j of jobs) {
+    if (j.sheetId) {
+      const g = sheets.get(j.sheetId) ?? [];
+      g.push(j);
+      sheets.set(j.sheetId, g);
+    } else {
+      out.set(j.id, { excess: r2(j.pieces * Math.max(0, jobTotals(j).finalPerPiece - systemJobCalc(j).finalPerPiece)), short: r2(j.pieces * jobDiscountPerPiece(j)) });
+    }
+  }
+  for (const group of sheets.values()) {
+    const charged = group.reduce((a, j) => a + jobTotals(j).jobTotal, 0);
+    const system = group.reduce((a, j) => a + systemJobCalc(j).jobTotal, 0);
+    const above = Math.max(0, charged - system);
+    const below = Math.max(0, system - charged);
+    for (const j of group) {
+      const w = charged > 0 ? jobTotals(j).jobTotal / charged : 1 / group.length;
+      out.set(j.id, { excess: r2(above * w), short: r2(below * w) });
+    }
+  }
+  return out;
 }
 
 // ---------- Roll roll-up (the workbook's Rolls sheet / roll_summary view) ----------
@@ -259,10 +294,11 @@ export function summariseRoll(
   const filmRev = mine.reduce((a, x) => a + saleTotals(x).total, 0);
   const artRev = approvedJobs.reduce((a, x) => a + jobTotals(x).jobTotal, 0);
   const revenue = filmRev + artRev;
-  const artworkDiscount = r2(approvedJobs.reduce((a, x) => a + x.pieces * jobDiscountPerPiece(x), 0));
-  const premiumEarned = r2(approvedJobs.reduce((a, x) => a + x.pieces * Math.max(0, jobTotals(x).finalPerPiece - systemJobCalc(x).finalPerPiece), 0));
+  const extras = jobExtras(approvedJobs);
+  const artworkDiscount = r2(approvedJobs.reduce((a, x) => a + (extras.get(x.id)?.short ?? 0), 0));
+  const premiumEarned = r2(approvedJobs.reduce((a, x) => a + (extras.get(x.id)?.excess ?? 0), 0));
   const discountGiven = artworkDiscount;
-  const discountedJobs = approvedJobs.filter((x) => jobDiscountPerPiece(x) > 0);
+  const discountedJobs = approvedJobs.filter((x) => (extras.get(x.id)?.short ?? 0) > 0);
   const profit = revenue - rollCost;
   return {
     roll,

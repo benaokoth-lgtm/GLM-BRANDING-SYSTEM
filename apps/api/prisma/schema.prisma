@@ -1216,6 +1216,10 @@ model DtfArtworkJob {
   // What was really charged per piece when staff charged MORE than the system-recommended price (null = the recommended price). The
   // amount above the recommendation is what earns the staff member commission.
   chargedPerPiece  Float?
+  // A sheet of artworks priced row by row (see packages/shared/src/dtfSheet.ts): what the client was charged for the artworks in all (VAT included, before the heat press fee) — the price itself,
+  // chargedPerPiece being only its average — and the sheet it belongs to. The jobs of one sheet (one per client) are judged against the recommended price together.
+  chargedTotal     Float?
+  sheetId          String?
   // A job priced BELOW the recommended price waits for a manager's approval ('Pending') before it can be paid for or produced. Its film
   // metres are reserved on the roll meanwhile, but its revenue is not counted. Rejected jobs are removed (the PriceApproval row keeps the record).
   approvalStatus   String   @default("Approved") // Pending | Approved
@@ -1567,6 +1571,28 @@ model DiscountRequest {
   decidedAt       DateTime?
   reason          String?
   orderNo         String    @default("")
+}
+
+// A correction of who an order is credited to (the sales person was forgotten, or the wrong one chosen): asked for by someone involved in the order, decided by Admin or those who manage
+// commission — or made by them outright — and kept as the order's trail (see routes/allocation.ts). Status: Pending | Approved (it was applied) | Rejected.
+model AllocationChange {
+  id              Int       @id @default(autoincrement())
+  orderId         Int
+  orderNo         String
+  fromStaffId     Int
+  fromName        String
+  toStaffId       Int
+  toName          String
+  reason          String
+  requestedById   Int
+  requestedByName String
+  requestedAt     DateTime  @default(now())
+  status          String    @default("Pending")
+  decidedByName   String?
+  decidedAt       DateTime?
+  decisionNote    String    @default("")
+
+  @@index([orderId])
 }
 
 // UV flatbed printing (UV DTF Film Order → UV Flatbed): the price bands, the bed, the setup fee and the minimum, kept as one row of JSON (see packages/shared/src/flatbed.ts).

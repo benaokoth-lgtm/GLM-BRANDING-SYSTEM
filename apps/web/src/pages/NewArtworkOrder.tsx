@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, summariseRoll, todayStr } from '@glm/shared';
+import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, sheetCalc, summariseRoll, todayStr } from '@glm/shared';
 import type { DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
+import { ArtworkSheetDialog, ArtworkSheetPanel, newSheetRow, toSheetRows } from '../components/dtf/ArtworkSheet';
+import type { UiRow } from '../components/dtf/ArtworkSheet';
 import type { DtfData } from '../components/dtf/shared';
 
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
@@ -25,6 +27,9 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const [f, setF] = useState({ roll: '', client: '', run: '', pieces: '', price: '' });
   const [showOrderDialog, setShowOrderDialog] = useState(false);
   const [artworkRate, setArtworkRate] = useState<number | null>(null);
+  // Artworks of different sizes (and perhaps different clients) on this length: priced row by row instead of one price for every piece
+  const [sheetOn, setSheetOn] = useState(false);
+  const [sheetRows, setSheetRows] = useState<UiRow[]>(() => [newSheetRow(), newSheetRow()]);
 
   useEffect(() => {
     api
@@ -61,6 +66,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const belowSystem = pcs > 0 && chosen < system - 0.005;
   const discountTotal = belowSystem ? Math.round((system - chosen) * pcs * 100) / 100 : 0;
   const jobTotal = Math.round(chosen * pcs * 100) / 100;
+  const sheet = sheetCalc(toSheetRows(sheetRows), run, settings.fixedChargePerMetre, settings.minPricePerPiece, f.client);
   const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && !belowFloor;
   // What this discount does to the roll's profit (managers see roll costs; staff just see the discount).
   const impact =
@@ -116,6 +122,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
             The actual length printed on film — must already cover every piece below (a transfer is single-use).
           </p>
         </div>
+        {!sheetOn && (
         <div className="field" style={{ margin: 0 }}>
           <label>Pieces</label>
           <input className="input" inputMode="numeric" value={f.pieces} onChange={(e) => setF({ ...f, pieces: e.target.value })} placeholder="e.g. 108" />
@@ -123,8 +130,18 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
             More pieces sharing this run means a cheaper price each; fewer means a dearer one — it never drops below the floor.
           </p>
         </div>
+        )}
       </div>
 
+      <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 'var(--space-3)', fontWeight: 400 }}>
+        <input type="checkbox" checked={sheetOn} onChange={(e) => setSheetOn(e.target.checked)} aria-label="Artworks of different sizes or for different clients" />
+        <span>Artworks of different sizes, or for different clients — price each size</span>
+      </label>
+      {sheetOn && (
+        <ArtworkSheetPanel rows={sheetRows} onChange={setSheetRows} run={run} fixedChargePerMetre={settings.fixedChargePerMetre} minPricePerPiece={settings.minPricePerPiece} defaultClient={f.client} artworkRate={artworkRate} />
+      )}
+
+      {!sheetOn && (
       <div className="field" style={{ marginTop: 'var(--space-3)' }}>
         <label>Price / piece (optional)</label>
         <input className="input" style={{ maxWidth: 200 }} inputMode="decimal" placeholder={pcs > 0 ? String(system) : 'recommended'} value={f.price} onChange={(e) => setF({ ...f, price: e.target.value })} />
@@ -150,9 +167,11 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           </p>
         )}
       </div>
+      )}
 
       {open.length === 0 && <p className="note" style={{ marginTop: 'var(--space-3)' }}>No open {label} film roll — ask a manager to install one under DTF → {label} → Rolls before capturing a job.</p>}
 
+      {!sheetOn && (
       <div style={{ marginTop: 'var(--space-4)', borderTop: '1px solid var(--color-divider)' }}>
         {lines.map(([l, fm, v]) => (
           <div key={l} style={{ display: 'flex', gap: 'var(--space-2)', padding: 'var(--space-2) 2px', borderBottom: '1px solid var(--color-divider)', fontSize: 13 }}>
@@ -162,6 +181,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           </div>
         ))}
       </div>
+      )}
 
       {overRoll && (
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
@@ -179,8 +199,8 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           paddingTop: 'var(--space-4)',
         }}
       >
-        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>Job total: {fmtKsh(jobTotal)}</div>
-        <button type="button" className="btn btn-primary blueprint" onClick={() => setShowOrderDialog(true)} disabled={!canSave}>
+        <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>Job total: {fmtKsh(sheetOn ? sheet.enteredTotal : jobTotal)}</div>
+        <button type="button" className="btn btn-primary blueprint" onClick={() => setShowOrderDialog(true)} disabled={sheetOn ? !(sheet.ok && !!rollId) : !canSave}>
           <i className="corner tl"></i>
           <i className="corner tr"></i>
           <i className="corner bl"></i>
@@ -189,7 +209,21 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         </button>
       </div>
 
-      {showOrderDialog && (
+      {showOrderDialog && sheetOn && (
+        <ArtworkSheetDialog
+          product={product}
+          rollId={rollId}
+          jobOn={todayStr()}
+          run={run}
+          rows={sheetRows}
+          fixedChargePerMetre={settings.fixedChargePerMetre}
+          minPricePerPiece={settings.minPricePerPiece}
+          defaultClient={f.client}
+          onClose={() => setShowOrderDialog(false)}
+          onDone={() => navigate('/orders/all')}
+        />
+      )}
+      {showOrderDialog && !sheetOn && (
         <DtfOrderDialog
           product={product}
           mode="job"

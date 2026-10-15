@@ -7,6 +7,7 @@ import { printCorporateDocument, printOrderDocument } from '../utils/printInvoic
 import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
+import OrderAllocation from './OrderAllocation';
 import { useAuth } from '../state/AuthContext';
 import type { PaymentRow } from './SplitPayments';
 
@@ -262,6 +263,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
               <div>
                 {detail.staff.name}
                 {detail.capturedByName && <div className="note" style={{ margin: 0 }}>captured by {detail.capturedByName}</div>}
+                <OrderAllocation orderId={detail.id} onChanged={() => { load(); onChanged(); }} />
               </div>
             </div>
             <div>

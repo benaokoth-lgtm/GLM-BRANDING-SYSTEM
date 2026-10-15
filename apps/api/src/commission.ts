@@ -40,6 +40,7 @@ import {
   salesTarget,
   withholdingOn,
   systemJobCalc,
+  jobExtras,
   todayStr,
   SALES_TYPES,
   SALES_TYPE_PAID_AS,
@@ -494,6 +495,21 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     prisma.order.findMany({ where: { createdDate: { gte: start, lte: end }, status: { not: 'Quote' } }, include: orderInc }),
   ]);
 
+  // The jobs of one sheet of artworks (several clients on one length of film) are judged together: only what the sheet brings in above the recommended total earns commission, so a client
+  // paying less than their share is made up by another paying more, and moving a price between them earns nothing.
+  const sheetIds = new Set<string>();
+  for (const o of [...raised]) if (o.dtfArtworkJob?.sheetId) sheetIds.add(o.dtfArtworkJob.sheetId);
+  const sheetExtras = new Map<number, { excess: number; short: number }>();
+  if (payments.length || sheetIds.size) {
+    const payOrders = await prisma.order.findMany({ where: { id: { in: [...new Set(payments.map((p) => p.orderId))] } }, select: { dtfArtworkJob: { select: { sheetId: true } } } });
+    for (const o of payOrders) if (o.dtfArtworkJob?.sheetId) sheetIds.add(o.dtfArtworkJob.sheetId);
+  }
+  if (sheetIds.size) {
+    const sheetJobs = await prisma.dtfArtworkJob.findMany({ where: { sheetId: { in: [...sheetIds] } } });
+    const extras = jobExtras(sheetJobs.map((j) => ({ id: String(j.id), rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal, sheetId: j.sheetId })));
+    for (const j of sheetJobs) sheetExtras.set(j.id, extras.get(String(j.id)) ?? { excess: 0, short: 0 });
+  }
+
   // Money in and refunds out, per order, this month
   const flows = new Map<number, { received: number; refunded: number }>();
   const flow = (id: number) => {
@@ -555,8 +571,9 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       cell(o.staffId, type).received += net;
       const j = o.dtfArtworkJob;
       const sys = systemJobCalc({ id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
-      const charged = Math.max(sys, j.chargedPerPiece ?? sys);
-      const full = artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
+      const sheetExcess = j.sheetId ? (sheetExtras.get(j.id)?.excess ?? 0) : null;
+      const charged = sheetExcess != null ? sys + (j.pieces > 0 ? sheetExcess / j.pieces : 0) : Math.max(sys, j.chargedPerPiece ?? sys);
+      const full = sheetExcess != null ? (sheetExcess > 0 ? round2((sheetExcess / (1 + VAT_RATE)) * (config.artworkRatePct / 100)) : 0) : artworkPremiumCommission(j.pieces, charged, sys, config.artworkRatePct, VAT_RATE);
       if (full <= 0) addDtfNet(o.staffId, net);
       if (full > 0) {
         const c = round2(full * share);
@@ -596,7 +613,7 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
       const sys = systemJobCalc({ id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob }).finalPerPiece;
       cap.artworkJobs++;
       cap.artworkPieces += j.pieces;
-      cap.artworkExtraCharged = round2(cap.artworkExtraCharged + j.pieces * Math.max(0, (j.chargedPerPiece ?? sys) - sys));
+      cap.artworkExtraCharged = round2(cap.artworkExtraCharged + (j.sheetId ? (sheetExtras.get(j.id)?.excess ?? 0) : j.pieces * Math.max(0, (j.chargedPerPiece ?? sys) - sys)));
     }
     if (o.sourcedByStaffId) {
       const src = who(o.sourcedByStaffId).productivity;

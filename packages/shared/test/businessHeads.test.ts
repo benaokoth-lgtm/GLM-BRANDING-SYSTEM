@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_BUSINESS_HEADS, defaultBusinessHeadName } from '../src/businessHeads.ts';
 
-test('the business starts with six heads', () => {
-  assert.deepEqual([...DEFAULT_BUSINESS_HEADS], ['DTF Printing', 'UV Printing', 'Laser Engraving', 'Large Format Printing', 'Embroidery', 'General Order']);
+test('the business starts with eight heads', () => {
+  assert.deepEqual([...DEFAULT_BUSINESS_HEADS], ['DTF Printing', 'UV DTF Printing', 'UV Printing', 'Laser Engraving', 'Large Format Printing', 'Embroidery', 'Printing & Publications', 'General Order']);
 });
 
 test('a service lands under the obvious head, and General Order when nothing fits', () => {

@@ -1,4 +1,4 @@
-import { DISCOUNT_ROLES, VAT_RATE, canGiveDiscount, costingJobLabel, tidyCostingSummary } from '@glm/shared';
+import { DISCOUNT_ROLES, VAT_RATE, canGiveDiscount, costingJobLabel, salesTypeOf, tidyCostingSummary } from '@glm/shared';
 import type { Prisma } from '@prisma/client';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
@@ -9,7 +9,7 @@ import { getMailer } from './mailer';
 // Every request carries the screen it was raised on (its origin), and the inbox shows them under those heads, in the order of the menu. "Notifications" are the badge in the menu (the number waiting, plus the decisions on your own requests you have not looked at yet) and an email to those who can decide, when a new
 // request is raised and mail is set up.
 
-export type ApprovalSource = 'costing' | 'artwork' | 'discount' | 'amend' | 'deletion' | 'requisition' | 'leave';
+export type ApprovalSource = 'costing' | 'artwork' | 'discount' | 'amend' | 'deletion' | 'requisition' | 'leave' | 'allocation';
 
 export const SOURCE_LABEL: Record<ApprovalSource, string> = {
   costing: 'Job Costing price',
@@ -19,6 +19,7 @@ export const SOURCE_LABEL: Record<ApprovalSource, string> = {
   deletion: 'Deletion',
   requisition: 'Stock requisition',
   leave: 'Leave',
+  allocation: 'Sales person correction',
 };
 
 /** Where a request comes from: the screen of the system it was raised on (the heads the inbox is arranged under), in the order of the menu. */
@@ -312,10 +313,53 @@ async function leave(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole
   return { waiting: rows.filter((r) => r.status === 'Pending' && r.staffId !== u.id).map(make), mine: rows.filter((r) => r.staffId === u.id).map(make) };
 }
 
+/** The screen an order was raised on, from how it was captured (the same test the commission uses for the kind of sale). */
+const ORIGIN_OF_SALE: Record<string, ApprovalOrigin> = { general: 'general', dtf_film: 'dtf_film', dtf_artwork: 'dtf_artwork', uv_film: 'uv_film', uv_pens: 'uv_film', uv_flatbed: 'uv_film', uv_artwork: 'uv_artwork', embroidery: 'embroidery', costing: 'costing' };
+
+async function allocation(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole>>): Promise<Part> {
+  const since = recentSince();
+  const may = u.role === 'Admin' || perms.canManageCommission;
+  const rows = await prisma.allocationChange.findMany({
+    where: { OR: [...(may ? [{ status: 'Pending', requestedById: { not: u.id } }] : []), { requestedById: u.id, OR: [{ status: 'Pending' }, { decidedAt: { gte: since } }] }] },
+    orderBy: { id: 'desc' },
+    take: 100,
+  });
+  if (!rows.length) return { waiting: [], mine: [] };
+  const orders = await prisma.order.findMany({
+    where: { id: { in: [...new Set(rows.map((r) => r.orderId))] } },
+    include: { dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { id: true } }, embroideryJob: { select: { id: true } }, lineItems: { select: { service: { select: { name: true } } } } },
+  });
+  const byId = new Map(orders.map((o) => [o.id, o]));
+  const make = (r: (typeof rows)[number]): ApprovalItem => {
+    const o = byId.get(r.orderId);
+    const origin = o ? (ORIGIN_OF_SALE[salesTypeOf(o)] ?? 'general') : 'general';
+    return {
+      key: `allocation:${r.id}`,
+      source: 'allocation',
+      sourceLabel: SOURCE_LABEL.allocation,
+      ...originFields(origin),
+      title: `${r.orderNo}: ${r.fromName} → ${r.toName}`,
+      detail: `Credit the order to ${r.toName} instead of ${r.fromName}. Reason: ${r.reason}`,
+      amount: null,
+      requestedByName: r.requestedByName,
+      requestedAt: r.requestedAt.toISOString(),
+      status: r.status,
+      decidedByName: r.decidedByName,
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+      note: r.decisionNote || null,
+      link: o ? `/orders/all?order=${o.id}` : '/orders/all',
+      openLabel: 'Open the order',
+      openPrimary: false,
+      decide: { approve: `/allocation/requests/${r.id}/approve`, reject: `/allocation/requests/${r.id}/reject`, needsReason: false },
+    };
+  };
+  return { waiting: rows.filter((r) => r.status === 'Pending' && r.requestedById !== u.id).map(make), mine: rows.filter((r) => r.requestedById === u.id).map(make) };
+}
+
 /** What waits for this person's decision, and how their own requests are going (newest first). */
 export async function approvalsFor(u: Who): Promise<{ waiting: ApprovalItem[]; mine: ApprovalItem[] }> {
   const perms = await permissionsForRole(u.role);
-  const parts = await Promise.all([costing(u, perms), artwork(u, perms), discount(u), amend(u, perms), deletion(u, perms), requisition(u, perms), leave(u, perms)]);
+  const parts = await Promise.all([costing(u, perms), artwork(u, perms), discount(u), amend(u, perms), deletion(u, perms), requisition(u, perms), leave(u, perms), allocation(u, perms)]);
   const byTime = (a: ApprovalItem, b: ApprovalItem) => (a.requestedAt < b.requestedAt ? 1 : -1);
   return { waiting: parts.flatMap((p) => p.waiting).sort(byTime), mine: parts.flatMap((p) => p.mine).sort((a, b) => ((b.decidedAt ?? b.requestedAt) > (a.decidedAt ?? a.requestedAt) ? 1 : -1)) };
 }
@@ -335,6 +379,7 @@ const ROLE_WHERE: Record<Exclude<ApprovalSource, 'discount'>, Prisma.RoleWhereIn
   deletion: { canAccessFinance: true },
   requisition: { canApproveStock: true, canAccessStock: true },
   leave: { canManageHr: true },
+  allocation: { canManageCommission: true },
 };
 
 /** Who can decide this kind of request, with an email address and still working here. */

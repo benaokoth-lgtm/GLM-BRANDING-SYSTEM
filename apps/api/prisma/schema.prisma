@@ -247,6 +247,8 @@ model Setting {
   id             Int     @id @default(1)
   // When on, an Admin who has an email address is also asked for a 6-digit code emailed to them after their PIN. Off by default.
   requireAdminCode Boolean @default(false)
+  // Approvals inbox: email those who can decide when a request is raised (needs mail set up under Master Data).
+  approvalEmails Boolean @default(true)
   // The company's KRA PIN — printed as the employer's PIN on the payroll and the P9.
   kraPin         String  @default("")
   maxDiscountPct Float   @default(15)

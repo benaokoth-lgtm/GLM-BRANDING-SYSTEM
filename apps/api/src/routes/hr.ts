@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { dateRange, dateSpanLabel, round2, todayStr, weekdayOf } from '@glm/shared';
+import { notifyApprovers } from '../approvals';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
@@ -138,6 +139,7 @@ hrRouter.post('/requests', async (req, res) => {
   const created = await prisma.leaveRequest.create({
     data: { staffId, leaveTypeId: type.id, startDate: d.startDate, endDate: d.endDate, days: check.days.length, reason: d.reason, certificate: d.certificate, capturedByName: req.user!.name },
   });
+  notifyApprovers('leave', `${person.name} — ${type.name}`, `${person.name} has asked for ${check.days.length} working day(s) of ${type.name} leave, ${d.startDate} to ${d.endDate}.`, { id: staffId });
   const { names, types } = await lookups();
   res.status(201).json(shape(created, names, types));
 });

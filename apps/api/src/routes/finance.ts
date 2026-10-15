@@ -1,5 +1,6 @@
 import { Request, Response, Router } from 'express';
 import { z } from 'zod';
+import { notifyApprovers } from '../approvals';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
@@ -812,6 +813,7 @@ financeRouter.post('/expenses/:id/amend', async (req, res) => {
       requestedByName: req.user!.name,
     },
   });
+  notifyApprovers('amend', `${expense.category} expense correction`, `${req.user!.name} asks to change an expense (${expense.category}, ${expense.date}) from ${expense.amount} to ${parsed.data.amount}. Reason: ${parsed.data.reason}`, { name: req.user!.name });
   res.status(201).json(amendment);
 });
 
@@ -1041,6 +1043,7 @@ financeRouter.post('/deletion-requests', async (req, res) => {
   const request = await prisma.deletionRequest.create({
     data: { ...parsed.data, summary, requestedByName: req.user!.name },
   });
+  notifyApprovers('deletion', 'deletion request', `${req.user!.name} asks to delete: ${summary}. Reason: ${parsed.data.reason}`, { name: req.user!.name });
   res.status(201).json(request);
 });
 

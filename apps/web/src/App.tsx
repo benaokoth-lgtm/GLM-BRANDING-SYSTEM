@@ -14,6 +14,7 @@ import MasterData from './pages/MasterData';
 import Finance from './pages/Finance';
 import PettyCashDesk from './pages/PettyCashDesk';
 import Hr from './pages/Hr';
+import Approvals from './pages/Approvals';
 import NewEmbroideryOrder from './pages/NewEmbroideryOrder';
 import JobCosting from './pages/JobCosting';
 import Compliance from './pages/Compliance';
@@ -134,6 +135,7 @@ export default function App() {
         />
         {/* The Profit & Loss now lives in Accounting; an old bookmark lands there. */}
         <Route path="/pnl" element={<Navigate to="/accounting?tab=pl" replace />} />
+        <Route path="/approvals" element={<Approvals />} />
         <Route
           path="/hr"
           element={

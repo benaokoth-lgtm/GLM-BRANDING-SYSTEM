@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
+import { notifyApprovers } from '../approvals';
 import { DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
@@ -566,6 +567,7 @@ dtfRouter.post('/discount-requests', async (req, res) => {
   const row = await prisma.discountRequest.create({
     data: { product: d.product, spec: specKey(spec), kind: d.discount.kind, value: d.discount.value, unitBefore: base.unit, unitAfter: round2(base.unit - applied.amount), requestedById: req.user!.id, requestedByName: req.user!.name },
   });
+  notifyApprovers('discount', 'unit price discount', `${req.user!.name} asks for a unit price discount on ${d.product === 'pens' ? 'UV pens' : 'the UV flatbed'}: ${d.discount.kind === 'pct' ? d.discount.value + '% off' : d.discount.value + '/= off each'} (${base.unit}/= → ${round2(base.unit - applied.amount)}/=).`, { id: req.user!.id });
   res.status(201).json(showRequest(row));
 });
 
@@ -1025,6 +1027,7 @@ dtfRouter.post('/jobs', async (req, res) => {
             requestedByName: req.user!.name,
           },
         });
+        notifyApprovers('artwork', `${order.orderNo} priced below the recommended price`, `${req.user!.name} captured artwork job ${order.orderNo} for ${d.client.trim() || 'a walk-in'} at a price below the recommended one. It cannot be paid for or produced until it is approved.`, { id: req.user!.id });
       }
       return { job, order };
     });

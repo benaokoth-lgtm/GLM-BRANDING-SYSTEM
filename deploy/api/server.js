@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router26 = require_router();
+    var Router27 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router26({
+        this._router = new Router27({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router26 = require_router();
+    var Router27 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router26;
+    exports2.Router = Router27;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -26440,7 +26440,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r210 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r210, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r211 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r211, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -28966,10 +28966,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r210, options) => {
+    var intersects = (r1, r211, options) => {
       r1 = new Range(r1, options);
-      r210 = new Range(r210, options);
-      return r1.intersects(r210, options);
+      r211 = new Range(r211, options);
+      return r1.intersects(r211, options);
     };
     module2.exports = intersects;
   }
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express25 = __toESM(require_express2());
+var import_express26 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -66505,12 +66505,12 @@ function penTierFor(tiers, qty) {
   for (const t of sortedPenTiers(tiers)) if (qty >= t.from) found = t;
   return found;
 }
-function penQuote(tiers, qty, discount) {
+function penQuote(tiers, qty, discount2) {
   const q = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
   const s = sortedPenTiers(tiers);
   const tier = penTierFor(s, q);
   const rate2 = tier?.rate ?? 0;
-  const applied = unitDiscountAmount(rate2, discount);
+  const applied = unitDiscountAmount(rate2, discount2);
   const unitDiscount = applied.amount;
   const discountedRate = r26(rate2 - unitDiscount);
   const total = r26(q * discountedRate);
@@ -66629,13 +66629,13 @@ function flatbedQuote(s, widthCm, heightCm, pieces, opts = {}) {
   const volumePct = ds[discountIndex]?.pct ?? 0;
   const volumeApplied = !!opts.volume && volumePct > 0;
   const gross = r27(n * discountedUnit);
-  const discount = volumeApplied ? r27(gross * volumePct / 100) : 0;
-  const printTotal = r27(gross - discount);
+  const discount2 = volumeApplied ? r27(gross * volumePct / 100) : 0;
+  const printTotal = r27(gross - discount2);
   const setupFee = opts.setup ? s.setupFee : 0;
   const total = r27(printTotal + setupFee);
   const next = ds.find((d) => d.from > n && d.pct > volumePct);
   const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r27(printTotal - r27(next.from * discountedUnit * (1 - next.pct / 100))) } : null;
-  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, unitDiscount, discountedUnit, volumePct, discountIndex, volumeApplied, gross, discount, printTotal, setupFee, total, perPiece: r27(total / n), upsell };
+  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, unitDiscount, discountedUnit, volumePct, discountIndex, volumeApplied, gross, discount: discount2, printTotal, setupFee, total, perPiece: r27(total / n), upsell };
 }
 function flatbedDescription(s, widthCm, heightCm, pieces, opts = {}, note = "") {
   const q = flatbedQuote(s, widthCm, heightCm, pieces, opts);
@@ -73664,9 +73664,9 @@ ordersRouter.get("/outsourced/jobs", async (req, res) => {
 });
 ordersRouter.get("/:id/costing", async (req, res) => {
   if (!await requireCosts(req, res)) return;
-  const costing = await jobCosting(Number(req.params.id));
-  if (!costing) return res.status(404).json({ error: "Order not found" });
-  res.json(costing);
+  const costing2 = await jobCosting(Number(req.params.id));
+  if (!costing2) return res.status(404).json({ error: "Order not found" });
+  res.json(costing2);
 });
 var costingSchema = external_exports.object({
   lines: external_exports.array(
@@ -73789,6 +73789,266 @@ ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canView
 
 // apps/api/src/routes/finance.ts
 var import_express4 = __toESM(require_express2());
+
+// apps/api/src/approvals.ts
+var SOURCE_LABEL = {
+  costing: "Job Costing price",
+  artwork: "Price below recommended",
+  discount: "Unit price discount",
+  amend: "Expense correction",
+  deletion: "Deletion",
+  requisition: "Stock requisition",
+  leave: "Leave"
+};
+var r28 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var ksh = (n) => "Ksh " + r28(n).toLocaleString("en-KE", { maximumFractionDigits: 2 });
+var RECENT_DAYS = 14;
+var recentSince = () => new Date(Date.now() - RECENT_DAYS * 864e5);
+var decided = (s) => s !== "Pending";
+async function costing(u, perms) {
+  const sees = u.role === "Admin" || perms.canSeeCosts && (perms.canCaptureOrders || perms.canAccessFinance);
+  const since = recentSince();
+  const rows = await prisma.costingQuote.findMany({
+    where: { OR: [...sees ? [{ approval: "Pending", staffId: { not: u.id } }] : [], { staffId: u.id, approval: { not: "" }, OR: [{ approval: "Pending" }, { approvedAt: { gte: since } }] }] },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const make = (q) => {
+    const agreed = q.agreedPrice != null ? r28(q.agreedPrice * (1 + VAT_RATE)) : null;
+    const lowest = r28(q.cost * (1 + q.floorMarginPct / 100) * (1 + VAT_RATE));
+    return {
+      key: `costing:${q.id}`,
+      source: "costing",
+      sourceLabel: SOURCE_LABEL.costing,
+      title: `${q.quoteNo} \u2014 ${q.clientName || "Walk-in"}`,
+      detail: `${costingJobLabel(q.jobType)}: ${tidyCostingSummary(q.summary)}. Price agreed ${agreed != null ? ksh(agreed) : "\u2014"} with VAT; the lowest without approval is ${ksh(lowest)}.`,
+      amount: agreed,
+      requestedByName: q.staffName,
+      requestedAt: q.createdAt.toISOString(),
+      status: q.approval,
+      decidedByName: q.approvedByName || null,
+      decidedAt: q.approvedAt?.toISOString() ?? null,
+      note: q.approvalNote || null,
+      link: "/costing",
+      decide: { approve: `/costing/quotes/${q.id}/approve`, reject: `/costing/quotes/${q.id}/reject`, needsReason: true }
+    };
+  };
+  return {
+    waiting: rows.filter((q) => q.approval === "Pending" && q.staffId !== u.id).map(make),
+    mine: rows.filter((q) => q.staffId === u.id).map(make)
+  };
+}
+async function artwork(u, perms) {
+  const since = recentSince();
+  const rows = await prisma.priceApproval.findMany({
+    where: { OR: [...perms.canManageDtf ? [{ status: "Pending", requestedById: { not: u.id } }] : [], { requestedById: u.id, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const make = (a2) => ({
+    key: `artwork:${a2.id}`,
+    source: "artwork",
+    sourceLabel: SOURCE_LABEL.artwork,
+    title: `${a2.orderNo} \u2014 ${a2.client || "Walk-in"}`,
+    detail: `${a2.kind === "embroidery" ? "Embroidery job" : "Artwork job"}: ${a2.pieces} pieces at ${ksh(a2.chargedPerPiece)} instead of ${ksh(a2.systemPerPiece)} each \u2014 ${ksh(a2.shortfall)} given away.`,
+    amount: a2.shortfall,
+    requestedByName: a2.requestedByName,
+    requestedAt: a2.requestedAt.toISOString(),
+    status: a2.status,
+    decidedByName: a2.decidedByName,
+    decidedAt: a2.decidedAt?.toISOString() ?? null,
+    note: a2.reason,
+    link: a2.kind === "embroidery" ? "/orders/new/embroidery" : "/dtf",
+    decide: { approve: `/dtf/approvals/${a2.id}/approve`, reject: `/dtf/approvals/${a2.id}/reject`, needsReason: true }
+  });
+  return { waiting: rows.filter((a2) => a2.status === "Pending" && a2.requestedById !== u.id).map(make), mine: rows.filter((a2) => a2.requestedById === u.id).map(make) };
+}
+async function discount(u) {
+  const since = recentSince();
+  const may = canGiveDiscount(u.role);
+  const rows = await prisma.discountRequest.findMany({
+    where: { OR: [...may ? [{ status: "Pending", requestedById: { not: u.id } }] : [], { requestedById: u.id, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const make = (r) => {
+    const spec = JSON.parse(r.spec);
+    const job = r.product === "pens" ? `${spec.pens} UV pens` : `${spec.pieces} \xD7 ${spec.widthCm} \xD7 ${spec.heightCm} cm on the UV flatbed`;
+    return {
+      key: `discount:${r.id}`,
+      source: "discount",
+      sourceLabel: SOURCE_LABEL.discount,
+      title: `${job}`,
+      detail: `${r.kind === "pct" ? `${r.value}% off` : `${ksh(r.value)} off each`}: ${ksh(r.unitBefore)} \u2192 ${ksh(r.unitAfter)} a piece.`,
+      amount: null,
+      requestedByName: r.requestedByName,
+      requestedAt: r.requestedAt.toISOString(),
+      status: r.status,
+      decidedByName: r.decidedByName,
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+      note: r.reason,
+      link: "/orders/new/uv-film",
+      decide: { approve: `/dtf/discount-requests/${r.id}/approve`, reject: `/dtf/discount-requests/${r.id}/reject`, needsReason: true }
+    };
+  };
+  return { waiting: rows.filter((r) => r.status === "Pending" && r.requestedById !== u.id).map(make), mine: rows.filter((r) => r.requestedById === u.id).map(make) };
+}
+async function amend(u, perms) {
+  const since = recentSince();
+  const rows = await prisma.expenseAmendment.findMany({
+    where: { OR: [...perms.canAccessFinance ? [{ status: "Pending", requestedByName: { not: u.name } }] : [], { requestedByName: u.name, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
+    include: { expense: true },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const make = (a2) => ({
+    key: `amend:${a2.id}`,
+    source: "amend",
+    sourceLabel: SOURCE_LABEL.amend,
+    title: `${a2.expense.category} on ${a2.expense.date}`,
+    detail: `${ksh(a2.expense.amount)} \u2192 ${ksh(a2.proposedAmount)}${a2.proposedCategory !== a2.expense.category ? `, category ${a2.expense.category} \u2192 ${a2.proposedCategory}` : ""}${a2.proposedDate !== a2.expense.date ? `, date \u2192 ${a2.proposedDate}` : ""}. Reason: ${a2.reason}`,
+    amount: r28(a2.proposedAmount - a2.expense.amount),
+    requestedByName: a2.requestedByName,
+    requestedAt: a2.requestedAt.toISOString(),
+    status: a2.status,
+    decidedByName: a2.decidedByName,
+    decidedAt: a2.decidedAt?.toISOString() ?? null,
+    note: null,
+    link: "/finance",
+    decide: { approve: `/finance/expenses/amendments/${a2.id}/approve`, reject: `/finance/expenses/amendments/${a2.id}/reject`, needsReason: false }
+  });
+  return { waiting: rows.filter((a2) => a2.status === "Pending" && a2.requestedByName !== u.name).map(make), mine: rows.filter((a2) => a2.requestedByName === u.name).map(make) };
+}
+async function deletion(u, perms) {
+  const since = recentSince();
+  const rows = await prisma.deletionRequest.findMany({
+    where: { OR: [...perms.canAccessFinance ? [{ status: "Pending", requestedByName: { not: u.name } }] : [], { requestedByName: u.name, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const kind = { Expense: "an expense", PayrollEntry: "a payroll entry", PettyCashTopUp: "a petty cash top-up" };
+  const make = (d) => ({
+    key: `deletion:${d.id}`,
+    source: "deletion",
+    sourceLabel: SOURCE_LABEL.deletion,
+    title: `Delete ${kind[d.recordType] ?? d.recordType}`,
+    detail: `${d.summary}. Reason: ${d.reason}`,
+    amount: null,
+    requestedByName: d.requestedByName,
+    requestedAt: d.requestedAt.toISOString(),
+    status: d.status,
+    decidedByName: d.decidedByName,
+    decidedAt: d.decidedAt?.toISOString() ?? null,
+    note: null,
+    link: d.recordType === "PayrollEntry" ? "/compliance" : "/finance",
+    decide: { approve: `/finance/deletion-requests/${d.id}/approve`, reject: `/finance/deletion-requests/${d.id}/reject`, needsReason: false }
+  });
+  return { waiting: rows.filter((d) => d.status === "Pending" && d.requestedByName !== u.name).map(make), mine: rows.filter((d) => d.requestedByName === u.name).map(make) };
+}
+async function requisition(u, perms) {
+  const since = recentSince();
+  const rows = await prisma.stockRequisition.findMany({
+    where: { OR: [...perms.canApproveStock && perms.canAccessStock ? [{ status: "Pending", requestedByName: { not: u.name } }] : [], { requestedByName: u.name, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
+    include: { lines: { include: { material: true } }, material: true },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const make = (r) => {
+    const lines = r.lines.length ? r.lines.map((l) => `${l.material.name} \xD7 ${l.qty}`) : r.material && r.qty ? [`${r.material.name} \xD7 ${r.qty}`] : [];
+    const est = r.lines.reduce((a2, l) => a2 + (l.estUnitCost ?? 0) * l.qty, 0);
+    return {
+      key: `requisition:${r.id}`,
+      source: "requisition",
+      sourceLabel: SOURCE_LABEL.requisition,
+      title: r.ref ?? `Requisition #${r.id}`,
+      detail: `${lines.slice(0, 4).join(", ")}${lines.length > 4 ? ` and ${lines.length - 4} more` : ""}${r.note ? `. ${r.note}` : ""}`,
+      amount: est > 0 ? r28(est) : null,
+      requestedByName: r.requestedByName,
+      requestedAt: r.requestedAt.toISOString(),
+      status: r.status,
+      decidedByName: r.decidedByName,
+      decidedAt: r.decidedAt?.toISOString() ?? null,
+      note: null,
+      link: "/stock",
+      decide: { approve: `/stock/requisitions/${r.id}/approve`, reject: `/stock/requisitions/${r.id}/reject`, needsReason: false }
+    };
+  };
+  return { waiting: rows.filter((r) => r.status === "Pending" && r.requestedByName !== u.name).map(make), mine: rows.filter((r) => r.requestedByName === u.name).map(make) };
+}
+async function leave(u, perms) {
+  const since = recentSince();
+  const rows = await prisma.leaveRequest.findMany({
+    where: { OR: [...perms.canManageHr ? [{ status: "Pending", staffId: { not: u.id } }] : [], { staffId: u.id, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  if (!rows.length) return { waiting: [], mine: [] };
+  const [people, types] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.staffId))] } }, select: { id: true, name: true } }),
+    prisma.leaveType.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.leaveTypeId))] } }, select: { id: true, name: true } })
+  ]);
+  const name2 = new Map(people.map((p) => [p.id, p.name]));
+  const typeName = new Map(types.map((t) => [t.id, t.name]));
+  const make = (r) => ({
+    key: `leave:${r.id}`,
+    source: "leave",
+    sourceLabel: SOURCE_LABEL.leave,
+    title: `${name2.get(r.staffId) ?? "Staff"} \u2014 ${typeName.get(r.leaveTypeId) ?? "leave"}`,
+    detail: `${r.days} working day${r.days === 1 ? "" : "s"}, ${r.startDate} to ${r.endDate}${r.reason ? `. ${r.reason}` : ""}`,
+    amount: null,
+    requestedByName: name2.get(r.staffId) ?? "",
+    requestedAt: r.createdAt.toISOString(),
+    status: r.status,
+    decidedByName: r.decidedByName || null,
+    decidedAt: r.decidedAt?.toISOString() ?? null,
+    note: r.decisionNote || null,
+    link: "/hr",
+    decide: null
+    // deciding leave can need a confirmation (cover below the minimum): it is done on the People (HR) page
+  });
+  return { waiting: rows.filter((r) => r.status === "Pending" && r.staffId !== u.id).map(make), mine: rows.filter((r) => r.staffId === u.id).map(make) };
+}
+async function approvalsFor(u) {
+  const perms = await permissionsForRole(u.role);
+  const parts = await Promise.all([costing(u, perms), artwork(u, perms), discount(u), amend(u, perms), deletion(u, perms), requisition(u, perms), leave(u, perms)]);
+  const byTime = (a2, b) => a2.requestedAt < b.requestedAt ? 1 : -1;
+  return { waiting: parts.flatMap((p) => p.waiting).sort(byTime), mine: parts.flatMap((p) => p.mine).sort((a2, b) => (b.decidedAt ?? b.requestedAt) > (a2.decidedAt ?? a2.requestedAt) ? 1 : -1) };
+}
+async function approvalsSummary(u) {
+  const { waiting, mine } = await approvalsFor(u);
+  return { waiting: waiting.length, decided: mine.filter((m) => decided(m.status) && m.decidedAt).map((m) => m.decidedAt) };
+}
+var ROLE_WHERE = {
+  costing: { canSeeCosts: true, OR: [{ canCaptureOrders: true }, { canAccessFinance: true }] },
+  artwork: { canManageDtf: true },
+  amend: { canAccessFinance: true },
+  deletion: { canAccessFinance: true },
+  requisition: { canApproveStock: true, canAccessStock: true },
+  leave: { canManageHr: true }
+};
+async function approverRecipients(source, except) {
+  const roles = source === "discount" ? [...DISCOUNT_ROLES] : [...(await prisma.role.findMany({ where: ROLE_WHERE[source], select: { name: true } })).map((r) => r.name), "Admin"];
+  const users = await prisma.user.findMany({ where: { role: { in: roles }, active: true, email: { not: null } }, select: { id: true, name: true, email: true } });
+  return users.filter((x) => x.email && x.id !== except?.id && x.name !== except?.name);
+}
+function notifyApprovers(source, subject, text, from) {
+  const timer = setTimeout(async () => {
+    try {
+      const setting = await prisma.setting.findUnique({ where: { id: 1 } });
+      if (setting && setting.approvalEmails === false) return;
+      const mailer = await getMailer();
+      if (!mailer) return;
+      const to = await approverRecipients(source, from);
+      for (const r of to) {
+        await mailer.sendMail({ to: r.email, subject: `Approval needed: ${subject}`, text: `${text}
+
+Open Approvals in the GLM POS to approve or turn it down.` }).catch(() => void 0);
+      }
+    } catch {
+    }
+  }, 3e3);
+  timer.unref?.();
+}
 
 // apps/api/src/cheques.ts
 function normChequeNo(v) {
@@ -74979,6 +75239,7 @@ financeRouter.post("/expenses/:id/amend", async (req, res) => {
       requestedByName: req.user.name
     }
   });
+  notifyApprovers("amend", `${expense.category} expense correction`, `${req.user.name} asks to change an expense (${expense.category}, ${expense.date}) from ${expense.amount} to ${parsed.data.amount}. Reason: ${parsed.data.reason}`, { name: req.user.name });
   res.status(201).json(amendment);
 });
 async function decideAmendment(req, res, approve) {
@@ -75162,6 +75423,7 @@ financeRouter.post("/deletion-requests", async (req, res) => {
   const request = await prisma.deletionRequest.create({
     data: { ...parsed.data, summary, requestedByName: req.user.name }
   });
+  notifyApprovers("deletion", "deletion request", `${req.user.name} asks to delete: ${summary}. Reason: ${parsed.data.reason}`, { name: req.user.name });
   res.status(201).json(request);
 });
 async function decideDeletionRequest(req, res, approve) {
@@ -75271,7 +75533,7 @@ stockRouter.post("/requisitions", async (req, res) => {
   if (materials.length !== merged.size) return res.status(400).json({ error: "A chosen material was not found" });
   await ensureRequisitionsOnce();
   const reqNote = parsed.data.note ?? "";
-  let requisition = null;
+  let requisition2 = null;
   async function createRequisition(number) {
     return prisma.stockRequisition.create({
       data: {
@@ -75283,27 +75545,28 @@ stockRouter.post("/requisitions", async (req, res) => {
       include: requisitionInclude
     });
   }
-  for (let attempt = 0; attempt < 5 && !requisition; attempt++) {
+  for (let attempt = 0; attempt < 5 && !requisition2; attempt++) {
     try {
-      requisition = await createRequisition(await nextRequisitionNumber() + attempt);
+      requisition2 = await createRequisition(await nextRequisitionNumber() + attempt);
     } catch (e) {
       if (attempt === 4) throw e;
     }
   }
-  if (!requisition) return res.status(500).json({ error: "Could not allocate a reference number \u2014 try again" });
+  if (!requisition2) return res.status(500).json({ error: "Could not allocate a reference number \u2014 try again" });
+  notifyApprovers("requisition", requisition2.ref ?? "stock requisition", `${req.user.name} has raised stock requisition ${requisition2.ref ?? ""}${reqNote ? ": " + reqNote : ""}.`, { name: req.user.name });
   res.status(201).json({
-    id: requisition.id,
-    ref: requisition.ref,
-    note: requisition.note,
-    status: requisition.status,
-    lines: requisition.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, estUnitCost: l.estUnitCost }))
+    id: requisition2.id,
+    ref: requisition2.ref,
+    note: requisition2.note,
+    status: requisition2.status,
+    lines: requisition2.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, estUnitCost: l.estUnitCost }))
   });
 });
 async function decideRequisition(id, approve, deciderName, res) {
-  const requisition = await prisma.stockRequisition.findUnique({ where: { id } });
-  if (!requisition) return res.status(404).json({ error: "Requisition not found" });
-  if (requisition.status !== "Pending") return res.status(400).json({ error: "Requisition has already been decided" });
-  if (requisition.requestedByName === deciderName) {
+  const requisition2 = await prisma.stockRequisition.findUnique({ where: { id } });
+  if (!requisition2) return res.status(404).json({ error: "Requisition not found" });
+  if (requisition2.status !== "Pending") return res.status(400).json({ error: "Requisition has already been decided" });
+  if (requisition2.requestedByName === deciderName) {
     return res.status(400).json({ error: "You cannot approve or reject your own requisition" });
   }
   const updated = await prisma.stockRequisition.update({
@@ -75487,12 +75750,12 @@ stockRouter.post("/purchases", async (req, res) => {
   const total = Math.round(lines.reduce((a2, l) => a2 + l.totalCost, 0) * 100) / 100;
   if (data.requisitionId) {
     await ensureRequisitionsOnce();
-    const requisition = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: { where: { status: { in: ["Held", "Accepted"] } }, include: { lines: true } } } });
-    if (!requisition) return res.status(404).json({ error: "Requisition not found" });
-    if (requisition.status !== "Approved") return res.status(400).json({ error: "Only an approved requisition can be purchased against" });
-    const covered = new Set(requisition.purchases.flatMap((p) => p.lines.map((l) => l.materialId)));
+    const requisition2 = await prisma.stockRequisition.findUnique({ where: { id: data.requisitionId }, include: { purchases: { where: { status: { in: ["Held", "Accepted"] } }, include: { lines: true } } } });
+    if (!requisition2) return res.status(404).json({ error: "Requisition not found" });
+    if (requisition2.status !== "Approved") return res.status(400).json({ error: "Only an approved requisition can be purchased against" });
+    const covered = new Set(requisition2.purchases.flatMap((p) => p.lines.map((l) => l.materialId)));
     const dup = lines.find((l) => covered.has(l.materialId));
-    if (dup) return res.status(400).json({ error: `${nameOf.get(dup.materialId)} on ${requisition.ref} already has a purchase in progress or accepted` });
+    if (dup) return res.status(400).json({ error: `${nameOf.get(dup.materialId)} on ${requisition2.ref} already has a purchase in progress or accepted` });
   }
   const date = data.date ?? todayStr();
   let invoiceNumber;
@@ -76116,10 +76379,10 @@ reportsRouter.get("/business-head-detail", async (req, res) => {
 var import_express8 = __toESM(require_express2());
 
 // apps/api/src/costingDocument.ts
-var r28 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r29 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function quotedTotal(q) {
   const agreed = q.agreedPrice != null && (q.approval === "" || q.approval === "Approved");
-  return r28((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
+  return r29((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
 }
 function quoteDocument(q) {
   const total = quotedTotal(q);
@@ -76544,7 +76807,7 @@ costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
   const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
   const o = { ...parsed.data, mode: sees ? parsed.data.mode : "tier" };
   if (o.paper >= s.papers.length || o.cover >= s.papers.length) return res.status(400).json({ error: "That paper is not on the list" });
-  const unit = (job) => r29(printCalc({ ...o, ...job }, s).unitTotal);
+  const unit = (job) => r210(printCalc({ ...o, ...job }, s).unitTotal);
   res.json({
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
@@ -76617,11 +76880,11 @@ costingRouter.put("/print/settings", admin, async (req, res) => {
   await prisma.printCostSetting.upsert({ where: { id: 1 }, update: { data }, create: { id: 1, data } });
   res.json(next);
 });
-var r29 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r210 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function viewOf(q, sees) {
-  const vat = r29(q.price * VAT_RATE);
+  const vat = r210(q.price * VAT_RATE);
   const floor2 = costingFloor(q.cost, q.floorMarginPct);
-  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r29(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
+  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r210(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
   return {
     id: q.id,
     quoteNo: q.quoteNo,
@@ -76642,7 +76905,7 @@ function viewOf(q, sees) {
     cost: q.cost,
     price: q.price,
     vat,
-    total: r29(q.price + vat),
+    total: r210(q.price + vat),
     // the lowest the price may be agreed at without approval (a price, not a margin)
     lowestPrice: floor2.price,
     lowestTotal: floor2.total,
@@ -76653,7 +76916,7 @@ function viewOf(q, sees) {
     lostReason: q.lostReason,
     orderId: q.orderId,
     orderNo: q.orderNo,
-    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r29(q.price - q.cost) } : {}
+    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r210(q.price - q.cost) } : {}
   };
 }
 async function seesAllQuotes(user) {
@@ -76769,6 +77032,7 @@ costingRouter.post("/quotes/:id/agree", mayCost, async (req, res) => {
     where: { id: q.id },
     data: { agreedPrice: a2.price, approval: a2.needsApproval ? "Pending" : "", approvalNote: "", approvedByName: "", approvedAt: null, status: q.status === "Draft" ? "Sent" : q.status }
   });
+  if (a2.needsApproval) notifyApprovers("costing", `${q.quoteNo} \u2014 ${q.clientName || "Walk-in"}`, `${req.user.name} has agreed a price with ${q.clientName || "a client"} on quote ${q.quoteNo} that is under the lowest allowed without approval.`, { id: req.user.id });
   res.json(viewOf(updated, sees));
 });
 async function decide(req, res, approve) {
@@ -76821,7 +77085,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
   if (q.approval === "Pending") return res.status(400).json({ error: "The agreed price is under the floor and is waiting for a manager\u2019s approval" });
   if (q.approval === "Rejected") return res.status(400).json({ error: "The agreed price was not approved \u2014 agree another price" });
   const service = await costedService(q.jobType);
-  const total = r29(q.agreedPrice * (1 + VAT_RATE));
+  const total = r210(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
     customerName: body.data.customerName?.trim() || q.clientName,
     phone: body.data.phone ?? q.phone,
@@ -76832,7 +77096,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
     paymentTiming: body.data.paymentTiming,
     payments: body.data.paymentTiming === "onAcceptance" ? body.data.payments : void 0,
     // one line for the whole job at the price agreed (VAT included), with what the job costs us (VAT included, as a supplier bills it) kept on it for Finance
-    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r29(q.cost * (1 + VAT_RATE)) }]
+    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r210(q.cost * (1 + VAT_RATE)) }]
   });
   if (!form.success) return res.status(400).json({ error: form.error.issues[0]?.message ?? "Invalid input" });
   const quoteId = q.id;
@@ -78288,6 +78552,7 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
             requestedByName: req.user.name
           }
         });
+        notifyApprovers("artwork", `${order.orderNo} priced below the recommended price`, `${req.user.name} captured embroidery job ${order.orderNo} at a price below the recommended one. It cannot be paid for or produced until it is approved.`, { id: req.user.id });
       }
       for (const d of designs) {
         if (d.designId) await tx.embroideryDesign.update({ where: { id: d.designId }, data: { lastUsedOn: todayStr(), timesUsed: { increment: 1 } } });
@@ -78850,6 +79115,7 @@ dtfRouter.post("/discount-requests", async (req, res) => {
   const row = await prisma.discountRequest.create({
     data: { product: d.product, spec: specKey(spec), kind: d.discount.kind, value: d.discount.value, unitBefore: base3.unit, unitAfter: round2(base3.unit - applied.amount), requestedById: req.user.id, requestedByName: req.user.name }
   });
+  notifyApprovers("discount", "unit price discount", `${req.user.name} asks for a unit price discount on ${d.product === "pens" ? "UV pens" : "the UV flatbed"}: ${d.discount.kind === "pct" ? d.discount.value + "% off" : d.discount.value + "/= off each"} (${base3.unit}/= \u2192 ${round2(base3.unit - applied.amount)}/=).`, { id: req.user.id });
   res.status(201).json(showRequest(row));
 });
 dtfRouter.get("/discount-requests", async (req, res) => {
@@ -79233,6 +79499,7 @@ dtfRouter.post("/jobs", async (req, res) => {
             requestedByName: req.user.name
           }
         });
+        notifyApprovers("artwork", `${order2.orderNo} priced below the recommended price`, `${req.user.name} captured artwork job ${order2.orderNo} for ${d.client.trim() || "a walk-in"} at a price below the recommended one. It cannot be paid for or produced until it is approved.`, { id: req.user.id });
       }
       return { job: job2, order: order2 };
     });
@@ -80583,8 +80850,8 @@ commissionRouter.get("/pay-guide", async (_req, res) => {
     lowPrice: filmBase + 50,
     lowEarns: filmPremiumCommission(filmMetres, filmBase + 50, filmBase, config.filmBands, VAT_RATE)
   };
-  const artwork = { pieces: 100, recommended: 40, charged: 45, earns: artworkPremiumCommission(100, 45, 40, config.artworkRatePct, VAT_RATE) };
-  res.json({ config, vatRate: VAT_RATE, examples, film, artwork });
+  const artwork2 = { pieces: 100, recommended: 40, charged: 45, earns: artworkPremiumCommission(100, 45, 40, config.artworkRatePct, VAT_RATE) };
+  res.json({ config, vatRate: VAT_RATE, examples, film, artwork: artwork2 });
 });
 commissionRouter.get("/my", async (req, res) => {
   const period = periodSchema.safeParse(req.query.period ?? thisMonth());
@@ -82460,6 +82727,7 @@ hrRouter.post("/requests", async (req, res) => {
   const created = await prisma.leaveRequest.create({
     data: { staffId, leaveTypeId: type.id, startDate: d.startDate, endDate: d.endDate, days: check.days.length, reason: d.reason, certificate: d.certificate, capturedByName: req.user.name }
   });
+  notifyApprovers("leave", `${person.name} \u2014 ${type.name}`, `${person.name} has asked for ${check.days.length} working day(s) of ${type.name} leave, ${d.startDate} to ${d.endDate}.`, { id: staffId });
   const { names, types } = await lookups();
   res.status(201).json(shape(created, names, types));
 });
@@ -82689,13 +82957,31 @@ hrRouter.post("/notes", manage3, async (req, res) => {
   res.status(201).json(await prisma.oneToOneNote.create({ data: { ...parsed.data, authorName: req.user.name } }));
 });
 
+// apps/api/src/routes/approvals.ts
+var import_express25 = __toESM(require_express2());
+var approvalsRouter = (0, import_express25.Router)();
+approvalsRouter.use(requireAuth);
+approvalsRouter.get("/", async (req, res) => {
+  const [lists, setting] = await Promise.all([approvalsFor(req.user), prisma.setting.findUnique({ where: { id: 1 } })]);
+  res.json({ ...lists, emailOn: setting?.approvalEmails ?? true });
+});
+approvalsRouter.get("/summary", async (req, res) => {
+  res.json(await approvalsSummary(req.user));
+});
+approvalsRouter.put("/email", requireRole("Admin"), async (req, res) => {
+  const parsed = external_exports.object({ on: external_exports.boolean() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Say whether emails are on" });
+  await prisma.setting.upsert({ where: { id: 1 }, update: { approvalEmails: parsed.data.on }, create: { id: 1, approvalEmails: parsed.data.on } });
+  res.json({ emailOn: parsed.data.on });
+});
+
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express25.default)();
+var app = (0, import_express26.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express25.default.json({ limit: "5mb" }));
+app.use(import_express26.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -82740,6 +83026,7 @@ app.use("/api/freelance", freelanceRouter);
 app.use("/api/whatsapp", whatsappRouter);
 app.use("/api/costing", costingRouter);
 app.use("/api/hr", hrRouter);
+app.use("/api/approvals", approvalsRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });

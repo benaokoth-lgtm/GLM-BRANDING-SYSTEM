@@ -31,6 +31,7 @@ import type { CostingBasis, CostingJobType, CostingJobTypeRow, CostingKind, Cost
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { canSeeCosts } from '../costs';
+import { notifyApprovers } from '../approvals';
 import { permissionsForRole } from '../permissions';
 import { captureWalkin, paymentLineSchema, walkinSchema } from './orders';
 import { costingSheetRows, COSTING_SHEET_WIDTHS } from '../costingSheet';
@@ -517,6 +518,7 @@ costingRouter.post('/quotes/:id/agree', mayCost, async (req, res) => {
     where: { id: q.id },
     data: { agreedPrice: a.price, approval: a.needsApproval ? 'Pending' : '', approvalNote: '', approvedByName: '', approvedAt: null, status: q.status === 'Draft' ? 'Sent' : q.status },
   });
+  if (a.needsApproval) notifyApprovers('costing', `${q.quoteNo} — ${q.clientName || 'Walk-in'}`, `${req.user!.name} has agreed a price with ${q.clientName || 'a client'} on quote ${q.quoteNo} that is under the lowest allowed without approval.`, { id: req.user!.id });
   res.json(viewOf(updated, sees));
 });
 

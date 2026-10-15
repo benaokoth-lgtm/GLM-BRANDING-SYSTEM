@@ -1,6 +1,7 @@
 import { Response, Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { notifyApprovers } from '../approvals';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { formatPurchaseOrderRef, nextPurchaseOrderNumber, reconcileRequisition, todayStr } from '@glm/shared';
@@ -95,6 +96,7 @@ stockRouter.post('/requisitions', async (req, res) => {
     }
   }
   if (!requisition) return res.status(500).json({ error: 'Could not allocate a reference number — try again' });
+  notifyApprovers('requisition', requisition.ref ?? 'stock requisition', `${req.user!.name} has raised stock requisition ${requisition.ref ?? ''}${reqNote ? ': ' + reqNote : ''}.`, { name: req.user!.name });
   res.status(201).json({
     id: requisition.id,
     ref: requisition.ref,

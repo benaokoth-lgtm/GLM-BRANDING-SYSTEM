@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { notifyApprovers } from '../approvals';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import {
@@ -191,6 +192,7 @@ embroideryRouter.post('/orders', mayQuote, async (req, res) => {
             requestedByName: req.user!.name,
           },
         });
+        notifyApprovers('artwork', `${order.orderNo} priced below the recommended price`, `${req.user!.name} captured embroidery job ${order.orderNo} at a price below the recommended one. It cannot be paid for or produced until it is approved.`, { id: req.user!.id });
       }
       for (const d of designs) {
         if (d.designId) await tx.embroideryDesign.update({ where: { id: d.designId }, data: { lastUsedOn: todayStr(), timesUsed: { increment: 1 } } });

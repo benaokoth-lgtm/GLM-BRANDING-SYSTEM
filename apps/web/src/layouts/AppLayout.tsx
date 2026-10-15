@@ -5,6 +5,7 @@ import ChangePinDialog from '../components/ChangePinDialog';
 import { useTheme, type Theme } from '../hooks/useTheme';
 import Icon from '../components/NavIcons';
 import type { CurrentUser } from '../state/AuthContext';
+import { useApprovalsBadge } from '../hooks/useApprovals';
 
 // Built from the logged-in user's permissions rather than a hardcoded map
 // keyed by role name — a custom role created in Master Data → Roles &
@@ -22,6 +23,8 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   // access isn't lost. All Orders is its own module for anyone who may see every order.
   const hasFinance = isAdmin || p.canAccessFinance;
 
+  // Approvals: the inbox of everything waiting for a decision, and how your own requests went — for everyone signed in.
+  tabs.push(['/approvals', 'Approvals']);
   if (isAdmin || p.canCaptureOrders) {
     tabs.push(['/orders/new/walkin', 'General Order']);
   }
@@ -72,6 +75,7 @@ const GROUPS: [Group, string][] = [
   ['admin', 'Admin'],
 ];
 const GROUP_OF: Record<string, Group> = {
+  '/approvals': 'sales',
   '/orders/new/walkin': 'sales',
   '/orders/new/film': 'sales',
   '/orders/new/artwork': 'sales',
@@ -95,6 +99,7 @@ const GROUP_OF: Record<string, Group> = {
   '/master-data': 'admin',
 };
 const ICON_OF: Record<string, string> = {
+  '/approvals': 'approvals',
   '/orders/new/walkin': 'order',
   '/orders/new/film': 'film',
   '/orders/new/artwork': 'artwork',
@@ -143,6 +148,17 @@ function AppLayoutInner() {
     }
   });
   const tabs = user ? buildTabs(user, !!features?.commission) : [];
+  const badge = useApprovalsBadge(!!user);
+  // the number in the browser tab too, so it is seen from another window
+  useEffect(() => {
+    const base = document.title.replace(/^\(\d+\) /, '');
+    document.title = badge.count > 0 ? `(${badge.count}) ${base}` : base;
+  }, [badge.count]);
+  useEffect(() => {
+    if (!badge.notice) return;
+    const t = window.setTimeout(badge.clearNotice, 8000);
+    return () => window.clearTimeout(t);
+  }, [badge.notice]);
 
   useEffect(() => {
     setOpen(false);
@@ -220,6 +236,7 @@ function AppLayoutInner() {
                   <NavLink key={path} to={path} title={text} onClick={subNav.goHome} className={({ isActive }) => 'side-link' + (isActive ? ' active' : '')}>
                     <span className="icon-wrap"><Icon name={ICON_OF[path] ?? 'orders'} size={19} /></span>
                     <span>{text}</span>
+                    {path === '/approvals' && badge.count > 0 && <b className="nav-badge" title={`${badge.waiting} waiting for your decision${badge.news ? `, ${badge.news} of your requests decided` : ''}`}>{badge.count}</b>}
                   </NavLink>
                 ))}
               </div>
@@ -258,6 +275,13 @@ function AppLayoutInner() {
           <Outlet />
         </main>
       </div>
+      {badge.notice && (
+        <div className="approvals-toast no-print" role="status">
+          <span>{badge.notice}</span>
+          <NavLink to="/approvals" className="btn btn-primary btn-sm" onClick={badge.clearNotice}>Open Approvals</NavLink>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={badge.clearNotice} aria-label="Dismiss">✕</button>
+        </div>
+      )}
       {(changingPin || user?.mustChangePin) && <ChangePinDialog forced={!!user?.mustChangePin} onClose={() => setChangingPin(false)} onChanged={clearMustChangePin} />}
     </div>
   );

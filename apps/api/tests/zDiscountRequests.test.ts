@@ -70,8 +70,9 @@ describe('unit price discounts that need approval', () => {
     assert.equal((await call('staff2', 'GET', '/dtf/discount-requests?product=pens')).body.requests.length, 0); // not someone else's
     const fin = await call('finance', 'GET', '/dtf/discount-requests?product=pens');
     assert.equal(fin.body.canApprove, true);
-    assert.deepEqual([fin.body.requests.length, fin.body.requests[0].status, fin.body.requests[0].mine], [1, 'Pending', false]);
-    const id = fin.body.requests[0].id;
+    const ours = fin.body.requests.filter((r: any) => r.requestedByName === 'staff (discount test)' && r.product === 'pens');
+    assert.deepEqual([ours.length, ours[0].status, ours[0].mine], [1, 'Pending', false]);
+    const id = ours[0].id;
     assert.equal((await call('staff', 'POST', `/dtf/discount-requests/${id}/approve`)).status, 403);
     assert.equal((await call('staff', 'POST', `/dtf/discount-requests/${id}/reject`, { reason: 'no' })).status, 403);
     assert.equal((await call('finance', 'POST', `/dtf/discount-requests/${id}/reject`, {})).status, 400); // a reason is needed
@@ -79,7 +80,7 @@ describe('unit price discounts that need approval', () => {
   });
 
   it('an approved request is used on its own job, once, by the person who asked — the discount is the request’s, not the screen’s', async () => {
-    const id = (await call('finance', 'GET', '/dtf/discount-requests?product=pens')).body.requests[0].id;
+    const id = (await call('finance', 'GET', '/dtf/discount-requests?product=pens')).body.requests.find((r: any) => r.requestedByName === 'staff (discount test)' && r.status === 'Pending').id;
     const order = { pens: 450, payments: [{ method: 'Cash', amount: 1000 }] };
     // not yet approved
     const early = await call('staff', 'POST', '/dtf/pen-orders', { ...order, discountRequestId: id });

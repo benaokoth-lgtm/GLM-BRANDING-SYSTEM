@@ -26440,7 +26440,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r29 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r29, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r210 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r210, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -28966,10 +28966,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r29, options) => {
+    var intersects = (r1, r210, options) => {
       r1 = new Range(r1, options);
-      r29 = new Range(r29, options);
-      return r1.intersects(r29, options);
+      r210 = new Range(r210, options);
+      return r1.intersects(r210, options);
     };
     module2.exports = intersects;
   }
@@ -66464,6 +66464,21 @@ var COSTING_DEFAULT_RATES = [
   rate("service", "Design & setup (outdoor)", "job", 800, ["outdoor"])
 ];
 
+// packages/shared/src/unitDiscount.ts
+var DISCOUNT_ROLES = ["Finance Manager", "General Manager", "Admin"];
+var canGiveDiscount = (role) => DISCOUNT_ROLES.includes(role);
+var DISCOUNT_PRODUCTS = ["pens", "flatbed"];
+var r25 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+function unitDiscountAmount(price, d) {
+  if (!d) return { amount: 0, problem: null };
+  if (d.kind !== "amount" && d.kind !== "pct") return { amount: 0, problem: "The unit price discount must be an amount or a percentage" };
+  if (!(d.value >= 0) || !Number.isFinite(d.value)) return { amount: 0, problem: "A discount cannot be negative" };
+  if (d.kind === "pct" && d.value >= 100) return { amount: 0, problem: "A percentage discount must be under 100%" };
+  const amount = r25(Math.min(price, d.kind === "pct" ? price * d.value / 100 : d.value));
+  if (d.value > 0 && amount >= price) return { amount: 0, problem: "The discount is as much as the price of a piece" };
+  return { amount, problem: null };
+}
+
 // packages/shared/src/pens.ts
 var UV_PEN_SERVICE = "UV Pen Branding";
 var DEFAULT_PEN_TIERS = [
@@ -66472,7 +66487,7 @@ var DEFAULT_PEN_TIERS = [
   { from: 500, rate: 12 },
   { from: 1001, rate: 10 }
 ];
-var r25 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r26 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var sortedPenTiers = (tiers) => [...tiers].sort((a2, b) => a2.from - b.from);
 function penTiersProblem(tiers) {
   if (tiers.length === 0) return "There must be at least one rate";
@@ -66490,16 +66505,19 @@ function penTierFor(tiers, qty) {
   for (const t of sortedPenTiers(tiers)) if (qty >= t.from) found = t;
   return found;
 }
-function penQuote(tiers, qty) {
+function penQuote(tiers, qty, discount) {
   const q = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
   const s = sortedPenTiers(tiers);
   const tier = penTierFor(s, q);
   const rate2 = tier?.rate ?? 0;
-  const total = r25(q * rate2);
+  const applied = unitDiscountAmount(rate2, discount);
+  const unitDiscount = applied.amount;
+  const discountedRate = r26(rate2 - unitDiscount);
+  const total = r26(q * discountedRate);
   const cur = rate2 || s[0]?.rate || 0;
   const next = q > 0 ? s.find((t) => t.from > q && t.rate < cur) : void 0;
-  const upsell = next ? { qty: next.from, add: next.from - q, rate: next.rate, newTotal: r25(next.rate * next.from), saving: r25(total - next.rate * next.from) } : null;
-  return { qty: q, tier, rate: rate2, total, upsell };
+  const upsell = next && unitDiscount === 0 ? { qty: next.from, add: next.from - q, rate: next.rate, newTotal: r26(next.rate * next.from), saving: r26(total - next.rate * next.from) } : null;
+  return { qty: q, tier, rate: rate2, unitDiscount, discountedRate, discountProblem: applied.problem, total, upsell };
 }
 
 // packages/shared/src/flatbed.ts
@@ -66527,10 +66545,10 @@ var DEFAULT_FLATBED_SETTINGS = {
     { from: 100, pct: 15 }
   ]
 };
-var r26 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r27 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var sortedFlatbedBands = (bands) => [...bands].sort((a2, b) => a2.upToCm2 - b.upToCm2);
 var sortedFlatbedDiscounts = (d) => [...d].sort((a2, b) => a2.from - b.from);
-var flatbedMaxArea = (s) => r26(s.maxWidthCm * s.maxLengthCm);
+var flatbedMaxArea = (s) => r27(s.maxWidthCm * s.maxLengthCm);
 function flatbedSettingsProblem(s) {
   for (const [name2, v] of [["largest width", s.maxWidthCm], ["largest length", s.maxLengthCm]]) if (!(v > 0) || !Number.isFinite(v)) return `The ${name2} must be more than 0`;
   for (const [name2, v] of [["minimum price for a piece", s.minPiecePrice], ["setup fee", s.setupFee]]) if (!(v >= 0) || !Number.isFinite(v)) return `The ${name2} cannot be negative`;
@@ -66563,8 +66581,7 @@ function flatbedRangeLabel(bands, index) {
   return prev ? `${Math.floor(prev.upToCm2) + 1}\u2013${b[index].upToCm2} cm\xB2` : `up to ${b[index].upToCm2} cm\xB2`;
 }
 var flatbedFitsArtwork = (s, w, h) => w <= s.maxWidthCm && h <= s.maxLengthCm || h <= s.maxWidthCm && w <= s.maxLengthCm;
-var FLATBED_DISCOUNT_ROLES = ["Finance Manager", "General Manager", "Admin"];
-var canDiscountFlatbed = (role) => FLATBED_DISCOUNT_ROLES.includes(role);
+var canDiscountFlatbed = canGiveDiscount;
 var none = (problem, pieces = 0, areaCm2 = 0) => ({
   ok: false,
   problem,
@@ -66588,27 +66605,22 @@ var none = (problem, pieces = 0, areaCm2 = 0) => ({
   upsell: null
 });
 function flatbedUnitDiscountProblem(d) {
-  if (!d) return null;
-  if (d.kind !== "amount" && d.kind !== "pct") return "The unit price discount must be an amount or a percentage";
-  if (!(d.value >= 0) || !Number.isFinite(d.value)) return "A discount cannot be negative";
-  if (d.kind === "pct" && d.value >= 100) return "A percentage discount must be under 100%";
-  return null;
+  return unitDiscountAmount(1e6, d).problem;
 }
 function flatbedQuote(s, widthCm, heightCm, pieces, opts = {}) {
   const n = Number.isFinite(pieces) && pieces > 0 ? Math.floor(pieces) : 0;
   if (!(widthCm > 0) || !(heightCm > 0) || !Number.isFinite(widthCm) || !Number.isFinite(heightCm)) return none(null, n);
-  const areaCm2 = r26(widthCm * heightCm);
+  const areaCm2 = r27(widthCm * heightCm);
   if (n === 0) return none(null, 0, areaCm2);
   if (!flatbedFitsArtwork(s, widthCm, heightCm)) return none(`${widthCm} \xD7 ${heightCm} cm is bigger than the largest artwork (${s.maxWidthCm} \xD7 ${s.maxLengthCm} cm)`, n, areaCm2);
   const found = flatbedBandFor(s.bands, areaCm2);
   if (!found) return none(`No band covers ${areaCm2} cm\xB2`, n, areaCm2);
   const unitPrice = Math.max(found.band.price, s.minPiecePrice);
   const ud = opts.unitDiscount ?? null;
-  const udProblem = flatbedUnitDiscountProblem(ud);
-  if (udProblem) return none(udProblem, n, areaCm2);
-  const unitDiscount = ud ? r26(Math.min(unitPrice, ud.kind === "pct" ? unitPrice * ud.value / 100 : ud.value)) : 0;
-  if (ud && unitDiscount >= unitPrice) return none("The discount is as much as the price of a piece", n, areaCm2);
-  const discountedUnit = r26(unitPrice - unitDiscount);
+  const applied = unitDiscountAmount(unitPrice, ud);
+  if (applied.problem) return none(applied.problem, n, areaCm2);
+  const unitDiscount = applied.amount;
+  const discountedUnit = r27(unitPrice - unitDiscount);
   const ds = sortedFlatbedDiscounts(s.discounts);
   let discountIndex = 0;
   ds.forEach((d, i) => {
@@ -66616,14 +66628,14 @@ function flatbedQuote(s, widthCm, heightCm, pieces, opts = {}) {
   });
   const volumePct = ds[discountIndex]?.pct ?? 0;
   const volumeApplied = !!opts.volume && volumePct > 0;
-  const gross = r26(n * discountedUnit);
-  const discount = volumeApplied ? r26(gross * volumePct / 100) : 0;
-  const printTotal = r26(gross - discount);
+  const gross = r27(n * discountedUnit);
+  const discount = volumeApplied ? r27(gross * volumePct / 100) : 0;
+  const printTotal = r27(gross - discount);
   const setupFee = opts.setup ? s.setupFee : 0;
-  const total = r26(printTotal + setupFee);
+  const total = r27(printTotal + setupFee);
   const next = ds.find((d) => d.from > n && d.pct > volumePct);
-  const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r26(printTotal - r26(next.from * discountedUnit * (1 - next.pct / 100))) } : null;
-  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, unitDiscount, discountedUnit, volumePct, discountIndex, volumeApplied, gross, discount, printTotal, setupFee, total, perPiece: r26(total / n), upsell };
+  const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r27(printTotal - r27(next.from * discountedUnit * (1 - next.pct / 100))) } : null;
+  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, unitDiscount, discountedUnit, volumePct, discountIndex, volumeApplied, gross, discount, printTotal, setupFee, total, perPiece: r27(total / n), upsell };
 }
 function flatbedDescription(s, widthCm, heightCm, pieces, opts = {}, note = "") {
   const q = flatbedQuote(s, widthCm, heightCm, pieces, opts);
@@ -76104,10 +76116,10 @@ reportsRouter.get("/business-head-detail", async (req, res) => {
 var import_express8 = __toESM(require_express2());
 
 // apps/api/src/costingDocument.ts
-var r27 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r28 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function quotedTotal(q) {
   const agreed = q.agreedPrice != null && (q.approval === "" || q.approval === "Approved");
-  return r27((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
+  return r28((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
 }
 function quoteDocument(q) {
   const total = quotedTotal(q);
@@ -76532,7 +76544,7 @@ costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
   const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
   const o = { ...parsed.data, mode: sees ? parsed.data.mode : "tier" };
   if (o.paper >= s.papers.length || o.cover >= s.papers.length) return res.status(400).json({ error: "That paper is not on the list" });
-  const unit = (job) => r28(printCalc({ ...o, ...job }, s).unitTotal);
+  const unit = (job) => r29(printCalc({ ...o, ...job }, s).unitTotal);
   res.json({
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
@@ -76605,11 +76617,11 @@ costingRouter.put("/print/settings", admin, async (req, res) => {
   await prisma.printCostSetting.upsert({ where: { id: 1 }, update: { data }, create: { id: 1, data } });
   res.json(next);
 });
-var r28 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r29 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function viewOf(q, sees) {
-  const vat = r28(q.price * VAT_RATE);
+  const vat = r29(q.price * VAT_RATE);
   const floor2 = costingFloor(q.cost, q.floorMarginPct);
-  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r28(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
+  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r29(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
   return {
     id: q.id,
     quoteNo: q.quoteNo,
@@ -76630,7 +76642,7 @@ function viewOf(q, sees) {
     cost: q.cost,
     price: q.price,
     vat,
-    total: r28(q.price + vat),
+    total: r29(q.price + vat),
     // the lowest the price may be agreed at without approval (a price, not a margin)
     lowestPrice: floor2.price,
     lowestTotal: floor2.total,
@@ -76641,7 +76653,7 @@ function viewOf(q, sees) {
     lostReason: q.lostReason,
     orderId: q.orderId,
     orderNo: q.orderNo,
-    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r28(q.price - q.cost) } : {}
+    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r29(q.price - q.cost) } : {}
   };
 }
 async function seesAllQuotes(user) {
@@ -76809,7 +76821,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
   if (q.approval === "Pending") return res.status(400).json({ error: "The agreed price is under the floor and is waiting for a manager\u2019s approval" });
   if (q.approval === "Rejected") return res.status(400).json({ error: "The agreed price was not approved \u2014 agree another price" });
   const service = await costedService(q.jobType);
-  const total = r28(q.agreedPrice * (1 + VAT_RATE));
+  const total = r29(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
     customerName: body.data.customerName?.trim() || q.clientName,
     phone: body.data.phone ?? q.phone,
@@ -76820,7 +76832,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
     paymentTiming: body.data.paymentTiming,
     payments: body.data.paymentTiming === "onAcceptance" ? body.data.payments : void 0,
     // one line for the whole job at the price agreed (VAT included), with what the job costs us (VAT included, as a supplier bills it) kept on it for Finance
-    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r28(q.cost * (1 + VAT_RATE)) }]
+    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r29(q.cost * (1 + VAT_RATE)) }]
   });
   if (!form.success) return res.status(400).json({ error: form.error.issues[0]?.message ?? "Invalid input" });
   const quoteId = q.id;
@@ -78600,7 +78612,7 @@ async function penTiers() {
   return (await prisma.penTier.findMany({ orderBy: { fromQty: "asc" } })).map((t) => ({ from: t.fromQty, rate: t.rate }));
 }
 dtfRouter.get("/pen-tiers", async (req, res) => {
-  res.json({ canManage: req.user.role === "Admin", tiers: await penTiers() });
+  res.json({ canManage: req.user.role === "Admin", canDiscount: canGiveDiscount(req.user.role), tiers: await penTiers() });
 });
 dtfRouter.put("/pen-tiers", requireRole("Admin"), async (req, res) => {
   const parsed = external_exports.object({ tiers: external_exports.array(external_exports.object({ from: external_exports.number().int(), rate: external_exports.number().max(1e6) })).min(1).max(20) }).safeParse(req.body);
@@ -78611,6 +78623,7 @@ dtfRouter.put("/pen-tiers", requireRole("Admin"), async (req, res) => {
   await prisma.$transaction([prisma.penTier.deleteMany({}), prisma.penTier.createMany({ data: tiers.map((t) => ({ fromQty: t.from, rate: t.rate })) })]);
   res.json({ canManage: true, tiers: await penTiers() });
 });
+var unitDiscountSchema = external_exports.object({ kind: external_exports.enum(["amount", "pct"]), value: external_exports.number().max(1e6) });
 var penOrderSchema = external_exports.object({
   pens: external_exports.number().int().positive("Enter the number of pens").max(1e6),
   client: external_exports.string().max(200).default(""),
@@ -78622,14 +78635,20 @@ var penOrderSchema = external_exports.object({
   sourcedBy: external_exports.number().int().nullable().optional(),
   freelanceAgentId: external_exports.number().int().nullable().optional(),
   // The sales person the order is credited to, when the front office captures it for them (see frontOffice.ts).
-  staffId: external_exports.number().int().nullable().optional()
+  staffId: external_exports.number().int().nullable().optional(),
+  // a discount on the unit price: given outright by Finance, the General Manager or an Admin, or taken from an approved request (see discount requests above)
+  unitDiscount: unitDiscountSchema.nullable().default(null),
+  discountRequestId: external_exports.number().int().nullable().default(null)
 });
 dtfRouter.post("/pen-orders", async (req, res) => {
   const parsed = penOrderSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
-  const quote = penQuote(await penTiers(), d.pens);
+  const ud = await resolveUnitDiscount(req.user, "pens", { pens: d.pens }, d.unitDiscount, d.discountRequestId);
+  if (!ud.ok) return res.status(ud.status).json({ error: ud.error });
+  const quote = penQuote(await penTiers(), d.pens, ud.discount);
   if (!quote.tier) return res.status(400).json({ error: "No rate applies to that number of pens" });
+  if (quote.discountProblem) return res.status(400).json({ error: quote.discountProblem });
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const claim = await claimProblem(req.user, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
@@ -78642,7 +78661,7 @@ dtfRouter.post("/pen-orders", async (req, res) => {
   try {
     const order = await prisma.$transaction(async (tx) => {
       const service = await penService(tx);
-      return createDtfOrder(tx, {
+      const made = await createDtfOrder(tx, {
         product: "uv",
         channel: "general",
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -78650,7 +78669,7 @@ dtfRouter.post("/pen-orders", async (req, res) => {
         staffId: cap.staffId,
         capturedById: cap.capturedById,
         capturedByName: cap.capturedByName,
-        serviceLine: { itemType: "service", serviceId: service.id, qty: d.pens, unitPrice: quote.rate },
+        serviceLine: { itemType: "service", serviceId: service.id, qty: d.pens, unitPrice: quote.discountedRate, description: quote.unitDiscount > 0 ? quote.unitDiscount + "/= off each pen" : "" },
         materialLines: d.materialLines,
         payments: paymentLines,
         sourcedBy: d.sourcedBy,
@@ -78658,6 +78677,8 @@ dtfRouter.post("/pen-orders", async (req, res) => {
         serviceBase: quote.rate
         // sold at the tier rate, with nothing above it to earn a premium on
       });
+      await spendDiscountRequest(tx, ud.requestId, made.orderNo);
+      return made;
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
@@ -78711,7 +78732,8 @@ var flatbedOrderSchema = external_exports.object({
   withSetup: external_exports.boolean().default(false),
   // discounts are given only by Finance, the General Manager or an Admin (checked below)
   volumeDiscount: external_exports.boolean().default(false),
-  unitDiscount: external_exports.object({ kind: external_exports.enum(["amount", "pct"]), value: external_exports.number().max(1e6) }).nullable().default(null),
+  unitDiscount: unitDiscountSchema.nullable().default(null),
+  discountRequestId: external_exports.number().int().nullable().default(null),
   note: external_exports.string().max(100).default(""),
   client: external_exports.string().max(200).default(""),
   phone: external_exports.string().max(40).default(""),
@@ -78728,9 +78750,11 @@ dtfRouter.post("/flatbed-orders", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
   const settings = await flatbedSettings();
-  const opts = { setup: d.withSetup, volume: d.volumeDiscount, unitDiscount: d.unitDiscount };
-  if ((d.volumeDiscount || d.unitDiscount && d.unitDiscount.value > 0) && !canDiscountFlatbed(req.user.role)) return res.status(403).json({ error: "Only Finance, the General Manager or an Admin can apply a discount" });
-  const udProblem = flatbedUnitDiscountProblem(d.unitDiscount);
+  if (d.volumeDiscount && !canDiscountFlatbed(req.user.role)) return res.status(403).json({ error: "Only Finance, the General Manager or an Admin can apply the volume discount" });
+  const ud = await resolveUnitDiscount(req.user, "flatbed", { widthCm: d.widthCm, heightCm: d.heightCm, pieces: d.pieces }, d.unitDiscount, d.discountRequestId);
+  if (!ud.ok) return res.status(ud.status).json({ error: ud.error });
+  const opts = { setup: d.withSetup, volume: d.volumeDiscount, unitDiscount: ud.discount };
+  const udProblem = flatbedUnitDiscountProblem(ud.discount);
   if (udProblem) return res.status(400).json({ error: udProblem });
   const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, opts);
   if (!quote.ok) return res.status(400).json({ error: quote.problem ?? "No price applies to that job" });
@@ -78746,7 +78770,7 @@ dtfRouter.post("/flatbed-orders", async (req, res) => {
   try {
     const order = await prisma.$transaction(async (tx) => {
       const service = await flatbedService(tx, quote.unitPrice);
-      return createDtfOrder(tx, {
+      const made = await createDtfOrder(tx, {
         product: "uv",
         channel: "general",
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -78762,12 +78786,119 @@ dtfRouter.post("/flatbed-orders", async (req, res) => {
         serviceBase: quote.total
         // sold at the quoted price, with nothing above it to earn a premium on
       });
+      await spendDiscountRequest(tx, ud.requestId, made.orderNo);
+      return made;
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the flatbed order") });
   }
 });
+var specKey = (s) => JSON.stringify(s);
+async function discountUnitPrice(product, spec) {
+  if (product === "pens") {
+    const q2 = penQuote(await penTiers(), spec.pens);
+    return q2.tier ? { unit: q2.rate, problem: null } : { unit: 0, problem: "No rate applies to that number of pens" };
+  }
+  const f = spec;
+  const q = flatbedQuote(await flatbedSettings(), f.widthCm, f.heightCm, f.pieces);
+  return q.ok ? { unit: q.unitPrice, problem: null } : { unit: 0, problem: q.problem ?? "No price applies to that job" };
+}
+var discountRequestSchema = external_exports.object({
+  product: external_exports.enum(DISCOUNT_PRODUCTS),
+  pens: external_exports.number().int().positive().max(1e6).optional(),
+  widthCm: external_exports.number().positive().max(1e3).optional(),
+  heightCm: external_exports.number().positive().max(1e3).optional(),
+  pieces: external_exports.number().int().positive().max(1e6).optional(),
+  discount: unitDiscountSchema
+});
+var showRequest = (r) => ({
+  id: r.id,
+  product: r.product,
+  spec: JSON.parse(r.spec),
+  kind: r.kind,
+  value: r.value,
+  unitBefore: r.unitBefore,
+  unitAfter: r.unitAfter,
+  requestedByName: r.requestedByName,
+  requestedAt: r.requestedAt.toISOString(),
+  status: r.status,
+  decidedByName: r.decidedByName,
+  decidedAt: r.decidedAt?.toISOString() ?? null,
+  reason: r.reason,
+  orderNo: r.orderNo,
+  mine: false
+});
+dtfRouter.post("/discount-requests", async (req, res) => {
+  const parsed = discountRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  if (canGiveDiscount(req.user.role)) return res.status(400).json({ error: "You can give this discount yourself \u2014 it needs no approval" });
+  let spec;
+  if (d.product === "pens") {
+    if (!d.pens) return res.status(400).json({ error: "Enter the number of pens" });
+    spec = { pens: d.pens };
+  } else {
+    if (!d.widthCm || !d.heightCm || !d.pieces) return res.status(400).json({ error: "Enter the artwork size and the number of pieces" });
+    spec = { widthCm: d.widthCm, heightCm: d.heightCm, pieces: d.pieces };
+  }
+  if (!(d.discount.value > 0)) return res.status(400).json({ error: "Enter the discount you are asking for" });
+  const base3 = await discountUnitPrice(d.product, spec);
+  if (base3.problem) return res.status(400).json({ error: base3.problem });
+  const applied = unitDiscountAmount(base3.unit, d.discount);
+  if (applied.problem) return res.status(400).json({ error: applied.problem });
+  const row = await prisma.discountRequest.create({
+    data: { product: d.product, spec: specKey(spec), kind: d.discount.kind, value: d.discount.value, unitBefore: base3.unit, unitAfter: round2(base3.unit - applied.amount), requestedById: req.user.id, requestedByName: req.user.name }
+  });
+  res.status(201).json(showRequest(row));
+});
+dtfRouter.get("/discount-requests", async (req, res) => {
+  const product = DISCOUNT_PRODUCTS.find((p) => p === req.query.product);
+  const approver = canGiveDiscount(req.user.role);
+  const where = { ...product ? { product } : {}, ...approver ? {} : { requestedById: req.user.id } };
+  const rows = await prisma.discountRequest.findMany({ where, orderBy: { id: "desc" }, take: 60 });
+  const pending = rows.filter((r) => r.status === "Pending");
+  const rest = rows.filter((r) => r.status !== "Pending").slice(0, 20);
+  res.json({ canApprove: approver, requests: [...pending, ...rest].map((r) => ({ ...showRequest(r), mine: r.requestedById === req.user.id })) });
+});
+dtfRouter.post("/discount-requests/:id/approve", async (req, res) => {
+  if (!canGiveDiscount(req.user.role)) return res.status(403).json({ error: "Only Finance, the General Manager or an Admin can approve a discount" });
+  const r = await prisma.discountRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!r) return res.status(404).json({ error: "Discount request not found" });
+  if (r.status !== "Pending") return res.status(400).json({ error: `This request has already been ${r.status.toLowerCase()}` });
+  if (r.requestedById === req.user.id) return res.status(400).json({ error: "You cannot approve your own request" });
+  const row = await prisma.discountRequest.update({ where: { id: r.id }, data: { status: "Approved", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() } });
+  res.json(showRequest(row));
+});
+dtfRouter.post("/discount-requests/:id/reject", async (req, res) => {
+  if (!canGiveDiscount(req.user.role)) return res.status(403).json({ error: "Only Finance, the General Manager or an Admin can decide a discount" });
+  const parsed = external_exports.object({ reason: external_exports.string().trim().min(1, "Give a reason for turning the discount down").max(300) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const r = await prisma.discountRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!r) return res.status(404).json({ error: "Discount request not found" });
+  if (r.status !== "Pending") return res.status(400).json({ error: `This request has already been ${r.status.toLowerCase()}` });
+  const row = await prisma.discountRequest.update({ where: { id: r.id }, data: { status: "Rejected", reason: parsed.data.reason, decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() } });
+  res.json(showRequest(row));
+});
+async function resolveUnitDiscount(user, product, spec, direct, requestId) {
+  if (requestId) {
+    const r = await prisma.discountRequest.findUnique({ where: { id: requestId } });
+    if (!r || r.product !== product || r.requestedById !== user.id) return { ok: false, status: 400, error: "That discount request is not yours, or is not for this job" };
+    if (r.status !== "Approved") return { ok: false, status: 400, error: r.status === "Used" ? "That discount has already been used on an order" : `That discount request is ${r.status.toLowerCase()}, not approved` };
+    if (r.spec !== specKey(spec)) return { ok: false, status: 400, error: "That discount was approved for a different job \u2014 the pens, size or number of pieces has changed. Ask again." };
+    return { ok: true, discount: { kind: r.kind, value: r.value }, requestId: r.id };
+  }
+  if (direct && direct.value > 0) {
+    if (!canGiveDiscount(user.role)) return { ok: false, status: 403, error: "A unit price discount needs approval: ask for it, and apply it once Finance, the General Manager or an Admin has approved it" };
+    return { ok: true, discount: direct, requestId: null };
+  }
+  return { ok: true, discount: null, requestId: null };
+}
+async function spendDiscountRequest(tx, id, orderNo) {
+  if (!id) return;
+  const done3 = await tx.discountRequest.updateMany({ where: { id, status: "Approved" }, data: { status: "Used", orderNo } });
+  if (done3.count !== 1) throw new Error("That discount has already been used on an order");
+}
 var settingsSchema6 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
   rollWidthCm: external_exports.number().positive(),

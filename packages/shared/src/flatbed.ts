@@ -4,6 +4,9 @@
 // setup fee for the layout can be added to a job when it is wanted. The bands, the minimum, the discounts
 // and the fee are data kept in the system and editable by a manager. Prices are what the customer pays, VAT included, as everywhere else in the system.
 
+import { DISCOUNT_ROLES, canGiveDiscount, unitDiscountAmount } from './unitDiscount';
+import type { UnitDiscount } from './unitDiscount';
+
 /** The price-list service a flatbed order is recorded against (created on the first order if the price list has none). */
 export const UV_FLATBED_SERVICE = 'UV Flatbed Printing';
 
@@ -121,15 +124,12 @@ export function flatbedDiscountRangeLabel(discounts: FlatbedDiscount[], index: n
 /** Whether an artwork of this size can be printed at all: it must fit inside the largest artwork, either way round. */
 export const flatbedFitsArtwork = (s: FlatbedSettings, w: number, h: number) => (w <= s.maxWidthCm && h <= s.maxLengthCm) || (h <= s.maxWidthCm && w <= s.maxLengthCm);
 
-/** Who may give a discount on a flatbed job: the volume discount and a discount on the unit price are applied by these roles only. */
-export const FLATBED_DISCOUNT_ROLES = ['Finance Manager', 'General Manager', 'Admin'] as const;
-export const canDiscountFlatbed = (role: string) => (FLATBED_DISCOUNT_ROLES as readonly string[]).includes(role);
+/** Who may give a discount on a flatbed job: the volume discount, and a discount on the unit price without asking, are for these roles only. */
+export const FLATBED_DISCOUNT_ROLES = DISCOUNT_ROLES;
+export const canDiscountFlatbed = canGiveDiscount;
 
 /** A discount on the unit price of a piece: so many Ksh off each piece, or a percentage off its price. */
-export interface FlatbedUnitDiscount {
-  kind: 'amount' | 'pct';
-  value: number;
-}
+export type FlatbedUnitDiscount = UnitDiscount;
 
 export interface FlatbedOptions {
   /** The setup fee is added to the job. */
@@ -179,11 +179,7 @@ const none = (problem: string | null, pieces = 0, areaCm2 = 0): FlatbedQuote => 
 
 /** Why a unit-price discount cannot be given, or null when it is fine (or there is none). */
 export function flatbedUnitDiscountProblem(d: FlatbedUnitDiscount | null | undefined): string | null {
-  if (!d) return null;
-  if (d.kind !== 'amount' && d.kind !== 'pct') return 'The unit price discount must be an amount or a percentage';
-  if (!(d.value >= 0) || !Number.isFinite(d.value)) return 'A discount cannot be negative';
-  if (d.kind === 'pct' && d.value >= 100) return 'A percentage discount must be under 100%';
-  return null;
+  return unitDiscountAmount(1_000_000, d).problem;
 }
 
 /** The price of a run of this many pieces of this artwork size: each at its band's price (at least the minimum), less the unit-price discount if one is given; then the volume discount off the printing if it is applied, and the setup fee when it is asked for. */
@@ -197,10 +193,9 @@ export function flatbedQuote(s: FlatbedSettings, widthCm: number, heightCm: numb
   if (!found) return none(`No band covers ${areaCm2} cm²`, n, areaCm2);
   const unitPrice = Math.max(found.band.price, s.minPiecePrice);
   const ud = opts.unitDiscount ?? null;
-  const udProblem = flatbedUnitDiscountProblem(ud);
-  if (udProblem) return none(udProblem, n, areaCm2);
-  const unitDiscount = ud ? r2(Math.min(unitPrice, ud.kind === 'pct' ? (unitPrice * ud.value) / 100 : ud.value)) : 0;
-  if (ud && unitDiscount >= unitPrice) return none('The discount is as much as the price of a piece', n, areaCm2);
+  const applied = unitDiscountAmount(unitPrice, ud);
+  if (applied.problem) return none(applied.problem, n, areaCm2);
+  const unitDiscount = applied.amount;
   const discountedUnit = r2(unitPrice - unitDiscount);
   const ds = sortedFlatbedDiscounts(s.discounts);
   let discountIndex = 0;

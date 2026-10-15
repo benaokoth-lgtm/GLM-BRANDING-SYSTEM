@@ -1537,6 +1537,26 @@ model PenTier {
   rate    Float
 }
 
+// A discount on the unit price of a UV pen or UV flatbed job that has to be approved first (UV DTF Film Order → UV Pen Costing / UV Flatbed). Finance Manager, General Manager and Admin give one
+// outright; anyone else asks, one of them decides, and an approved request is used once — on the job it was asked for — when the order is captured (see routes/dtf.ts).
+model DiscountRequest {
+  id              Int       @id @default(autoincrement())
+  product         String // 'pens' | 'flatbed'
+  spec            String // the job it is for, as JSON: {pens} or {widthCm, heightCm, pieces}
+  kind            String // 'amount' (Ksh off each piece) | 'pct'
+  value           Float
+  unitBefore      Float // the price of a piece before the discount
+  unitAfter       Float // and after it
+  requestedById   Int
+  requestedByName String
+  requestedAt     DateTime  @default(now())
+  status          String    @default("Pending") // Pending | Approved | Rejected | Used
+  decidedByName   String?
+  decidedAt       DateTime?
+  reason          String?
+  orderNo         String    @default("")
+}
+
 // UV flatbed printing (UV DTF Film Order → UV Flatbed): the price bands, the bed, the setup fee and the minimum, kept as one row of JSON (see packages/shared/src/flatbed.ts).
 model FlatbedSetting {
   id   Int    @id

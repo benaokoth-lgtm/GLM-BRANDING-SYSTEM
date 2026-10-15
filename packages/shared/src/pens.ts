@@ -1,6 +1,9 @@
 // UV pen branding — a price picker. The rate for a pen depends on how many pens are in the order, and the WHOLE order is charged at that one rate (not stepped): 1–99 pens at 20/=,
 // 100–499 at 15/=, 500–1000 at 12/=, 1001 and over at 10/=. The tiers are data (a list of "from this many pens, this rate"), kept in the system and editable by a manager; the rate for
-// an order is the last tier whose "from" is not above the quantity. Prices are what the customer pays, VAT included, as everywhere else in the system.
+// an order is the last tier whose "from" is not above the quantity. A unit price discount (so much off each pen, or a percentage) comes off that rate when Finance, the General Manager or an Admin gives it, or it has been approved. Prices are what the customer pays, VAT included, as everywhere else in the system.
+
+import { unitDiscountAmount } from './unitDiscount';
+import type { UnitDiscount } from './unitDiscount';
 
 /** The price-list service a UV pen order is recorded against (created on the first order if the price list has none). */
 export const UV_PEN_SERVICE = 'UV Pen Branding';
@@ -58,21 +61,31 @@ export function penRangeLabel(tiers: PenTier[], index: number): string {
 export interface PenQuote {
   qty: number;
   tier: PenTier | null;
+  /** The tier's rate for a pen. */
   rate: number;
+  /** Ksh taken off each pen by a unit price discount (0 when there is none), and what a pen then costs. */
+  unitDiscount: number;
+  discountedRate: number;
+  /** Why the discount cannot be given, when it cannot (the quote is then without it). */
+  discountProblem: string | null;
   total: number;
   /** A cheaper tier a few pens away, and what taking it would mean. */
   upsell: { qty: number; add: number; rate: number; newTotal: number; saving: number } | null;
 }
 
-/** The rate and the total for an order of this many pens, and the nearest cheaper tier if the customer is close to it. */
-export function penQuote(tiers: PenTier[], qty: number): PenQuote {
+/** The rate and the total for an order of this many pens (less the unit price discount, if one is given), and the nearest cheaper tier if the customer is close to it. */
+export function penQuote(tiers: PenTier[], qty: number, discount?: UnitDiscount | null): PenQuote {
   const q = Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 0;
   const s = sortedPenTiers(tiers);
   const tier = penTierFor(s, q);
   const rate = tier?.rate ?? 0;
-  const total = r2(q * rate);
+  const applied = unitDiscountAmount(rate, discount);
+  const unitDiscount = applied.amount;
+  const discountedRate = r2(rate - unitDiscount);
+  const total = r2(q * discountedRate);
   const cur = rate || s[0]?.rate || 0;
   const next = q > 0 ? s.find((t) => t.from > q && t.rate < cur) : undefined;
-  const upsell = next ? { qty: next.from, add: next.from - q, rate: next.rate, newTotal: r2(next.rate * next.from), saving: r2(total - next.rate * next.from) } : null;
-  return { qty: q, tier, rate, total, upsell };
+  // the cheaper-tier hint compares undiscounted totals, so it is not offered on a discounted order
+  const upsell = next && unitDiscount === 0 ? { qty: next.from, add: next.from - q, rate: next.rate, newTotal: r2(next.rate * next.from), saving: r2(total - next.rate * next.from) } : null;
+  return { qty: q, tier, rate, unitDiscount, discountedRate, discountProblem: applied.problem, total, upsell };
 }

@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
-import type { DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
+import { DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
@@ -296,7 +296,7 @@ async function penTiers() {
 }
 
 dtfRouter.get('/pen-tiers', async (req, res) => {
-  res.json({ canManage: req.user!.role === 'Admin', tiers: await penTiers() });
+  res.json({ canManage: req.user!.role === 'Admin', canDiscount: canGiveDiscount(req.user!.role), tiers: await penTiers() });
 });
 
 dtfRouter.put('/pen-tiers', requireRole('Admin'), async (req, res) => {
@@ -308,6 +308,9 @@ dtfRouter.put('/pen-tiers', requireRole('Admin'), async (req, res) => {
   await prisma.$transaction([prisma.penTier.deleteMany({}), prisma.penTier.createMany({ data: tiers.map((t) => ({ fromQty: t.from, rate: t.rate })) })]);
   res.json({ canManage: true, tiers: await penTiers() });
 });
+
+// a discount on the unit price of a piece (see the discount requests below)
+const unitDiscountSchema = z.object({ kind: z.enum(['amount', 'pct']), value: z.number().max(1_000_000) });
 
 const penOrderSchema = z.object({
   pens: z.number().int().positive('Enter the number of pens').max(1_000_000),
@@ -321,6 +324,9 @@ const penOrderSchema = z.object({
   freelanceAgentId: z.number().int().nullable().optional(),
   // The sales person the order is credited to, when the front office captures it for them (see frontOffice.ts).
   staffId: z.number().int().nullable().optional(),
+  // a discount on the unit price: given outright by Finance, the General Manager or an Admin, or taken from an approved request (see discount requests above)
+  unitDiscount: unitDiscountSchema.nullable().default(null),
+  discountRequestId: z.number().int().nullable().default(null),
 });
 
 // "Capture as order" on UV Pen Costing: the pens at the rate for their quantity — worked out here from the tiers, never taken from the screen — become an ordinary order
@@ -329,8 +335,11 @@ dtfRouter.post('/pen-orders', async (req, res) => {
   const parsed = penOrderSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
-  const quote = penQuote(await penTiers(), d.pens);
+  const ud = await resolveUnitDiscount(req.user!, 'pens', { pens: d.pens }, d.unitDiscount, d.discountRequestId);
+  if (!ud.ok) return res.status(ud.status).json({ error: ud.error });
+  const quote = penQuote(await penTiers(), d.pens, ud.discount);
   if (!quote.tier) return res.status(400).json({ error: 'No rate applies to that number of pens' });
+  if (quote.discountProblem) return res.status(400).json({ error: quote.discountProblem });
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const claim = await claimProblem(req.user!, { phone: d.phone, name: d.client, sourcedBy: d.sourcedBy, freelanceAgentId: d.freelanceAgentId });
@@ -343,7 +352,7 @@ dtfRouter.post('/pen-orders', async (req, res) => {
   try {
     const order = await prisma.$transaction(async (tx) => {
       const service = await penService(tx);
-      return createDtfOrder(tx, {
+      const made = await createDtfOrder(tx, {
         product: 'uv',
         channel: 'general',
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -351,13 +360,15 @@ dtfRouter.post('/pen-orders', async (req, res) => {
         staffId: cap.staffId,
         capturedById: cap.capturedById,
         capturedByName: cap.capturedByName,
-        serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pens, unitPrice: quote.rate },
+        serviceLine: { itemType: 'service', serviceId: service.id, qty: d.pens, unitPrice: quote.discountedRate, description: quote.unitDiscount > 0 ? quote.unitDiscount + '/= off each pen' : '' },
         materialLines: d.materialLines,
         payments: paymentLines,
         sourcedBy: d.sourcedBy,
         freelanceAgentId: d.freelanceAgentId,
         serviceBase: quote.rate, // sold at the tier rate, with nothing above it to earn a premium on
       });
+      await spendDiscountRequest(tx, ud.requestId, made.orderNo);
+      return made;
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
@@ -422,7 +433,8 @@ const flatbedOrderSchema = z.object({
   withSetup: z.boolean().default(false),
   // discounts are given only by Finance, the General Manager or an Admin (checked below)
   volumeDiscount: z.boolean().default(false),
-  unitDiscount: z.object({ kind: z.enum(['amount', 'pct']), value: z.number().max(1_000_000) }).nullable().default(null),
+  unitDiscount: unitDiscountSchema.nullable().default(null),
+  discountRequestId: z.number().int().nullable().default(null),
   note: z.string().max(100).default(''),
   client: z.string().max(200).default(''),
   phone: z.string().max(40).default(''),
@@ -442,9 +454,11 @@ dtfRouter.post('/flatbed-orders', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
   const settings = await flatbedSettings();
-  const opts = { setup: d.withSetup, volume: d.volumeDiscount, unitDiscount: d.unitDiscount };
-  if ((d.volumeDiscount || (d.unitDiscount && d.unitDiscount.value > 0)) && !canDiscountFlatbed(req.user!.role)) return res.status(403).json({ error: 'Only Finance, the General Manager or an Admin can apply a discount' });
-  const udProblem = flatbedUnitDiscountProblem(d.unitDiscount);
+  if (d.volumeDiscount && !canDiscountFlatbed(req.user!.role)) return res.status(403).json({ error: 'Only Finance, the General Manager or an Admin can apply the volume discount' });
+  const ud = await resolveUnitDiscount(req.user!, 'flatbed', { widthCm: d.widthCm, heightCm: d.heightCm, pieces: d.pieces }, d.unitDiscount, d.discountRequestId);
+  if (!ud.ok) return res.status(ud.status).json({ error: ud.error });
+  const opts = { setup: d.withSetup, volume: d.volumeDiscount, unitDiscount: ud.discount };
+  const udProblem = flatbedUnitDiscountProblem(ud.discount);
   if (udProblem) return res.status(400).json({ error: udProblem });
   const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, opts);
   if (!quote.ok) return res.status(400).json({ error: quote.problem ?? 'No price applies to that job' });
@@ -460,7 +474,7 @@ dtfRouter.post('/flatbed-orders', async (req, res) => {
   try {
     const order = await prisma.$transaction(async (tx) => {
       const service = await flatbedService(tx, quote.unitPrice);
-      return createDtfOrder(tx, {
+      const made = await createDtfOrder(tx, {
         product: 'uv',
         channel: 'general',
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -475,12 +489,149 @@ dtfRouter.post('/flatbed-orders', async (req, res) => {
         freelanceAgentId: d.freelanceAgentId,
         serviceBase: quote.total, // sold at the quoted price, with nothing above it to earn a premium on
       });
+      await spendDiscountRequest(tx, ud.requestId, made.orderNo);
+      return made;
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the flatbed order') });
   }
 });
+
+// ── Unit price discounts that need approval (UV Pen Costing and UV Flatbed) ───────────────────
+// Finance Manager, General Manager and Admin give a discount on the unit price straight away. Anyone else asks: the request is for one job (the pens, or the artwork size and the number of
+// pieces), it is decided by one of them, and an approved request can be used on that job — once, by the person who asked — when the order is captured. The discount comes from the request,
+// never from the screen.
+
+type DiscountSpec = { pens: number } | { widthCm: number; heightCm: number; pieces: number };
+const specKey = (s: DiscountSpec) => JSON.stringify(s);
+
+/** The unit price a request is about (before the discount), or why there is none. */
+async function discountUnitPrice(product: DiscountProduct, spec: DiscountSpec): Promise<{ unit: number; problem: string | null }> {
+  if (product === 'pens') {
+    const q = penQuote(await penTiers(), (spec as { pens: number }).pens);
+    return q.tier ? { unit: q.rate, problem: null } : { unit: 0, problem: 'No rate applies to that number of pens' };
+  }
+  const f = spec as { widthCm: number; heightCm: number; pieces: number };
+  const q = flatbedQuote(await flatbedSettings(), f.widthCm, f.heightCm, f.pieces);
+  return q.ok ? { unit: q.unitPrice, problem: null } : { unit: 0, problem: q.problem ?? 'No price applies to that job' };
+}
+
+const discountRequestSchema = z.object({
+  product: z.enum(DISCOUNT_PRODUCTS),
+  pens: z.number().int().positive().max(1_000_000).optional(),
+  widthCm: z.number().positive().max(1000).optional(),
+  heightCm: z.number().positive().max(1000).optional(),
+  pieces: z.number().int().positive().max(1_000_000).optional(),
+  discount: unitDiscountSchema,
+});
+
+const showRequest = (r: Prisma.DiscountRequestGetPayload<object>) => ({
+  id: r.id,
+  product: r.product,
+  spec: JSON.parse(r.spec) as DiscountSpec,
+  kind: r.kind,
+  value: r.value,
+  unitBefore: r.unitBefore,
+  unitAfter: r.unitAfter,
+  requestedByName: r.requestedByName,
+  requestedAt: r.requestedAt.toISOString(),
+  status: r.status,
+  decidedByName: r.decidedByName,
+  decidedAt: r.decidedAt?.toISOString() ?? null,
+  reason: r.reason,
+  orderNo: r.orderNo,
+  mine: false,
+});
+
+// Ask for a discount on one job.
+dtfRouter.post('/discount-requests', async (req, res) => {
+  const parsed = discountRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  if (canGiveDiscount(req.user!.role)) return res.status(400).json({ error: 'You can give this discount yourself — it needs no approval' });
+  let spec: DiscountSpec;
+  if (d.product === 'pens') {
+    if (!d.pens) return res.status(400).json({ error: 'Enter the number of pens' });
+    spec = { pens: d.pens };
+  } else {
+    if (!d.widthCm || !d.heightCm || !d.pieces) return res.status(400).json({ error: 'Enter the artwork size and the number of pieces' });
+    spec = { widthCm: d.widthCm, heightCm: d.heightCm, pieces: d.pieces };
+  }
+  if (!(d.discount.value > 0)) return res.status(400).json({ error: 'Enter the discount you are asking for' });
+  const base = await discountUnitPrice(d.product, spec);
+  if (base.problem) return res.status(400).json({ error: base.problem });
+  const applied = unitDiscountAmount(base.unit, d.discount);
+  if (applied.problem) return res.status(400).json({ error: applied.problem });
+  const row = await prisma.discountRequest.create({
+    data: { product: d.product, spec: specKey(spec), kind: d.discount.kind, value: d.discount.value, unitBefore: base.unit, unitAfter: round2(base.unit - applied.amount), requestedById: req.user!.id, requestedByName: req.user!.name },
+  });
+  res.status(201).json(showRequest(row));
+});
+
+// Those who decide see what is waiting (and what was decided lately); everyone else sees their own requests.
+dtfRouter.get('/discount-requests', async (req, res) => {
+  const product = DISCOUNT_PRODUCTS.find((p) => p === req.query.product);
+  const approver = canGiveDiscount(req.user!.role);
+  const where: Prisma.DiscountRequestWhereInput = { ...(product ? { product } : {}), ...(approver ? {} : { requestedById: req.user!.id }) };
+  const rows = await prisma.discountRequest.findMany({ where, orderBy: { id: 'desc' }, take: 60 });
+  const pending = rows.filter((r) => r.status === 'Pending');
+  const rest = rows.filter((r) => r.status !== 'Pending').slice(0, 20);
+  res.json({ canApprove: approver, requests: [...pending, ...rest].map((r) => ({ ...showRequest(r), mine: r.requestedById === req.user!.id })) });
+});
+
+dtfRouter.post('/discount-requests/:id/approve', async (req, res) => {
+  if (!canGiveDiscount(req.user!.role)) return res.status(403).json({ error: 'Only Finance, the General Manager or an Admin can approve a discount' });
+  const r = await prisma.discountRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!r) return res.status(404).json({ error: 'Discount request not found' });
+  if (r.status !== 'Pending') return res.status(400).json({ error: `This request has already been ${r.status.toLowerCase()}` });
+  if (r.requestedById === req.user!.id) return res.status(400).json({ error: 'You cannot approve your own request' });
+  const row = await prisma.discountRequest.update({ where: { id: r.id }, data: { status: 'Approved', decidedByName: req.user!.name, decidedAt: new Date() } });
+  res.json(showRequest(row));
+});
+
+dtfRouter.post('/discount-requests/:id/reject', async (req, res) => {
+  if (!canGiveDiscount(req.user!.role)) return res.status(403).json({ error: 'Only Finance, the General Manager or an Admin can decide a discount' });
+  const parsed = z.object({ reason: z.string().trim().min(1, 'Give a reason for turning the discount down').max(300) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const r = await prisma.discountRequest.findUnique({ where: { id: Number(req.params.id) } });
+  if (!r) return res.status(404).json({ error: 'Discount request not found' });
+  if (r.status !== 'Pending') return res.status(400).json({ error: `This request has already been ${r.status.toLowerCase()}` });
+  const row = await prisma.discountRequest.update({ where: { id: r.id }, data: { status: 'Rejected', reason: parsed.data.reason, decidedByName: req.user!.name, decidedAt: new Date() } });
+  res.json(showRequest(row));
+});
+
+/**
+ * The unit price discount an order is captured with. Finance, the General Manager and Admin may give one outright. Anyone else needs an APPROVED request of their own for this very job
+ * (the same product, the same pens or the same artwork size and pieces) that has not been used yet; the discount is then the request's, whatever the screen sent.
+ */
+async function resolveUnitDiscount(
+  user: { id: number; role: string },
+  product: DiscountProduct,
+  spec: DiscountSpec,
+  direct: UnitDiscount | null | undefined,
+  requestId: number | null | undefined,
+): Promise<{ ok: true; discount: UnitDiscount | null; requestId: number | null } | { ok: false; status: number; error: string }> {
+  if (requestId) {
+    const r = await prisma.discountRequest.findUnique({ where: { id: requestId } });
+    if (!r || r.product !== product || r.requestedById !== user.id) return { ok: false, status: 400, error: 'That discount request is not yours, or is not for this job' };
+    if (r.status !== 'Approved') return { ok: false, status: 400, error: r.status === 'Used' ? 'That discount has already been used on an order' : `That discount request is ${r.status.toLowerCase()}, not approved` };
+    if (r.spec !== specKey(spec)) return { ok: false, status: 400, error: 'That discount was approved for a different job — the pens, size or number of pieces has changed. Ask again.' };
+    return { ok: true, discount: { kind: r.kind as UnitDiscount['kind'], value: r.value }, requestId: r.id };
+  }
+  if (direct && direct.value > 0) {
+    if (!canGiveDiscount(user.role)) return { ok: false, status: 403, error: 'A unit price discount needs approval: ask for it, and apply it once Finance, the General Manager or an Admin has approved it' };
+    return { ok: true, discount: direct, requestId: null };
+  }
+  return { ok: true, discount: null, requestId: null };
+}
+
+/** An approved request is spent by the order it was used on. */
+async function spendDiscountRequest(tx: Prisma.TransactionClient, id: number | null, orderNo: string) {
+  if (!id) return;
+  const done = await tx.discountRequest.updateMany({ where: { id, status: 'Approved' }, data: { status: 'Used', orderNo } });
+  if (done.count !== 1) throw new Error('That discount has already been used on an order');
+}
 
 // ── Setup ────────────────────────────────────────────────────────────────
 const settingsSchema = z

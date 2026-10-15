@@ -4,6 +4,8 @@ import { PEN_QUICK_PICKS, fmtNum, penQuote, penRangeLabel, penTiersProblem, sort
 import type { PenTier } from '@glm/shared';
 import { api } from '../../api/client';
 import DtfOrderDialog from './DtfOrderDialog';
+import UnitDiscountBox from './UnitDiscountBox';
+import type { AppliedDiscount } from './UnitDiscountBox';
 
 // UV DTF Film Order → UV Pen Costing: the price picker for UV-printed pen branding. Staff enter the number of pens and the rate per pen and the total to charge come from the tier
 // table — the whole order at the one rate for its quantity — so nobody has to ask for the price. When the customer is a few pens short of a cheaper tier it says so, and one tap
@@ -24,6 +26,8 @@ interface Editing {
 export default function UvPenCosting() {
   const [tiers, setTiers] = useState<PenTier[] | null>(null);
   const [canManage, setCanManage] = useState(false);
+  const [canGive, setCanGive] = useState(false);
+  const [ud, setUd] = useState<AppliedDiscount | null>(null);
   const [error, setError] = useState('');
   const [qty, setQty] = useState(0);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -32,17 +36,19 @@ export default function UvPenCosting() {
 
   useEffect(() => {
     api
-      .get<{ tiers: PenTier[]; canManage: boolean }>('/dtf/pen-tiers')
+      .get<{ tiers: PenTier[]; canManage: boolean; canDiscount?: boolean }>('/dtf/pen-tiers')
       .then((r) => {
         setTiers(sortedPenTiers(r.tiers));
         setCanManage(r.canManage);
+        setCanGive(!!r.canDiscount);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load the pen rates'));
   }, []);
 
   if (!tiers) return <p className="note">{error || 'Loading…'}</p>;
 
-  const q = penQuote(tiers, qty);
+  const q = penQuote(tiers, qty, ud ? { kind: ud.kind, value: ud.value } : null);
+  const penSpec = qty > 0 ? { pens: qty } : null;
   const set = (n: number) => setQty(Math.max(0, Math.floor(n) || 0));
   const u = q.upsell;
 
@@ -86,7 +92,7 @@ export default function UvPenCosting() {
       <i className="corner br"></i>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '20px 32px', borderBottom: rule }}>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 20 }}>UV Pen Branding · Price Picker</div>
-        <button type="button" className="btn btn-ghost" onClick={() => setQty(0)}>Clear</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { setQty(0); setUd(null); }}>Clear</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}>
@@ -110,6 +116,10 @@ export default function UvPenCosting() {
             {PEN_QUICK_PICKS.map((n) => (
               <button key={n} type="button" className="btn btn-secondary" onClick={() => set(n)}>{n.toLocaleString()}</button>
             ))}
+          </div>
+
+          <div style={{ border: rule, padding: 14, marginTop: 24 }}>
+            <UnitDiscountBox product="pens" spec={penSpec} canGive={canGive} applied={ud} onChange={setUd} />
           </div>
 
           <div style={{ marginTop: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -178,12 +188,13 @@ export default function UvPenCosting() {
         <div style={{ padding: 32, borderBottom: rule, display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div>
             <div style={label}>Price per pen</div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 112, lineHeight: 1, color: 'var(--color-accent)', marginTop: 8 }}>{qty ? rateText(q.rate) : '—'}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 112, lineHeight: 1, color: 'var(--color-accent)', marginTop: 8 }}>{qty ? rateText(q.discountedRate) : '—'}</div>
+            {qty > 0 && q.unitDiscount > 0 && <div style={{ fontSize: 15, marginTop: 4 }}>{rateText(q.rate)} less {rateText(q.unitDiscount)} (unit price discount)</div>}
           </div>
           <div style={{ borderTop: rule, paddingTop: 16 }}>
             <div style={label}>Total to charge</div>
             <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 72, lineHeight: 1.1 }}>{qty ? money(q.total) : '—'}</div>
-            <div style={{ fontSize: 16, marginTop: 4 }}>{qty ? `${fmtNum(qty)} pens × ${rateText(q.rate)}` : 'Enter the number of pens'}</div>
+            <div style={{ fontSize: 16, marginTop: 4 }}>{qty ? `${fmtNum(qty)} pens × ${rateText(q.discountedRate)}` : 'Enter the number of pens'}</div>
             {qty > 0 && <div className="text-muted" style={{ fontSize: 13, marginTop: 2 }}>VAT included, as every price in the system is.</div>}
           </div>
           {qty > 0 && u && (
@@ -213,9 +224,9 @@ export default function UvPenCosting() {
           product="uv"
           mode="pens"
           postUrl="/dtf/pen-orders"
-          basePayload={{ pens: qty }}
+          basePayload={{ pens: qty, unitDiscount: ud && !ud.requestId ? { kind: ud.kind, value: ud.value } : null, discountRequestId: ud?.requestId ?? null }}
           qty={qty}
-          unitPrice={q.rate}
+          unitPrice={q.discountedRate}
           client=""
           onClose={() => setCapturing(false)}
           onDone={() => navigate('/orders/all')}

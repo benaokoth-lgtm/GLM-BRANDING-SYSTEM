@@ -18,6 +18,7 @@ export * from './embroidery';
 export * from './costing';
 export * from './pens';
 export * from './flatbed';
+export * from './unitDiscount';
 export * from './printCosting';
 export * from './salesTypes';
 export * from './hr';

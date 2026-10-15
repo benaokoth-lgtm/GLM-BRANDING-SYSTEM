@@ -4,6 +4,8 @@ import { FLATBED_SIZE_PICKS, flatbedDiscountRangeLabel, flatbedMaxArea, flatbedQ
 import type { FlatbedSettings } from '@glm/shared';
 import { api } from '../../api/client';
 import DtfOrderDialog from './DtfOrderDialog';
+import UnitDiscountBox from './UnitDiscountBox';
+import type { AppliedDiscount } from './UnitDiscountBox';
 
 // UV DTF Film Order → UV Flatbed: the price picker for printing on the flatbed (diaries and other flat items). Staff enter the size of the ARTWORK (the part of the item that is printed)
 // and the number of pieces; the band the artwork falls in, the price per piece and the total come from the bands kept in the system. A piece is never charged less than the minimum for
@@ -40,8 +42,7 @@ export default function UvFlatbedCosting() {
   const [pieces, setPieces] = useState(0);
   const [withSetup, setWithSetup] = useState(false);
   const [volume, setVolume] = useState(false);
-  const [udKind, setUdKind] = useState<'none' | 'amount' | 'pct'>('none');
-  const [udValue, setUdValue] = useState('');
+  const [ud, setUd] = useState<AppliedDiscount | null>(null);
   const [note, setNote] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
   const [capturing, setCapturing] = useState(false);
@@ -64,7 +65,8 @@ export default function UvFlatbedCosting() {
   const discounts = sortedFlatbedDiscounts(settings.discounts);
   const wc = num(w);
   const hc = num(h);
-  const unitDiscount = canDiscount && udKind !== 'none' && num(udValue) > 0 ? { kind: udKind, value: num(udValue) } : null;
+  const unitDiscount = ud ? { kind: ud.kind, value: ud.value } : null;
+  const jobSpec = wc > 0 && hc > 0 && pieces > 0 ? { widthCm: wc, heightCm: hc, pieces } : null;
   const volumeOn = canDiscount && volume;
   const q = flatbedQuote(settings, wc, hc, pieces, { setup: withSetup, volume: volumeOn, unitDiscount });
   const sized = wc > 0 && hc > 0;
@@ -122,7 +124,7 @@ export default function UvFlatbedCosting() {
       <i className="corner br"></i>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '20px 32px', borderBottom: rule }}>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 20 }}>UV Flatbed · Diaries &amp; flat items · Price Picker</div>
-        <button type="button" className="btn btn-ghost" onClick={() => { setW(''); setH(''); setPieces(0); setNote(''); setWithSetup(false); setVolume(false); setUdKind('none'); setUdValue(''); }}>Clear</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { setW(''); setH(''); setPieces(0); setNote(''); setWithSetup(false); setVolume(false); setUd(null); }}>Clear</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}>
@@ -167,26 +169,13 @@ export default function UvFlatbedCosting() {
             <span>Add the setup fee ({money(settings.setupFee)}), for the layout</span>
           </label>
           <div style={{ border: rule, padding: 14, marginTop: 18, display: 'grid', gap: 10 }}>
-            <div style={{ ...label, fontSize: 13 }}>Discounts {canDiscount ? '' : '· applied by Finance, the General Manager or an Admin'}</div>
+            <div style={{ ...label, fontSize: 13 }}>Discounts {canDiscount ? '' : '· the volume discount is applied by Finance, the General Manager or an Admin'}</div>
             <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 15, opacity: canDiscount ? 1 : 0.6 }}>
               <input type="checkbox" checked={volumeOn} disabled={!canDiscount} onChange={(e) => setVolume(e.target.checked)} aria-label="Apply the volume discount" />
               <span>Apply the volume discount{q.ok && q.volumePct > 0 ? ` (${fmtNum(q.volumePct, 2)}% for ${fmtNum(q.pieces)} pieces)` : ''}</span>
             </label>
             {!canDiscount && q.ok && q.volumePct > 0 && <p className="note" style={{ margin: 0, fontSize: 13 }}>This run earns {fmtNum(q.volumePct, 2)}% off. Ask Finance, the General Manager or an Admin to apply it.</p>}
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', opacity: canDiscount ? 1 : 0.6 }}>
-              <span style={{ fontSize: 15 }}>Unit price discount</span>
-              <select className="input" style={{ width: 170 }} value={udKind} disabled={!canDiscount} onChange={(e) => setUdKind(e.target.value as 'none' | 'amount' | 'pct')} aria-label="Kind of unit price discount">
-                <option value="none">None</option>
-                <option value="amount">Ksh off each piece</option>
-                <option value="pct">% off the unit price</option>
-              </select>
-              {udKind !== 'none' && (
-                <>
-                  <input className="input" style={{ width: 90 }} inputMode="decimal" placeholder={udKind === 'pct' ? '%' : 'Ksh'} value={udValue} disabled={!canDiscount} onChange={(e) => setUdValue(e.target.value)} aria-label="Unit price discount" />
-                  <span className="text-muted" style={{ fontSize: 13 }}>{udKind === 'pct' ? '% off each piece' : '/= off each piece'}</span>
-                </>
-              )}
-            </div>
+            <UnitDiscountBox product="flatbed" spec={jobSpec} canGive={canDiscount} applied={ud} onChange={setUd} />
           </div>
           <input className="input" style={{ marginTop: 14 }} maxLength={100} placeholder="What it is, e.g. 2027 diary covers (optional)" value={note} onChange={(e) => setNote(e.target.value)} aria-label="What is being printed" />
 
@@ -313,7 +302,7 @@ export default function UvFlatbedCosting() {
           product="uv"
           mode="flatbed"
           postUrl="/dtf/flatbed-orders"
-          basePayload={{ widthCm: wc, heightCm: hc, pieces, withSetup, note, volumeDiscount: volumeOn, unitDiscount }}
+          basePayload={{ widthCm: wc, heightCm: hc, pieces, withSetup, note, volumeDiscount: volumeOn, unitDiscount: ud && !ud.requestId ? { kind: ud.kind, value: ud.value } : null, discountRequestId: ud?.requestId ?? null }}
           qty={1}
           unitPrice={q.total}
           client=""

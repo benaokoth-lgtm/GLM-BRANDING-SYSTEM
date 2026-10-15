@@ -196,7 +196,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         }}
       >
         <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>Job total: {fmtKsh(sheetOn ? sheet.enteredTotal : jobTotal)}</div>
-        <button type="button" className="btn btn-primary blueprint" onClick={() => setShowOrderDialog(true)} disabled={sheetOn ? !(sheet.ok && !!rollId) : !canSave}>
+        <button type="button" className="btn btn-primary blueprint" onClick={() => setShowOrderDialog(true)} disabled={sheetOn ? !(sheet.ok && !!rollId && pcs > 0) : !canSave}>
           <i className="corner tl"></i>
           <i className="corner tr"></i>
           <i className="corner bl"></i>

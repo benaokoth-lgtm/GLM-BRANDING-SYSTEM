@@ -23,7 +23,8 @@ async function call(who: string, method: string, path: string, body?: unknown) {
   return { status: res.status, body: (await res.json().catch(() => null)) as any };
 }
 const row = (client: string, label: string, qty: number, price: number) => ({ client, phone: '', label, qty, price });
-const sheet = (extra: Record<string, unknown>) => call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 3, heatPressFee: 20, ...extra });
+// the artworks on the length are required; unless a test says otherwise they are exactly what its rows place
+const sheet = (extra: Record<string, unknown>) => call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 3, heatPressFee: 20, pieces: ((extra.rows as { qty: number }[]) ?? []).reduce((a, r) => a + r.qty, 0), ...extra });
 
 // DTF defaults: 30 minimum a piece, 2,160 a metre. 3 m over 140 artworks: 30 + 6,480 ÷ 140 = 76.29 each, 10,680 in all.
 describe('artwork sheets', () => {
@@ -122,14 +123,21 @@ describe('artwork sheets', () => {
     const placed = await sheet({ pieces: 150, rows: [row('Client A', '5 × 5 cm', 100, 60), row('Client B', '15 × 20 cm', 40, 160)] });
     assert.equal(placed.status, 400);
     assert.match(placed.body.error, /10 still to place/);
-    const noFee = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 3, rows: [row('A', 'x', 10, 900)] });
+    // the rows can never be more than the length carries, and the length's artworks must be given
+    const many = await sheet({ pieces: 130, rows: [row('Client A', '5 × 5 cm', 100, 60), row('Client B', '15 × 20 cm', 40, 160)] });
+    assert.equal(many.status, 400);
+    assert.match(many.body.error, /10 too many/);
+    const none = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 3, heatPressFee: 20, rows: [row('A', 'x', 10, 900)] });
+    assert.equal(none.status, 400);
+    assert.match(none.body.error, /number of artworks on the length/);
+    const noFee = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 3, pieces: 10, rows: [row('A', 'x', 10, 900)] });
     assert.equal(noFee.status, 400);
     assert.match(noFee.body.error, /heat press fee/);
     // a client cannot pay more than their own order
     const over = await sheet({ rows: [row('A', 'x', 10, 900)], clientPayments: [{ key: sheetClientKey('A', ''), payments: [{ method: 'Cash', amount: 99999 }] }] });
     assert.equal(over.status, 400);
     assert.match(over.body.error, /cannot exceed/);
-    assert.equal((await call('printer', 'POST', '/dtf/sheets', { rollId: 'NOPE', runningMetres: 3, heatPressFee: 20, rows: [row('A', 'x', 10, 900)] })).status, 400);
+    assert.equal((await call('printer', 'POST', '/dtf/sheets', { rollId: 'NOPE', runningMetres: 3, heatPressFee: 20, pieces: 10, rows: [row('A', 'x', 10, 900)] })).status, 400);
   });
 
   it('one client with several sizes is one order with a line each (the single-client case)', async () => {

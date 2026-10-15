@@ -46,6 +46,23 @@ export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, mi
   const calc = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient || 'Walk-in', '', expected);
   const set = (key: number, patch: Partial<UiRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const rec = calc.recommendedPerPiece;
+  // The artworks of all the rows can never be more than the length carries: a row takes at most what the others have left.
+  const placed = rows.reduce((a, r) => a + Math.max(0, Math.floor(num(r.qty))), 0);
+  const left = expected > 0 ? expected - placed : 0;
+  const [capped, setCapped] = useState('');
+  function setQty(key: number, raw: string) {
+    const clean = raw.replace(/[^\d]/g, '');
+    const others = rows.filter((r) => r.key !== key).reduce((a, r) => a + Math.max(0, Math.floor(num(r.qty))), 0);
+    const room = Math.max(0, expected - others);
+    const n = clean === '' ? 0 : Number(clean);
+    if (expected > 0 && n > room) {
+      set(key, { qty: String(room) });
+      setCapped(room > 0 ? `The length carries ${fmtNum(expected)} artworks: only ${fmtNum(room)} are left for this row.` : `All ${fmtNum(expected)} artworks of the length are already placed in the other rows.`);
+    } else {
+      set(key, { qty: clean });
+      setCapped('');
+    }
+  }
   return (
     <div style={{ marginTop: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
       <div className="note" style={{ margin: 0 }}>
@@ -63,13 +80,20 @@ export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, mi
         <div key={r.key} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1.1fr 0.7fr 0.8fr auto', gap: 6 }}>
           <input className="input" value={r.client} onChange={(e) => set(r.key, { client: e.target.value })} placeholder={defaultClient || 'Walk-in'} aria-label={`Row ${i + 1} client`} />
           <input className="input" value={r.label} onChange={(e) => set(r.key, { label: e.target.value })} placeholder="e.g. 5 × 5 cm" maxLength={80} aria-label={`Row ${i + 1} size`} />
-          <input className="input" inputMode="numeric" value={r.qty} onChange={(e) => set(r.key, { qty: e.target.value })} placeholder="0" aria-label={`Row ${i + 1} how many`} />
+          <input className="input" inputMode="numeric" value={r.qty} onChange={(e) => setQty(r.key, e.target.value)} placeholder="0" disabled={!(expected > 0)} title={expected > 0 ? '' : 'Enter the artworks on this length first'} aria-label={`Row ${i + 1} how many`} />
           <input className="input" inputMode="decimal" value={r.price} onChange={(e) => set(r.key, { price: e.target.value })} placeholder={rec > 0 ? String(rec) : 'Ksh'} aria-label={`Row ${i + 1} price each`} />
           <button type="button" className="btn btn-ghost btn-icon" aria-label={`Remove row ${i + 1}`} disabled={rows.length === 1} onClick={() => onChange(rows.filter((x) => x.key !== r.key))}>
             ✕
           </button>
         </div>
       ))}
+      {!(expected > 0) && <p className="note" style={{ margin: 0, color: 'var(--color-error)' }}>Enter the number of artworks on this length (above, beside the running metres) before placing them in rows.</p>}
+      {expected > 0 && (
+        <div className="note" style={{ margin: 0, fontWeight: 600, color: left === 0 ? 'var(--color-accent)' : undefined }}>
+          {left > 0 ? `${fmtNum(left)} of the ${fmtNum(expected)} artworks still to place` : left === 0 ? `All ${fmtNum(expected)} artworks are placed` : `${fmtNum(-left)} too many`}
+        </div>
+      )}
+      {capped && <p className="note" style={{ margin: 0, color: 'var(--color-error)' }}>{capped}</p>}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-secondary btn-sm" onClick={() => onChange([...rows, newSheetRow()])}>
           + Add a row
@@ -187,7 +211,7 @@ export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, r
         jobOn,
         client: defaultClient,
         runningMetres: run,
-        ...(expected > 0 ? { pieces: expected } : {}),
+        pieces: expected,
         ...(noPress ? {} : { heatPressFee: feeNum }),
         rows: withPhones.map((x) => ({ client: x.client, phone: x.phone, label: x.label, qty: x.qty, price: x.price })),
         clientPayments,

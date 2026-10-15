@@ -323,6 +323,7 @@ export async function resolveSourcing(
       data: {
         clientKey,
         clientName: label,
+        phone: (o.phone ?? '').trim(),
         staffId: o.sourcedBy,
         startDate: today,
         endDate: ownershipEnd(today, cfg.ownershipMonths),

@@ -3,6 +3,7 @@ import { PRINT_FEE_LABELS, PRINT_PAGE_OPTIONS, PRINT_PRODUCTS, PRINT_PRODUCT_LAB
 import type { PrintJob, PrintProduct, PrintSettings, PrintSize } from '@glm/shared';
 import { api, downloadFile } from '../api/client';
 import { numStyle } from '../pages/accounting/shared';
+import StaffClientPicker from './StaffClientPicker';
 import { useAuth } from '../state/AuthContext';
 
 // Job Costing → Brochures & Eulogies: eulogy booklets, company profiles and brochures printed by a supplier. Pick the job and the quantity and the price to quote appears, VAT included,
@@ -120,6 +121,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
   const saveBox = saving && (
     <div className="no-print" style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)', maxWidth: 520 }}>
       <div className="card-kicker">Keep this costing as a quote for a client</div>
+      <StaffClientPicker onPick={(c) => setSaving({ ...saving, client: c.name, phone: c.phone })} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
         <div className="field" style={{ margin: 0 }}>
           <label>Client name *</label>

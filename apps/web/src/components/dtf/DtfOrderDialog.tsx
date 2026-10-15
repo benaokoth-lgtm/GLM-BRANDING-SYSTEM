@@ -7,6 +7,7 @@ import { printOrderDocument } from '../../utils/printInvoice';
 import type { CompanySettings, OrderDetail } from '../../api/models';
 import { Corners, Field } from './shared';
 import SourcingField from '../SourcingField';
+import StaffClientPicker from '../StaffClientPicker';
 import { useSalesPeople } from '../../hooks/useSalesPeople';
 import { useAuth } from '../../state/AuthContext';
 import SplitPayments, { newPaymentRow, paymentProblem, paymentsTotal, toApiPayments } from '../SplitPayments';
@@ -157,6 +158,8 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
         <p className="note" style={{ marginTop: 0 }}>
           {clientName.trim() ? `Client: ${clientName.trim()}` : 'Walk-in client'} — {mode === 'pens' ? 'pens' : mode === 'flatbed' ? 'flatbed printing' : mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
         </p>
+
+        <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setClientName(c.name); setPhone(c.phone); }} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
           <Field label={sourced ? 'Client name *' : 'Client name (optional)'}>

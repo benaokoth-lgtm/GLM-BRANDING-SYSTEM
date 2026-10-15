@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { registerPhone } from './staffClients';
 import { z } from 'zod';
 import { EXPENSE_METHODS, GENERAL_MODES, VAT_RATE, artworkPremiumCommission, computePay, filmPremiumCommission, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
@@ -89,6 +90,33 @@ commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   res.json(await getCommissionConfig());
 });
 
+// The freelance sales persons' rates on their own (Commission → Freelancers → Rates): the weekly bands, the share of what is charged above base, the weight of thin-margin lines, how long a
+// client stays theirs, and the tax withheld. They are the same fields as in Commission → Rates, so changing them in either place changes both. Admin only; managers and staff can read them.
+const freelanceRatesSchema = z.object({
+  freelanceBands: z.array(bandSchema).min(1),
+  freelancePremiumPct: z.number().min(0).max(100),
+  freelanceLowMarginPct: z.number().min(0).max(100),
+  freelanceOwnershipMonths: z.number().int().min(1).max(60),
+  freelanceWhtRate: z.number().min(0).max(100),
+});
+commissionRouter.put('/freelance-settings', requireRole('Admin'), async (req, res) => {
+  const parsed = freelanceRatesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  const problem = bandsProblem(d.freelanceBands, 'Freelance bands');
+  if (problem) return res.status(400).json({ error: problem });
+  const data = {
+    freelanceBandsJson: JSON.stringify([...d.freelanceBands].sort((x, y) => x.from - y.from)),
+    freelancePremiumPct: d.freelancePremiumPct,
+    freelanceLowMarginPct: d.freelanceLowMarginPct,
+    freelanceOwnershipMonths: d.freelanceOwnershipMonths,
+    freelanceWhtRate: d.freelanceWhtRate,
+    updatedByName: req.user!.name,
+  };
+  await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  res.json(await getCommissionConfig());
+});
+
 // ── The pay guide ───────────────────────────────────────────────────────────
 // Everything the employee pay guide needs, built from the CURRENT settings — the bands, floor, minimum wage and payday — so changing the bands in Rates changes the guide
 // (and every screen that shows them) with nothing else to update. The take-home examples are worked out by the payroll's own rules for each pay level.
@@ -132,7 +160,7 @@ commissionRouter.get('/my', async (req, res) => {
     config,
     statement: mine,
     payout: payout ? { status: payout.status, amount: payout.amount, paidOn: payout.paidOn } : null,
-    clients: clients.map((c) => ({ id: c.id, name: c.clientName, startDate: c.startDate, endDate: c.endDate })),
+    clients: clients.map((c) => ({ id: c.id, name: c.clientName, phone: registerPhone(c), startDate: c.startDate, endDate: c.endDate })),
   });
 });
 
@@ -256,6 +284,7 @@ commissionRouter.get('/clients', manage, async (req, res) => {
       id: r.id,
       clientKey: r.clientKey,
       clientName: r.clientName,
+      phone: registerPhone(r),
       staffId: r.staffId,
       staffName: r.staff.name,
       startDate: r.startDate,
@@ -296,7 +325,7 @@ commissionRouter.post('/clients', manage, async (req, res) => {
   const cfg = await getCommissionConfig();
   const startDate = d.startDate ?? todayStr();
   const row = await prisma.clientOwner.create({
-    data: { clientKey, clientName: clientName || clientKey, staffId: d.staffId, startDate, endDate: ownershipEnd(startDate, cfg.ownershipMonths), note: d.note ?? '', createdByName: req.user!.name },
+    data: { clientKey, clientName: clientName || clientKey, phone: d.phone ?? '', staffId: d.staffId, startDate, endDate: ownershipEnd(startDate, cfg.ownershipMonths), note: d.note ?? '', createdByName: req.user!.name },
   });
   res.status(201).json(row);
 });

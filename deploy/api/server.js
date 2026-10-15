@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router28 = require_router();
+    var Router29 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router28({
+        this._router = new Router29({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router28 = require_router();
+    var Router29 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router28;
+    exports2.Router = Router29;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express27 = __toESM(require_express2());
+var import_express28 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -67179,6 +67179,7 @@ async function resolveSourcing(db, o) {
       data: {
         clientKey,
         clientName: label,
+        phone: (o.phone ?? "").trim(),
         staffId: o.sourcedBy,
         startDate: today,
         endDate: ownershipEnd(today, cfg.ownershipMonths),
@@ -70130,9 +70131,9 @@ var ZodObject = class _ZodObject extends ZodType {
   _getCached() {
     if (this._cached !== null)
       return this._cached;
-    const shape2 = this._def.shape();
-    const keys = util3.objectKeys(shape2);
-    this._cached = { shape: shape2, keys };
+    const shape3 = this._def.shape();
+    const keys = util3.objectKeys(shape3);
+    this._cached = { shape: shape3, keys };
     return this._cached;
   }
   _parse(input) {
@@ -70147,7 +70148,7 @@ var ZodObject = class _ZodObject extends ZodType {
       return INVALID;
     }
     const { status, ctx } = this._processInputParams(input);
-    const { shape: shape2, keys: shapeKeys } = this._getCached();
+    const { shape: shape3, keys: shapeKeys } = this._getCached();
     const extraKeys = [];
     if (!(this._def.catchall instanceof ZodNever && this._def.unknownKeys === "strip")) {
       for (const key2 in ctx.data) {
@@ -70158,7 +70159,7 @@ var ZodObject = class _ZodObject extends ZodType {
     }
     const pairs = [];
     for (const key2 of shapeKeys) {
-      const keyValidator = shape2[key2];
+      const keyValidator = shape3[key2];
       const value = ctx.data[key2];
       pairs.push({
         key: { status: "valid", value: key2 },
@@ -70364,27 +70365,27 @@ var ZodObject = class _ZodObject extends ZodType {
     });
   }
   pick(mask) {
-    const shape2 = {};
+    const shape3 = {};
     for (const key2 of util3.objectKeys(mask)) {
       if (mask[key2] && this.shape[key2]) {
-        shape2[key2] = this.shape[key2];
+        shape3[key2] = this.shape[key2];
       }
     }
     return new _ZodObject({
       ...this._def,
-      shape: () => shape2
+      shape: () => shape3
     });
   }
   omit(mask) {
-    const shape2 = {};
+    const shape3 = {};
     for (const key2 of util3.objectKeys(this.shape)) {
       if (!mask[key2]) {
-        shape2[key2] = this.shape[key2];
+        shape3[key2] = this.shape[key2];
       }
     }
     return new _ZodObject({
       ...this._def,
-      shape: () => shape2
+      shape: () => shape3
     });
   }
   /**
@@ -70431,27 +70432,27 @@ var ZodObject = class _ZodObject extends ZodType {
     return createZodEnum(util3.objectKeys(this.shape));
   }
 };
-ZodObject.create = (shape2, params) => {
+ZodObject.create = (shape3, params) => {
   return new ZodObject({
-    shape: () => shape2,
+    shape: () => shape3,
     unknownKeys: "strip",
     catchall: ZodNever.create(),
     typeName: ZodFirstPartyTypeKind.ZodObject,
     ...processCreateParams(params)
   });
 };
-ZodObject.strictCreate = (shape2, params) => {
+ZodObject.strictCreate = (shape3, params) => {
   return new ZodObject({
-    shape: () => shape2,
+    shape: () => shape3,
     unknownKeys: "strict",
     catchall: ZodNever.create(),
     typeName: ZodFirstPartyTypeKind.ZodObject,
     ...processCreateParams(params)
   });
 };
-ZodObject.lazycreate = (shape2, params) => {
+ZodObject.lazycreate = (shape3, params) => {
   return new ZodObject({
-    shape: shape2,
+    shape: shape3,
     unknownKeys: "strip",
     catchall: ZodNever.create(),
     typeName: ZodFirstPartyTypeKind.ZodObject,
@@ -81064,8 +81065,115 @@ qualityRouter.post("/orders/:orderId/check", async (req, res) => {
 });
 
 // apps/api/src/routes/commission.ts
+var import_express19 = __toESM(require_express2());
+
+// apps/api/src/routes/staffClients.ts
 var import_express18 = __toESM(require_express2());
-var commissionRouter = (0, import_express18.Router)();
+var staffClientsRouter = (0, import_express18.Router)();
+staffClientsRouter.use(requireAuth);
+function registerPhone(r) {
+  if (r.phone.trim()) return r.phone.trim();
+  return r.clientKey.startsWith("p:") ? `0${r.clientKey.slice(2)}` : "";
+}
+async function mayKeep(user, staffId) {
+  return staffId === user.id || await canCaptureForOthers(user.role) || await canManageCommission(user.role);
+}
+staffClientsRouter.use(async (_req, res, next) => {
+  if (!await commissionEnabled()) return res.status(403).json({ error: "The client register works with commission, which is switched off. An Admin can switch it on in Master Data \u2192 Company Info." });
+  next();
+});
+var shape = async (rows) => {
+  const corp = rows.filter((r) => r.clientKey.startsWith("c:")).map((r) => Number(r.clientKey.slice(2)));
+  const corporates = corp.length ? await prisma.corporateClient.findMany({ where: { id: { in: corp } }, select: { id: true, phone: true } }) : [];
+  const corpPhone = new Map(corporates.map((c) => [c.id, c.phone]));
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.clientName,
+    phone: registerPhone(r) || (r.clientKey.startsWith("c:") ? corpPhone.get(Number(r.clientKey.slice(2))) ?? "" : ""),
+    corporate: r.clientKey.startsWith("c:"),
+    staffId: r.staffId,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    note: r.note
+  }));
+};
+staffClientsRouter.get("/people", async (req, res) => {
+  const all = await canCaptureForOthers(req.user.role) || await canManageCommission(req.user.role);
+  const people = all ? await salesPeople() : [];
+  const me = { id: req.user.id, name: req.user.name };
+  res.json({
+    all,
+    me,
+    people: [me, ...people.filter((p) => p.id !== me.id).map((p) => ({ id: p.id, name: p.name }))]
+  });
+});
+staffClientsRouter.get("/", async (req, res) => {
+  const staffId = req.query.staffId ? Number(req.query.staffId) : req.user.id;
+  if (!Number.isInteger(staffId)) return res.status(400).json({ error: "Choose a sales person" });
+  if (!await mayKeep(req.user, staffId)) return res.status(403).json({ error: "Not permitted for your role" });
+  const rows = await prisma.clientOwner.findMany({ where: { staffId, status: "Active", endDate: { gte: todayStr() } }, orderBy: { clientName: "asc" }, take: 1e3 });
+  res.json(await shape(rows));
+});
+var clientSchema2 = external_exports.object({
+  staffId: external_exports.number().int().optional(),
+  corporateClientId: external_exports.number().int().optional(),
+  name: external_exports.string().trim().max(200).optional(),
+  phone: external_exports.string().trim().max(40).optional(),
+  note: external_exports.string().trim().max(200).optional()
+});
+staffClientsRouter.post("/", async (req, res) => {
+  const parsed = clientSchema2.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const staffId = d.staffId ?? req.user.id;
+  if (!await mayKeep(req.user, staffId)) return res.status(403).json({ error: "You can only keep your own clients" });
+  if (staffId !== req.user.id && !(await salesPeople()).some((p) => p.id === staffId)) return res.status(400).json({ error: "That person is not set up to be given orders" });
+  let name2 = (d.name ?? "").trim();
+  let phone = (d.phone ?? "").trim();
+  if (d.corporateClientId) {
+    const c = await prisma.corporateClient.findUnique({ where: { id: d.corporateClientId } });
+    if (!c) return res.status(400).json({ error: "Corporate client not found" });
+    name2 = c.name;
+    phone = phone || c.phone;
+  } else {
+    if (!isNamedClient(name2)) return res.status(400).json({ error: "Enter the client\u2019s name" });
+    if (phone.replace(/\D/g, "").length < 9) return res.status(400).json({ error: "Enter the client\u2019s phone number \u2014 it is how they are recognised on their next order" });
+  }
+  const clientKey = clientKeyFor({ corporateClientId: d.corporateClientId, phone, name: name2 });
+  if (!clientKey) return res.status(400).json({ error: "Enter the client\u2019s name and phone number" });
+  const owner = await activeOwner(prisma, clientKey);
+  if (owner) return res.status(409).json({ error: owner.staffId === staffId ? "This client is already in the register" : `This client is already credited to ${owner.staffName} until ${owner.endDate}. Clients are not shared \u2014 they have to be released first.` });
+  const cfg = await getCommissionConfig();
+  const startDate = todayStr();
+  const row = await prisma.clientOwner.create({
+    data: { clientKey, clientName: name2, phone, staffId, startDate, endDate: ownershipEnd(startDate, cfg.ownershipMonths), note: d.note ?? "", createdByName: req.user.name }
+  });
+  res.status(201).json((await shape([row]))[0]);
+});
+staffClientsRouter.put("/:id", async (req, res) => {
+  const parsed = external_exports.object({ name: external_exports.string().trim().max(200), phone: external_exports.string().trim().max(40), note: external_exports.string().trim().max(200).optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const row = await prisma.clientOwner.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row || row.status !== "Active") return res.status(404).json({ error: "Client not found in the register" });
+  if (!await mayKeep(req.user, row.staffId)) return res.status(403).json({ error: "You can only keep your own clients" });
+  const d = parsed.data;
+  if (row.clientKey.startsWith("c:")) {
+    const updated2 = await prisma.clientOwner.update({ where: { id: row.id }, data: { phone: d.phone, note: d.note ?? row.note } });
+    return res.json((await shape([updated2]))[0]);
+  }
+  if (!isNamedClient(d.name)) return res.status(400).json({ error: "Enter the client\u2019s name" });
+  if (d.phone.replace(/\D/g, "").length < 9) return res.status(400).json({ error: "Enter the client\u2019s phone number" });
+  const clientKey = clientKeyFor({ phone: d.phone, name: d.name });
+  if (clientKey !== row.clientKey) {
+    const owner = await activeOwner(prisma, clientKey);
+    if (owner && owner.id !== row.id) return res.status(409).json({ error: `That phone number belongs to a client credited to ${owner.staffName} until ${owner.endDate}.` });
+  }
+  const updated = await prisma.clientOwner.update({ where: { id: row.id }, data: { clientKey, clientName: d.name, phone: d.phone, note: d.note ?? row.note } });
+  res.json((await shape([updated]))[0]);
+});
+
+// apps/api/src/routes/commission.ts
+var commissionRouter = (0, import_express19.Router)();
 commissionRouter.use(requireAuth, async (_req, _res, next) => {
   await ensureCommissionAccessOnce();
   next();
@@ -81135,6 +81243,30 @@ commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
   res.json(await getCommissionConfig());
 });
+var freelanceRatesSchema = external_exports.object({
+  freelanceBands: external_exports.array(bandSchema).min(1),
+  freelancePremiumPct: external_exports.number().min(0).max(100),
+  freelanceLowMarginPct: external_exports.number().min(0).max(100),
+  freelanceOwnershipMonths: external_exports.number().int().min(1).max(60),
+  freelanceWhtRate: external_exports.number().min(0).max(100)
+});
+commissionRouter.put("/freelance-settings", requireRole("Admin"), async (req, res) => {
+  const parsed = freelanceRatesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const problem = bandsProblem(d.freelanceBands, "Freelance bands");
+  if (problem) return res.status(400).json({ error: problem });
+  const data = {
+    freelanceBandsJson: JSON.stringify([...d.freelanceBands].sort((x, y) => x.from - y.from)),
+    freelancePremiumPct: d.freelancePremiumPct,
+    freelanceLowMarginPct: d.freelanceLowMarginPct,
+    freelanceOwnershipMonths: d.freelanceOwnershipMonths,
+    freelanceWhtRate: d.freelanceWhtRate,
+    updatedByName: req.user.name
+  };
+  await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
+  res.json(await getCommissionConfig());
+});
 commissionRouter.get("/pay-guide", async (_req, res) => {
   const config = await getCommissionConfig();
   const dtf = await prisma.dtfSetting.findUnique({ where: { id: 1 } });
@@ -81173,7 +81305,7 @@ commissionRouter.get("/my", async (req, res) => {
     config,
     statement: mine,
     payout: payout ? { status: payout.status, amount: payout.amount, paidOn: payout.paidOn } : null,
-    clients: clients.map((c) => ({ id: c.id, name: c.clientName, startDate: c.startDate, endDate: c.endDate }))
+    clients: clients.map((c) => ({ id: c.id, name: c.clientName, phone: registerPhone(c), startDate: c.startDate, endDate: c.endDate }))
   });
 });
 commissionRouter.get("/statement", manage, async (req, res) => {
@@ -81283,6 +81415,7 @@ commissionRouter.get("/clients", manage, async (req, res) => {
       id: r.id,
       clientKey: r.clientKey,
       clientName: r.clientName,
+      phone: registerPhone(r),
       staffId: r.staffId,
       staffName: r.staff.name,
       startDate: r.startDate,
@@ -81320,7 +81453,7 @@ commissionRouter.post("/clients", manage, async (req, res) => {
   const cfg = await getCommissionConfig();
   const startDate = d.startDate ?? todayStr();
   const row = await prisma.clientOwner.create({
-    data: { clientKey, clientName: clientName || clientKey, staffId: d.staffId, startDate, endDate: ownershipEnd(startDate, cfg.ownershipMonths), note: d.note ?? "", createdByName: req.user.name }
+    data: { clientKey, clientName: clientName || clientKey, phone: d.phone ?? "", staffId: d.staffId, startDate, endDate: ownershipEnd(startDate, cfg.ownershipMonths), note: d.note ?? "", createdByName: req.user.name }
   });
   res.status(201).json(row);
 });
@@ -81432,7 +81565,7 @@ commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
 });
 
 // apps/api/src/routes/pricelists.ts
-var import_express19 = __toESM(require_express2());
+var import_express20 = __toESM(require_express2());
 
 // apps/api/src/marketSurvey.ts
 var SURVEY_HEADERS = ["No.", "Category", "Item / service", "Description", "Size", "Unit", "Compare on (ask each competitor for exactly this)", "Business head", "Competitor 1 price", "Competitor 2 price", "Competitor 3 price", "Competitor 4 price", "Competitor 5 price", "Notes (shop, date, VAT included?)"];
@@ -81504,7 +81637,7 @@ async function marketSurveyRows() {
 }
 
 // apps/api/src/routes/pricelists.ts
-var pricelistsRouter = (0, import_express19.Router)();
+var pricelistsRouter = (0, import_express20.Router)();
 pricelistsRouter.use(requireAuth);
 var XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 var MAX_ROWS = 3e3;
@@ -81552,7 +81685,7 @@ var money3 = (s) => {
   const n = Number(s.replace(/[, ]/g, "").replace(/^ksh/i, ""));
   return Number.isFinite(n) ? n : NaN;
 };
-var rawBody = import_express19.default.raw({ type: () => true, limit: "10mb" });
+var rawBody = import_express20.default.raw({ type: () => true, limit: "10mb" });
 function parseGrid(req) {
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new Error("Choose an Excel (.xlsx) file to upload");
   const grid = readXlsx(req.body);
@@ -81726,7 +81859,7 @@ pricelistsRouter.post("/materials", requireRole("Admin"), rawBody, async (req, r
 
 // apps/api/src/routes/backup.ts
 var import_node_crypto13 = __toESM(require("node:crypto"));
-var import_express20 = __toESM(require_express2());
+var import_express21 = __toESM(require_express2());
 
 // apps/api/src/backup.ts
 var import_node_fs4 = __toESM(require("node:fs"));
@@ -82009,9 +82142,9 @@ function startBackupScheduler() {
 }
 
 // apps/api/src/routes/backup.ts
-var backupRouter = (0, import_express20.Router)();
+var backupRouter = (0, import_express21.Router)();
 var admin2 = [requireAuth, requireRole("Admin")];
-var rawBody2 = import_express20.default.raw({ type: () => true, limit: "200mb" });
+var rawBody2 = import_express21.default.raw({ type: () => true, limit: "200mb" });
 var stamp2 = () => (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
 backupRouter.get("/status", ...admin2, async (_req, res) => {
   const s = await getBackupSettings();
@@ -82144,7 +82277,7 @@ backupRouter.post("/google/disconnect", ...admin2, async (_req, res) => {
 });
 
 // apps/api/src/routes/security.ts
-var import_express21 = __toESM(require_express2());
+var import_express22 = __toESM(require_express2());
 
 // apps/api/src/secrets.ts
 var plain2 = (v) => !!v && !isSealed(v);
@@ -82181,7 +82314,7 @@ async function sealStoredSecrets() {
 }
 
 // apps/api/src/routes/security.ts
-var securityRouter = (0, import_express21.Router)();
+var securityRouter = (0, import_express22.Router)();
 securityRouter.use(requireAuth, requireRole("Admin"));
 securityRouter.get("/status", async (req, res) => {
   const setting = await prisma.setting.findUnique({ where: { id: 1 } });
@@ -82233,8 +82366,8 @@ securityRouter.get("/audit", async (req, res) => {
 });
 
 // apps/api/src/routes/freelance.ts
-var import_express22 = __toESM(require_express2());
-var freelanceRouter = (0, import_express22.Router)();
+var import_express23 = __toESM(require_express2());
+var freelanceRouter = (0, import_express23.Router)();
 freelanceRouter.use(requireAuth, async (_req, res, next) => {
   if (!await commissionEnabled()) return res.status(403).json({ error: "Commission is switched off. An Admin can switch it on in Master Data \u2192 Company Info.", commissionOff: true });
   next();
@@ -82600,7 +82733,7 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
 });
 
 // apps/api/src/routes/whatsapp.ts
-var import_express23 = __toESM(require_express2());
+var import_express24 = __toESM(require_express2());
 
 // apps/api/src/whatsapp.ts
 var base2 = () => process.env.NODE_ENV === "test" && process.env.WHATSAPP_TEST_URL ? process.env.WHATSAPP_TEST_URL : "https://graph.facebook.com";
@@ -82707,7 +82840,7 @@ async function sendInvoiceDocument(cfg, m) {
 }
 
 // apps/api/src/routes/whatsapp.ts
-var whatsappRouter = (0, import_express23.Router)();
+var whatsappRouter = (0, import_express24.Router)();
 whatsappRouter.use(requireAuth);
 var sendLimiter2 = lib_default({
   windowMs: 60 * 60 * 1e3,
@@ -82845,7 +82978,7 @@ whatsappRouter.get("/log", async (req, res) => {
 });
 
 // apps/api/src/routes/hr.ts
-var import_express24 = __toESM(require_express2());
+var import_express25 = __toESM(require_express2());
 
 // apps/api/src/hr.ts
 var toType2 = (t) => ({ ...t, accrual: t.accrual === "monthly" ? "monthly" : "upfront" });
@@ -82921,7 +83054,7 @@ async function onLeaveByDay(days, exceptRequestId) {
 }
 
 // apps/api/src/routes/hr.ts
-var hrRouter = (0, import_express24.Router)();
+var hrRouter = (0, import_express25.Router)();
 hrRouter.use(requireAuth, requirePermission("canAccessHr", "canManageHr"), async (_req, _res, next) => {
   await ensureHrDefaults();
   next();
@@ -82956,7 +83089,7 @@ hrRouter.get("/balances", async (req, res) => {
   const asOf = year === Number(todayStr().slice(0, 4)) ? todayStr() : `${year}-12-31`;
   res.json({ staffId, year, balances: await balancesFor(staffId, year, asOf) });
 });
-var shape = (r, names, types) => ({
+var shape2 = (r, names, types) => ({
   id: r.id,
   staffId: r.staffId,
   staffName: names.get(r.staffId)?.name ?? `Staff #${r.staffId}`,
@@ -82992,7 +83125,7 @@ hrRouter.get("/requests", async (req, res) => {
   };
   const [rows, { names, types }] = await Promise.all([prisma.leaveRequest.findMany({ where, orderBy: [{ status: "asc" }, { startDate: "desc" }, { id: "desc" }], take: 500 }), lookups()]);
   const order = { Pending: 0, Approved: 1, Rejected: 2, Cancelled: 3 };
-  res.json(rows.map((r) => shape(r, names, types)).sort((a2, b) => order[a2.status] - order[b.status] || (a2.startDate < b.startDate ? 1 : -1)));
+  res.json(rows.map((r) => shape2(r, names, types)).sort((a2, b) => order[a2.status] - order[b.status] || (a2.startDate < b.startDate ? 1 : -1)));
 });
 var requestSchema = external_exports.object({
   staffId: external_exports.number().int().optional(),
@@ -83037,7 +83170,7 @@ hrRouter.post("/requests", async (req, res) => {
   });
   notifyApprovers("leave", `${person.name} \u2014 ${type.name}`, `${person.name} has asked for ${check.days.length} working day(s) of ${type.name} leave, ${d.startDate} to ${d.endDate}.`, { id: staffId });
   const { names, types } = await lookups();
-  res.status(201).json(shape(created, names, types));
+  res.status(201).json(shape2(created, names, types));
 });
 async function coverBreaches(requestId, days) {
   const [cal, staff, off] = await Promise.all([workCalendar(), activeStaff(), onLeaveByDay(days, requestId)]);
@@ -83056,7 +83189,7 @@ hrRouter.post("/requests/:id/approve", manage3, async (req, res) => {
   }
   const up = await prisma.leaveRequest.update({ where: { id: r.id }, data: { status: "Approved", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date(), decisionNote: breaches.length ? "Approved below the minimum cover" : "" } });
   const { names, types } = await lookups();
-  res.json(shape(up, names, types));
+  res.json(shape2(up, names, types));
 });
 hrRouter.post("/requests/:id/reject", manage3, async (req, res) => {
   const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 300) : "";
@@ -83066,7 +83199,7 @@ hrRouter.post("/requests/:id/reject", manage3, async (req, res) => {
   if (r.status !== "Pending") return res.status(400).json({ error: `This request is already ${r.status.toLowerCase()}` });
   const up = await prisma.leaveRequest.update({ where: { id: r.id }, data: { status: "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date(), decisionNote: reason } });
   const { names, types } = await lookups();
-  res.json(shape(up, names, types));
+  res.json(shape2(up, names, types));
 });
 hrRouter.post("/requests/:id/cancel", async (req, res) => {
   const r = await prisma.leaveRequest.findUnique({ where: { id: Number(req.params.id) } });
@@ -83077,7 +83210,7 @@ hrRouter.post("/requests/:id/cancel", async (req, res) => {
   if (r.status === "Approved" && !mayManage) return res.status(400).json({ error: "An approved leave can be cancelled by a manager only" });
   const up = await prisma.leaveRequest.update({ where: { id: r.id }, data: { status: "Cancelled", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date() } });
   const { names, types } = await lookups();
-  res.json(shape(up, names, types));
+  res.json(shape2(up, names, types));
 });
 hrRouter.get("/calendar", async (req, res) => {
   const month = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : todayStr().slice(0, 7);
@@ -83127,7 +83260,7 @@ hrRouter.get("/overview", manage3, async (_req, res) => {
     pending: {
       count: pending.length,
       oldestDays: pending[0] ? Math.max(0, Math.floor((Date.now() - pending[0].createdAt.getTime()) / 864e5)) : 0,
-      list: pending.slice(0, 8).map((r) => shape(r, names, types))
+      list: pending.slice(0, 8).map((r) => shape2(r, names, types))
     },
     leaveThisMonth: { days: daysThisMonth },
     liability: { days: round2(liabilityDays), amount: Math.round(liability), staffWithoutSalary: noSalary },
@@ -83266,8 +83399,8 @@ hrRouter.post("/notes", manage3, async (req, res) => {
 });
 
 // apps/api/src/routes/approvals.ts
-var import_express25 = __toESM(require_express2());
-var approvalsRouter = (0, import_express25.Router)();
+var import_express26 = __toESM(require_express2());
+var approvalsRouter = (0, import_express26.Router)();
 approvalsRouter.use(requireAuth);
 approvalsRouter.get("/", async (req, res) => {
   const [lists, setting] = await Promise.all([approvalsFor(req.user), prisma.setting.findUnique({ where: { id: 1 } })]);
@@ -83284,8 +83417,8 @@ approvalsRouter.put("/email", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/allocation.ts
-var import_express26 = __toESM(require_express2());
-var allocationRouter = (0, import_express26.Router)();
+var import_express27 = __toESM(require_express2());
+var allocationRouter = (0, import_express27.Router)();
 allocationRouter.use(requireAuth);
 async function mayCorrectAllocation(role) {
   return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
@@ -83395,11 +83528,11 @@ allocationRouter.post("/requests/:id/reject", (req, res) => decide2(req, res, fa
 
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express27.default)();
+var app = (0, import_express28.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use(import_express27.default.json({ limit: "5mb" }));
+app.use(import_express28.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -83446,6 +83579,7 @@ app.use("/api/costing", costingRouter);
 app.use("/api/hr", hrRouter);
 app.use("/api/approvals", approvalsRouter);
 app.use("/api/allocation", allocationRouter);
+app.use("/api/staff-clients", staffClientsRouter);
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: "Something went wrong on the server" });

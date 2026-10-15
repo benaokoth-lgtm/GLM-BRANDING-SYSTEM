@@ -9,6 +9,7 @@ import { useAuth } from '../state/AuthContext';
 import { printOrderDocument } from '../utils/printInvoice';
 import { useSalesPeople } from '../hooks/useSalesPeople';
 import { costPayload } from '../utils/lineCosts';
+import StaffClientPicker from '../components/StaffClientPicker';
 import SourcingField from '../components/SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../components/SplitPayments';
 import type { PaymentRow } from '../components/SplitPayments';
@@ -111,6 +112,8 @@ export default function NewWalkinOrder() {
       <i className="corner br"></i>
       <div className="card-kicker">Walk-in customer</div>
       <div className="card-title">New Order</div>
+
+      <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <div className="field">

@@ -9,6 +9,7 @@ import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printOrderDocument } from '../utils/printInvoice';
 import { useSalesPeople } from '../hooks/useSalesPeople';
+import StaffClientPicker from '../components/StaffClientPicker';
 import SourcingField from '../components/SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../components/SplitPayments';
 import type { PaymentRow } from '../components/SplitPayments';
@@ -191,6 +192,8 @@ export default function NewEmbroideryOrder() {
       <i className="corner br"></i>
       <div className="card-kicker">Embroidery order</div>
       <div className="card-title">New embroidery job</div>
+
+      <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <div className="field">

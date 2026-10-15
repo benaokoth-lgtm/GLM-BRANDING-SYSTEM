@@ -31,6 +31,7 @@ import { costingRouter } from './routes/costing';
 import { hrRouter } from './routes/hr';
 import { approvalsRouter } from './routes/approvals';
 import { allocationRouter } from './routes/allocation';
+import { staffClientsRouter } from './routes/staffClients';
 import { auditMiddleware } from './audit';
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5174').split(',').map((o) => o.trim());
@@ -99,6 +100,7 @@ app.use('/api/costing', costingRouter);
 app.use('/api/hr', hrRouter);
 app.use('/api/approvals', approvalsRouter);
 app.use('/api/allocation', allocationRouter);
+app.use('/api/staff-clients', staffClientsRouter);
 
 // Catch-all — any error forwarded here (including async rejections, thanks
 // to express-async-errors above) gets a clean JSON 500 instead of Express's

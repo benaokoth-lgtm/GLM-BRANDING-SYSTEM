@@ -2,6 +2,8 @@ import { Fragment, useEffect, useState } from 'react';
 import { EXPENSE_METHODS, FREELANCE_PAY_METHODS, addWeeks, fmtDate, fmtKsh, fmtNum, todayStr, weekStart } from '@glm/shared';
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from '../pages/accounting/shared';
+import FreelanceGuide from './FreelanceGuide';
+import FreelanceSetup from './FreelanceSetup';
 
 // Commission → Freelancers (managers): the weekly pay of freelance sales persons — people outside the staff who bring us work — and their accounts.
 // An order marked for a freelancer is credited to them alone (never to a staff member), and they earn marginal-band commission on the net sales they
@@ -746,7 +748,7 @@ function TaxTab() {
 }
 
 export default function FreelancePanel() {
-  const [part, setPart] = useState<'week' | 'people' | 'tax'>('week');
+  const [part, setPart] = useState<'week' | 'people' | 'tax' | 'rates' | 'how'>('week');
   return (
     <>
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -759,8 +761,14 @@ export default function FreelancePanel() {
         <button type="button" className={'btn btn-sm ' + (part === 'tax' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('tax')}>
           Tax withheld
         </button>
+        <button type="button" className={'btn btn-sm ' + (part === 'rates' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('rates')}>
+          Rates &amp; set-up
+        </button>
+        <button type="button" className={'btn btn-sm ' + (part === 'how' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('how')}>
+          How it works
+        </button>
       </div>
-      {part === 'week' ? <WeekTab /> : part === 'people' ? <PeopleTab /> : (
+      {part === 'rates' ? <FreelanceSetup /> : part === 'how' ? <FreelanceGuide /> : part === 'week' ? <WeekTab /> : part === 'people' ? <PeopleTab /> : (
         <>
           <TaxTab />
           <AnnualCard />

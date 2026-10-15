@@ -7,6 +7,7 @@ import { Loading, numStyle } from './accounting/shared';
 import CostingQuotes from '../components/CostingQuotes';
 import CostingRatesPanel from '../components/CostingRatesPanel';
 import PrintCosting from '../components/PrintCosting';
+import StaffClientPicker from '../components/StaffClientPicker';
 import { useAuth } from '../state/AuthContext';
 
 // Sales → Job Costing. Staff pick a kind of job (business cards, indoor or outdoor signage), say how many and how big, and are given the price to quote: what the supplier rates
@@ -317,6 +318,7 @@ export default function JobCosting() {
                 {saving && (
                   <div className="no-print" style={{ marginTop: 'var(--space-3)', borderTop: '1px solid var(--color-divider)', paddingTop: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
                     <div className="card-kicker">Keep this costing as a quote for a client</div>
+                    <StaffClientPicker onPick={(c) => setSaving({ ...saving, client: c.name, phone: c.phone })} />
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
                       <div className="field" style={{ margin: 0 }}>
                         <label>Client name *</label>

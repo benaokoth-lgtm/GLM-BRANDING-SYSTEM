@@ -40,6 +40,8 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
   // switched the scheme on (Master Data → Company Info).
   if (commissionOn && (isAdmin || p.canCaptureOrders || p.canManageCommission)) tabs.push(['/commission', 'Commission']);
+  // The staff client register: each sales person's clients, picked on the order screens (it is the register commission credits clients in, so it follows that switch).
+  if (commissionOn && (isAdmin || p.canCaptureOrders || p.canManageCommission || p.canCaptureForOthers)) tabs.push(['/client-register', 'Client Register']);
   // Once captured, orders are managed in Production and then inspected in Quality Control.
   if (isAdmin || p.canAccessProduction || p.canManageProduction) tabs.push(['/production', 'Production']);
   if (isAdmin || p.canAccessQuality) tabs.push(['/quality', 'Quality Control']);
@@ -76,6 +78,7 @@ const GROUPS: [Group, string][] = [
 ];
 const GROUP_OF: Record<string, Group> = {
   '/approvals': 'sales',
+  '/client-register': 'sales',
   '/orders/new/walkin': 'sales',
   '/orders/new/film': 'sales',
   '/orders/new/artwork': 'sales',
@@ -100,6 +103,7 @@ const GROUP_OF: Record<string, Group> = {
 };
 const ICON_OF: Record<string, string> = {
   '/approvals': 'approvals',
+  '/client-register': 'people',
   '/orders/new/walkin': 'order',
   '/orders/new/film': 'film',
   '/orders/new/artwork': 'artwork',

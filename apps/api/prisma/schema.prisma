@@ -1240,6 +1240,8 @@ model ClientOwner {
   id          Int      @id @default(autoincrement())
   clientKey   String
   clientName  String
+  // The client's phone as it was typed (the staff client register shows it and fills it into orders); blank on older rows, where the register rebuilds it from the key.
+  phone       String   @default("")
   staffId     Int
   staff       User     @relation(fields: [staffId], references: [id])
   startDate   String // 'YYYY-MM-DD' — when the staff member sourced the client

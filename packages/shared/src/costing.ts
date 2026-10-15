@@ -28,6 +28,15 @@ export type CostingKind = (typeof COSTING_KINDS)[number];
 export type CardFinish = 'plain' | 'lam' | 'frost';
 export const CARD_FINISH_LABEL: Record<CardFinish, string> = { plain: 'Plain', lam: 'Laminated', frost: 'Frosted' };
 
+/** What a card job is called on a quote and on the order: "1000cards-laminated". How many A3 sheets it takes is our production detail, so it is not on the client's paper. */
+export const cardsSummary = (qty: number, finish: CardFinish) => `${qty}cards-${CARD_FINISH_LABEL[finish].toLowerCase()}`;
+
+/** A card job's summary as it was written before: "1000 cards · Laminated · 49 A3 sheets" → "1000cards-laminated". Anything else is returned as it is. */
+export function tidyCostingSummary(summary: string): string {
+  const m = /^(\d+) cards · (Plain|Laminated|Frosted) · \d+ A3 sheets$/.exec(summary.trim());
+  return m ? `${m[1]}cards-${m[2]!.toLowerCase()}` : summary;
+}
+
 export const COSTING_JOB_LABEL: Record<CostingJobType, string> = { cards: 'Business cards', indoor: 'Indoor signage', outdoor: 'Outdoor signage' };
 /** Quantities shown side by side for business cards. */
 export const COSTING_CARD_TIERS = [100, 250, 500, 1000, 2000];
@@ -167,7 +176,7 @@ export function costingQuote(types: CostingJobTypeRow[], rates: CostingRateRow[]
   const vat = r2(price * VAT_RATE);
   const total = r2(price + vat);
   const profit = r2(price - cost);
-  const summary = cards ? `${qty} cards · ${CARD_FINISH_LABEL[finish]} · ${sheets} A3 sheets` : `${num(input.widthM)} × ${num(input.heightM)} m · ${qty} unit(s) · ${(area * qty).toFixed(2)} sqm`;
+  const summary = cards ? cardsSummary(qty, finish) : `${num(input.widthM)} × ${num(input.heightM)} m · ${qty} unit(s) · ${(area * qty).toFixed(2)} sqm`;
   return {
     jobType: input.jobType,
     qty,

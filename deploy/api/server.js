@@ -4930,24 +4930,24 @@ var require_streams = __commonJS({
     IconvLiteEncoderStream.prototype = Object.create(Transform9.prototype, {
       constructor: { value: IconvLiteEncoderStream }
     });
-    IconvLiteEncoderStream.prototype._transform = function(chunk, encoding, done2) {
+    IconvLiteEncoderStream.prototype._transform = function(chunk, encoding, done3) {
       if (typeof chunk != "string")
-        return done2(new Error("Iconv encoding stream needs strings as its input."));
+        return done3(new Error("Iconv encoding stream needs strings as its input."));
       try {
         var res = this.conv.write(chunk);
         if (res && res.length) this.push(res);
-        done2();
+        done3();
       } catch (e) {
-        done2(e);
+        done3(e);
       }
     };
-    IconvLiteEncoderStream.prototype._flush = function(done2) {
+    IconvLiteEncoderStream.prototype._flush = function(done3) {
       try {
         var res = this.conv.end();
         if (res && res.length) this.push(res);
-        done2();
+        done3();
       } catch (e) {
-        done2(e);
+        done3(e);
       }
     };
     IconvLiteEncoderStream.prototype.collect = function(cb) {
@@ -4970,24 +4970,24 @@ var require_streams = __commonJS({
     IconvLiteDecoderStream.prototype = Object.create(Transform9.prototype, {
       constructor: { value: IconvLiteDecoderStream }
     });
-    IconvLiteDecoderStream.prototype._transform = function(chunk, encoding, done2) {
+    IconvLiteDecoderStream.prototype._transform = function(chunk, encoding, done3) {
       if (!Buffer3.isBuffer(chunk))
-        return done2(new Error("Iconv decoding stream needs buffers as its input."));
+        return done3(new Error("Iconv decoding stream needs buffers as its input."));
       try {
         var res = this.conv.write(chunk);
         if (res && res.length) this.push(res, this.encoding);
-        done2();
+        done3();
       } catch (e) {
-        done2(e);
+        done3(e);
       }
     };
-    IconvLiteDecoderStream.prototype._flush = function(done2) {
+    IconvLiteDecoderStream.prototype._flush = function(done3) {
       try {
         var res = this.conv.end();
         if (res && res.length) this.push(res, this.encoding);
-        done2();
+        done3();
       } catch (e) {
-        done2(e);
+        done3(e);
       }
     };
     IconvLiteDecoderStream.prototype.collect = function(cb) {
@@ -5331,7 +5331,7 @@ var require_raw_body = __commonJS({
       }
     }
     function getRawBody(stream, options, callback) {
-      var done2 = callback;
+      var done3 = callback;
       var opts = options || {};
       if (stream === void 0) {
         throw new TypeError("argument stream is required");
@@ -5344,20 +5344,20 @@ var require_raw_body = __commonJS({
         };
       }
       if (typeof options === "function") {
-        done2 = options;
+        done3 = options;
         opts = {};
       }
-      if (done2 !== void 0 && typeof done2 !== "function") {
+      if (done3 !== void 0 && typeof done3 !== "function") {
         throw new TypeError("argument callback must be a function");
       }
-      if (!done2 && !global.Promise) {
+      if (!done3 && !global.Promise) {
         throw new TypeError("argument callback is required");
       }
       var encoding = opts.encoding !== true ? opts.encoding : "utf-8";
       var limit = bytes.parse(opts.limit);
       var length = opts.length != null && !isNaN(opts.length) ? parseInt(opts.length, 10) : null;
-      if (done2) {
-        return readStream(stream, encoding, length, limit, wrap5(done2));
+      if (done3) {
+        return readStream(stream, encoding, length, limit, wrap5(done3));
       }
       return new Promise(function executor(resolve3, reject) {
         readStream(stream, encoding, length, limit, function onRead(err, buf) {
@@ -5376,7 +5376,7 @@ var require_raw_body = __commonJS({
       var complete = false;
       var sync = true;
       if (limit !== null && length !== null && length > limit) {
-        return done2(createError(413, "request entity too large", {
+        return done3(createError(413, "request entity too large", {
           expected: length,
           length,
           limit,
@@ -5385,12 +5385,12 @@ var require_raw_body = __commonJS({
       }
       var state = stream._readableState;
       if (stream._decoder || state && (state.encoding || state.decoder)) {
-        return done2(createError(500, "stream encoding should not be set", {
+        return done3(createError(500, "stream encoding should not be set", {
           type: "stream.encoding.set"
         }));
       }
       if (typeof stream.readable !== "undefined" && !stream.readable) {
-        return done2(createError(500, "stream is not readable", {
+        return done3(createError(500, "stream is not readable", {
           type: "stream.not.readable"
         }));
       }
@@ -5399,7 +5399,7 @@ var require_raw_body = __commonJS({
       try {
         decoder = getDecoder(encoding);
       } catch (err) {
-        return done2(err);
+        return done3(err);
       }
       var buffer = decoder ? "" : [];
       stream.on("aborted", onAborted);
@@ -5408,7 +5408,7 @@ var require_raw_body = __commonJS({
       stream.on("end", onEnd);
       stream.on("error", onEnd);
       sync = false;
-      function done2() {
+      function done3() {
         var args = new Array(arguments.length);
         for (var i = 0; i < args.length; i++) {
           args[i] = arguments[i];
@@ -5429,7 +5429,7 @@ var require_raw_body = __commonJS({
       }
       function onAborted() {
         if (complete) return;
-        done2(createError(400, "request aborted", {
+        done3(createError(400, "request aborted", {
           code: "ECONNABORTED",
           expected: length,
           length,
@@ -5441,7 +5441,7 @@ var require_raw_body = __commonJS({
         if (complete) return;
         received += chunk.length;
         if (limit !== null && received > limit) {
-          done2(createError(413, "request entity too large", {
+          done3(createError(413, "request entity too large", {
             limit,
             received,
             type: "entity.too.large"
@@ -5454,9 +5454,9 @@ var require_raw_body = __commonJS({
       }
       function onEnd(err) {
         if (complete) return;
-        if (err) return done2(err);
+        if (err) return done3(err);
         if (length !== null && received !== length) {
-          done2(createError(400, "request size did not match content length", {
+          done3(createError(400, "request size did not match content length", {
             expected: length,
             length,
             received,
@@ -5464,7 +5464,7 @@ var require_raw_body = __commonJS({
           }));
         } else {
           var string = decoder ? buffer + (decoder.end() || "") : Buffer.concat(buffer);
-          done2(null, string);
+          done3(null, string);
         }
       }
       function cleanup() {
@@ -5501,7 +5501,7 @@ var require_ee_first = __commonJS({
   "node_modules/ee-first/index.js"(exports2, module2) {
     "use strict";
     module2.exports = first;
-    function first(stuff, done2) {
+    function first(stuff, done3) {
       if (!Array.isArray(stuff))
         throw new TypeError("arg must be an array of [ee, events...] arrays");
       var cleanups = [];
@@ -5523,7 +5523,7 @@ var require_ee_first = __commonJS({
       }
       function callback() {
         cleanup();
-        done2.apply(null, arguments);
+        done3.apply(null, arguments);
       }
       function cleanup() {
         var x;
@@ -5533,12 +5533,12 @@ var require_ee_first = __commonJS({
         }
       }
       function thunk(fn2) {
-        done2 = fn2;
+        done3 = fn2;
       }
       thunk.cancel = cleanup;
       return thunk;
     }
-    function listener(event, done2) {
+    function listener(event, done3) {
       return function onevent(arg1) {
         var args = new Array(arguments.length);
         var ee = this;
@@ -5546,7 +5546,7 @@ var require_ee_first = __commonJS({
         for (var i = 0; i < args.length; i++) {
           args[i] = arguments[i];
         }
-        done2(err, ee, event, args);
+        done3(err, ee, event, args);
       };
     }
   }
@@ -19239,12 +19239,12 @@ var require_route = __commonJS({
       }
       return methods2;
     };
-    Route.prototype.dispatch = function dispatch(req, res, done2) {
+    Route.prototype.dispatch = function dispatch(req, res, done3) {
       var idx = 0;
       var stack = this.stack;
       var sync = 0;
       if (stack.length === 0) {
-        return done2();
+        return done3();
       }
       var method = typeof req.method === "string" ? req.method.toLowerCase() : req.method;
       if (method === "head" && !this.methods["head"]) {
@@ -19254,17 +19254,17 @@ var require_route = __commonJS({
       next();
       function next(err) {
         if (err && err === "route") {
-          return done2();
+          return done3();
         }
         if (err && err === "router") {
-          return done2(err);
+          return done3(err);
         }
         if (++sync > 100) {
           return setImmediate(next, err);
         }
         var layer = stack[idx++];
         if (!layer) {
-          return done2(err);
+          return done3(err);
         }
         if (layer.method && layer.method !== method) {
           next(err);
@@ -19395,10 +19395,10 @@ var require_router = __commonJS({
       var stack = self2.stack;
       var parentParams = req.params;
       var parentUrl = req.baseUrl || "";
-      var done2 = restore(out, req, "baseUrl", "next", "params");
+      var done3 = restore(out, req, "baseUrl", "next", "params");
       req.next = next;
       if (req.method === "OPTIONS") {
-        done2 = wrap5(done2, function(old, err) {
+        done3 = wrap5(done3, function(old, err) {
           if (err || options.length === 0) return old(err);
           sendOptionsResponse(res, options, old);
         });
@@ -19418,11 +19418,11 @@ var require_router = __commonJS({
           removed = "";
         }
         if (layerError === "router") {
-          setImmediate(done2, null);
+          setImmediate(done3, null);
           return;
         }
         if (idx >= stack.length) {
-          setImmediate(done2, layerError);
+          setImmediate(done3, layerError);
           return;
         }
         if (++sync > 100) {
@@ -19430,7 +19430,7 @@ var require_router = __commonJS({
         }
         var path4 = getPathname(req);
         if (path4 == null) {
-          return done2(layerError);
+          return done3(layerError);
         }
         var layer;
         var match;
@@ -19462,7 +19462,7 @@ var require_router = __commonJS({
           }
         }
         if (match !== true) {
-          return done2(layerError);
+          return done3(layerError);
         }
         if (route) {
           req.route = route;
@@ -19505,11 +19505,11 @@ var require_router = __commonJS({
         }
       }
     };
-    proto.process_params = function process_params(layer, called, req, res, done2) {
+    proto.process_params = function process_params(layer, called, req, res, done3) {
       var params = this.params;
       var keys = layer.keys;
       if (!keys || keys.length === 0) {
-        return done2();
+        return done3();
       }
       var i = 0;
       var name2;
@@ -19520,10 +19520,10 @@ var require_router = __commonJS({
       var paramCalled;
       function param(err) {
         if (err) {
-          return done2(err);
+          return done3(err);
         }
         if (i >= keys.length) {
-          return done2();
+          return done3();
         }
         paramIndex = 0;
         key2 = keys[i++];
@@ -22464,16 +22464,16 @@ var require_application = __commonJS({
     };
     app2.handle = function handle(req, res, callback) {
       var router = this._router;
-      var done2 = callback || finalhandler(req, res, {
+      var done3 = callback || finalhandler(req, res, {
         env: this.get("env"),
         onerror: logerror.bind(this)
       });
       if (!router) {
         debug("no routes defined on app");
-        done2();
+        done3();
         return;
       }
-      router.handle(req, res, done2);
+      router.handle(req, res, done3);
     };
     app2.use = function use(fn) {
       var offset = 0;
@@ -22604,13 +22604,13 @@ var require_application = __commonJS({
     app2.del = deprecate.function(app2.delete, "app.del: Use app.delete instead");
     app2.render = function render(name2, options, callback) {
       var cache = this.cache;
-      var done2 = callback;
+      var done3 = callback;
       var engines = this.engines;
       var opts = options;
       var renderOptions = {};
       var view;
       if (typeof options === "function") {
-        done2 = options;
+        done3 = options;
         opts = {};
       }
       merge(renderOptions, this.locals);
@@ -22635,13 +22635,13 @@ var require_application = __commonJS({
           var dirs = Array.isArray(view.root) && view.root.length > 1 ? 'directories "' + view.root.slice(0, -1).join('", "') + '" or "' + view.root[view.root.length - 1] + '"' : 'directory "' + view.root + '"';
           var err = new Error('Failed to lookup view "' + name2 + '" in views ' + dirs);
           err.view = view;
-          return done2(err);
+          return done3(err);
         }
         if (renderOptions.cache) {
           cache[name2] = view;
         }
       }
-      tryRender(view, renderOptions, done2);
+      tryRender(view, renderOptions, done3);
     };
     app2.listen = function listen() {
       var server = http2.createServer(this);
@@ -23864,7 +23864,7 @@ var require_response = __commonJS({
       return this.send(body);
     };
     res.sendFile = function sendFile(path5, options, callback) {
-      var done2 = callback;
+      var done3 = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
@@ -23876,7 +23876,7 @@ var require_response = __commonJS({
         throw new TypeError("path must be a string to res.sendFile");
       }
       if (typeof options === "function") {
-        done2 = options;
+        done3 = options;
         opts = {};
       }
       if (!opts.root && !isAbsolute(path5)) {
@@ -23885,7 +23885,7 @@ var require_response = __commonJS({
       var pathname = encodeURI(path5);
       var file = send2(req, pathname, opts);
       sendfile(res2, file, opts, function(err) {
-        if (done2) return done2(err);
+        if (done3) return done3(err);
         if (err && err.code === "EISDIR") return next();
         if (err && err.code !== "ECONNABORTED" && err.syscall !== "write") {
           next(err);
@@ -23893,18 +23893,18 @@ var require_response = __commonJS({
       });
     };
     res.sendfile = function(path5, options, callback) {
-      var done2 = callback;
+      var done3 = callback;
       var req = this.req;
       var res2 = this;
       var next = req.next;
       var opts = options || {};
       if (typeof options === "function") {
-        done2 = options;
+        done3 = options;
         opts = {};
       }
       var file = send2(req, path5, opts);
       sendfile(res2, file, opts, function(err) {
-        if (done2) return done2(err);
+        if (done3) return done3(err);
         if (err && err.code === "EISDIR") return next();
         if (err && err.code !== "ECONNABORTED" && err.syscall !== "write") {
           next(err);
@@ -23916,15 +23916,15 @@ var require_response = __commonJS({
       "res.sendfile: Use res.sendFile instead"
     );
     res.download = function download(path5, filename, options, callback) {
-      var done2 = callback;
+      var done3 = callback;
       var name2 = filename;
       var opts = options || null;
       if (typeof filename === "function") {
-        done2 = filename;
+        done3 = filename;
         name2 = null;
         opts = null;
       } else if (typeof options === "function") {
-        done2 = options;
+        done3 = options;
         opts = null;
       }
       if (typeof filename === "object" && (typeof options === "function" || options === void 0)) {
@@ -23946,7 +23946,7 @@ var require_response = __commonJS({
       opts = Object.create(opts);
       opts.headers = headers;
       var fullPath = !opts.root ? resolve3(path5) : path5;
-      return this.sendFile(fullPath, opts, done2);
+      return this.sendFile(fullPath, opts, done3);
     };
     res.contentType = res.type = function contentType(type) {
       var ct = type.indexOf("/") === -1 ? mime.lookup(type) : type;
@@ -24102,46 +24102,46 @@ var require_response = __commonJS({
     };
     res.render = function render(view, options, callback) {
       var app2 = this.req.app;
-      var done2 = callback;
+      var done3 = callback;
       var opts = options || {};
       var req = this.req;
       var self2 = this;
       if (typeof options === "function") {
-        done2 = options;
+        done3 = options;
         opts = {};
       }
       opts._locals = self2.locals;
-      done2 = done2 || function(err, str) {
+      done3 = done3 || function(err, str) {
         if (err) return req.next(err);
         self2.send(str);
       };
-      app2.render(view, opts, done2);
+      app2.render(view, opts, done3);
     };
     function sendfile(res2, file, options, callback) {
-      var done2 = false;
+      var done3 = false;
       var streaming;
       function onaborted() {
-        if (done2) return;
-        done2 = true;
+        if (done3) return;
+        done3 = true;
         var err = new Error("Request aborted");
         err.code = "ECONNABORTED";
         callback(err);
       }
       function ondirectory() {
-        if (done2) return;
-        done2 = true;
+        if (done3) return;
+        done3 = true;
         var err = new Error("EISDIR, read");
         err.code = "EISDIR";
         callback(err);
       }
       function onerror(err) {
-        if (done2) return;
-        done2 = true;
+        if (done3) return;
+        done3 = true;
         callback(err);
       }
       function onend() {
-        if (done2) return;
-        done2 = true;
+        if (done3) return;
+        done3 = true;
         callback();
       }
       function onfile() {
@@ -24150,14 +24150,14 @@ var require_response = __commonJS({
       function onfinish(err) {
         if (err && err.code === "ECONNRESET") return onaborted();
         if (err) return onerror(err);
-        if (done2) return;
+        if (done3) return;
         setImmediate(function() {
-          if (streaming !== false && !done2) {
+          if (streaming !== false && !done3) {
             onaborted();
             return;
           }
-          if (done2) return;
-          done2 = true;
+          if (done3) return;
+          done3 = true;
           callback();
         });
       }
@@ -29390,49 +29390,49 @@ var require_verify = __commonJS({
         options = {};
       }
       options = Object.assign({}, options);
-      let done2;
+      let done3;
       if (callback) {
-        done2 = callback;
+        done3 = callback;
       } else {
-        done2 = function(err, data) {
+        done3 = function(err, data) {
           if (err) throw err;
           return data;
         };
       }
       if (options.clockTimestamp && typeof options.clockTimestamp !== "number") {
-        return done2(new JsonWebTokenError("clockTimestamp must be a number"));
+        return done3(new JsonWebTokenError("clockTimestamp must be a number"));
       }
       if (options.nonce !== void 0 && (typeof options.nonce !== "string" || options.nonce.trim() === "")) {
-        return done2(new JsonWebTokenError("nonce must be a non-empty string"));
+        return done3(new JsonWebTokenError("nonce must be a non-empty string"));
       }
       if (options.allowInvalidAsymmetricKeyTypes !== void 0 && typeof options.allowInvalidAsymmetricKeyTypes !== "boolean") {
-        return done2(new JsonWebTokenError("allowInvalidAsymmetricKeyTypes must be a boolean"));
+        return done3(new JsonWebTokenError("allowInvalidAsymmetricKeyTypes must be a boolean"));
       }
       const clockTimestamp = options.clockTimestamp || Math.floor(Date.now() / 1e3);
       if (!jwtString) {
-        return done2(new JsonWebTokenError("jwt must be provided"));
+        return done3(new JsonWebTokenError("jwt must be provided"));
       }
       if (typeof jwtString !== "string") {
-        return done2(new JsonWebTokenError("jwt must be a string"));
+        return done3(new JsonWebTokenError("jwt must be a string"));
       }
       const parts = jwtString.split(".");
       if (parts.length !== 3) {
-        return done2(new JsonWebTokenError("jwt malformed"));
+        return done3(new JsonWebTokenError("jwt malformed"));
       }
       let decodedToken;
       try {
         decodedToken = decode3(jwtString, { complete: true });
       } catch (err) {
-        return done2(err);
+        return done3(err);
       }
       if (!decodedToken) {
-        return done2(new JsonWebTokenError("invalid token"));
+        return done3(new JsonWebTokenError("invalid token"));
       }
       const header = decodedToken.header;
       let getSecret;
       if (typeof secretOrPublicKey === "function") {
         if (!callback) {
-          return done2(new JsonWebTokenError("verify must be called asynchronous if secret or public key is provided as a callback"));
+          return done3(new JsonWebTokenError("verify must be called asynchronous if secret or public key is provided as a callback"));
         }
         getSecret = secretOrPublicKey;
       } else {
@@ -29442,17 +29442,17 @@ var require_verify = __commonJS({
       }
       return getSecret(header, function(err, secretOrPublicKey2) {
         if (err) {
-          return done2(new JsonWebTokenError("error in secret or public key callback: " + err.message));
+          return done3(new JsonWebTokenError("error in secret or public key callback: " + err.message));
         }
         const hasSignature = parts[2].trim() !== "";
         if (!hasSignature && secretOrPublicKey2) {
-          return done2(new JsonWebTokenError("jwt signature is required"));
+          return done3(new JsonWebTokenError("jwt signature is required"));
         }
         if (hasSignature && !secretOrPublicKey2) {
-          return done2(new JsonWebTokenError("secret or public key must be provided"));
+          return done3(new JsonWebTokenError("secret or public key must be provided"));
         }
         if (!hasSignature && !options.algorithms) {
-          return done2(new JsonWebTokenError('please specify "none" in "algorithms" to verify unsigned tokens'));
+          return done3(new JsonWebTokenError('please specify "none" in "algorithms" to verify unsigned tokens'));
         }
         if (secretOrPublicKey2 != null && !(secretOrPublicKey2 instanceof KeyObject)) {
           try {
@@ -29461,7 +29461,7 @@ var require_verify = __commonJS({
             try {
               secretOrPublicKey2 = createSecretKey(typeof secretOrPublicKey2 === "string" ? Buffer.from(secretOrPublicKey2) : secretOrPublicKey2);
             } catch (_2) {
-              return done2(new JsonWebTokenError("secretOrPublicKey is not valid key material"));
+              return done3(new JsonWebTokenError("secretOrPublicKey is not valid key material"));
             }
           }
         }
@@ -29477,44 +29477,44 @@ var require_verify = __commonJS({
           }
         }
         if (options.algorithms.indexOf(decodedToken.header.alg) === -1) {
-          return done2(new JsonWebTokenError("invalid algorithm"));
+          return done3(new JsonWebTokenError("invalid algorithm"));
         }
         if (header.alg.startsWith("HS") && secretOrPublicKey2.type !== "secret") {
-          return done2(new JsonWebTokenError(`secretOrPublicKey must be a symmetric key when using ${header.alg}`));
+          return done3(new JsonWebTokenError(`secretOrPublicKey must be a symmetric key when using ${header.alg}`));
         } else if (/^(?:RS|PS|ES)/.test(header.alg) && secretOrPublicKey2.type !== "public") {
-          return done2(new JsonWebTokenError(`secretOrPublicKey must be an asymmetric key when using ${header.alg}`));
+          return done3(new JsonWebTokenError(`secretOrPublicKey must be an asymmetric key when using ${header.alg}`));
         }
         if (!options.allowInvalidAsymmetricKeyTypes) {
           try {
             validateAsymmetricKey(header.alg, secretOrPublicKey2);
           } catch (e) {
-            return done2(e);
+            return done3(e);
           }
         }
         let valid;
         try {
           valid = jws.verify(jwtString, decodedToken.header.alg, secretOrPublicKey2);
         } catch (e) {
-          return done2(e);
+          return done3(e);
         }
         if (!valid) {
-          return done2(new JsonWebTokenError("invalid signature"));
+          return done3(new JsonWebTokenError("invalid signature"));
         }
         const payload = decodedToken.payload;
         if (typeof payload.nbf !== "undefined" && !options.ignoreNotBefore) {
           if (typeof payload.nbf !== "number") {
-            return done2(new JsonWebTokenError("invalid nbf value"));
+            return done3(new JsonWebTokenError("invalid nbf value"));
           }
           if (payload.nbf > clockTimestamp + (options.clockTolerance || 0)) {
-            return done2(new NotBeforeError("jwt not active", new Date(payload.nbf * 1e3)));
+            return done3(new NotBeforeError("jwt not active", new Date(payload.nbf * 1e3)));
           }
         }
         if (typeof payload.exp !== "undefined" && !options.ignoreExpiration) {
           if (typeof payload.exp !== "number") {
-            return done2(new JsonWebTokenError("invalid exp value"));
+            return done3(new JsonWebTokenError("invalid exp value"));
           }
           if (clockTimestamp >= payload.exp + (options.clockTolerance || 0)) {
-            return done2(new TokenExpiredError("jwt expired", new Date(payload.exp * 1e3)));
+            return done3(new TokenExpiredError("jwt expired", new Date(payload.exp * 1e3)));
           }
         }
         if (options.audience) {
@@ -29526,51 +29526,51 @@ var require_verify = __commonJS({
             });
           });
           if (!match) {
-            return done2(new JsonWebTokenError("jwt audience invalid. expected: " + audiences.join(" or ")));
+            return done3(new JsonWebTokenError("jwt audience invalid. expected: " + audiences.join(" or ")));
           }
         }
         if (options.issuer) {
           const invalid_issuer = typeof options.issuer === "string" && payload.iss !== options.issuer || Array.isArray(options.issuer) && options.issuer.indexOf(payload.iss) === -1;
           if (invalid_issuer) {
-            return done2(new JsonWebTokenError("jwt issuer invalid. expected: " + options.issuer));
+            return done3(new JsonWebTokenError("jwt issuer invalid. expected: " + options.issuer));
           }
         }
         if (options.subject) {
           if (payload.sub !== options.subject) {
-            return done2(new JsonWebTokenError("jwt subject invalid. expected: " + options.subject));
+            return done3(new JsonWebTokenError("jwt subject invalid. expected: " + options.subject));
           }
         }
         if (options.jwtid) {
           if (payload.jti !== options.jwtid) {
-            return done2(new JsonWebTokenError("jwt jwtid invalid. expected: " + options.jwtid));
+            return done3(new JsonWebTokenError("jwt jwtid invalid. expected: " + options.jwtid));
           }
         }
         if (options.nonce) {
           if (payload.nonce !== options.nonce) {
-            return done2(new JsonWebTokenError("jwt nonce invalid. expected: " + options.nonce));
+            return done3(new JsonWebTokenError("jwt nonce invalid. expected: " + options.nonce));
           }
         }
         if (options.maxAge) {
           if (typeof payload.iat !== "number") {
-            return done2(new JsonWebTokenError("iat required when maxAge is specified"));
+            return done3(new JsonWebTokenError("iat required when maxAge is specified"));
           }
           const maxAgeTimestamp = timespan(options.maxAge, payload.iat);
           if (typeof maxAgeTimestamp === "undefined") {
-            return done2(new JsonWebTokenError('"maxAge" should be a number of seconds or string representing a timespan eg: "1d", "20h", 60'));
+            return done3(new JsonWebTokenError('"maxAge" should be a number of seconds or string representing a timespan eg: "1d", "20h", 60'));
           }
           if (clockTimestamp >= maxAgeTimestamp + (options.clockTolerance || 0)) {
-            return done2(new TokenExpiredError("maxAge exceeded", new Date(maxAgeTimestamp * 1e3)));
+            return done3(new TokenExpiredError("maxAge exceeded", new Date(maxAgeTimestamp * 1e3)));
           }
         }
         if (options.complete === true) {
           const signature = decodedToken.signature;
-          return done2(null, {
+          return done3(null, {
             header,
             payload,
             signature
           });
         }
-        return done2(null, payload);
+        return done3(null, payload);
       });
     };
   }
@@ -56575,10 +56575,10 @@ var Encoder = class extends import_node_stream2.Transform {
     this.outputBytes = 0;
   }
   /** @internal */
-  _transform(chunk, encoding, done2) {
+  _transform(chunk, encoding, done3) {
     let buf = encoding !== "buffer" ? Buffer.from(chunk, encoding) : chunk;
     if (!buf || !buf.length) {
-      setImmediate(done2);
+      setImmediate(done3);
       return;
     }
     this.inputBytes += buf.length;
@@ -56610,10 +56610,10 @@ var Encoder = class extends import_node_stream2.Transform {
       this.outputBytes += b64.length;
       this.push(Buffer.from(b64, "ascii"));
     }
-    setImmediate(done2);
+    setImmediate(done3);
   }
   /** @internal */
-  _flush(done2) {
+  _flush(done3) {
     if (this._remainingBytes && this._remainingBytes.length) {
       this._curLine += encode2(this._remainingBytes);
     }
@@ -56623,7 +56623,7 @@ var Encoder = class extends import_node_stream2.Transform {
       this.push(Buffer.from(this._curLine, "ascii"));
       this._curLine = "";
     }
-    done2();
+    done3();
   }
 };
 
@@ -56756,13 +56756,13 @@ var Encoder2 = class extends import_node_stream3.Transform {
     this.outputBytes = 0;
   }
   /** @internal */
-  _transform(chunk, encoding, done2) {
+  _transform(chunk, encoding, done3) {
     let qp;
     if (encoding !== "buffer") {
       chunk = Buffer.from(chunk, encoding);
     }
     if (!chunk || !chunk.length) {
-      return done2();
+      return done3();
     }
     this.inputBytes += chunk.length;
     if (this.options.lineLength) {
@@ -56781,15 +56781,15 @@ var Encoder2 = class extends import_node_stream3.Transform {
       this.outputBytes += qp.length;
       this.push(qp, "ascii");
     }
-    done2();
+    done3();
   }
   /** @internal */
-  _flush(done2) {
+  _flush(done3) {
     if (this._curLine) {
       this.outputBytes += this._curLine.length;
       this.push(this._curLine, "ascii");
     }
-    done2();
+    done3();
   }
 };
 
@@ -57183,7 +57183,7 @@ function foldLines(str, lineLength, afterSpace) {
 }
 function splitMimeEncodedString(str, maxlen) {
   const lines = [];
-  let curLine, fallbackLine, match, chr, done2;
+  let curLine, fallbackLine, match, chr, done3;
   maxlen = Math.max(maxlen || 0, 12);
   while (str.length) {
     curLine = str.substr(0, maxlen);
@@ -57191,14 +57191,14 @@ function splitMimeEncodedString(str, maxlen) {
       curLine = curLine.substr(0, match.index);
     }
     fallbackLine = curLine.length ? curLine : str.substr(0, maxlen);
-    done2 = false;
-    while (!done2 && curLine.length) {
-      done2 = true;
+    done3 = false;
+    while (!done3 && curLine.length) {
+      done3 = true;
       if (match = str.substr(curLine.length).match(/^[=]([0-9A-F]{2})/i)) {
         chr = parseInt(match[1], 16);
         if (chr < 194 && chr > 127) {
           curLine = curLine.substr(0, curLine.length - 3);
-          done2 = false;
+          done3 = false;
         }
       }
     }
@@ -57749,24 +57749,24 @@ var LastNewline = class extends import_node_stream4.Transform {
     this.lastByte = false;
   }
   /** @internal */
-  _transform(chunk, encoding, done2) {
+  _transform(chunk, encoding, done3) {
     if (chunk.length) {
       this.lastByte = chunk[chunk.length - 1];
     }
     this.push(chunk);
-    done2();
+    done3();
   }
   /** @internal */
-  _flush(done2) {
+  _flush(done3) {
     if (this.lastByte === 10) {
-      return done2();
+      return done3();
     }
     if (this.lastByte === 13) {
       this.push(Buffer.from("\n"));
-      return done2();
+      return done3();
     }
     this.push(Buffer.from("\r\n"));
-    return done2();
+    return done3();
   }
 };
 
@@ -57781,7 +57781,7 @@ var LeWindows = class extends import_node_stream5.Transform {
    * Escapes dots
    * @internal
    */
-  _transform(chunk, encoding, done2) {
+  _transform(chunk, encoding, done3) {
     let buf;
     let lastPos = 0;
     for (let i = 0, len = chunk.length; i < len; i++) {
@@ -57803,7 +57803,7 @@ var LeWindows = class extends import_node_stream5.Transform {
       this.push(chunk);
     }
     this.lastByte = chunk[chunk.length - 1];
-    done2();
+    done3();
   }
 };
 
@@ -57817,7 +57817,7 @@ var LeUnix = class extends import_node_stream6.Transform {
    * Escapes dots
    * @internal
    */
-  _transform(chunk, encoding, done2) {
+  _transform(chunk, encoding, done3) {
     let buf;
     let lastPos = 0;
     for (let i = 0, len = chunk.length; i < len; i++) {
@@ -57833,7 +57833,7 @@ var LeUnix = class extends import_node_stream6.Transform {
     } else if (!lastPos) {
       this.push(chunk);
     }
-    done2();
+    done3();
   }
 };
 
@@ -58096,7 +58096,7 @@ var MimeNode = class _MimeNode {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done2 = callback;
+    const done3 = callback;
     const stream = this.createReadStream();
     const buf = [];
     let buflen = 0;
@@ -58113,7 +58113,7 @@ var MimeNode = class _MimeNode {
         return;
       }
       returned = true;
-      return done2(err);
+      return done3(err);
     });
     stream.once("end", (chunk) => {
       if (returned) {
@@ -58124,7 +58124,7 @@ var MimeNode = class _MimeNode {
         buf.push(chunk);
         buflen += chunk.length;
       }
-      return done2(null, Buffer.concat(buf, buflen));
+      return done3(null, Buffer.concat(buf, buflen));
     });
     return promise;
   }
@@ -58309,7 +58309,7 @@ var MimeNode = class _MimeNode {
   processFunc(processFunc) {
     this._processFuncs.push(processFunc);
   }
-  stream(outputStream, options, done2) {
+  stream(outputStream, options, done3) {
     const transferEncoding = this.getTransferEncoding();
     let contentStream;
     let localStream;
@@ -58319,7 +58319,7 @@ var MimeNode = class _MimeNode {
         return;
       }
       returned = true;
-      done2(err);
+      done3(err);
     };
     const finalize = () => {
       let childId = 0;
@@ -60002,12 +60002,12 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
     tlsOptions = {};
   }
   tlsOptions = tlsOptions || {};
-  const done2 = callback;
+  const done3 = callback;
   destinationPort = Number(destinationPort) || 0;
   if (!destinationPort || /[\r\n]/.test(destinationHost)) {
     const err = new Error("Invalid proxy destination");
     err.code = EPROXY;
-    setImmediate(() => done2(err));
+    setImmediate(() => done3(err));
     return;
   }
   const proxy = parse(proxyUrl);
@@ -60033,7 +60033,7 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
       socket.destroy();
     } catch (_E) {
     }
-    done2(err);
+    done3(err);
   };
   const timeoutErr = () => {
     const err = new Error("Proxy socket timed out");
@@ -60088,12 +60088,12 @@ function httpProxyClient(proxyUrl, destinationPort, destinationHost, tlsOptions,
           }
           const err = new Error("Invalid response from proxy" + (match && ": " + match[1] || ""));
           err.code = EPROXY;
-          return done2(err);
+          return done3(err);
         }
         socket.removeListener("error", tempSocketErr);
         socket.removeListener("timeout", timeoutErr);
         socket.setTimeout(0);
-        return done2(null, socket);
+        return done3(null, socket);
       }
       if (received > MAX_RESPONSE_HEADER_BYTES) {
         socket.removeListener("data", onSocketData);
@@ -60449,7 +60449,7 @@ var Mail = class extends import_node_events.EventEmitter {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done2 = callback;
+    const done3 = callback;
     if (typeof this.getSocket === "function") {
       this.transporter.getSocket = this.getSocket;
       this.getSocket = false;
@@ -60468,7 +60468,7 @@ var Mail = class extends import_node_events.EventEmitter {
           tnx: "plugin",
           action: "compile"
         }, "PluginCompile Error: %s", err.message);
-        return done2(err);
+        return done3(err);
       }
       let recipientCount;
       try {
@@ -60483,7 +60483,7 @@ var Mail = class extends import_node_events.EventEmitter {
           tnx: "transport",
           action: "send"
         }, "Compile Error: %s", err2.message);
-        return done2(err2);
+        return done3(err2);
       }
       const maxRecipients = mail.data.maxRecipients === void 0 ? DEFAULT_MAX_RECIPIENTS : mail.data.maxRecipients;
       if (maxRecipients && recipientCount > maxRecipients) {
@@ -60494,7 +60494,7 @@ var Mail = class extends import_node_events.EventEmitter {
           tnx: "transport",
           action: "send"
         }, "Send Error: %s", err2.message);
-        return done2(err2);
+        return done3(err2);
       }
       this._processPlugins("stream", mail, (err2) => {
         if (err2) {
@@ -60503,7 +60503,7 @@ var Mail = class extends import_node_events.EventEmitter {
             tnx: "plugin",
             action: "stream"
           }, "PluginStream Error: %s", err2.message);
-          return done2(err2);
+          return done3(err2);
         }
         if (mail.data.dkim || this.dkim) {
           mail.message.processFunc((input) => {
@@ -60524,7 +60524,7 @@ var Mail = class extends import_node_events.EventEmitter {
               action: "send"
             }, "Send Error: %s", args[0].message);
           }
-          done2(...args);
+          done3(...args);
         });
       });
     });
@@ -60730,13 +60730,13 @@ var DataStream = class extends import_node_stream11.Transform {
    * Escapes dots
    * @internal
    */
-  _transform(chunk, encoding, done2) {
+  _transform(chunk, encoding, done3) {
     const chunks = [];
     let chunklen = 0;
     let i, len, lastPos = 0;
     let buf;
     if (!chunk || !chunk.length) {
-      return done2();
+      return done3();
     }
     if (typeof chunk === "string") {
       chunk = Buffer.from(chunk);
@@ -60777,13 +60777,13 @@ var DataStream = class extends import_node_stream11.Transform {
       this.push(chunk);
     }
     this.lastByte = chunk[chunk.length - 1];
-    done2();
+    done3();
   }
   /**
    * Finalizes the stream with a dot on a single line
    * @internal
    */
-  _flush(done2) {
+  _flush(done3) {
     let buf;
     if (this.lastByte === 10) {
       buf = Buffer.from(".\r\n");
@@ -60794,7 +60794,7 @@ var DataStream = class extends import_node_stream11.Transform {
     }
     this.outByteCount += buf.length;
     this.push(buf);
-    done2();
+    done3();
   }
 };
 
@@ -61166,11 +61166,11 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
         returned = true;
         callback(this._formatError(err, "EAUTH", lastResponse, "AUTH " + this._authMethod));
       };
-      const sendCommand = (cmd, done2) => {
+      const sendCommand = (cmd, done3) => {
         let promise;
-        if (!done2) {
+        if (!done3) {
           promise = new Promise((resolve4, reject2) => {
-            done2 = callbackPromise(resolve4, reject2);
+            done3 = callbackPromise(resolve4, reject2);
           });
         }
         this._responseActions.push((str) => {
@@ -61190,7 +61190,7 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
             data.text = str;
             data.status = 0;
           }
-          done2(null, data);
+          done3(null, data);
         });
         setImmediate(() => this._sendCommand(cmd));
         return promise;
@@ -61256,7 +61256,7 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
    * @param message String, Buffer or a Stream
    * @param done Callback to return once sending is completed
    */
-  send(envelope, message, done2) {
+  send(envelope, message, done3) {
     let returned = false;
     const callback = (err, info) => {
       if (returned) {
@@ -61266,7 +61266,7 @@ var SMTPConnection = class extends import_node_events2.EventEmitter {
       if (this._pendingSend && this._pendingSend.callback === callback) {
         this._pendingSend = false;
       }
-      done2(err, info);
+      done3(err, info);
     };
     if (!message) {
       return callback(this._formatError("Empty message", "EMESSAGE", false, "API"));
@@ -62383,9 +62383,9 @@ var XOAuth2 = class extends import_node_stream13.Stream {
    * @param callback Callback function with error object and token string
    */
   getToken(renew, callback) {
-    const done2 = callback;
+    const done3 = callback;
     if (this.configError) {
-      return done2(this.configError);
+      return done3(this.configError);
     }
     if (!renew && this.accessToken && (!this.expires || this.expires > Date.now())) {
       this.logger.debug({
@@ -62411,10 +62411,10 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       }, "Cannot renew access token for %s: No refresh mechanism available", this.options.user);
       const err = new Error("Can't create new access token for user");
       err.code = EOAUTH2;
-      return done2(err);
+      return done3(err);
     }
     if (this.renewing) {
-      this.renewalQueue.push({ renew, callback: done2 });
+      this.renewalQueue.push({ renew, callback: done3 });
       return;
     }
     this.renewing = true;
@@ -62436,7 +62436,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
           action: "renew"
         }, "Generated new Access Token for %s", this.options.user);
       }
-      done2(err, accessToken2);
+      done3(err, accessToken2);
     };
     if (this.provisionCallback) {
       this.provisionCallback(this.options.user, !!renew, (err, accessToken2, expires) => {
@@ -62474,7 +62474,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
    * @param callback Callback function with error object and token string
    */
   generateToken(callback) {
-    const done2 = callback;
+    const done3 = callback;
     let urlOptions;
     let loggedUrlOptions;
     if (this.options.serviceClient) {
@@ -62493,7 +62493,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       } catch (_err) {
         const err = new Error("Can't generate token. Check your auth options");
         err.code = EOAUTH2;
-        return done2(err);
+        return done3(err);
       }
       urlOptions = {
         grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
@@ -62507,7 +62507,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       if (!this.options.refreshToken) {
         const err = new Error("Can't create new access token for user");
         err.code = EOAUTH2;
-        return done2(err);
+        return done3(err);
       }
       urlOptions = {
         client_id: this.options.clientId || "",
@@ -62532,12 +62532,12 @@ var XOAuth2 = class extends import_node_stream13.Stream {
     this.postRequest(this.options.accessUrl, urlOptions, this.options, (error2, body) => {
       let data;
       if (error2) {
-        return done2(error2);
+        return done3(error2);
       }
       try {
         data = JSON.parse(body.toString());
       } catch (E) {
-        return done2(E);
+        return done3(E);
       }
       if (!data || typeof data !== "object") {
         this.logger.debug({
@@ -62547,7 +62547,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
         }, "Response: %s", (body || "").toString());
         const err2 = new Error("Invalid authentication response");
         err2.code = EOAUTH2;
-        return done2(err2);
+        return done3(err2);
       }
       const logData = Object.assign({}, data);
       if (logData.access_token) {
@@ -62568,7 +62568,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
         }
         const err2 = new Error(errorMessage);
         err2.code = EOAUTH2;
-        return done2(err2);
+        return done3(err2);
       }
       if (data.access_token) {
         this.updateToken(data.access_token, data.expires_in);
@@ -62576,7 +62576,7 @@ var XOAuth2 = class extends import_node_stream13.Stream {
       }
       const err = new Error("No access token");
       err.code = EOAUTH2;
-      return done2(err);
+      return done3(err);
     });
   }
   /**
@@ -63969,11 +63969,11 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done2 = callback;
+    const done3 = callback;
     const auth = new PoolResource(this).auth;
     this.getSocket(this.options, (err, socketOptions) => {
       if (err) {
-        return done2(err);
+        return done3(err);
       }
       let options = this.options;
       if (socketOptions && socketOptions.connection) {
@@ -63995,14 +63995,14 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         }
         returned = true;
         connection.close();
-        return done2(err2);
+        return done3(err2);
       });
       connection.once("end", () => {
         if (returned) {
           return;
         }
         returned = true;
-        return done2(new Error("Connection closed"));
+        return done3(new Error("Connection closed"));
       });
       const finalize = () => {
         if (returned) {
@@ -64010,7 +64010,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         }
         returned = true;
         connection.quit();
-        return done2(null, true);
+        return done3(null, true);
       };
       connection.connect((err2) => {
         if (returned) {
@@ -64019,7 +64019,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
         if (err2) {
           returned = true;
           connection.close();
-          return done2(err2);
+          return done3(err2);
         }
         if (auth && (connection.allowsAuth || options.forceAuth)) {
           connection.login(auth, (err3) => {
@@ -64029,7 +64029,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
             if (err3) {
               returned = true;
               connection.close();
-              return done2(err3);
+              return done3(err3);
             }
             finalize();
           });
@@ -64038,7 +64038,7 @@ var SMTPPool = class extends import_node_events4.EventEmitter {
           err3.code = ENOAUTH;
           returned = true;
           connection.close();
-          return done2(err3);
+          return done3(err3);
         } else {
           finalize();
         }
@@ -64261,10 +64261,10 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done2 = callback;
+    const done3 = callback;
     this.getSocket(this.options, (err, socketOptions) => {
       if (err) {
-        return done2(err);
+        return done3(err);
       }
       let options = this.options;
       if (socketOptions && socketOptions.connection) {
@@ -64294,7 +64294,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         returned = true;
         cleanupPerCallAuth();
         connection.close();
-        return done2(err2);
+        return done3(err2);
       });
       connection.once("end", () => {
         if (returned) {
@@ -64302,7 +64302,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         }
         returned = true;
         cleanupPerCallAuth();
-        return done2(new Error("Connection closed"));
+        return done3(new Error("Connection closed"));
       });
       const finalize = () => {
         if (returned) {
@@ -64311,7 +64311,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         returned = true;
         cleanupPerCallAuth();
         connection.quit();
-        return done2(null, true);
+        return done3(null, true);
       };
       connection.connect((err2) => {
         if (returned) {
@@ -64320,7 +64320,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
         if (err2) {
           returned = true;
           connection.close();
-          return done2(err2);
+          return done3(err2);
         }
         perCallAuth = this.getAuth({});
         if (perCallAuth && (connection.allowsAuth || options.forceAuth)) {
@@ -64332,7 +64332,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
             if (err3) {
               returned = true;
               connection.close();
-              return done2(err3);
+              return done3(err3);
             }
             finalize();
           });
@@ -64342,7 +64342,7 @@ var SMTPTransport = class extends import_node_events5.EventEmitter {
           returned = true;
           cleanupPerCallAuth();
           connection.close();
-          return done2(err3);
+          return done3(err3);
         } else {
           finalize();
         }
@@ -64394,7 +64394,7 @@ var SendmailTransport = class {
    * @param mail MailComposer object
    * @param done Callback function to run when the sending is completed
    */
-  send(mail, done2) {
+  send(mail, done3) {
     mail.message.keepBcc = true;
     const envelope = mail.message.getEnvelope();
     const messageId = mail.message.messageId();
@@ -64403,7 +64403,7 @@ var SendmailTransport = class {
     if (hasInvalidAddresses) {
       const err = new Error("Can not send mail. Invalid envelope addresses.");
       err.code = ESENDMAIL;
-      return done2(err);
+      return done3(err);
     }
     const args = this.args ? ["-i"].concat(this.args).concat(envelope.to) : ["-i"].concat(envelope.from ? ["-f", envelope.from] : []).concat(envelope.to);
     const callback = (err) => {
@@ -64411,11 +64411,11 @@ var SendmailTransport = class {
         return;
       }
       returned = true;
-      if (typeof done2 === "function") {
+      if (typeof done3 === "function") {
         if (err) {
-          return done2(err);
+          return done3(err);
         }
-        return done2(null, {
+        return done3(null, {
           envelope,
           messageId,
           response: "Messages queued for delivery"
@@ -64515,7 +64515,7 @@ var StreamTransport = class {
    * @param mail MailComposer object
    * @param done Callback function to run when the sending is completed
    */
-  send(mail, done2) {
+  send(mail, done3) {
     mail.message.keepBcc = true;
     const envelope = mail.message.getEnvelope();
     const messageId = mail.message.messageId();
@@ -64542,7 +64542,7 @@ var StreamTransport = class {
           tnx: "send",
           messageId
         }, "Creating send stream failed for %s. %s", messageId, E.message);
-        return done2(E);
+        return done3(E);
       }
       if (!this.options.buffer) {
         stream.once("error", (err) => {
@@ -64552,7 +64552,7 @@ var StreamTransport = class {
             messageId
           }, "Failed creating message for %s. %s", messageId, err.message);
         });
-        return done2(null, {
+        return done3(null, {
           envelope,
           messageId,
           message: stream
@@ -64573,9 +64573,9 @@ var StreamTransport = class {
           tnx: "send",
           messageId
         }, "Failed creating message for %s. %s", messageId, err.message);
-        return done2(err);
+        return done3(err);
       });
-      stream.on("end", () => done2(null, {
+      stream.on("end", () => done3(null, {
         envelope,
         messageId,
         message: Buffer.concat(chunks, chunklen)
@@ -64602,7 +64602,7 @@ var JSONTransport = class {
    * @param mail MailComposer object
    * @param done Callback function to run when the sending is completed
    */
-  send(mail, done2) {
+  send(mail, done3) {
     mail.message.keepBcc = true;
     const envelope = mail.message.getEnvelope();
     const messageId = mail.message.messageId();
@@ -64622,11 +64622,11 @@ var JSONTransport = class {
             tnx: "send",
             messageId
           }, "Failed building JSON structure for %s. %s", messageId, err.message);
-          return done2(err);
+          return done3(err);
         }
         delete data.envelope;
         delete data.normalizedHeaders;
-        return done2(null, {
+        return done3(null, {
           envelope,
           messageId,
           message: this.options.skipEncoding ? data : JSON.stringify(data)
@@ -64785,12 +64785,12 @@ var SESTransport = class extends import_node_events6.default {
         callback = callbackPromise(resolve3, reject);
       });
     }
-    const done2 = callback;
+    const done3 = callback;
     const cb = (err) => {
       if (err && !["InvalidParameterValue", "MessageRejected"].includes(err.code || err.Code || err.name)) {
-        return done2(tagSesError(err));
+        return done3(tagSesError(err));
       }
-      return done2(null, true);
+      return done3(null, true);
     };
     const sesMessage = {
       Content: {
@@ -64872,9 +64872,9 @@ function createTestAccount(apiUrl, callback) {
       callback = callbackPromise(resolve3, reject);
     });
   }
-  const done2 = callback;
+  const done3 = callback;
   if (ETHEREAL_CACHE && testAccount) {
-    setImmediate(() => done2(null, testAccount));
+    setImmediate(() => done3(null, testAccount));
     return promise;
   }
   apiUrl = apiUrl || ETHEREAL_API;
@@ -64905,21 +64905,21 @@ function createTestAccount(apiUrl, callback) {
       chunklen += chunk.length;
     }
   });
-  req.once("error", (err) => done2(err));
+  req.once("error", (err) => done3(err));
   req.once("end", () => {
     const res = Buffer.concat(chunks, chunklen);
     let data;
     try {
       data = JSON.parse(res.toString());
     } catch (E) {
-      return done2(E);
+      return done3(E);
     }
     if (data.status !== "success" || data.error) {
-      return done2(new Error(data.error || "Request failed"));
+      return done3(new Error(data.error || "Request failed"));
     }
     delete data.status;
     testAccount = data;
-    done2(null, testAccount);
+    done3(null, testAccount);
   });
   return promise;
 }
@@ -66343,6 +66343,11 @@ function costingBasesFor(types) {
   return COSTING_BASES_FOR[types[0]].filter((b) => types.every((t) => COSTING_BASES_FOR[t].includes(b)));
 }
 var CARD_FINISH_LABEL = { plain: "Plain", lam: "Laminated", frost: "Frosted" };
+var cardsSummary = (qty, finish) => `${qty}cards-${CARD_FINISH_LABEL[finish].toLowerCase()}`;
+function tidyCostingSummary(summary) {
+  const m = /^(\d+) cards · (Plain|Laminated|Frosted) · \d+ A3 sheets$/.exec(summary.trim());
+  return m ? `${m[1]}cards-${m[2].toLowerCase()}` : summary;
+}
 var COSTING_JOB_LABEL = { cards: "Business cards", indoor: "Indoor signage", outdoor: "Outdoor signage" };
 var COSTING_CARD_TIERS = [100, 250, 500, 1e3, 2e3];
 var r24 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -66392,7 +66397,7 @@ function costingQuote(types, rates, input) {
   const vat = r24(price * VAT_RATE);
   const total = r24(price + vat);
   const profit = r24(price - cost);
-  const summary = cards ? `${qty} cards \xB7 ${CARD_FINISH_LABEL[finish]} \xB7 ${sheets} A3 sheets` : `${num(input.widthM)} \xD7 ${num(input.heightM)} m \xB7 ${qty} unit(s) \xB7 ${(area * qty).toFixed(2)} sqm`;
+  const summary = cards ? cardsSummary(qty, finish) : `${num(input.widthM)} \xD7 ${num(input.heightM)} m \xB7 ${qty} unit(s) \xB7 ${(area * qty).toFixed(2)} sqm`;
   return {
     jobType: input.jobType,
     qty,
@@ -66558,6 +66563,8 @@ function flatbedRangeLabel(bands, index) {
   return prev ? `${Math.floor(prev.upToCm2) + 1}\u2013${b[index].upToCm2} cm\xB2` : `up to ${b[index].upToCm2} cm\xB2`;
 }
 var flatbedFitsArtwork = (s, w, h) => w <= s.maxWidthCm && h <= s.maxLengthCm || h <= s.maxWidthCm && w <= s.maxLengthCm;
+var FLATBED_DISCOUNT_ROLES = ["Finance Manager", "General Manager", "Admin"];
+var canDiscountFlatbed = (role) => FLATBED_DISCOUNT_ROLES.includes(role);
 var none = (problem, pieces = 0, areaCm2 = 0) => ({
   ok: false,
   problem,
@@ -66567,8 +66574,11 @@ var none = (problem, pieces = 0, areaCm2 = 0) => ({
   bandIndex: -1,
   unitPrice: 0,
   minApplied: false,
-  discountPct: 0,
+  unitDiscount: 0,
+  discountedUnit: 0,
+  volumePct: 0,
   discountIndex: -1,
+  volumeApplied: false,
   gross: 0,
   discount: 0,
   printTotal: 0,
@@ -66577,7 +66587,14 @@ var none = (problem, pieces = 0, areaCm2 = 0) => ({
   perPiece: 0,
   upsell: null
 });
-function flatbedQuote(s, widthCm, heightCm, pieces, withSetup = false) {
+function flatbedUnitDiscountProblem(d) {
+  if (!d) return null;
+  if (d.kind !== "amount" && d.kind !== "pct") return "The unit price discount must be an amount or a percentage";
+  if (!(d.value >= 0) || !Number.isFinite(d.value)) return "A discount cannot be negative";
+  if (d.kind === "pct" && d.value >= 100) return "A percentage discount must be under 100%";
+  return null;
+}
+function flatbedQuote(s, widthCm, heightCm, pieces, opts = {}) {
   const n = Number.isFinite(pieces) && pieces > 0 ? Math.floor(pieces) : 0;
   if (!(widthCm > 0) || !(heightCm > 0) || !Number.isFinite(widthCm) || !Number.isFinite(heightCm)) return none(null, n);
   const areaCm2 = r26(widthCm * heightCm);
@@ -66586,26 +66603,34 @@ function flatbedQuote(s, widthCm, heightCm, pieces, withSetup = false) {
   const found = flatbedBandFor(s.bands, areaCm2);
   if (!found) return none(`No band covers ${areaCm2} cm\xB2`, n, areaCm2);
   const unitPrice = Math.max(found.band.price, s.minPiecePrice);
+  const ud = opts.unitDiscount ?? null;
+  const udProblem = flatbedUnitDiscountProblem(ud);
+  if (udProblem) return none(udProblem, n, areaCm2);
+  const unitDiscount = ud ? r26(Math.min(unitPrice, ud.kind === "pct" ? unitPrice * ud.value / 100 : ud.value)) : 0;
+  if (ud && unitDiscount >= unitPrice) return none("The discount is as much as the price of a piece", n, areaCm2);
+  const discountedUnit = r26(unitPrice - unitDiscount);
   const ds = sortedFlatbedDiscounts(s.discounts);
   let discountIndex = 0;
   ds.forEach((d, i) => {
     if (n >= d.from) discountIndex = i;
   });
-  const discountPct = ds[discountIndex]?.pct ?? 0;
-  const gross = r26(n * unitPrice);
-  const discount = r26(gross * discountPct / 100);
+  const volumePct = ds[discountIndex]?.pct ?? 0;
+  const volumeApplied = !!opts.volume && volumePct > 0;
+  const gross = r26(n * discountedUnit);
+  const discount = volumeApplied ? r26(gross * volumePct / 100) : 0;
   const printTotal = r26(gross - discount);
-  const setupFee = withSetup ? s.setupFee : 0;
+  const setupFee = opts.setup ? s.setupFee : 0;
   const total = r26(printTotal + setupFee);
-  const next = ds.find((d) => d.from > n && d.pct > discountPct);
-  const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r26(printTotal - r26(next.from * unitPrice * (1 - next.pct / 100))) } : null;
-  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, discountPct, discountIndex, gross, discount, printTotal, setupFee, total, perPiece: r26(total / n), upsell };
+  const next = ds.find((d) => d.from > n && d.pct > volumePct);
+  const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r26(printTotal - r26(next.from * discountedUnit * (1 - next.pct / 100))) } : null;
+  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, unitDiscount, discountedUnit, volumePct, discountIndex, volumeApplied, gross, discount, printTotal, setupFee, total, perPiece: r26(total / n), upsell };
 }
-function flatbedDescription(s, widthCm, heightCm, pieces, withSetup = false, note = "") {
-  const q = flatbedQuote(s, widthCm, heightCm, pieces, withSetup);
+function flatbedDescription(s, widthCm, heightCm, pieces, opts = {}, note = "") {
+  const q = flatbedQuote(s, widthCm, heightCm, pieces, opts);
   const parts = [`${pieces} \xD7 ${widthCm} \xD7 ${heightCm} cm${q.band ? ` (${flatbedRangeLabel(s.bands, q.bandIndex)} band)` : ""}`];
-  if (q.discountPct > 0) parts.push(`${q.discountPct}% volume discount`);
-  if (withSetup) parts.push("setup");
+  if (q.unitDiscount > 0) parts.push(`${q.unitDiscount}/= off each`);
+  if (q.volumeApplied) parts.push(`${q.volumePct}% volume discount`);
+  if (opts.setup) parts.push("setup");
   if (note.trim()) parts.push(note.trim());
   return parts.join(" \xB7 ").slice(0, 160);
 }
@@ -76087,7 +76112,8 @@ function quotedTotal(q) {
 function quoteDocument(q) {
   const total = quotedTotal(q);
   const label = costingJobLabel(q.jobType);
-  const what = q.summary.toLowerCase().startsWith(label.toLowerCase()) ? q.summary : `${label}: ${q.summary}`;
+  const summary = tidyCostingSummary(q.summary);
+  const what = summary.toLowerCase().startsWith(label.toLowerCase()) ? summary : `${label}: ${summary}`;
   return {
     id: q.id,
     orderNo: q.quoteNo,
@@ -76801,8 +76827,8 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
   return captureWalkin(req, res, form.data, {
     keepCosts: true,
     after: async (tx, order) => {
-      const done2 = await tx.costingQuote.updateMany({ where: { id: quoteId, status: { not: "Ordered" } }, data: { status: "Ordered", orderId: order.id, orderNo: order.orderNo } });
-      if (done2.count !== 1) throw new Error("This quote was captured as an order a moment ago");
+      const done3 = await tx.costingQuote.updateMany({ where: { id: quoteId, status: { not: "Ordered" } }, data: { status: "Ordered", orderId: order.id, orderNo: order.orderNo } });
+      if (done3.count !== 1) throw new Error("This quote was captured as an order a moment ago");
     }
   });
 });
@@ -78574,10 +78600,9 @@ async function penTiers() {
   return (await prisma.penTier.findMany({ orderBy: { fromQty: "asc" } })).map((t) => ({ from: t.fromQty, rate: t.rate }));
 }
 dtfRouter.get("/pen-tiers", async (req, res) => {
-  const perms = await permissionsForRole(req.user.role);
-  res.json({ canManage: perms.canManageDtf, tiers: await penTiers() });
+  res.json({ canManage: req.user.role === "Admin", tiers: await penTiers() });
 });
-dtfRouter.put("/pen-tiers", manageOnly, async (req, res) => {
+dtfRouter.put("/pen-tiers", requireRole("Admin"), async (req, res) => {
   const parsed = external_exports.object({ tiers: external_exports.array(external_exports.object({ from: external_exports.number().int(), rate: external_exports.number().max(1e6) })).min(1).max(20) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const tiers = sortedPenTiers(parsed.data.tiers);
@@ -78650,8 +78675,7 @@ async function flatbedSettings() {
   }
 }
 dtfRouter.get("/flatbed", async (req, res) => {
-  const perms = await permissionsForRole(req.user.role);
-  res.json({ canManage: perms.canManageDtf, settings: await flatbedSettings() });
+  res.json({ canManage: req.user.role === "Admin", canDiscount: canDiscountFlatbed(req.user.role), settings: await flatbedSettings() });
 });
 var flatbedSettingsSchema = external_exports.object({
   maxWidthCm: external_exports.number().max(1e3),
@@ -78661,7 +78685,7 @@ var flatbedSettingsSchema = external_exports.object({
   bands: external_exports.array(external_exports.object({ upToCm2: external_exports.number().max(1e6), price: external_exports.number().max(1e6) })).min(1).max(20),
   discounts: external_exports.array(external_exports.object({ from: external_exports.number().int(), pct: external_exports.number() })).min(1).max(10)
 });
-dtfRouter.put("/flatbed", manageOnly, async (req, res) => {
+dtfRouter.put("/flatbed", requireRole("Admin"), async (req, res) => {
   const parsed = flatbedSettingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const settings = { ...parsed.data, bands: sortedFlatbedBands(parsed.data.bands), discounts: sortedFlatbedDiscounts(parsed.data.discounts) };
@@ -78685,6 +78709,9 @@ var flatbedOrderSchema = external_exports.object({
   pieces: external_exports.number().int().positive("Enter the number of pieces").max(1e6),
   // the setup fee is added to the job only when it is asked for
   withSetup: external_exports.boolean().default(false),
+  // discounts are given only by Finance, the General Manager or an Admin (checked below)
+  volumeDiscount: external_exports.boolean().default(false),
+  unitDiscount: external_exports.object({ kind: external_exports.enum(["amount", "pct"]), value: external_exports.number().max(1e6) }).nullable().default(null),
   note: external_exports.string().max(100).default(""),
   client: external_exports.string().max(200).default(""),
   phone: external_exports.string().max(40).default(""),
@@ -78701,7 +78728,11 @@ dtfRouter.post("/flatbed-orders", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
   const settings = await flatbedSettings();
-  const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup);
+  const opts = { setup: d.withSetup, volume: d.volumeDiscount, unitDiscount: d.unitDiscount };
+  if ((d.volumeDiscount || d.unitDiscount && d.unitDiscount.value > 0) && !canDiscountFlatbed(req.user.role)) return res.status(403).json({ error: "Only Finance, the General Manager or an Admin can apply a discount" });
+  const udProblem = flatbedUnitDiscountProblem(d.unitDiscount);
+  if (udProblem) return res.status(400).json({ error: udProblem });
+  const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, opts);
   if (!quote.ok) return res.status(400).json({ error: quote.problem ?? "No price applies to that job" });
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
@@ -78723,7 +78754,7 @@ dtfRouter.post("/flatbed-orders", async (req, res) => {
         staffId: cap.staffId,
         capturedById: cap.capturedById,
         capturedByName: cap.capturedByName,
-        serviceLine: { itemType: "service", serviceId: service.id, qty: 1, unitPrice: quote.total, description: flatbedDescription(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup, d.note) },
+        serviceLine: { itemType: "service", serviceId: service.id, qty: 1, unitPrice: quote.total, description: flatbedDescription(settings, d.widthCm, d.heightCm, d.pieces, opts, d.note) },
         materialLines: d.materialLines,
         payments: paymentLines,
         sourcedBy: d.sourcedBy,
@@ -81007,17 +81038,17 @@ function orderedModels() {
   const models = import_client4.Prisma.dmmf.datamodel.models.filter((m) => !EXCLUDED.has(m.name));
   const names = new Set(models.map((m) => m.name));
   const dependsOn = (m) => m.fields.filter((f) => f.relationFromFields && f.relationFromFields.length > 0 && names.has(f.type) && f.type !== m.name).map((f) => f.type);
-  const done2 = /* @__PURE__ */ new Set();
+  const done3 = /* @__PURE__ */ new Set();
   const out = [];
   let left = [...models];
   while (left.length) {
-    const ready = left.filter((m) => dependsOn(m).every((d) => done2.has(d)));
+    const ready = left.filter((m) => dependsOn(m).every((d) => done3.has(d)));
     if (!ready.length) throw new Error(`The tables depend on each other in a circle (${left.map((m) => m.name).join(", ")}) \u2014 backups cannot be ordered`);
     for (const m of ready) {
-      done2.add(m.name);
+      done3.add(m.name);
       out.push(m);
     }
-    left = left.filter((m) => !done2.has(m.name));
+    left = left.filter((m) => !done3.has(m.name));
   }
   return out;
 }
@@ -82583,6 +82614,30 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: "Something went wrong on the server" });
 });
 
+// apps/api/src/costingTidy.ts
+var done2 = null;
+async function tidyCostingSummaries() {
+  let changed = 0;
+  const quotes = await prisma.costingQuote.findMany({ where: { summary: { contains: "A3 sheets" } }, select: { id: true, summary: true } });
+  for (const q of quotes) {
+    const next = tidyCostingSummary(q.summary);
+    if (next !== q.summary) {
+      await prisma.costingQuote.update({ where: { id: q.id }, data: { summary: next } });
+      changed++;
+    }
+  }
+  const lines = await prisma.orderLineItem.findMany({ where: { description: { contains: "A3 sheets" } }, select: { id: true, description: true } });
+  for (const l of lines) {
+    const next = tidyCostingSummary(l.description);
+    if (next !== l.description) {
+      await prisma.orderLineItem.update({ where: { id: l.id }, data: { description: next } });
+      changed++;
+    }
+  }
+  return changed;
+}
+var tidyCostingSummariesOnce = () => done2 ??= tidyCostingSummaries();
+
 // apps/api/src/server.ts
 var port = Number(process.env.PORT) || 4100;
 app.listen(port, () => {
@@ -82592,5 +82647,5 @@ app.listen(port, () => {
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePettyCashAccess(), ensureHrDefaults(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce()]).catch((e) => console.error("Start-up checks failed", e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePettyCashAccess(), ensureHrDefaults(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce(), tidyCostingSummariesOnce()]).catch((e) => console.error("Start-up checks failed", e));
 });

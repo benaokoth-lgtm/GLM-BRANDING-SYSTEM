@@ -11,6 +11,7 @@ import { ensureHrDefaults } from './hr';
 import { ensureBusinessHeadsOnce, ensurePurchasesOnce, ensureStoresAccess } from './purchases';
 import { ensureStaffNamesOnce } from './staffNames';
 import { ensureMaterialItemsOnce } from './materials';
+import { tidyCostingSummariesOnce } from './costingTidy';
 import { alignSystemHeadsOnce, clearContractedOutOnce, retireLegacyEmbroideryOnce } from './embroideryLegacy';
 import { startBackupScheduler } from './backup';
 import { pruneAudit } from './audit';
@@ -29,5 +30,5 @@ app.listen(port, () => {
   sealStoredSecrets().catch((e) => console.error('Sealing saved secrets failed', e));
   if (!dataKeyConfigured()) console.warn('DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data → Security.');
   // Give older requisitions a reference and a line; grant the production/quality permissions on databases that pre-date them.
-  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePettyCashAccess(), ensureHrDefaults(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce()]).catch((e) => console.error('Start-up checks failed', e));
+  Promise.all([ensureRequisitionsOnce(), ensureProductionOnce(), ensureCostAccessOnce(), ensureCommissionAccessOnce(), ensureFrontOfficeOnce(), ensurePettyCashAccess(), ensureHrDefaults(), ensurePurchasesOnce(), ensureStoresAccess(), ensureBusinessHeadsOnce(), ensureStaffNamesOnce(), ensureMaterialItemsOnce(), retireLegacyEmbroideryOnce(), clearContractedOutOnce(), alignSystemHeadsOnce(), tidyCostingSummariesOnce()]).catch((e) => console.error('Start-up checks failed', e));
 });

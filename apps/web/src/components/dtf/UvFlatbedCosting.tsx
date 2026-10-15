@@ -8,7 +8,8 @@ import DtfOrderDialog from './DtfOrderDialog';
 // UV DTF Film Order → UV Flatbed: the price picker for printing on the flatbed (diaries and other flat items). Staff enter the size of the ARTWORK (the part of the item that is printed)
 // and the number of pieces; the band the artwork falls in, the price per piece and the total come from the bands kept in the system. A piece is never charged less than the minimum for
 // a piece (what a tiny logo costs), a bigger run gets a volume discount, and the setup fee is added only when it is ticked. A manager changes all of these here. "Capture as order"
-// takes the priced job through the usual order popup; the server works the price out again from the same settings.
+// takes the priced job through the usual order popup; the server works the price out again from the same settings. The volume discount and a discount on the unit price are applied only by
+// Finance, the General Manager or an Admin (everyone else sees them greyed out, with what the discount would be); the server refuses them from anyone else.
 
 const label = { fontSize: 14, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' } as const;
 const rule = '2px solid var(--color-divider)';
@@ -32,11 +33,15 @@ interface Editing {
 export default function UvFlatbedCosting() {
   const [settings, setSettings] = useState<FlatbedSettings | null>(null);
   const [canManage, setCanManage] = useState(false);
+  const [canDiscount, setCanDiscount] = useState(false);
   const [error, setError] = useState('');
   const [w, setW] = useState('');
   const [h, setH] = useState('');
   const [pieces, setPieces] = useState(0);
   const [withSetup, setWithSetup] = useState(false);
+  const [volume, setVolume] = useState(false);
+  const [udKind, setUdKind] = useState<'none' | 'amount' | 'pct'>('none');
+  const [udValue, setUdValue] = useState('');
   const [note, setNote] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
   const [capturing, setCapturing] = useState(false);
@@ -44,10 +49,11 @@ export default function UvFlatbedCosting() {
 
   useEffect(() => {
     api
-      .get<{ settings: FlatbedSettings; canManage: boolean }>('/dtf/flatbed')
+      .get<{ settings: FlatbedSettings; canManage: boolean; canDiscount: boolean }>('/dtf/flatbed')
       .then((r) => {
         setSettings(r.settings);
         setCanManage(r.canManage);
+        setCanDiscount(r.canDiscount);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Could not load the flatbed prices'));
   }, []);
@@ -58,7 +64,9 @@ export default function UvFlatbedCosting() {
   const discounts = sortedFlatbedDiscounts(settings.discounts);
   const wc = num(w);
   const hc = num(h);
-  const q = flatbedQuote(settings, wc, hc, pieces, withSetup);
+  const unitDiscount = canDiscount && udKind !== 'none' && num(udValue) > 0 ? { kind: udKind, value: num(udValue) } : null;
+  const volumeOn = canDiscount && volume;
+  const q = flatbedQuote(settings, wc, hc, pieces, { setup: withSetup, volume: volumeOn, unitDiscount });
   const sized = wc > 0 && hc > 0;
   const startEdit = () =>
     setEditing({
@@ -114,7 +122,7 @@ export default function UvFlatbedCosting() {
       <i className="corner br"></i>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '20px 32px', borderBottom: rule }}>
         <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 20 }}>UV Flatbed · Diaries &amp; flat items · Price Picker</div>
-        <button type="button" className="btn btn-ghost" onClick={() => { setW(''); setH(''); setPieces(0); setNote(''); setWithSetup(false); }}>Clear</button>
+        <button type="button" className="btn btn-ghost" onClick={() => { setW(''); setH(''); setPieces(0); setNote(''); setWithSetup(false); setVolume(false); setUdKind('none'); setUdValue(''); }}>Clear</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))' }}>
@@ -158,6 +166,28 @@ export default function UvFlatbedCosting() {
             <input type="checkbox" checked={withSetup} onChange={(e) => setWithSetup(e.target.checked)} aria-label="Add the setup fee" />
             <span>Add the setup fee ({money(settings.setupFee)}), for the layout</span>
           </label>
+          <div style={{ border: rule, padding: 14, marginTop: 18, display: 'grid', gap: 10 }}>
+            <div style={{ ...label, fontSize: 13 }}>Discounts {canDiscount ? '' : '· applied by Finance, the General Manager or an Admin'}</div>
+            <label style={{ display: 'flex', gap: 10, alignItems: 'center', fontSize: 15, opacity: canDiscount ? 1 : 0.6 }}>
+              <input type="checkbox" checked={volumeOn} disabled={!canDiscount} onChange={(e) => setVolume(e.target.checked)} aria-label="Apply the volume discount" />
+              <span>Apply the volume discount{q.ok && q.volumePct > 0 ? ` (${fmtNum(q.volumePct, 2)}% for ${fmtNum(q.pieces)} pieces)` : ''}</span>
+            </label>
+            {!canDiscount && q.ok && q.volumePct > 0 && <p className="note" style={{ margin: 0, fontSize: 13 }}>This run earns {fmtNum(q.volumePct, 2)}% off. Ask Finance, the General Manager or an Admin to apply it.</p>}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', opacity: canDiscount ? 1 : 0.6 }}>
+              <span style={{ fontSize: 15 }}>Unit price discount</span>
+              <select className="input" style={{ width: 170 }} value={udKind} disabled={!canDiscount} onChange={(e) => setUdKind(e.target.value as 'none' | 'amount' | 'pct')} aria-label="Kind of unit price discount">
+                <option value="none">None</option>
+                <option value="amount">Ksh off each piece</option>
+                <option value="pct">% off the unit price</option>
+              </select>
+              {udKind !== 'none' && (
+                <>
+                  <input className="input" style={{ width: 90 }} inputMode="decimal" placeholder={udKind === 'pct' ? '%' : 'Ksh'} value={udValue} disabled={!canDiscount} onChange={(e) => setUdValue(e.target.value)} aria-label="Unit price discount" />
+                  <span className="text-muted" style={{ fontSize: 13 }}>{udKind === 'pct' ? '% off each piece' : '/= off each piece'}</span>
+                </>
+              )}
+            </div>
+          </div>
           <input className="input" style={{ marginTop: 14 }} maxLength={100} placeholder="What it is, e.g. 2027 diary covers (optional)" value={note} onChange={(e) => setNote(e.target.value)} aria-label="What is being printed" />
 
           <div style={{ marginTop: 32, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -180,7 +210,7 @@ export default function UvFlatbedCosting() {
               <p className="note" style={{ marginBottom: 0, fontSize: 13 }}>
                 The largest artwork is {fmtNum(settings.maxWidthCm)} × {fmtNum(settings.maxLengthCm)} cm ({fmtNum(flatbedMaxArea(settings))} cm²). A piece is never charged less than {money(settings.minPiecePrice)}, however small the artwork.
               </p>
-              <div style={{ ...label, marginTop: 24 }}>Volume discount</div>
+                <div style={{ ...label, marginTop: 24 }}>Volume discount</div>
               <div style={{ borderTop: rule, marginTop: 8 }}>
                 {discounts.map((d, i) => (
                   <div key={d.from} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, padding: '8px 12px', borderBottom: '1px solid var(--color-divider)', alignItems: 'center', background: q.ok && q.discountIndex === i ? 'var(--color-accent)' : 'transparent', color: q.ok && q.discountIndex === i ? '#fff' : 'inherit' }}>
@@ -238,9 +268,9 @@ export default function UvFlatbedCosting() {
         <div style={{ padding: 32, borderBottom: rule, display: 'flex', flexDirection: 'column', gap: 24 }}>
           <div>
             <div style={label}>Price per piece</div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 96, lineHeight: 1, color: 'var(--color-accent)', marginTop: 8 }}>{q.band ? money(q.unitPrice) : '—'}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 96, lineHeight: 1, color: 'var(--color-accent)', marginTop: 8 }}>{q.band ? money(q.discountedUnit) : '—'}</div>
             <div style={{ fontSize: 15, marginTop: 4 }}>
-              {sized ? (q.band ? `${fmtNum(q.areaCm2, 1)} cm² · ${flatbedRangeLabel(bands, q.bandIndex)}${q.minApplied ? ' · the minimum price for a piece' : ''}` : `${fmtNum(wc * hc, 1)} cm² — no price`) : 'Enter the artwork size'}
+              {sized ? (q.band ? `${fmtNum(q.areaCm2, 1)} cm² · ${flatbedRangeLabel(bands, q.bandIndex)}${q.minApplied ? ' · the minimum price for a piece' : ''}${q.unitDiscount > 0 ? ` · ${money(q.unitPrice)} less ${money(q.unitDiscount)}` : ''}` : `${fmtNum(wc * hc, 1)} cm² — no price`) : 'Enter the artwork size'}
             </div>
           </div>
           {q.problem && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{q.problem}</p>}
@@ -249,14 +279,14 @@ export default function UvFlatbedCosting() {
               <div style={label}>Total to charge</div>
               <div style={{ fontFamily: 'var(--font-heading)', fontWeight: 700, fontSize: 64, lineHeight: 1.1 }}>{money(q.total)}</div>
               <div style={{ fontSize: 15, marginTop: 8, display: 'grid', gap: 2 }}>
-                <span>{fmtNum(q.pieces)} × {money(q.unitPrice)} = {money(q.gross)}</span>
-                {q.discountPct > 0 && <span>Volume discount {fmtNum(q.discountPct, 2)}% = −{money(q.discount)}</span>}
+                <span>{fmtNum(q.pieces)} × {money(q.discountedUnit)} = {money(q.gross)}</span>
+                {q.volumeApplied && <span>Volume discount {fmtNum(q.volumePct, 2)}% = −{money(q.discount)}</span>}
                 {q.setupFee > 0 && <span>Setup fee +{money(q.setupFee)}</span>}
                 <span className="text-muted">About {money(q.perPiece)} a piece all in. VAT included, as every price in the system is.</span>
               </div>
             </div>
           )}
-          {q.ok && q.upsell && (
+          {q.ok && canDiscount && q.upsell && (
             <div style={{ border: '2px solid var(--color-accent)', padding: 16, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'flex-start' }}>
               <div>
                 <b>Discount close by:</b> add {fmtNum(q.upsell.add)} more {q.upsell.add === 1 ? 'piece' : 'pieces'} ({fmtNum(q.upsell.qty)} in all) → {fmtNum(q.upsell.pct, 2)}% off.{' '}
@@ -283,7 +313,7 @@ export default function UvFlatbedCosting() {
           product="uv"
           mode="flatbed"
           postUrl="/dtf/flatbed-orders"
-          basePayload={{ widthCm: wc, heightCm: hc, pieces, withSetup, note }}
+          basePayload={{ widthCm: wc, heightCm: hc, pieces, withSetup, note, volumeDiscount: volumeOn, unitDiscount }}
           qty={1}
           unitPrice={q.total}
           client=""

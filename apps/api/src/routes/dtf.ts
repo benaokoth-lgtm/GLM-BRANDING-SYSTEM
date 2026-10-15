@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
-import { DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import { canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -288,7 +288,7 @@ dtfRouter.get('/data', async (req, res) => {
 });
 
 // ── UV pen branding: the price picker's rate tiers ───────────────────────
-// The rate a pen is charged at depends on how many pens are in the order; the whole order is charged at that one rate. Anyone with DTF access reads the tiers; a DTF manager
+// The rate a pen is charged at depends on how many pens are in the order; the whole order is charged at that one rate. Anyone with DTF access reads the tiers; only an Admin
 // changes them. A new database starts with the owner's rates (1–99 at 20/=, 100–499 at 15/=, 500–1000 at 12/=, 1001+ at 10/=).
 async function penTiers() {
   if ((await prisma.penTier.count()) === 0) await prisma.penTier.createMany({ data: DEFAULT_PEN_TIERS.map((t) => ({ fromQty: t.from, rate: t.rate })) });
@@ -296,11 +296,10 @@ async function penTiers() {
 }
 
 dtfRouter.get('/pen-tiers', async (req, res) => {
-  const perms = await permissionsForRole(req.user!.role);
-  res.json({ canManage: perms.canManageDtf, tiers: await penTiers() });
+  res.json({ canManage: req.user!.role === 'Admin', tiers: await penTiers() });
 });
 
-dtfRouter.put('/pen-tiers', manageOnly, async (req, res) => {
+dtfRouter.put('/pen-tiers', requireRole('Admin'), async (req, res) => {
   const parsed = z.object({ tiers: z.array(z.object({ from: z.number().int(), rate: z.number().max(1_000_000) })).min(1).max(20) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const tiers = sortedPenTiers(parsed.data.tiers);
@@ -367,8 +366,9 @@ dtfRouter.post('/pen-orders', async (req, res) => {
 });
 
 // ── UV flatbed printing (diaries and other flat items): the price bands ───────
-// The artwork is priced by its area in bands (at least the minimum for a piece), the run gets a volume discount, and a setup fee is added when it is asked for (see flatbed.ts in shared).
-// Anyone with DTF access reads the settings; a DTF manager changes them. A new database starts with the owner's bands.
+// The artwork is priced by its area in bands (at least the minimum for a piece); a volume discount and a discount on the unit price are given only when Finance, the General Manager or an Admin applies
+// them; and a setup fee is added when it is asked for (see flatbed.ts in shared).
+// Anyone with DTF access reads the settings; only an Admin changes them. A new database starts with the owner's bands.
 async function flatbedSettings(): Promise<FlatbedSettings> {
   const row = await prisma.flatbedSetting.findUnique({ where: { id: 1 } });
   if (!row) return DEFAULT_FLATBED_SETTINGS;
@@ -381,8 +381,7 @@ async function flatbedSettings(): Promise<FlatbedSettings> {
 }
 
 dtfRouter.get('/flatbed', async (req, res) => {
-  const perms = await permissionsForRole(req.user!.role);
-  res.json({ canManage: perms.canManageDtf, settings: await flatbedSettings() });
+  res.json({ canManage: req.user!.role === 'Admin', canDiscount: canDiscountFlatbed(req.user!.role), settings: await flatbedSettings() });
 });
 
 const flatbedSettingsSchema = z.object({
@@ -394,7 +393,7 @@ const flatbedSettingsSchema = z.object({
   discounts: z.array(z.object({ from: z.number().int(), pct: z.number() })).min(1).max(10),
 });
 
-dtfRouter.put('/flatbed', manageOnly, async (req, res) => {
+dtfRouter.put('/flatbed', requireRole('Admin'), async (req, res) => {
   const parsed = flatbedSettingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const settings: FlatbedSettings = { ...parsed.data, bands: sortedFlatbedBands(parsed.data.bands), discounts: sortedFlatbedDiscounts(parsed.data.discounts) };
@@ -421,6 +420,9 @@ const flatbedOrderSchema = z.object({
   pieces: z.number().int().positive('Enter the number of pieces').max(1_000_000),
   // the setup fee is added to the job only when it is asked for
   withSetup: z.boolean().default(false),
+  // discounts are given only by Finance, the General Manager or an Admin (checked below)
+  volumeDiscount: z.boolean().default(false),
+  unitDiscount: z.object({ kind: z.enum(['amount', 'pct']), value: z.number().max(1_000_000) }).nullable().default(null),
   note: z.string().max(100).default(''),
   client: z.string().max(200).default(''),
   phone: z.string().max(40).default(''),
@@ -440,7 +442,11 @@ dtfRouter.post('/flatbed-orders', async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
   const settings = await flatbedSettings();
-  const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup);
+  const opts = { setup: d.withSetup, volume: d.volumeDiscount, unitDiscount: d.unitDiscount };
+  if ((d.volumeDiscount || (d.unitDiscount && d.unitDiscount.value > 0)) && !canDiscountFlatbed(req.user!.role)) return res.status(403).json({ error: 'Only Finance, the General Manager or an Admin can apply a discount' });
+  const udProblem = flatbedUnitDiscountProblem(d.unitDiscount);
+  if (udProblem) return res.status(400).json({ error: udProblem });
+  const quote = flatbedQuote(settings, d.widthCm, d.heightCm, d.pieces, opts);
   if (!quote.ok) return res.status(400).json({ error: quote.problem ?? 'No price applies to that job' });
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
@@ -462,7 +468,7 @@ dtfRouter.post('/flatbed-orders', async (req, res) => {
         staffId: cap.staffId,
         capturedById: cap.capturedById,
         capturedByName: cap.capturedByName,
-        serviceLine: { itemType: 'service', serviceId: service.id, qty: 1, unitPrice: quote.total, description: flatbedDescription(settings, d.widthCm, d.heightCm, d.pieces, d.withSetup, d.note) },
+        serviceLine: { itemType: 'service', serviceId: service.id, qty: 1, unitPrice: quote.total, description: flatbedDescription(settings, d.widthCm, d.heightCm, d.pieces, opts, d.note) },
         materialLines: d.materialLines,
         payments: paymentLines,
         sourcedBy: d.sourcedBy,

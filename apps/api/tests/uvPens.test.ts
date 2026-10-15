@@ -21,7 +21,7 @@ describe('UV pen branding price picker', () => {
     await prisma.role.create({ data: { name: 'Printer (pen test)', canAccessDtf: true } });
     await prisma.role.create({ data: { name: 'Lead (pen test)', canAccessDtf: true, canManageDtf: true } });
     await prisma.role.create({ data: { name: 'Nobody (pen test)' } });
-    for (const [key, role] of [['printer', 'Printer (pen test)'], ['lead', 'Lead (pen test)'], ['nobody', 'Nobody (pen test)']] as const) {
+    for (const [key, role] of [['printer', 'Printer (pen test)'], ['lead', 'Lead (pen test)'], ['nobody', 'Nobody (pen test)'], ['admin', 'Admin']] as const) {
       const u = await prisma.user.create({ data: { name: `${key} (pen test)`, role, pinHash: 'x' } });
       tokens[key] = signToken({ id: u.id, name: u.name, role });
     }
@@ -78,25 +78,27 @@ describe('UV pen branding price picker', () => {
     assert.match(penTiersProblem([{ from: 1.5, rate: 5 }]) ?? '', /whole number/);
   });
 
-  it('the rates are kept in the system: anyone with DTF access reads them, a DTF manager changes them', async () => {
+  it('the rates are kept in the system: anyone with DTF access reads them, only an Admin changes them', async () => {
     const r = await call('printer', 'GET', '/dtf/pen-tiers');
     assert.equal(r.status, 200);
     assert.deepEqual(r.body.tiers, DEFAULT_PEN_TIERS);
     assert.equal(r.body.canManage, false);
-    assert.equal((await call('lead', 'GET', '/dtf/pen-tiers')).body.canManage, true);
+    assert.equal((await call('lead', 'GET', '/dtf/pen-tiers')).body.canManage, false); // a DTF manager reads them but cannot change them
+    assert.equal((await call('admin', 'GET', '/dtf/pen-tiers')).body.canManage, true);
     assert.equal((await call('nobody', 'GET', '/dtf/pen-tiers')).status, 403);
 
     const change = { tiers: [{ from: 1, rate: 20 }, { from: 100, rate: 14 }, { from: 500, rate: 12 }, { from: 1000, rate: 9 }] };
     assert.equal((await call('printer', 'PUT', '/dtf/pen-tiers', change)).status, 403);
-    assert.equal((await call('lead', 'PUT', '/dtf/pen-tiers', { tiers: [{ from: 2, rate: 20 }] })).status, 400); // must start at 1
-    assert.equal((await call('lead', 'PUT', '/dtf/pen-tiers', { tiers: [{ from: 1, rate: 20 }, { from: 1, rate: 15 }] })).status, 400);
-    assert.equal((await call('lead', 'PUT', '/dtf/pen-tiers', { tiers: [{ from: 1, rate: -2 }] })).status, 400);
-    const saved = await call('lead', 'PUT', '/dtf/pen-tiers', change);
+    assert.equal((await call('lead', 'PUT', '/dtf/pen-tiers', change)).status, 403);
+    assert.equal((await call('admin', 'PUT', '/dtf/pen-tiers', { tiers: [{ from: 2, rate: 20 }] })).status, 400); // must start at 1
+    assert.equal((await call('admin', 'PUT', '/dtf/pen-tiers', { tiers: [{ from: 1, rate: 20 }, { from: 1, rate: 15 }] })).status, 400);
+    assert.equal((await call('admin', 'PUT', '/dtf/pen-tiers', { tiers: [{ from: 1, rate: -2 }] })).status, 400);
+    const saved = await call('admin', 'PUT', '/dtf/pen-tiers', change);
     assert.equal(saved.status, 200, JSON.stringify(saved.body));
     assert.deepEqual((await call('printer', 'GET', '/dtf/pen-tiers')).body.tiers, change.tiers); // kept, for everyone
     assert.deepEqual([penQuote(saved.body.tiers, 100).rate, penQuote(saved.body.tiers, 1000).rate], [14, 9]);
     // back to the owner's rates
-    assert.equal((await call('lead', 'PUT', '/dtf/pen-tiers', { tiers: DEFAULT_PEN_TIERS })).status, 200);
+    assert.equal((await call('admin', 'PUT', '/dtf/pen-tiers', { tiers: DEFAULT_PEN_TIERS })).status, 200);
     assert.deepEqual((await call('printer', 'GET', '/dtf/pen-tiers')).body.tiers, DEFAULT_PEN_TIERS);
   });
 

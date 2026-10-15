@@ -1,6 +1,7 @@
 // UV flatbed printing (diaries and other flat items) — a price picker. The artwork is priced by the AREA it prints (width × height), in bands: the artwork falls in the first band whose
 // ceiling is not below its area, and each piece is charged that band's price — never less than the minimum price for a piece, which is what a tiny logo costs. A bigger run earns a
-// volume discount (the whole run at the one discount for its quantity), and a setup fee for the layout can be added to a job when it is wanted. The bands, the minimum, the discounts
+// volume discount (the whole run at the one discount for its quantity) — given only when Finance, the General Manager or an Admin applies it, as is a discount on the unit price — and a
+// setup fee for the layout can be added to a job when it is wanted. The bands, the minimum, the discounts
 // and the fee are data kept in the system and editable by a manager. Prices are what the customer pays, VAT included, as everywhere else in the system.
 
 /** The price-list service a flatbed order is recorded against (created on the first order if the price list has none). */
@@ -120,6 +121,25 @@ export function flatbedDiscountRangeLabel(discounts: FlatbedDiscount[], index: n
 /** Whether an artwork of this size can be printed at all: it must fit inside the largest artwork, either way round. */
 export const flatbedFitsArtwork = (s: FlatbedSettings, w: number, h: number) => (w <= s.maxWidthCm && h <= s.maxLengthCm) || (h <= s.maxWidthCm && w <= s.maxLengthCm);
 
+/** Who may give a discount on a flatbed job: the volume discount and a discount on the unit price are applied by these roles only. */
+export const FLATBED_DISCOUNT_ROLES = ['Finance Manager', 'General Manager', 'Admin'] as const;
+export const canDiscountFlatbed = (role: string) => (FLATBED_DISCOUNT_ROLES as readonly string[]).includes(role);
+
+/** A discount on the unit price of a piece: so many Ksh off each piece, or a percentage off its price. */
+export interface FlatbedUnitDiscount {
+  kind: 'amount' | 'pct';
+  value: number;
+}
+
+export interface FlatbedOptions {
+  /** The setup fee is added to the job. */
+  setup?: boolean;
+  /** The volume discount for the run's quantity is applied (it is not given unless somebody who may asks for it). */
+  volume?: boolean;
+  /** A discount on the unit price. */
+  unitDiscount?: FlatbedUnitDiscount | null;
+}
+
 export interface FlatbedQuote {
   ok: boolean;
   /** Why there is no price, when there is none. */
@@ -132,10 +152,15 @@ export interface FlatbedQuote {
   unitPrice: number;
   /** The band's price was below the minimum for a piece, so the minimum is charged. */
   minApplied: boolean;
-  /** The volume discount this run earns, in percent, and the line of the table it comes from. */
-  discountPct: number;
+  /** Ksh taken off each piece by the unit-price discount (0 when there is none), and what a piece then costs. */
+  unitDiscount: number;
+  discountedUnit: number;
+  /** The volume discount this run's quantity earns, in percent, and the line of the table it comes from — whether or not it has been applied. */
+  volumePct: number;
   discountIndex: number;
-  /** Pieces × the unit price, then what the discount takes off, then the printing that is left. */
+  /** The volume discount was applied. */
+  volumeApplied: boolean;
+  /** Pieces × the discounted unit price, then what the volume discount takes off, then the printing that is left. */
   gross: number;
   discount: number;
   printTotal: number;
@@ -144,16 +169,25 @@ export interface FlatbedQuote {
   total: number;
   /** What each piece works out to, setup included. */
   perPiece: number;
-  /** A bigger discount a few pieces away, and what taking it would save. */
+  /** A bigger volume discount a few pieces away, and what taking it would save. */
   upsell: { qty: number; add: number; pct: number; saving: number } | null;
 }
 
 const none = (problem: string | null, pieces = 0, areaCm2 = 0): FlatbedQuote => ({
-  ok: false, problem, pieces, areaCm2, band: null, bandIndex: -1, unitPrice: 0, minApplied: false, discountPct: 0, discountIndex: -1, gross: 0, discount: 0, printTotal: 0, setupFee: 0, total: 0, perPiece: 0, upsell: null,
+  ok: false, problem, pieces, areaCm2, band: null, bandIndex: -1, unitPrice: 0, minApplied: false, unitDiscount: 0, discountedUnit: 0, volumePct: 0, discountIndex: -1, volumeApplied: false, gross: 0, discount: 0, printTotal: 0, setupFee: 0, total: 0, perPiece: 0, upsell: null,
 });
 
-/** The price of a run of this many pieces of this artwork size: each at its band's price (at least the minimum), the volume discount off the printing, and the setup fee when it is asked for. */
-export function flatbedQuote(s: FlatbedSettings, widthCm: number, heightCm: number, pieces: number, withSetup = false): FlatbedQuote {
+/** Why a unit-price discount cannot be given, or null when it is fine (or there is none). */
+export function flatbedUnitDiscountProblem(d: FlatbedUnitDiscount | null | undefined): string | null {
+  if (!d) return null;
+  if (d.kind !== 'amount' && d.kind !== 'pct') return 'The unit price discount must be an amount or a percentage';
+  if (!(d.value >= 0) || !Number.isFinite(d.value)) return 'A discount cannot be negative';
+  if (d.kind === 'pct' && d.value >= 100) return 'A percentage discount must be under 100%';
+  return null;
+}
+
+/** The price of a run of this many pieces of this artwork size: each at its band's price (at least the minimum), less the unit-price discount if one is given; then the volume discount off the printing if it is applied, and the setup fee when it is asked for. */
+export function flatbedQuote(s: FlatbedSettings, widthCm: number, heightCm: number, pieces: number, opts: FlatbedOptions = {}): FlatbedQuote {
   const n = Number.isFinite(pieces) && pieces > 0 ? Math.floor(pieces) : 0;
   if (!(widthCm > 0) || !(heightCm > 0) || !Number.isFinite(widthCm) || !Number.isFinite(heightCm)) return none(null, n);
   const areaCm2 = r2(widthCm * heightCm);
@@ -162,27 +196,35 @@ export function flatbedQuote(s: FlatbedSettings, widthCm: number, heightCm: numb
   const found = flatbedBandFor(s.bands, areaCm2);
   if (!found) return none(`No band covers ${areaCm2} cm²`, n, areaCm2);
   const unitPrice = Math.max(found.band.price, s.minPiecePrice);
+  const ud = opts.unitDiscount ?? null;
+  const udProblem = flatbedUnitDiscountProblem(ud);
+  if (udProblem) return none(udProblem, n, areaCm2);
+  const unitDiscount = ud ? r2(Math.min(unitPrice, ud.kind === 'pct' ? (unitPrice * ud.value) / 100 : ud.value)) : 0;
+  if (ud && unitDiscount >= unitPrice) return none('The discount is as much as the price of a piece', n, areaCm2);
+  const discountedUnit = r2(unitPrice - unitDiscount);
   const ds = sortedFlatbedDiscounts(s.discounts);
   let discountIndex = 0;
   ds.forEach((d, i) => { if (n >= d.from) discountIndex = i; });
-  const discountPct = ds[discountIndex]?.pct ?? 0;
-  const gross = r2(n * unitPrice);
-  const discount = r2((gross * discountPct) / 100);
+  const volumePct = ds[discountIndex]?.pct ?? 0;
+  const volumeApplied = !!opts.volume && volumePct > 0;
+  const gross = r2(n * discountedUnit);
+  const discount = volumeApplied ? r2((gross * volumePct) / 100) : 0;
   const printTotal = r2(gross - discount);
-  const setupFee = withSetup ? s.setupFee : 0;
+  const setupFee = opts.setup ? s.setupFee : 0;
   const total = r2(printTotal + setupFee);
-  // a bigger discount close by: what the same artwork in that quantity would cost, against what this run costs
-  const next = ds.find((d) => d.from > n && d.pct > discountPct);
-  const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r2(printTotal - r2(next.from * unitPrice * (1 - next.pct / 100))) } : null;
-  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, discountPct, discountIndex, gross, discount, printTotal, setupFee, total, perPiece: r2(total / n), upsell };
+  // a bigger volume discount close by: what the same artwork in that quantity would cost, against what this run costs
+  const next = ds.find((d) => d.from > n && d.pct > volumePct);
+  const upsell = next ? { qty: next.from, add: next.from - n, pct: next.pct, saving: r2(printTotal - r2(next.from * discountedUnit * (1 - next.pct / 100))) } : null;
+  return { ok: true, problem: null, pieces: n, areaCm2, band: found.band, bandIndex: found.index, unitPrice, minApplied: unitPrice > found.band.price, unitDiscount, discountedUnit, volumePct, discountIndex, volumeApplied, gross, discount, printTotal, setupFee, total, perPiece: r2(total / n), upsell };
 }
 
-/** What the order line says: "50 × 14.8 × 21 cm (301–450 cm² band) · 10% volume discount · setup". */
-export function flatbedDescription(s: FlatbedSettings, widthCm: number, heightCm: number, pieces: number, withSetup = false, note = ''): string {
-  const q = flatbedQuote(s, widthCm, heightCm, pieces, withSetup);
+/** What the order line says: "50 × 14.8 × 21 cm (301–450 cm² band) · 10 off each · 10% volume discount · setup". */
+export function flatbedDescription(s: FlatbedSettings, widthCm: number, heightCm: number, pieces: number, opts: FlatbedOptions = {}, note = ''): string {
+  const q = flatbedQuote(s, widthCm, heightCm, pieces, opts);
   const parts = [`${pieces} × ${widthCm} × ${heightCm} cm${q.band ? ` (${flatbedRangeLabel(s.bands, q.bandIndex)} band)` : ''}`];
-  if (q.discountPct > 0) parts.push(`${q.discountPct}% volume discount`);
-  if (withSetup) parts.push('setup');
+  if (q.unitDiscount > 0) parts.push(`${q.unitDiscount}/= off each`);
+  if (q.volumeApplied) parts.push(`${q.volumePct}% volume discount`);
+  if (opts.setup) parts.push('setup');
   if (note.trim()) parts.push(note.trim());
   return parts.join(' · ').slice(0, 160);
 }

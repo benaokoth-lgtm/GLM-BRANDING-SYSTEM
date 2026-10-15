@@ -217,7 +217,7 @@ describe('job costing', () => {
     assert.equal(cap.status, 201, JSON.stringify(cap.body));
     assert.match(cap.body.orderNo, /^W-\d+$/);
     assert.deepEqual([cap.body.totals.grandTotal, cap.body.totals.balanceDue, cap.body.customerName], [7000, 0, 'Hope Chapel']);
-    assert.equal(cap.body.lineItems[0].serviceName, 'Costed job — Business cards — 500 cards · Plain · 25 A3 sheets'); // the job's summary rides on the line
+    assert.equal(cap.body.lineItems[0].serviceName, 'Costed job — Business cards — 500cards-plain'); // the job's summary rides on the line
     // the quote is now that order, and cannot be captured twice
     const after = (await call('seller', 'GET', `/costing/quotes/${q.id}`)).body;
     assert.deepEqual([after.status, after.orderNo, after.orderId], ['Ordered', cap.body.orderNo, cap.body.id]);

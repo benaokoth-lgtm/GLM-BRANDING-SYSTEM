@@ -1,4 +1,4 @@
-import { VAT_RATE, costingJobLabel } from '@glm/shared';
+import { VAT_RATE, costingJobLabel, tidyCostingSummary } from '@glm/shared';
 
 // A saved Job Costing quote as the house quotation: the same document as an invoice or quotation in Finance (orderPdf.ts for the PDF, printInvoice.ts for paper), so it prints,
 // emails and goes on WhatsApp exactly like them. It is built to look like an order to those templates — a quotation (status "Quote") with one line for the whole job — but nothing
@@ -31,7 +31,8 @@ export function quotedTotal(q: Pick<QuoteRow, 'price' | 'agreedPrice' | 'approva
 export function quoteDocument(q: QuoteRow) {
   const total = quotedTotal(q);
   const label = costingJobLabel(q.jobType);
-  const what = q.summary.toLowerCase().startsWith(label.toLowerCase()) ? q.summary : `${label}: ${q.summary}`;
+  const summary = tidyCostingSummary(q.summary);
+  const what = summary.toLowerCase().startsWith(label.toLowerCase()) ? summary : `${label}: ${summary}`;
   return {
     id: q.id,
     orderNo: q.quoteNo,

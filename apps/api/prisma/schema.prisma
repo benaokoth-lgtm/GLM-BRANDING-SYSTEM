@@ -1150,6 +1150,8 @@ model DtfSetting {
   // metre regardless of how much of the roll's width it filled.
   minPricePerPiece    Float @default(30)
   fixedChargePerMetre Float @default(2160)
+  // The recommended price of an artwork whose share of the running metres comes to less than minPricePerPiece (0 = no such rule).
+  smallSharePrice     Float @default(40)
 }
 
 model DtfRoll {

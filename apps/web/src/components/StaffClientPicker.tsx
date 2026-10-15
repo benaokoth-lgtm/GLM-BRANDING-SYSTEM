@@ -97,7 +97,7 @@ export default function StaffClientPicker({ forOthers = false, salesPeople = [],
           ))}
         </select>
         <p className="note" style={{ margin: 'var(--space-1) 0 0', fontSize: 12 }}>
-          Fills in the name and phone below. <Link to="/client-register">Client Register</Link>
+          Fills in the name and phone below. <Link to="/commission?tab=register">Client Register</Link>
         </p>
       </div>
     </div>

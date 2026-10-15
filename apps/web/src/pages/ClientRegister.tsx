@@ -28,7 +28,7 @@ interface Client {
   note: string;
 }
 
-export default function ClientRegister() {
+export default function ClientRegister({ embedded = false }: { embedded?: boolean }) {
   const { user } = useAuth();
   const { corporateClients } = useCatalog();
   const canRelease = user?.role === 'Admin' || !!user?.permissions.canManageCommission;
@@ -86,7 +86,7 @@ export default function ClientRegister() {
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <div>
-        <h1 style={{ margin: 0 }}>Client Register</h1>
+        {embedded ? <h2 style={{ margin: 0 }}>Client Register</h2> : <h1 style={{ margin: 0 }}>Client Register</h1>}
         <p className="note" style={{ margin: '4px 0 0' }}>
           The clients each sales person has brought in. On an order, pick the sales person and then one of their clients: the name and phone are filled in. A client belongs to one sales person at a time,
           and their orders are credited to that person.

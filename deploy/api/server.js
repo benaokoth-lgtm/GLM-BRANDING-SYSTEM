@@ -65487,8 +65487,9 @@ var DEFAULT_DTF_SETTINGS = {
   minPricePerM: 400,
   wastageTolerancePct: 5,
   minPricePerPiece: 30,
-  fixedChargePerMetre: 3780
+  fixedChargePerMetre: 3780,
   // 108 artworks on 2 m come to 70 each
+  smallSharePrice: 40
 };
 var DTF_SERVICE_NAMES = {
   dtf: { film: "DTF Sheet (per metre)", artwork: "DTF Printing" },
@@ -65501,8 +65502,9 @@ var UV_DTF_SETTINGS = {
   minPricePerM: 1200,
   wastageTolerancePct: 5,
   minPricePerPiece: 30,
-  fixedChargePerMetre: 4280
+  fixedChargePerMetre: 4280,
   // 107 artworks on a metre come to 40 each
+  smallSharePrice: 40
 };
 var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var div = (a2, b) => b > 0 ? a2 / b : 0;
@@ -65524,8 +65526,16 @@ function jobCalc(runningMetres, pieces, fixedChargePerMetre, minPricePerPiece) {
     jobTotal: r2(finalPerPiece * pieces)
   };
 }
-function runningMetreCalc(runningMetres, pieces, chargePerMetre) {
-  return jobCalc(runningMetres, pieces, chargePerMetre, 0);
+function runningMetreCalc(runningMetres, pieces, chargePerMetre, lowestPrice = 0, smallSharePrice = 0) {
+  const share = jobCalc(runningMetres, pieces, chargePerMetre, 0);
+  if (lowestPrice > 0 && smallSharePrice > 0 && pieces > 0 && share.finalPerPiece < lowestPrice - 5e-3) return { finalPerPiece: r2(smallSharePrice), jobTotal: r2(smallSharePrice * pieces) };
+  return share;
+}
+function usesSmallSharePrice(runningMetres, pieces, chargePerMetre, lowestPrice = 0, smallSharePrice = 0) {
+  return runningMetreCalc(runningMetres, pieces, chargePerMetre, lowestPrice, smallSharePrice).finalPerPiece !== jobCalc(runningMetres, pieces, chargePerMetre, 0).finalPerPiece;
+}
+function chargeToSnapshot(runningMetres, calc, chargePerMetre, usedSmallShare) {
+  return usedSmallShare && runningMetres > 0 ? calc.jobTotal / runningMetres : chargePerMetre;
 }
 var lowestArtworkPrice = (minPricePerPiece, recommendedPerPiece) => Math.min(minPricePerPiece, recommendedPerPiece);
 function systemJobCalc(j) {
@@ -66696,7 +66706,7 @@ function sheetClientKey(client, phone) {
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
-function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultClient = "", defaultPhone = "", expectedPieces = 0) {
+function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultClient = "", defaultPhone = "", expectedPieces = 0, smallSharePrice = 0) {
   const problems = [];
   const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.label.trim() || r.client.trim());
   if (!(metres > 0)) problems.push("Enter the running metres");
@@ -66704,7 +66714,7 @@ function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultC
   const pieces = live.reduce((a2, r) => a2 + (Number.isInteger(r.qty) && r.qty > 0 ? r.qty : 0), 0);
   if (expectedPieces > 0 && pieces > 0 && pieces !== expectedPieces) problems.push(`The rows add up to ${pieces} artworks but the length has ${expectedPieces} \u2014 ${pieces < expectedPieces ? `${expectedPieces - pieces} still to place` : `${pieces - expectedPieces} too many`}`);
   const basis = expectedPieces > 0 ? expectedPieces : pieces;
-  const rec = pieces > 0 && metres > 0 ? runningMetreCalc(metres, basis, fixedChargePerMetre) : { finalPerPiece: 0, jobTotal: 0 };
+  const rec = pieces > 0 && metres > 0 ? runningMetreCalc(metres, basis, fixedChargePerMetre, minPricePerPiece, smallSharePrice) : { finalPerPiece: 0, jobTotal: 0 };
   const lowest = lowestArtworkPrice(minPricePerPiece, rec.finalPerPiece);
   live.forEach((r, i) => {
     const n = i + 1;
@@ -79034,7 +79044,8 @@ dtfRouter.get("/data", async (req, res) => {
       minPricePerM: settings.minPricePerM,
       wastageTolerancePct: settings.wastageTolerancePct,
       minPricePerPiece: settings.minPricePerPiece,
-      fixedChargePerMetre: settings.fixedChargePerMetre
+      fixedChargePerMetre: settings.fixedChargePerMetre,
+      smallSharePrice: settings.smallSharePrice
     },
     rolls: rolls.map((r) => ({
       id: r.id,
@@ -79379,8 +79390,9 @@ var settingsSchema6 = external_exports.object({
   minPricePerM: external_exports.number().positive(),
   wastageTolerancePct: external_exports.number().min(0).max(100),
   minPricePerPiece: external_exports.number().min(0),
-  fixedChargePerMetre: external_exports.number().min(0)
-}).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" });
+  fixedChargePerMetre: external_exports.number().min(0),
+  smallSharePrice: external_exports.number().min(0).optional()
+}).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" }).refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: "The price used for a small share cannot be below the lowest price of an artwork" });
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
   const parsed = settingsSchema6.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
@@ -79388,6 +79400,29 @@ dtfRouter.put("/settings", manageOnly, async (req, res) => {
   await getSettings(product);
   await prisma.dtfSetting.update({ where: { id: settingsId(product) }, data: parsed.data });
   res.json(parsed.data);
+});
+var artworkRateSchema = external_exports.object({
+  product: external_exports.enum(["dtf", "uv"]).optional(),
+  pricePerMetre: external_exports.number({ required_error: "Enter the price per running metre", invalid_type_error: "Enter the price per running metre" }).positive("The price per running metre must be more than 0").max(1e6)
+});
+dtfRouter.put("/artwork-rate", manageOnly, async (req, res) => {
+  const parsed = artworkRateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const product = productOf(parsed.data.product ?? req.query.product);
+  const before = await getSettings(product);
+  const price = round2(parsed.data.pricePerMetre);
+  await prisma.dtfSetting.update({ where: { id: settingsId(product) }, data: { fixedChargePerMetre: price } });
+  res.json({ product, pricePerMetre: price, previous: before.fixedChargePerMetre });
+});
+dtfRouter.get("/artwork-rate/history", manageOnly, async (req, res) => {
+  const product = productOf(req.query.product);
+  const rows = await prisma.auditLog.findMany({ where: { action: "PUT /api/dtf/artwork-rate", status: { lt: 400 } }, orderBy: { id: "desc" }, take: 200 });
+  const out = rows.map((r) => {
+    const price = Number(/pricePerMetre=([0-9.]+)/.exec(r.detail)?.[1]);
+    const prod = /product=(uv|dtf)/.exec(r.detail)?.[1] ?? "dtf";
+    return { at: r.at.toISOString(), by: r.userName, pricePerMetre: price, product: prod };
+  }).filter((r) => r.product === product && Number.isFinite(r.pricePerMetre)).slice(0, 15);
+  res.json(out);
 });
 var noteSchema = external_exports.string().trim().min(3, "Say why the roll is being terminated").max(300);
 var rollSchema = external_exports.object({
@@ -79640,7 +79675,8 @@ dtfRouter.post("/jobs", async (req, res) => {
   if (product === "dtf" && d.heatPressFee == null) return res.status(400).json({ error: "Choose the heat press fee \u2014 a job cannot be processed without it" });
   const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
   const settings = await getSettings(product);
-  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre);
+  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
+  const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
   const lowest = lowestArtworkPrice(settings.minPricePerPiece, sys.finalPerPiece);
   if (d.pricePerPiece != null && d.pricePerPiece < lowest - 5e-3) {
     return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${lowest} KES` });
@@ -79681,7 +79717,8 @@ dtfRouter.post("/jobs", async (req, res) => {
           client: d.client.trim() || WALK_IN_CLIENT,
           runningMetres: d.runningMetres,
           pieces: d.pieces,
-          fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
+          fixedChargePerMetreAtJob: chargeToSnapshot(d.runningMetres, sys, settings.fixedChargePerMetre, smallShare),
+          // (when the small-share price applied, the charge that makes the length come to exactly that)
           minPricePerPieceAtJob: 0,
           // nothing is added per piece: the price is the artwork's share of the running metres
           chargedPerPiece,
@@ -79752,7 +79789,8 @@ dtfRouter.post("/sheets", async (req, res) => {
   if (product === "dtf" && d.heatPressFee == null) return res.status(400).json({ error: "Choose the heat press fee \u2014 a job cannot be processed without it" });
   const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
   const settings = await getSettings(product);
-  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces);
+  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice);
+  const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? "The sheet cannot be priced" });
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
@@ -79798,7 +79836,7 @@ dtfRouter.post("/sheets", async (req, res) => {
             client: c.client.trim() || WALK_IN_CLIENT,
             runningMetres: c.metres,
             pieces: c.pieces,
-            fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
+            fixedChargePerMetreAtJob: chargeToSnapshot(d.runningMetres, { finalPerPiece: calc.recommendedPerPiece, jobTotal: calc.recommendedTotal }, settings.fixedChargePerMetre, sheetSmallShare),
             minPricePerPieceAtJob: 0,
             // nothing is added per piece: the price is the artwork's share of the running metres
             chargedPerPiece: Math.abs(avg - calc.recommendedPerPiece) > 5e-3 ? avg : null,

@@ -2,7 +2,9 @@ import { Fragment, useEffect, useState } from 'react';
 import { EXPENSE_METHODS, bandsProblem, fmtDate, fmtKsh, fmtNum, payStepsProblem } from '@glm/shared';
 import type { Band } from '@glm/shared';
 import { api } from '../api/client';
+import { useLocation } from 'react-router-dom';
 import { useSubTab } from '../state/SubNavContext';
+import ClientRegister from './ClientRegister';
 import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from './accounting/shared';
@@ -172,7 +174,7 @@ interface MonthlyData {
   totals: MonthlyTotals;
 }
 
-type Tab = 'mine' | 'guide' | 'team' | 'monthly' | 'clients' | 'freelance' | 'rates';
+type Tab = 'mine' | 'guide' | 'team' | 'register' | 'monthly' | 'clients' | 'freelance' | 'rates';
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 // up to two decimals, no trailing zeros: 10 → "10%", 3.5 → "3.5%" (stripping zeros from a whole number would turn 10 into 1)
 const pct = (n: number) => `${parseFloat(Number(n).toFixed(2))}%`;
@@ -1279,11 +1281,20 @@ function RatesTab() {
 export default function Commission() {
   const { user } = useAuth();
   const manager = user?.role === 'Admin' || !!user?.permissions.canManageCommission;
-  const [tab, setTab] = useSubTab<Tab>(manager ? 'team' : 'mine');
+  // Everyone who captures orders sees their own commission; the front office, who capture for others, only need the Client Register.
+  const p = user?.permissions;
+  const canMine = user?.role === 'Admin' || !!p?.canCaptureOrders || manager;
+  const canRegister = canMine || !!p?.canCaptureForOthers;
+  // (a link from an order screen opens it straight on the Client Register: /commission?tab=register)
+  const wantsRegister = new URLSearchParams(useLocation().search).get('tab') === 'register';
+  const [tab, setTab] = useSubTab<Tab>(wantsRegister && canRegister ? 'register' : manager ? 'team' : canMine ? 'mine' : 'register');
   const [period, setPeriod] = useState(thisMonth());
 
-  const tabs: [Tab, string][] = [['mine', 'My commission'], ['guide', 'How you are paid']];
-  if (manager) tabs.push(['team', 'Team & payouts'], ['monthly', 'Monthly report'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
+  const tabs: [Tab, string][] = [];
+  if (canMine) tabs.push(['mine', 'My commission'], ['guide', 'How you are paid']);
+  if (manager) tabs.push(['team', 'Team & payouts']);
+  if (canRegister) tabs.push(['register', 'Client Register']);
+  if (manager) tabs.push(['monthly', 'Monthly report'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
 
   return (
     <>
@@ -1307,9 +1318,10 @@ export default function Commission() {
           </button>
         ))}
       </div>
-      {tab === 'mine' && <MyTab period={period} />}
-      {tab === 'guide' && <PayGuide />}
+      {tab === 'mine' && canMine && <MyTab period={period} />}
+      {tab === 'guide' && canMine && <PayGuide />}
       {tab === 'team' && manager && <TeamTab period={period} />}
+      {tab === 'register' && canRegister && <ClientRegister embedded />}
       {tab === 'monthly' && manager && <MonthlyTab />}
       {tab === 'clients' && manager && <ClientsTab />}
       {tab === 'freelance' && manager && <FreelancePanel />}

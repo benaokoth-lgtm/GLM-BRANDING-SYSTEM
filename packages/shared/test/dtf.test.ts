@@ -6,6 +6,8 @@ import {
   jobCalc,
   lowestArtworkPrice,
   runningMetreCalc,
+  usesSmallSharePrice,
+  chargeToSnapshot,
   saleCalc,
   summariseRoll,
   type DtfArtworkJob,
@@ -130,4 +132,22 @@ test('runningMetreCalc adds nothing per piece; the lowest price of an artwork ne
   assert.equal(lowestArtworkPrice(30, 159), 30);
   assert.equal(lowestArtworkPrice(30, 10.7), 10.7); // many artworks on a short length: nobody is asked for more than the recommendation
   assert.equal(lowestArtworkPrice(0, 159), 0);
+});
+
+test('an artwork whose share of the film is under the lowest price is recommended at the small-share price (under 30 → 40)', () => {
+  // 600 a metre, 0.53 m: 2 artworks 159 each (no change), 30 artworks 10.60 each → 40 each
+  assert.equal(runningMetreCalc(0.53, 2, 600, 30, 40).finalPerPiece, 159);
+  const small = runningMetreCalc(0.53, 30, 600, 30, 40);
+  assert.deepEqual([small.finalPerPiece, small.jobTotal], [40, 1200]);
+  assert.equal(usesSmallSharePrice(0.53, 30, 600, 30, 40), true);
+  assert.equal(usesSmallSharePrice(0.53, 2, 600, 30, 40), false);
+  // exactly 30 is not under it
+  assert.equal(runningMetreCalc(1, 20, 600, 30, 40).finalPerPiece, 30);
+  // no lowest price, or no small-share price: the share itself
+  assert.equal(runningMetreCalc(0.53, 30, 600, 0, 40).finalPerPiece, 10.6);
+  assert.equal(runningMetreCalc(0.53, 30, 600, 30, 0).finalPerPiece, 10.6);
+  // saved with a job, the snapshot reads back as 40 each
+  const charge = chargeToSnapshot(0.53, small, 600, true);
+  assert.equal(jobCalc(0.53, 30, charge, 0).finalPerPiece, 40);
+  assert.equal(chargeToSnapshot(0.53, runningMetreCalc(0.53, 2, 600, 30, 40), 600, false), 600);
 });

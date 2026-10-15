@@ -5,7 +5,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { UV_DTF_SETTINGS, sheetCalc } from '@glm/shared';
+import { UV_DTF_SETTINGS, sheetCalc, systemJobCalc } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -78,5 +78,61 @@ describe('artwork charged on running metres', () => {
     const short = sheetCalc(rows(200, 100), 0.53, 600, 0, '', '', 2);
     assert.equal(short.ok, false);
     assert.match(short.problems.join(' '), /below the recommended total of 318/);
+  });
+
+  it('the price per running metre has its own place: only a DTF manager changes it, the next order uses it, and the change is on record', async () => {
+    assert.equal((await call('printer', 'PUT', '/dtf/artwork-rate', { product: 'uv', pricePerMetre: 700 })).status, 403);
+    assert.equal((await call('lead', 'PUT', '/dtf/artwork-rate', { product: 'uv', pricePerMetre: 0 })).status, 400);
+    assert.equal((await call('lead', 'PUT', '/dtf/artwork-rate', { product: 'uv' })).status, 400);
+    const r = await call('lead', 'PUT', '/dtf/artwork-rate', { product: 'uv', pricePerMetre: 700 });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual([r.body.pricePerMetre, r.body.previous], [700, 600]);
+    const d = (await call('lead', 'GET', '/dtf/data?product=uv')).body;
+    assert.equal(d.settings.fixedChargePerMetre, 700);
+    assert.equal(d.settings.minPricePerPiece, 0); // the rest of the setup is untouched
+    // the next artwork order is worked out from it: 700 × 0.5 ÷ 2 = 175 each
+    const job = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Rate Client', runningMetres: 0.5, pieces: 2 });
+    assert.equal(job.status, 201, JSON.stringify(job.body));
+    assert.equal(job.body.order.totals.grandTotal, 350);
+    // DTF's own price is not touched by a UV change
+    assert.notEqual((await call('lead', 'GET', '/dtf/data')).body.settings.fixedChargePerMetre, 700);
+    // who set what is on record (the audit log is written just after the response)
+    let hist: any[] = [];
+    for (let i = 0; i < 20 && hist.length === 0; i++) {
+      hist = (await call('lead', 'GET', '/dtf/artwork-rate/history?product=uv')).body;
+      if (hist.length === 0) await new Promise((x) => setTimeout(x, 100));
+    }
+    assert.deepEqual([hist[0].pricePerMetre, hist[0].by], [700, 'lead (run metres test)']);
+    assert.equal((await call('printer', 'GET', '/dtf/artwork-rate/history?product=uv')).status, 403);
+  });
+
+  it('an artwork whose share of the film is under the lowest price (30) is recommended at 40; a manager may not set the small-share price below the lowest price', async () => {
+    assert.equal((await call('lead', 'PUT', '/dtf/settings?product=uv', setup({ minPricePerPiece: 30, smallSharePrice: 20 }))).status, 400);
+    assert.equal((await call('lead', 'PUT', '/dtf/settings?product=uv', setup({ minPricePerPiece: 30, smallSharePrice: 40 }))).status, 200);
+    // 600 × 0.53 ÷ 30 = 10.60 each is under 30, so 40 each: 1,200 in all
+    const small = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Small Client', runningMetres: 0.53, pieces: 30 });
+    assert.equal(small.status, 201, JSON.stringify(small.body));
+    assert.equal(small.body.order.totals.grandTotal, 1200);
+    assert.equal(small.body.approval, null);
+    // the job reads back at 40 each — nothing counted as above or below the recommendation
+    const job = await prisma.dtfArtworkJob.findFirstOrThrow({ where: { orderId: small.body.order.id } });
+    const sys = systemJobCalc({ ...job, minPricePerPieceAtJob: job.minPricePerPieceAtJob, jobOn: job.jobOn } as any);
+    assert.equal(sys.finalPerPiece, 40);
+    // under the recommended 40 (but not under 30) waits for a manager; under the lowest price is refused
+    const lower = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Small Client', runningMetres: 0.53, pieces: 30, pricePerPiece: 35 });
+    assert.equal(lower.status, 201, JSON.stringify(lower.body));
+    assert.equal(lower.body.approval, 'Pending');
+    assert.equal((await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'x', runningMetres: 0.53, pieces: 30, pricePerPiece: 25 })).status, 400);
+    // a share of 30 or more is left alone: 600 × 0.53 ÷ 6 = 53
+    const fine = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Small Client', runningMetres: 0.53, pieces: 6 });
+    assert.equal(fine.body.order.totals.grandTotal, 318);
+    // a sheet: 30 artworks on 0.53 m must add up to 1,200, not 318
+    const rows = (price: number) => [{ client: 'A', phone: '', label: 'tiny', qty: 30, price }];
+    const low = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 0.53, pieces: 30, rows: rows(35) });
+    assert.equal(low.status, 400);
+    assert.match(low.body.error, /below the recommended total of 1200/);
+    const ok = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 0.53, pieces: 30, rows: rows(40) });
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    assert.equal(ok.body.recommendedTotal, 1200);
   });
 });

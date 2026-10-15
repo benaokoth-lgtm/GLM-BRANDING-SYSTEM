@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, lowestArtworkPrice, runningMetreCalc, sheetCalc, summariseRoll, todayStr } from '@glm/shared';
+import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, sheetCalc, summariseRoll, todayStr } from '@glm/shared';
 import type { DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import { ArtworkSheetDialog, ArtworkSheetPanel, newSheetRow, toSheetRows } from '../components/dtf/ArtworkSheet';
 import type { UiRow } from '../components/dtf/ArtworkSheet';
 import type { DtfData } from '../components/dtf/shared';
+import { ArtworkRateEditor } from '../components/dtf/ArtworkRate';
 
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
 const right = { textAlign: 'right' } as const;
@@ -31,6 +32,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const [sheetOn, setSheetOn] = useState(false);
   const [sheetRows, setSheetRows] = useState<UiRow[]>(() => [newSheetRow(), newSheetRow()]);
 
+  const reloadData = () => api.get<DtfData>(`/dtf/data?product=${product}`).then(setData);
   useEffect(() => {
     api
       .get<{ artworkRatePct: number }>('/commission/settings')
@@ -50,7 +52,8 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const roll = open.find((r) => r.id === rollId);
   const run = num(f.run);
   const pcs = num(f.pieces);
-  const c = runningMetreCalc(run, pcs, settings.fixedChargePerMetre);
+  const c = runningMetreCalc(run, pcs, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
+  const smallShare = usesSmallSharePrice(run, pcs, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
   const used =
     data.sales.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.metres, 0) +
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
@@ -66,13 +69,13 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const belowSystem = pcs > 0 && chosen < system - 0.005;
   const discountTotal = belowSystem ? Math.round((system - chosen) * pcs * 100) / 100 : 0;
   const jobTotal = Math.round(chosen * pcs * 100) / 100;
-  const sheet = sheetCalc(toSheetRows(sheetRows), run, settings.fixedChargePerMetre, settings.minPricePerPiece, f.client, '', pcs);
+  const sheet = sheetCalc(toSheetRows(sheetRows), run, settings.fixedChargePerMetre, settings.minPricePerPiece, f.client, '', pcs, settings.smallSharePrice);
   const canSave = !!rollId && run > 0 && Number.isInteger(pcs) && pcs > 0 && !belowFloor;
   // What this discount does to the roll's profit (managers see roll costs; staff just see the discount).
   const impact =
     belowSystem && roll && data.canManage
       ? (() => {
-          const hypothetical = { id: 'new', rollId, jobOn: todayStr(), client: '', runningMetres: run, pieces: pcs, fixedChargePerMetreAtJob: settings.fixedChargePerMetre, minPricePerPieceAtJob: 0, chargedPerPiece: chosen, approvalStatus: 'Approved' as const };
+          const hypothetical = { id: 'new', rollId, jobOn: todayStr(), client: '', runningMetres: run, pieces: pcs, fixedChargePerMetreAtJob: chargeToSnapshot(run, c, settings.fixedChargePerMetre, smallShare), minPricePerPieceAtJob: 0, chargedPerPiece: chosen, approvalStatus: 'Approved' as const };
           return { now: summariseRoll(settings, roll, data.sales, data.jobs), after: summariseRoll(settings, roll, data.sales, [...data.jobs, hypothetical]) };
         })()
       : null;
@@ -80,7 +83,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const lines: [string, string, string][] = [
     ['Film for this length', `${fmtKsh(settings.fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m — the empty space is paid for too`, run > 0 ? fmtKsh(Math.round(settings.fixedChargePerMetre * run * 100) / 100) : '—'],
     ['Each artwork\'s share', `÷ ${fmtNum(pcs)} artworks`, pcs > 0 && run > 0 ? fmtKsh(Math.round(((settings.fixedChargePerMetre * run) / pcs) * 100) / 100) : '—'],
-    ['Recommended price / piece', 'each artwork\'s share of the film', fmtKsh(system)],
+    ['Recommended price / piece', smallShare ? `the share is under ${fmtKsh(settings.minPricePerPiece)}, so ${fmtKsh(settings.smallSharePrice)}` : 'each artwork\'s share of the film', fmtKsh(system)],
     ...(chosen > system + 0.005 ? ([['Price charged / piece', `${fmtKsh(chosen - system)} above recommended`, fmtKsh(chosen)]] as [string, string, string][]) : []),
     ...(belowSystem ? ([['Price charged / piece', `${fmtKsh(system - chosen)} below recommended — needs approval`, fmtKsh(chosen)]] as [string, string, string][]) : []),
   ];
@@ -98,6 +101,17 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         <p className="note" style={{ color: 'var(--color-error)' }}>
           {error}
         </p>
+      )}
+
+      {data.canManage && (
+        <details style={{ marginTop: 'var(--space-3)' }}>
+          <summary style={{ cursor: 'pointer' }}>
+            Price per running metre: <b>{fmtKsh(settings.fixedChargePerMetre)}</b> — change
+          </summary>
+          <div style={{ marginTop: 'var(--space-2)' }}>
+            <ArtworkRateEditor product={product} current={settings.fixedChargePerMetre} onSaved={reloadData} compact />
+          </div>
+        </details>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)', marginTop: 'var(--space-4)' }}>
@@ -137,7 +151,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         <span>Artworks of different sizes, or for different clients — price each size</span>
       </label>
       {sheetOn && (
-        <ArtworkSheetPanel rows={sheetRows} onChange={setSheetRows} run={run} fixedChargePerMetre={settings.fixedChargePerMetre} minPricePerPiece={settings.minPricePerPiece} defaultClient={f.client} artworkRate={artworkRate} pieces={pcs} />
+        <ArtworkSheetPanel rows={sheetRows} onChange={setSheetRows} run={run} fixedChargePerMetre={settings.fixedChargePerMetre} minPricePerPiece={settings.minPricePerPiece} smallSharePrice={settings.smallSharePrice} defaultClient={f.client} artworkRate={artworkRate} pieces={pcs} />
       )}
 
       {!sheetOn && (
@@ -216,6 +230,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           pieces={pcs}
           fixedChargePerMetre={settings.fixedChargePerMetre}
           minPricePerPiece={settings.minPricePerPiece}
+          smallSharePrice={settings.smallSharePrice}
           defaultClient={f.client}
           onClose={() => setShowOrderDialog(false)}
           onDone={() => navigate('/orders/all')}

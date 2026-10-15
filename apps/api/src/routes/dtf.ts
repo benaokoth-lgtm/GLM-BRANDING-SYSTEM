@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { notifyApprovers } from '../approvals';
 import { randomUUID } from 'node:crypto';
-import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -250,6 +250,7 @@ dtfRouter.get('/data', async (req, res) => {
       wastageTolerancePct: settings.wastageTolerancePct,
       minPricePerPiece: settings.minPricePerPiece,
       fixedChargePerMetre: settings.fixedChargePerMetre,
+      smallSharePrice: settings.smallSharePrice,
     },
     rolls: rolls.map((r) => ({
       id: r.id,
@@ -652,8 +653,10 @@ const settingsSchema = z
     wastageTolerancePct: z.number().min(0).max(100),
     minPricePerPiece: z.number().min(0),
     fixedChargePerMetre: z.number().min(0),
+    smallSharePrice: z.number().min(0).optional(),
   })
-  .refine((s) => s.minPricePerM <= s.stdPricePerM, { message: 'Minimum price cannot be above the standard price' });
+  .refine((s) => s.minPricePerM <= s.stdPricePerM, { message: 'Minimum price cannot be above the standard price' })
+  .refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: 'The price used for a small share cannot be below the lowest price of an artwork' });
 
 dtfRouter.put('/settings', manageOnly, async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
@@ -662,6 +665,38 @@ dtfRouter.put('/settings', manageOnly, async (req, res) => {
   await getSettings(product);
   await prisma.dtfSetting.update({ where: { id: settingsId(product) }, data: parsed.data });
   res.json(parsed.data);
+});
+
+// ── The price per running metre of artwork, on its own ──────────────────────
+// What every artwork order is worked out from: (price per running metre × running metres) ÷ artworks. It lives in Setup with the rest, but a manager changes it often, so it has its own
+// place (DTF → Artwork price, and on the artwork order screen). It changes only this one figure, for new orders from that moment; jobs already recorded keep the price they were saved with.
+// The audit log keeps who set what and when, and the history below is read from it.
+const artworkRateSchema = z.object({
+  product: z.enum(['dtf', 'uv']).optional(),
+  pricePerMetre: z.number({ required_error: 'Enter the price per running metre', invalid_type_error: 'Enter the price per running metre' }).positive('The price per running metre must be more than 0').max(1_000_000),
+});
+dtfRouter.put('/artwork-rate', manageOnly, async (req, res) => {
+  const parsed = artworkRateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const product = productOf(parsed.data.product ?? req.query.product);
+  const before = await getSettings(product);
+  const price = round2(parsed.data.pricePerMetre);
+  await prisma.dtfSetting.update({ where: { id: settingsId(product) }, data: { fixedChargePerMetre: price } });
+  res.json({ product, pricePerMetre: price, previous: before.fixedChargePerMetre });
+});
+
+dtfRouter.get('/artwork-rate/history', manageOnly, async (req, res) => {
+  const product = productOf(req.query.product);
+  const rows = await prisma.auditLog.findMany({ where: { action: 'PUT /api/dtf/artwork-rate', status: { lt: 400 } }, orderBy: { id: 'desc' }, take: 200 });
+  const out = rows
+    .map((r) => {
+      const price = Number(/pricePerMetre=([0-9.]+)/.exec(r.detail)?.[1]);
+      const prod = /product=(uv|dtf)/.exec(r.detail)?.[1] ?? 'dtf';
+      return { at: r.at.toISOString(), by: r.userName, pricePerMetre: price, product: prod };
+    })
+    .filter((r) => r.product === product && Number.isFinite(r.pricePerMetre))
+    .slice(0, 15);
+  res.json(out);
 });
 
 // ── Rolls ────────────────────────────────────────────────────────────────
@@ -967,7 +1002,8 @@ dtfRouter.post('/jobs', async (req, res) => {
   if (product === 'dtf' && d.heatPressFee == null) return res.status(400).json({ error: 'Choose the heat press fee — a job cannot be processed without it' });
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const settings = await getSettings(product);
-  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre);
+  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
+  const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
   const lowest = lowestArtworkPrice(settings.minPricePerPiece, sys.finalPerPiece);
   if (d.pricePerPiece != null && d.pricePerPiece < lowest - 0.005) {
     return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${lowest} KES` });
@@ -1008,7 +1044,7 @@ dtfRouter.post('/jobs', async (req, res) => {
           client: d.client.trim() || WALK_IN_CLIENT,
           runningMetres: d.runningMetres,
           pieces: d.pieces,
-          fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
+          fixedChargePerMetreAtJob: chargeToSnapshot(d.runningMetres, sys, settings.fixedChargePerMetre, smallShare), // (when the small-share price applied, the charge that makes the length come to exactly that)
           minPricePerPieceAtJob: 0, // nothing is added per piece: the price is the artwork's share of the running metres
           chargedPerPiece,
           approvalStatus: needsApproval ? 'Pending' : 'Approved',
@@ -1089,7 +1125,8 @@ dtfRouter.post('/sheets', async (req, res) => {
   if (product === 'dtf' && d.heatPressFee == null) return res.status(400).json({ error: 'Choose the heat press fee — a job cannot be processed without it' });
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const settings = await getSettings(product);
-  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces);
+  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice);
+  const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The sheet cannot be priced' });
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
@@ -1135,7 +1172,7 @@ dtfRouter.post('/sheets', async (req, res) => {
             client: c.client.trim() || WALK_IN_CLIENT,
             runningMetres: c.metres,
             pieces: c.pieces,
-            fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
+            fixedChargePerMetreAtJob: chargeToSnapshot(d.runningMetres, { finalPerPiece: calc.recommendedPerPiece, jobTotal: calc.recommendedTotal }, settings.fixedChargePerMetre, sheetSmallShare),
             minPricePerPieceAtJob: 0, // nothing is added per piece: the price is the artwork's share of the running metres
             chargedPerPiece: Math.abs(avg - calc.recommendedPerPiece) > 0.005 ? avg : null,
             chargedTotal: c.amount,

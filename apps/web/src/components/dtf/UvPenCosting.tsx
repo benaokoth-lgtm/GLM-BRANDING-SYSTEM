@@ -23,7 +23,7 @@ interface Editing {
   busy: boolean;
 }
 
-export default function UvPenCosting() {
+export default function UvPenCosting({ requestId }: { requestId?: number }) {
   const [tiers, setTiers] = useState<PenTier[] | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [canGive, setCanGive] = useState(false);
@@ -33,6 +33,20 @@ export default function UvPenCosting() {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [capturing, setCapturing] = useState(false);
   const navigate = useNavigate();
+
+  // opened from the approvals inbox: the pens of that request are filled in, and its discount is applied when it is approved and yours
+  useEffect(() => {
+    if (!requestId) return;
+    api
+      .get<{ requests: { id: number; spec: { pens?: number }; kind: 'amount' | 'pct'; value: number; status: string; mine: boolean }[] }>('/dtf/discount-requests?product=pens')
+      .then((r) => {
+        const x = r.requests.find((q) => q.id === requestId);
+        if (!x?.spec.pens) return;
+        setQty(x.spec.pens);
+        if (x.status === 'Approved' && x.mine) setUd({ kind: x.kind, value: x.value, requestId: x.id });
+      })
+      .catch(() => undefined);
+  }, [requestId]);
 
   useEffect(() => {
     api

@@ -185,19 +185,22 @@ Money records are protected by <i>maker and checker</i>: an expense can only be 
 
 <!-- 3 ------------------------------------------------------------------>
 <h3 id="s2-approvals">Approvals: one inbox for every decision</h3>
-<p>Open <span class="path">Approvals</span> in the menu (everyone has it). It gathers everything that waits for somebody's decision into one page, in sections, each under its own head:</p>
+<p>Open <span class="path">Approvals</span> in the menu (everyone has it). It gathers everything that waits for somebody's decision into one page, in sections. <b>Each section is a place in the system a request was raised, in the order of the menu</b>, and only the places that have something show:</p>
 <table>
-  <tr><th>Head</th><th>What it is</th><th>Who decides</th></tr>
-  <tr><td><b>Job Costing prices</b></td><td>A price agreed with a client that is under the lowest allowed without approval.</td><td>Finance, the General Manager, Admin</td></tr>
-  <tr><td><b>Prices below the recommended price</b></td><td>DTF, UV DTF and embroidery jobs priced under the recommended price.</td><td>DTF managers, Admin</td></tr>
-  <tr><td><b>Unit price discounts</b></td><td>UV Pen Costing and UV Flatbed: a discount on the price of each piece.</td><td>Finance, the General Manager, Admin</td></tr>
-  <tr><td><b>Expense corrections</b></td><td>A change to an expense already recorded.</td><td>Finance (another manager), Admin</td></tr>
-  <tr><td><b>Deletions</b></td><td>An expense, a payroll entry or a petty cash top-up someone asks to remove.</td><td>Finance (another manager), Admin</td></tr>
-  <tr><td><b>Stock requisitions</b></td><td>Materials someone asks to buy.</td><td>Those who approve stock, Admin</td></tr>
-  <tr><td><b>Leave</b></td><td>Time off asked for.</td><td>Those who manage HR, Admin</td></tr>
+  <tr><th>Head (where it was raised)</th><th>What waits there</th><th>Who decides</th></tr>
+  <tr><td><b>General Order</b>, <b>DTF Film Order</b></td><td>Nothing needs approval on these screens today; they appear here if it ever does.</td><td>—</td></tr>
+  <tr><td><b>DTF Artwork Order</b></td><td>A DTF artwork job priced below the recommended price.</td><td>DTF managers, Admin</td></tr>
+  <tr><td><b>UV DTF Film Order</b></td><td>A unit price discount asked for on <b>UV Pen Costing</b> or <b>UV Flatbed</b>.</td><td>Finance, the General Manager, Admin</td></tr>
+  <tr><td><b>UV DTF Artwork Order</b></td><td>A UV DTF artwork job priced below the recommended price.</td><td>DTF managers, Admin</td></tr>
+  <tr><td><b>Embroidery Order</b></td><td>An embroidery job priced below the recommended price.</td><td>DTF managers, Admin</td></tr>
+  <tr><td><b>Job Costing</b></td><td>A price agreed with a client that is under the lowest allowed without approval.</td><td>Finance, the General Manager, Admin</td></tr>
+  <tr><td><b>Finance</b></td><td>A change to a recorded expense; an expense, payroll entry or petty cash top-up someone asks to delete.</td><td>Another Finance manager, Admin</td></tr>
+  <tr><td><b>Stock</b></td><td>A stock requisition.</td><td>Those who approve stock, Admin</td></tr>
+  <tr><td><b>People (HR)</b></td><td>Leave asked for.</td><td>Those who manage HR, Admin</td></tr>
 </table>
+<p>Inside a section, a small tag on each request says what kind it is (for example <i>Unit price discount · UV Flatbed</i>).</p>
 <ul>
-  <li><b>Waiting for me</b> is what you may decide. Press <b>Approve</b>, or <b>Turn down</b> (a reason is needed for a price or a discount; it is optional for the rest). The row at the top of the page jumps to each head. <b>Open</b> goes to the screen the request belongs to. <b>Leave</b> is decided on the People (HR) page, where it can ask you to confirm; the inbox lists it so it is not missed.</li>
+  <li><b>Waiting for me</b> is what you may decide. Press <b>Approve</b>, or <b>Turn down</b> (a reason is needed for a price or a discount; it is optional for the rest). The buttons at the top of the page jump to each head. <b>Open</b> goes to the very thing: a Job Costing price opens that saved quote; a price below the recommended one opens that order; a unit price discount opens UV Pen Costing or UV Flatbed with the pens or the size and pieces already filled in, and the approved discount already applied when the request is yours and approved (it is then ready to capture as an order). <b>Leave</b> sits under <b>People (HR)</b> and is decided on the People (HR) page, where it can ask you to confirm; the inbox lists it there so it is not missed.</li>
   <li><b>My requests</b> is how your own requests went: waiting, approved (and by whom) or turned down (with the reason), for two weeks. You never decide your own request: it is not in your Waiting list.</li>
   <li>Each kind keeps its own rules: the inbox only gathers them and uses the same decision as the screen the request came from.</li>
 </ul>

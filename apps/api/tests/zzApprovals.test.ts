@@ -20,6 +20,8 @@ async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens[who]}` }, body: body === undefined ? undefined : JSON.stringify(body) });
   return { status: res.status, body: (await res.json().catch(() => null)) as any };
 }
+/** Two more price approvals, not counted among the above: a UV DTF artwork job and an embroidery job. */
+const extra: Record<string, string> = {};
 const ours = (list: any[]) => list.filter((i) => Object.values(mineKeys).includes(i.key));
 const kinds = (list: any[]) => ours(list).map((i) => i.source).sort();
 
@@ -51,6 +53,10 @@ describe('approvals inbox', () => {
       data: { orderNo: 'F-9001', client: 'Acme', pieces: 100, systemPerPiece: 40, chargedPerPiece: 30, shortfall: 1000, valueAtRecommended: 4000, valueAtCharged: 3000, requestedById: ids.rep!, requestedByName: 'rep (approvals test)' },
     });
     mineKeys.artwork = `artwork:${art.id}`;
+    const uv = await prisma.priceApproval.create({ data: { orderId: 777, orderNo: 'U-9002', client: 'Acme', pieces: 10, systemPerPiece: 40, chargedPerPiece: 35, shortfall: 50, valueAtRecommended: 400, valueAtCharged: 350, requestedById: ids.rep!, requestedByName: 'rep (approvals test)' } });
+    const emb = await prisma.priceApproval.create({ data: { orderNo: 'E-9003', kind: 'embroidery', client: 'Acme', pieces: 10, systemPerPiece: 40, chargedPerPiece: 35, shortfall: 50, valueAtRecommended: 400, valueAtCharged: 350, requestedById: ids.rep!, requestedByName: 'rep (approvals test)' } });
+    extra.uv = `artwork:${uv.id}`;
+    extra.emb = `artwork:${emb.id}`;
     const expense = await prisma.expense.create({ data: { date: '2026-10-05', category: 'Refreshments', amount: 1500 } });
     const am = await prisma.expenseAmendment.create({ data: { expenseId: expense.id, proposedDate: '2026-10-05', proposedCategory: 'Refreshments', proposedAmount: 1350, reason: 'Receipt shows 1,350', requestedByName: 'fin2 (approvals test)' } });
     mineKeys.amend = `amend:${am.id}`;
@@ -81,6 +87,25 @@ describe('approvals inbox', () => {
     assert.equal(fin.body.waiting.find((i: any) => i.key === mineKeys.leave).decide, null); // leave is decided on the HR page
     assert.equal(fin.body.waiting.find((i: any) => i.key === mineKeys.amend).decide.needsReason, false);
     assert.equal(typeof fin.body.emailOn, 'boolean');
+
+    // every request is filed under the screen it was raised on, in the order of the menu
+    const origin = (key: string) => fin.body.waiting.find((i: any) => i.key === key);
+    assert.deepEqual(
+      [mineKeys.costing, mineKeys.artwork, extra.uv, extra.emb, mineKeys.discount, mineKeys.amend, mineKeys.deletion, mineKeys.requisition, mineKeys.leave].map((k) => origin(k!).origin),
+      ['costing', 'dtf_artwork', 'uv_artwork', 'embroidery', 'uv_film', 'finance', 'finance', 'stock', 'hr'],
+    );
+    assert.equal(origin(mineKeys.leave!).originLabel, 'People (HR)');
+
+    // "Open" goes to the very document, not just the page it belongs to
+    assert.equal(origin(mineKeys.costing!).link, `/costing?quote=${mineKeys.costing!.split(':')[1]}`);
+    assert.equal(origin(extra.uv!).link, '/orders/all?order=777'); // the order waiting for its price to be approved
+    assert.equal(origin(mineKeys.artwork!).link, '/orders/all'); // one whose order is gone has nothing to open
+    assert.equal(origin(mineKeys.discount!).link, `/orders/new/uv-film?tab=pens&request=${mineKeys.discount!.split(':')[1]}`);
+    assert.equal(origin(mineKeys.discount!).originLabel, 'UV DTF Film Order');
+    assert.match(origin(mineKeys.discount!).sourceLabel, /Unit price discount · UV Pen Costing/);
+    // the menu order: DTF artwork comes before UV DTF film, Job Costing before Finance, HR last
+    const order = (k: string) => origin(k).originOrder;
+    assert.ok(order(mineKeys.artwork!) < order(mineKeys.discount!) && order(mineKeys.discount!) < order(extra.uv!) && order(extra.emb!) < order(mineKeys.costing!) && order(mineKeys.costing!) < order(mineKeys.amend!) && order(mineKeys.amend!) < order(mineKeys.requisition!) && order(mineKeys.requisition!) < order(mineKeys.leave!));
 
     // the requester sees nothing waiting for them to decide, and their own requests
     const rep = await call('rep', 'GET', '/approvals');

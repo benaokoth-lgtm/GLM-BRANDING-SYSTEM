@@ -13,6 +13,9 @@ interface Item {
   key: string;
   source: string;
   sourceLabel: string;
+  origin: string;
+  originLabel: string;
+  originOrder: number;
   title: string;
   detail: string;
   amount: number | null;
@@ -31,16 +34,19 @@ interface Data {
   emailOn: boolean;
 }
 
-// the heads the approvals are kept under, in the order they are shown
-const HEADS: { source: string; head: string; about: string }[] = [
-  { source: 'costing', head: 'Job Costing prices', about: 'A price agreed with a client that is under the lowest allowed without approval.' },
-  { source: 'artwork', head: 'Prices below the recommended price', about: 'DTF, UV DTF and embroidery jobs priced under the recommended price; they cannot be paid for or produced until approved.' },
-  { source: 'discount', head: 'Unit price discounts', about: 'UV Pen Costing and UV Flatbed: a discount on the price of each piece.' },
-  { source: 'amend', head: 'Expense corrections', about: 'A change to an expense that is already recorded.' },
-  { source: 'deletion', head: 'Deletions', about: 'An expense, a payroll entry or a petty cash top-up someone asks to remove.' },
-  { source: 'requisition', head: 'Stock requisitions', about: 'Materials someone asks to buy.' },
-  { source: 'leave', head: 'Leave', about: 'Time off asked for, decided on the People (HR) page.' },
-];
+// what each head holds (the heads are the screens the requests were raised on)
+const ABOUT: Record<string, string> = {
+  general: 'Requests raised on the General Order screen.',
+  dtf_film: 'Requests raised on the DTF Film Order screen.',
+  dtf_artwork: 'DTF artwork jobs priced below the recommended price; they cannot be paid for or produced until approved.',
+  uv_film: 'UV Pen Costing and UV Flatbed: discounts on the price of each piece.',
+  uv_artwork: 'UV DTF artwork jobs priced below the recommended price; they cannot be paid for or produced until approved.',
+  embroidery: 'Embroidery jobs priced below the recommended price; they cannot be paid for or produced until approved.',
+  costing: 'A price agreed with a client that is under the lowest allowed without approval.',
+  finance: 'Changes to recorded expenses, and expenses, payroll entries or petty cash top-ups someone asks to remove.',
+  stock: 'Materials someone asks to buy.',
+  hr: 'Time off asked for. It is decided on the People (HR) page, where it can ask you to confirm.',
+};
 
 const when = (iso: string) => fmtDate(iso.slice(0, 10));
 const tone = (s: string) => (s === 'Approved' || s === 'Used' ? 'tag-accent' : 'tag-outline');
@@ -95,8 +101,9 @@ export default function Approvals() {
 
   if (!data) return <p className="note">{error || 'Loading…'}</p>;
   const list = tab === 'waiting' ? data.waiting : data.mine;
-  // one section for each kind of approval, always in the same order, each under its own heading
-  const sections = HEADS.map((h) => ({ ...h, items: list.filter((i) => i.source === h.source) })).filter((h) => h.items.length > 0);
+  // one section for each place the requests were raised, in the order of the menu, each under its own heading
+  const heads = [...new Map(list.map((i) => [i.origin, { origin: i.origin, head: i.originLabel, order: i.originOrder }])).values()].sort((a, b) => a.order - b.order);
+  const sections = heads.map((h) => ({ ...h, about: ABOUT[h.origin] ?? '', items: list.filter((i) => i.origin === h.origin) }));
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
@@ -119,7 +126,7 @@ export default function Approvals() {
       {sections.length > 1 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {sections.map((h) => (
-            <a key={h.source} href={'#ap-' + h.source} className="btn btn-secondary btn-sm">{h.head} ({h.items.length})</a>
+            <a key={h.origin} href={'#ap-' + h.origin} className="btn btn-secondary btn-sm">{h.head} ({h.items.length})</a>
           ))}
         </div>
       )}
@@ -132,7 +139,7 @@ export default function Approvals() {
       )}
 
       {sections.map((h) => (
-        <section key={h.source} id={'ap-' + h.source} style={{ display: 'grid', gap: 'var(--space-3)' }}>
+        <section key={h.origin} id={'ap-' + h.origin} style={{ display: 'grid', gap: 'var(--space-3)' }}>
           <div style={{ borderBottom: '2px solid var(--color-divider)', paddingBottom: 6 }}>
             <h2 style={{ margin: 0, fontSize: 18 }}>{h.head} <span className="text-muted" style={{ fontWeight: 400 }}>({h.items.length})</span></h2>
             <div className="text-muted" style={{ fontSize: 13 }}>{h.about}</div>
@@ -141,7 +148,7 @@ export default function Approvals() {
         <div key={i.key} className="card" style={{ display: 'grid', gap: 8 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap', justifyContent: 'space-between' }}>
             <div>
-              <b>{i.title}</b>
+              <span className="tag tag-outline">{i.sourceLabel}</span> <b style={{ marginLeft: 6 }}>{i.title}</b>
             </div>
             <span className="text-muted" style={{ fontSize: 13 }}>{tab === 'waiting' ? `asked by ${i.requestedByName} on ${when(i.requestedAt)}` : `asked on ${when(i.requestedAt)}`}</span>
           </div>

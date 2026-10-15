@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DTF_PRODUCT_LABEL, VAT_RATE, filmPremiumCommission, filmPremiumPerM, fmtKsh, fmtNum, saleCalc, todayStr } from '@glm/shared';
 import type { Band, DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
@@ -24,7 +24,11 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
   const [showOrderDialog, setShowOrderDialog] = useState(false);
   const [filmBands, setFilmBands] = useState<Band[] | null>(null);
   // UV DTF also prices UV-printed pens: its own tab beside the film sale
-  const [tab, setTab] = useState<'film' | 'pens' | 'flatbed'>('film');
+  // a link from the approvals inbox (?tab=pens&request=12) opens that tab with the job of the request filled in
+  const [params] = useSearchParams();
+  const linkedTab = params.get('tab');
+  const linkedRequest = Number(params.get('request')) || undefined;
+  const [tab, setTab] = useState<'film' | 'pens' | 'flatbed'>(product === 'uv' && (linkedTab === 'pens' || linkedTab === 'flatbed') ? linkedTab : 'film');
 
   useEffect(() => {
     // The scheme staff are paid under, to show what a higher price is worth to them (nothing is blocked if it can't be read).
@@ -59,7 +63,7 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
     return (
       <>
         {tabs}
-        <UvPenCosting />
+        <UvPenCosting requestId={linkedRequest} />
       </>
     );
   }
@@ -68,7 +72,7 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
     return (
       <>
         {tabs}
-        <UvFlatbedCosting />
+        <UvFlatbedCosting requestId={linkedRequest} />
       </>
     );
   }

@@ -6,7 +6,7 @@ import { getMailer } from './mailer';
 
 // The approvals inbox: everything that is waiting for somebody's decision, in one list. Each kind of request keeps its own rules and its own decision endpoint (a quote's price, a discount,
 // an expense correction …); the inbox only gathers what a person may decide, with the paths to approve or turn it down, and — for the requester — how their own requests went.
-// "Notifications" are the badge in the menu (the number waiting, plus the decisions on your own requests you have not looked at yet) and an email to those who can decide, when a new
+// Every request carries the screen it was raised on (its origin), and the inbox shows them under those heads, in the order of the menu. "Notifications" are the badge in the menu (the number waiting, plus the decisions on your own requests you have not looked at yet) and an email to those who can decide, when a new
 // request is raised and mail is set up.
 
 export type ApprovalSource = 'costing' | 'artwork' | 'discount' | 'amend' | 'deletion' | 'requisition' | 'leave';
@@ -21,10 +21,30 @@ export const SOURCE_LABEL: Record<ApprovalSource, string> = {
   leave: 'Leave',
 };
 
+/** Where a request comes from: the screen of the system it was raised on (the heads the inbox is arranged under), in the order of the menu. */
+export type ApprovalOrigin = 'general' | 'dtf_film' | 'dtf_artwork' | 'uv_film' | 'uv_artwork' | 'embroidery' | 'costing' | 'finance' | 'stock' | 'hr';
+export const ORIGINS: { origin: ApprovalOrigin; label: string }[] = [
+  { origin: 'general', label: 'General Order' },
+  { origin: 'dtf_film', label: 'DTF Film Order' },
+  { origin: 'dtf_artwork', label: 'DTF Artwork Order' },
+  { origin: 'uv_film', label: 'UV DTF Film Order' },
+  { origin: 'uv_artwork', label: 'UV DTF Artwork Order' },
+  { origin: 'embroidery', label: 'Embroidery Order' },
+  { origin: 'costing', label: 'Job Costing' },
+  { origin: 'finance', label: 'Finance' },
+  { origin: 'stock', label: 'Stock' },
+  { origin: 'hr', label: 'People (HR)' },
+];
+const originFields = (o: ApprovalOrigin) => ({ origin: o, originLabel: ORIGINS.find((x) => x.origin === o)!.label, originOrder: ORIGINS.findIndex((x) => x.origin === o) });
+
 export interface ApprovalItem {
   key: string;
   source: ApprovalSource;
   sourceLabel: string;
+  /** The screen it was raised on, its name and its place in the menu. */
+  origin: ApprovalOrigin;
+  originLabel: string;
+  originOrder: number;
   title: string;
   detail: string;
   /** What is at stake, in Ksh, when there is one (a shortfall, a total). */
@@ -71,6 +91,7 @@ async function costing(u: Who, perms: Awaited<ReturnType<typeof permissionsForRo
       key: `costing:${q.id}`,
       source: 'costing',
       sourceLabel: SOURCE_LABEL.costing,
+      ...originFields('costing'),
       title: `${q.quoteNo} — ${q.clientName || 'Walk-in'}`,
       detail: `${costingJobLabel(q.jobType)}: ${tidyCostingSummary(q.summary)}. Price agreed ${agreed != null ? ksh(agreed) : '—'} with VAT; the lowest without approval is ${ksh(lowest)}.`,
       amount: agreed,
@@ -80,7 +101,7 @@ async function costing(u: Who, perms: Awaited<ReturnType<typeof permissionsForRo
       decidedByName: q.approvedByName || null,
       decidedAt: q.approvedAt?.toISOString() ?? null,
       note: q.approvalNote || null,
-      link: '/costing',
+      link: `/costing?quote=${q.id}`,
       decide: { approve: `/costing/quotes/${q.id}/approve`, reject: `/costing/quotes/${q.id}/reject`, needsReason: true },
     };
   };
@@ -101,6 +122,7 @@ async function artwork(u: Who, perms: Awaited<ReturnType<typeof permissionsForRo
     key: `artwork:${a.id}`,
     source: 'artwork',
     sourceLabel: SOURCE_LABEL.artwork,
+    ...originFields(a.kind === 'embroidery' || a.orderNo.startsWith('E-') ? 'embroidery' : a.orderNo.startsWith('U-') ? 'uv_artwork' : 'dtf_artwork'),
     title: `${a.orderNo} — ${a.client || 'Walk-in'}`,
     detail: `${a.kind === 'embroidery' ? 'Embroidery job' : 'Artwork job'}: ${a.pieces} pieces at ${ksh(a.chargedPerPiece)} instead of ${ksh(a.systemPerPiece)} each — ${ksh(a.shortfall)} given away.`,
     amount: a.shortfall,
@@ -110,7 +132,8 @@ async function artwork(u: Who, perms: Awaited<ReturnType<typeof permissionsForRo
     decidedByName: a.decidedByName,
     decidedAt: a.decidedAt?.toISOString() ?? null,
     note: a.reason,
-    link: a.kind === 'embroidery' ? '/orders/new/embroidery' : '/dtf',
+    // the order itself (a rejected request has no order left)
+    link: a.orderId ? `/orders/all?order=${a.orderId}` : '/orders/all',
     decide: { approve: `/dtf/approvals/${a.id}/approve`, reject: `/dtf/approvals/${a.id}/reject`, needsReason: true },
   });
   return { waiting: rows.filter((a) => a.status === 'Pending' && a.requestedById !== u.id).map(make), mine: rows.filter((a) => a.requestedById === u.id).map(make) };
@@ -130,7 +153,8 @@ async function discount(u: Who): Promise<Part> {
     return {
       key: `discount:${r.id}`,
       source: 'discount',
-      sourceLabel: SOURCE_LABEL.discount,
+      sourceLabel: `${SOURCE_LABEL.discount} · ${r.product === 'pens' ? 'UV Pen Costing' : 'UV Flatbed'}`,
+      ...originFields('uv_film'),
       title: `${job}`,
       detail: `${r.kind === 'pct' ? `${r.value}% off` : `${ksh(r.value)} off each`}: ${ksh(r.unitBefore)} → ${ksh(r.unitAfter)} a piece.`,
       amount: null,
@@ -140,7 +164,8 @@ async function discount(u: Who): Promise<Part> {
       decidedByName: r.decidedByName,
       decidedAt: r.decidedAt?.toISOString() ?? null,
       note: r.reason,
-      link: '/orders/new/uv-film',
+      // UV Pen Costing or UV Flatbed, with the job of the request filled in (and an approved discount ready to use)
+      link: `/orders/new/uv-film?tab=${r.product === 'pens' ? 'pens' : 'flatbed'}&request=${r.id}`,
       decide: { approve: `/dtf/discount-requests/${r.id}/approve`, reject: `/dtf/discount-requests/${r.id}/reject`, needsReason: true },
     };
   };
@@ -159,6 +184,7 @@ async function amend(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole
     key: `amend:${a.id}`,
     source: 'amend',
     sourceLabel: SOURCE_LABEL.amend,
+    ...originFields('finance'),
     title: `${a.expense.category} on ${a.expense.date}`,
     detail: `${ksh(a.expense.amount)} → ${ksh(a.proposedAmount)}${a.proposedCategory !== a.expense.category ? `, category ${a.expense.category} → ${a.proposedCategory}` : ''}${a.proposedDate !== a.expense.date ? `, date → ${a.proposedDate}` : ''}. Reason: ${a.reason}`,
     amount: r2(a.proposedAmount - a.expense.amount),
@@ -186,6 +212,7 @@ async function deletion(u: Who, perms: Awaited<ReturnType<typeof permissionsForR
     key: `deletion:${d.id}`,
     source: 'deletion',
     sourceLabel: SOURCE_LABEL.deletion,
+    ...originFields('finance'),
     title: `Delete ${kind[d.recordType] ?? d.recordType}`,
     detail: `${d.summary}. Reason: ${d.reason}`,
     amount: null,
@@ -216,6 +243,7 @@ async function requisition(u: Who, perms: Awaited<ReturnType<typeof permissionsF
       key: `requisition:${r.id}`,
       source: 'requisition',
       sourceLabel: SOURCE_LABEL.requisition,
+      ...originFields('stock'),
       title: r.ref ?? `Requisition #${r.id}`,
       detail: `${lines.slice(0, 4).join(', ')}${lines.length > 4 ? ` and ${lines.length - 4} more` : ''}${r.note ? `. ${r.note}` : ''}`,
       amount: est > 0 ? r2(est) : null,
@@ -250,6 +278,7 @@ async function leave(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole
     key: `leave:${r.id}`,
     source: 'leave',
     sourceLabel: SOURCE_LABEL.leave,
+    ...originFields('hr'),
     title: `${name.get(r.staffId) ?? 'Staff'} — ${typeName.get(r.leaveTypeId) ?? 'leave'}`,
     detail: `${r.days} working day${r.days === 1 ? '' : 's'}, ${r.startDate} to ${r.endDate}${r.reason ? `. ${r.reason}` : ''}`,
     amount: null,

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { CARD_FINISH_LABEL, COSTING_BASIS_LABEL, COSTING_JOB_LABEL, VAT_RATE, fmtKsh } from '@glm/shared';
 import type { CardFinish, CostingBasis, CostingJobType, CostingKind } from '@glm/shared';
 import { api } from '../api/client';
@@ -57,8 +58,11 @@ export default function JobCosting() {
   const { user } = useAuth();
   // the supplier rates are an Admin's to keep (here, beside the calculator that uses them)
   const isAdmin = user?.role === 'Admin';
-  const [view, setView] = useState<'calc' | 'quotes' | 'rates'>('calc');
-  const [openQuoteId, setOpenQuoteId] = useState<number | null>(null);
+  // a link from the approvals inbox (?quote=12) opens that saved quote
+  const [params] = useSearchParams();
+  const linkedQuote = Number(params.get('quote')) || null;
+  const [view, setView] = useState<'calc' | 'quotes' | 'rates'>(linkedQuote ? 'quotes' : 'calc');
+  const [openQuoteId, setOpenQuoteId] = useState<number | null>(linkedQuote);
   const [saving, setSaving] = useState<{ client: string; phone: string; note: string; busy: boolean; err: string } | null>(null);
 
   useEffect(() => {

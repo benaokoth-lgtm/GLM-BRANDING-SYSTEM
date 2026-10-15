@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { DEFAULT_BUSINESS_HEADS, fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
 import type { OrderSummary, StaffUser } from '../api/models';
@@ -22,7 +23,9 @@ export default function Orders() {
   // sales and artwork sales. (Choosing one dims the module row, like any other sub-item.)
   const [category, setCategory] = useSubTab<string>('all');
   const [dtfPart, setDtfPart] = useSubTab<'all' | 'film' | 'artwork' | 'other'>('all');
-  const [detailId, setDetailId] = useState<number | null>(null);
+  // a link from the approvals inbox (?order=12) opens that order
+  const [params, setParams] = useSearchParams();
+  const [detailId, setDetailId] = useState<number | null>(() => Number(params.get('order')) || null);
   // The summary figure (All Orders) that is opened into the orders behind it.
   const [openKpi, setOpenKpi] = useState<'total' | 'production' | 'pending' | 'overdue' | null>(null);
   // Everything together by default (the Status column tells an order, an invoice and a quotation apart); Invoices and Quotations narrow it.
@@ -412,7 +415,10 @@ export default function Orders() {
       {detailId && (
         <OrderDetailDialog
           orderId={detailId}
-          onClose={() => setDetailId(null)}
+          onClose={() => {
+            setDetailId(null);
+            if (params.has('order')) setParams({}, { replace: true });
+          }}
           onChanged={load}
         />
       )}

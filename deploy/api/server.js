@@ -73800,6 +73800,19 @@ var SOURCE_LABEL = {
   requisition: "Stock requisition",
   leave: "Leave"
 };
+var ORIGINS = [
+  { origin: "general", label: "General Order" },
+  { origin: "dtf_film", label: "DTF Film Order" },
+  { origin: "dtf_artwork", label: "DTF Artwork Order" },
+  { origin: "uv_film", label: "UV DTF Film Order" },
+  { origin: "uv_artwork", label: "UV DTF Artwork Order" },
+  { origin: "embroidery", label: "Embroidery Order" },
+  { origin: "costing", label: "Job Costing" },
+  { origin: "finance", label: "Finance" },
+  { origin: "stock", label: "Stock" },
+  { origin: "hr", label: "People (HR)" }
+];
+var originFields = (o) => ({ origin: o, originLabel: ORIGINS.find((x) => x.origin === o).label, originOrder: ORIGINS.findIndex((x) => x.origin === o) });
 var r28 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var ksh = (n) => "Ksh " + r28(n).toLocaleString("en-KE", { maximumFractionDigits: 2 });
 var RECENT_DAYS = 14;
@@ -73820,6 +73833,7 @@ async function costing(u, perms) {
       key: `costing:${q.id}`,
       source: "costing",
       sourceLabel: SOURCE_LABEL.costing,
+      ...originFields("costing"),
       title: `${q.quoteNo} \u2014 ${q.clientName || "Walk-in"}`,
       detail: `${costingJobLabel(q.jobType)}: ${tidyCostingSummary(q.summary)}. Price agreed ${agreed != null ? ksh(agreed) : "\u2014"} with VAT; the lowest without approval is ${ksh(lowest)}.`,
       amount: agreed,
@@ -73829,7 +73843,7 @@ async function costing(u, perms) {
       decidedByName: q.approvedByName || null,
       decidedAt: q.approvedAt?.toISOString() ?? null,
       note: q.approvalNote || null,
-      link: "/costing",
+      link: `/costing?quote=${q.id}`,
       decide: { approve: `/costing/quotes/${q.id}/approve`, reject: `/costing/quotes/${q.id}/reject`, needsReason: true }
     };
   };
@@ -73849,6 +73863,7 @@ async function artwork(u, perms) {
     key: `artwork:${a2.id}`,
     source: "artwork",
     sourceLabel: SOURCE_LABEL.artwork,
+    ...originFields(a2.kind === "embroidery" || a2.orderNo.startsWith("E-") ? "embroidery" : a2.orderNo.startsWith("U-") ? "uv_artwork" : "dtf_artwork"),
     title: `${a2.orderNo} \u2014 ${a2.client || "Walk-in"}`,
     detail: `${a2.kind === "embroidery" ? "Embroidery job" : "Artwork job"}: ${a2.pieces} pieces at ${ksh(a2.chargedPerPiece)} instead of ${ksh(a2.systemPerPiece)} each \u2014 ${ksh(a2.shortfall)} given away.`,
     amount: a2.shortfall,
@@ -73858,7 +73873,8 @@ async function artwork(u, perms) {
     decidedByName: a2.decidedByName,
     decidedAt: a2.decidedAt?.toISOString() ?? null,
     note: a2.reason,
-    link: a2.kind === "embroidery" ? "/orders/new/embroidery" : "/dtf",
+    // the order itself (a rejected request has no order left)
+    link: a2.orderId ? `/orders/all?order=${a2.orderId}` : "/orders/all",
     decide: { approve: `/dtf/approvals/${a2.id}/approve`, reject: `/dtf/approvals/${a2.id}/reject`, needsReason: true }
   });
   return { waiting: rows.filter((a2) => a2.status === "Pending" && a2.requestedById !== u.id).map(make), mine: rows.filter((a2) => a2.requestedById === u.id).map(make) };
@@ -73877,7 +73893,8 @@ async function discount(u) {
     return {
       key: `discount:${r.id}`,
       source: "discount",
-      sourceLabel: SOURCE_LABEL.discount,
+      sourceLabel: `${SOURCE_LABEL.discount} \xB7 ${r.product === "pens" ? "UV Pen Costing" : "UV Flatbed"}`,
+      ...originFields("uv_film"),
       title: `${job}`,
       detail: `${r.kind === "pct" ? `${r.value}% off` : `${ksh(r.value)} off each`}: ${ksh(r.unitBefore)} \u2192 ${ksh(r.unitAfter)} a piece.`,
       amount: null,
@@ -73887,7 +73904,8 @@ async function discount(u) {
       decidedByName: r.decidedByName,
       decidedAt: r.decidedAt?.toISOString() ?? null,
       note: r.reason,
-      link: "/orders/new/uv-film",
+      // UV Pen Costing or UV Flatbed, with the job of the request filled in (and an approved discount ready to use)
+      link: `/orders/new/uv-film?tab=${r.product === "pens" ? "pens" : "flatbed"}&request=${r.id}`,
       decide: { approve: `/dtf/discount-requests/${r.id}/approve`, reject: `/dtf/discount-requests/${r.id}/reject`, needsReason: true }
     };
   };
@@ -73905,6 +73923,7 @@ async function amend(u, perms) {
     key: `amend:${a2.id}`,
     source: "amend",
     sourceLabel: SOURCE_LABEL.amend,
+    ...originFields("finance"),
     title: `${a2.expense.category} on ${a2.expense.date}`,
     detail: `${ksh(a2.expense.amount)} \u2192 ${ksh(a2.proposedAmount)}${a2.proposedCategory !== a2.expense.category ? `, category ${a2.expense.category} \u2192 ${a2.proposedCategory}` : ""}${a2.proposedDate !== a2.expense.date ? `, date \u2192 ${a2.proposedDate}` : ""}. Reason: ${a2.reason}`,
     amount: r28(a2.proposedAmount - a2.expense.amount),
@@ -73931,6 +73950,7 @@ async function deletion(u, perms) {
     key: `deletion:${d.id}`,
     source: "deletion",
     sourceLabel: SOURCE_LABEL.deletion,
+    ...originFields("finance"),
     title: `Delete ${kind[d.recordType] ?? d.recordType}`,
     detail: `${d.summary}. Reason: ${d.reason}`,
     amount: null,
@@ -73960,6 +73980,7 @@ async function requisition(u, perms) {
       key: `requisition:${r.id}`,
       source: "requisition",
       sourceLabel: SOURCE_LABEL.requisition,
+      ...originFields("stock"),
       title: r.ref ?? `Requisition #${r.id}`,
       detail: `${lines.slice(0, 4).join(", ")}${lines.length > 4 ? ` and ${lines.length - 4} more` : ""}${r.note ? `. ${r.note}` : ""}`,
       amount: est > 0 ? r28(est) : null,
@@ -73993,6 +74014,7 @@ async function leave(u, perms) {
     key: `leave:${r.id}`,
     source: "leave",
     sourceLabel: SOURCE_LABEL.leave,
+    ...originFields("hr"),
     title: `${name2.get(r.staffId) ?? "Staff"} \u2014 ${typeName.get(r.leaveTypeId) ?? "leave"}`,
     detail: `${r.days} working day${r.days === 1 ? "" : "s"}, ${r.startDate} to ${r.endDate}${r.reason ? `. ${r.reason}` : ""}`,
     amount: null,

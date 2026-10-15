@@ -32,7 +32,7 @@ interface Editing {
   busy: boolean;
 }
 
-export default function UvFlatbedCosting() {
+export default function UvFlatbedCosting({ requestId }: { requestId?: number }) {
   const [settings, setSettings] = useState<FlatbedSettings | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [canDiscount, setCanDiscount] = useState(false);
@@ -47,6 +47,22 @@ export default function UvFlatbedCosting() {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [capturing, setCapturing] = useState(false);
   const navigate = useNavigate();
+
+  // opened from the approvals inbox: the job of that request is filled in, and its discount is applied when it is approved and yours
+  useEffect(() => {
+    if (!requestId) return;
+    api
+      .get<{ requests: { id: number; spec: { widthCm?: number; heightCm?: number; pieces?: number }; kind: 'amount' | 'pct'; value: number; status: string; mine: boolean }[] }>('/dtf/discount-requests?product=flatbed')
+      .then((r) => {
+        const x = r.requests.find((q) => q.id === requestId);
+        if (!x?.spec.widthCm || !x.spec.heightCm || !x.spec.pieces) return;
+        setW(String(x.spec.widthCm));
+        setH(String(x.spec.heightCm));
+        setPieces(x.spec.pieces);
+        if (x.status === 'Approved' && x.mine) setUd({ kind: x.kind, value: x.value, requestId: x.id });
+      })
+      .catch(() => undefined);
+  }, [requestId]);
 
   useEffect(() => {
     api

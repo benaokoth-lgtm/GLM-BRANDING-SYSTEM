@@ -1,10 +1,10 @@
 // UV DTF: the same tracker as DTF with its own rolls and settings. A 30 cm × 50 m roll of two films (A printing, B laminating); film sold at KES 1,500 a metre (VAT included) with a
-// floor of 1,200; artwork at 30 a piece plus 1,070 a running metre shared across the pieces (107 pieces on a metre = 40 each); no heat press fee; the same commission as DTF.
+// floor of 1,200; artwork charged 4,280 a running metre, shared across the artworks on it (107 artworks on a metre = 40 each); no heat press fee; the same commission as DTF.
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { UV_DTF_SETTINGS, VAT_RATE, filmPremiumCommission, jobCalc, summariseRoll, todayStr } from '@glm/shared';
+import { UV_DTF_SETTINGS, VAT_RATE, filmPremiumCommission, runningMetreCalc, summariseRoll, todayStr } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -43,15 +43,15 @@ describe('UV DTF film and artwork', () => {
     await prisma.$disconnect();
   });
 
-  it('starts from the UV settings: a 30 cm × 50 m roll, 1,500 a metre, floor 1,200, artwork 30 a piece + 1,070 a metre', async () => {
+  it('starts from the UV settings: a 30 cm × 50 m roll, 1,500 a metre, floor 1,200, artwork 4,280 a running metre', async () => {
     const d = await uvData();
     assert.equal(d.product, 'uv');
     assert.deepEqual(d.settings, UV_DTF_SETTINGS);
-    assert.deepEqual([d.settings.rollLengthM, d.settings.rollWidthCm, d.settings.stdPricePerM, d.settings.minPricePerM, d.settings.minPricePerPiece, d.settings.fixedChargePerMetre], [50, 30, 1500, 1200, 30, 1070]);
+    assert.deepEqual([d.settings.rollLengthM, d.settings.rollWidthCm, d.settings.stdPricePerM, d.settings.minPricePerM, d.settings.minPricePerPiece, d.settings.fixedChargePerMetre], [50, 30, 1500, 1200, 30, 4280]);
     // DTF keeps its own
     assert.equal((await dtfData()).settings.stdPricePerM, 500);
     // the artwork charge: 107 pieces on a metre come to 40 each, 4,280 in all
-    const c = jobCalc(1, 107, d.settings.fixedChargePerMetre, d.settings.minPricePerPiece);
+    const c = runningMetreCalc(1, 107, d.settings.fixedChargePerMetre);
     assert.deepEqual([c.finalPerPiece, c.jobTotal], [40, 4280]);
   });
 
@@ -94,17 +94,17 @@ describe('UV DTF film and artwork', () => {
     assert.ok(Math.abs(stmt.film.commission - expected) < 0.02, `${stmt.film.commission} vs ${expected}`);
   });
 
-  it('artwork: 30 a piece plus 1,070 a running metre; 107 pieces on a metre are 40 each; no heat press fee; below the recommended price needs approval', async () => {
+  it('artwork: 4,280 a running metre; 107 pieces on a metre are 40 each; no heat press fee; below the recommended price needs approval', async () => {
     const job = await call('printer', 'POST', '/dtf/jobs', { rollId: roll, client: 'UV Art Client', runningMetres: 1, pieces: 107, amountPaid: 4280 });
     assert.equal(job.status, 201, JSON.stringify(job.body));
     assert.match(job.body.order.orderNo, /^U-\d{4}$/);
     assert.equal(job.body.order.totals.grandTotal, 4280);
     assert.equal(job.body.approval, null);
     assert.equal((await prisma.service.findFirstOrThrow({ where: { name: 'UV DTF Printing' } })).chargesPressingFee, false);
-    // fewer pieces on the metre cost more each, more cost less (never below 30)
-    const few = jobCalc(1, 20, 1070, 30).finalPerPiece;
-    const many = jobCalc(1, 400, 1070, 30).finalPerPiece;
-    assert.ok(few > 83 && many < 33 && many > 30);
+    // fewer pieces on the metre cost more each, more cost less — the whole metre is always paid for
+    const few = runningMetreCalc(1, 20, 4280);
+    const many = runningMetreCalc(1, 400, 4280);
+    assert.ok(few.finalPerPiece === 214 && many.finalPerPiece === 10.7 && few.jobTotal === 4280 && many.jobTotal === 4280);
 
     // a price under the floor of 30 is refused; under the recommended price it waits for a manager
     const under = await call('printer', 'POST', '/dtf/jobs', { rollId: roll, client: 'UV Art Client', runningMetres: 1, pieces: 107, pricePerPiece: 29 });

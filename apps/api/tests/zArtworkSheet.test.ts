@@ -26,7 +26,7 @@ const row = (client: string, label: string, qty: number, price: number) => ({ cl
 // the artworks on the length are required; unless a test says otherwise they are exactly what its rows place
 const sheet = (extra: Record<string, unknown>) => call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 3, heatPressFee: 20, pieces: ((extra.rows as { qty: number }[]) ?? []).reduce((a, r) => a + r.qty, 0), ...extra });
 
-// DTF defaults: 30 minimum a piece, 2,160 a metre. 3 m over 140 artworks: 30 + 6,480 ÷ 140 = 76.29 each, 10,680 in all.
+// DTF defaults: 3,780 a running metre, 30 lowest price. 3 m over 140 artworks: 11,340 ÷ 140 = 81 each, 11,340 in all.
 describe('artwork sheets', () => {
   before(async () => {
     await prisma.role.create({ data: { name: 'Printer (sheet test)', canAccessDtf: true, canCaptureOrders: true } });
@@ -45,46 +45,46 @@ describe('artwork sheets', () => {
   });
 
   it('works out the recommended total for the whole length, and shares the film by number of artworks', () => {
-    const c = sheetCalc([row('Client A', '5 × 5 cm', 100, 50), row('Client B', '15 × 20 cm', 40, 160)], 3, 2160, 30);
+    const c = sheetCalc([row('Client A', '5 × 5 cm', 100, 50), row('Client B', '15 × 20 cm', 40, 160)], 3, 3780, 30);
     assert.equal(c.ok, true, c.problems.join('; '));
-    assert.deepEqual([c.pieces, c.recommendedPerPiece, c.recommendedTotal, c.enteredTotal, c.surplus], [140, 76.29, 10680, 11400, 720]);
+    assert.deepEqual([c.pieces, c.recommendedPerPiece, c.recommendedTotal, c.enteredTotal, c.surplus], [140, 81, 11340, 11400, 60]);
     const [a, b] = c.clients;
-    assert.deepEqual([a!.pieces, a!.metres, a!.amount, a!.fairShare, a!.pctOfFairShare], [100, 2.143, 5000, 7628.57, 65.54]); // A pays less than their share…
-    assert.deepEqual([b!.pieces, b!.metres, b!.amount, b!.fairShare], [40, 0.857, 6400, 3051.43]); // …and B more
+    assert.deepEqual([a!.pieces, a!.metres, a!.amount, a!.fairShare, a!.pctOfFairShare], [100, 2.143, 5000, 8100, 61.73]); // A pays less than their share…
+    assert.deepEqual([b!.pieces, b!.metres, b!.amount, b!.fairShare], [40, 0.857, 6400, 3240]); // …and B more
     assert.equal(a!.metres + b!.metres, 3); // the film adds up to the metres entered
     // rows with no client belong to the sheet's own client; one client in two rows is one order
-    const same = sheetCalc([row('', 'small', 10, 80), row('', 'large', 10, 120), row('Other', 'x', 5, 90)], 1, 2160, 30, 'Walk-in');
+    const same = sheetCalc([row('', 'small', 10, 80), row('', 'large', 10, 120), row('Other', 'x', 5, 90)], 1, 3780, 30, 'Walk-in');
     assert.deepEqual(same.clients.map((x) => [x.client, x.pieces]), [['Walk-in', 20], ['Other', 5]]);
     assert.equal(sheetClientKey('Hope  Chapel', ''), sheetClientKey('hope chapel', ''));
     assert.equal(sheetClientKey('A', '0711 223 344'), sheetClientKey('B', '0711223344')); // a phone number tells the same client
   });
 
   it('refuses a sheet below the recommended total, a price under the minimum, and rows that are not artworks', () => {
-    const low = sheetCalc([row('A', 'a', 100, 40), row('B', 'b', 40, 150)], 3, 2160, 30); // 10,000 against 10,680
+    const low = sheetCalc([row('A', 'a', 100, 40), row('B', 'b', 40, 150)], 3, 3780, 30); // 10,000 against 11,340
     assert.equal(low.ok, false);
-    assert.match(low.problems[0]!, /680 below the recommended total of 10680/);
-    assert.match(sheetCalc([row('A', 'a', 10, 25)], 1, 2160, 30).problems.join(), /below the minimum of 30/);
-    assert.match(sheetCalc([row('A', 'a', 0, 90)], 1, 2160, 30).problems.join(), /how many artworks/);
-    assert.match(sheetCalc([], 1, 2160, 30).problems.join(), /at least one row/);
-    assert.match(sheetCalc([row('A', 'a', 10, 500)], 0, 2160, 30).problems.join(), /running metres/);
-    assert.equal(sheetCalc([row('A', 'a', 10, 500)], 1, 2160, 30).ok, true); // exactly at, or above, is fine
+    assert.match(low.problems[0]!, /1340 below the recommended total of 11340/);
+    assert.match(sheetCalc([row('A', 'a', 10, 25)], 1, 3780, 30).problems.join(), /below the minimum of 30/);
+    assert.match(sheetCalc([row('A', 'a', 0, 90)], 1, 3780, 30).problems.join(), /how many artworks/);
+    assert.match(sheetCalc([], 1, 3780, 30).problems.join(), /at least one row/);
+    assert.match(sheetCalc([row('A', 'a', 10, 500)], 0, 3780, 30).problems.join(), /running metres/);
+    assert.equal(sheetCalc([row('A', 'a', 10, 500)], 1, 3780, 30).ok, true); // exactly at, or above, is fine
     // the artworks on the length, as entered beside the metres, are the artworks the rows must add up to
     const rows = [row('A', 'a', 100, 60), row('B', 'b', 40, 160)];
-    assert.equal(sheetCalc(rows, 3, 2160, 30, '', '', 140).ok, true);
-    assert.match(sheetCalc(rows, 3, 2160, 30, '', '', 150).problems[0]!, /add up to 140 artworks but the length has 150 — 10 still to place/);
-    assert.match(sheetCalc(rows, 3, 2160, 30, '', '', 130).problems[0]!, /but the length has 130 — 10 too many/);
-    assert.equal(sheetCalc(rows, 3, 2160, 30, '', '', 0).ok, true); // not given: the rows say how many there are
+    assert.equal(sheetCalc(rows, 3, 3780, 30, '', '', 140).ok, true);
+    assert.match(sheetCalc(rows, 3, 3780, 30, '', '', 150).problems[0]!, /add up to 140 artworks but the length has 150 — 10 still to place/);
+    assert.match(sheetCalc(rows, 3, 3780, 30, '', '', 130).problems[0]!, /but the length has 130 — 10 too many/);
+    assert.equal(sheetCalc(rows, 3, 3780, 30, '', '', 0).ok, true); // not given: the rows say how many there are
   });
 
   it('on a sheet the clients are judged together: only what the sheet earns above the recommendation counts, shared by what each was charged', () => {
-    const job = (id: string, pieces: number, metres: number, total: number): DtfArtworkJob => ({ id, rollId: 'R', jobOn: '2026-10-01', client: id, runningMetres: metres, pieces, fixedChargePerMetreAtJob: 2160, minPricePerPieceAtJob: 30, chargedTotal: total, sheetId: 'S' });
+    const job = (id: string, pieces: number, metres: number, total: number): DtfArtworkJob => ({ id, rollId: 'R', jobOn: '2026-10-01', client: id, runningMetres: metres, pieces, fixedChargePerMetreAtJob: 3780, minPricePerPieceAtJob: 0, chargedTotal: total, sheetId: 'S' });
     const x = jobExtras([job('a', 100, 2.143, 5000), job('b', 40, 0.857, 6400)]);
     const ex = (id: string) => x.get(id)!;
     assert.equal(ex('a').short, 0); // A paid under their share, but the sheet is above the recommendation
-    assert.equal(Math.round((ex('a').excess + ex('b').excess) * 10) / 10, 720);
+    assert.ok(Math.abs(ex('a').excess + ex('b').excess - 60) < 0.5);
     assert.ok(ex('b').excess > ex('a').excess);
     // a job on its own is judged on its own price, as before
-    const solo: DtfArtworkJob = { id: 's', rollId: 'R', jobOn: '2026-10-01', client: 's', runningMetres: 2, pieces: 108, fixedChargePerMetreAtJob: 2160, minPricePerPieceAtJob: 30, chargedPerPiece: 80 };
+    const solo: DtfArtworkJob = { id: 's', rollId: 'R', jobOn: '2026-10-01', client: 's', runningMetres: 2, pieces: 108, fixedChargePerMetreAtJob: 3780, minPricePerPieceAtJob: 0, chargedPerPiece: 80 };
     assert.deepEqual(jobExtras([solo]).get('s'), { excess: 1080, short: 0 }); // 108 × (80 − 70)
     assert.deepEqual(jobExtras([{ ...solo, chargedPerPiece: 60 }]).get('s'), { excess: 0, short: 1080 });
   });
@@ -95,7 +95,7 @@ describe('artwork sheets', () => {
       clientPayments: [{ key: sheetClientKey('Client A', ''), payments: [{ method: 'Cash', amount: 7000 }] }, { key: sheetClientKey('Client B', ''), payments: [{ method: 'Cash', amount: 7200 }] }],
     });
     assert.equal(r.status, 201, JSON.stringify(r.body));
-    assert.deepEqual([r.body.orders.length, r.body.recommendedTotal, r.body.enteredTotal, r.body.surplus], [2, 10680, 11400, 720]);
+    assert.deepEqual([r.body.orders.length, r.body.recommendedTotal, r.body.enteredTotal, r.body.surplus], [2, 11340, 11400, 60]);
     const [a, b] = r.body.orders;
     assert.deepEqual([a.customerName, a.totals.grandTotal, a.totals.balanceDue, a.priceApproval], ['Client A', 7000, 0, null]); // 100 × (50 + 20 heat press)
     assert.deepEqual([b.customerName, b.totals.grandTotal, b.totals.balanceDue, b.priceApproval], ['Client B', 7200, 0, null]); // 40 × (160 + 20)
@@ -107,11 +107,11 @@ describe('artwork sheets', () => {
     assert.equal(Math.round(jobs.reduce((s, j) => s + j.runningMetres, 0) * 1000) / 1000, 3);
     assert.deepEqual(jobs.map((j) => j.chargedTotal), [5000, 6400]);
     assert.equal((await prisma.priceApproval.count({ where: { orderNo: { in: [a.orderNo, b.orderNo] } } })), 0);
-    // the commission of the sales person is on what the sheet earned above the recommendation (720), not on each client's own premium
+    // the commission of the sales person is on what the sheet earned above the recommendation (60), not on each client's own premium
     const month = new Date().toISOString().slice(0, 7);
     const st = (await buildStatements(month)).statements.find((s) => s.staffId === ids.printer);
     assert.ok(st);
-    assert.ok(Math.abs(st!.artwork.commission - 310.34) < 0.05, `commission ${st!.artwork.commission}`); // 720 ÷ 1.16 × 50%
+    assert.ok(Math.abs(st!.artwork.commission - 25.86) < 0.05, `commission ${st!.artwork.commission}`); // 60 ÷ 1.16 × 50%
   });
 
   it('refuses what the sheet may not be: below the total, under the minimum, no heat press fee', async () => {
@@ -134,19 +134,19 @@ describe('artwork sheets', () => {
     assert.equal(noFee.status, 400);
     assert.match(noFee.body.error, /heat press fee/);
     // a client cannot pay more than their own order
-    const over = await sheet({ rows: [row('A', 'x', 10, 900)], clientPayments: [{ key: sheetClientKey('A', ''), payments: [{ method: 'Cash', amount: 99999 }] }] });
+    const over = await sheet({ rows: [row('A', 'x', 10, 1300)], clientPayments: [{ key: sheetClientKey('A', ''), payments: [{ method: 'Cash', amount: 99999 }] }] });
     assert.equal(over.status, 400);
     assert.match(over.body.error, /cannot exceed/);
     assert.equal((await call('printer', 'POST', '/dtf/sheets', { rollId: 'NOPE', runningMetres: 3, heatPressFee: 20, pieces: 10, rows: [row('A', 'x', 10, 900)] })).status, 400);
   });
 
   it('one client with several sizes is one order with a line each (the single-client case)', async () => {
-    // 1.5 m over 60 artworks: 30 + 3,240 ÷ 60 = 84 each, 5,040 in all
-    const r = await sheet({ runningMetres: 1.5, pieces: 60, client: 'Hope Chapel', rows: [row('', 'small', 50, 60), row('', 'large', 10, 250)] });
+    // 1.5 m over 60 artworks: 5,670 ÷ 60 = 94.50 each, 5,670 in all
+    const r = await sheet({ runningMetres: 1.5, pieces: 60, client: 'Hope Chapel', rows: [row('', 'small', 50, 60), row('', 'large', 10, 270)] });
     assert.equal(r.status, 201, JSON.stringify(r.body));
     assert.equal(r.body.orders.length, 1);
     const o = r.body.orders[0];
-    assert.deepEqual([o.customerName, o.lineItems.length, o.totals.grandTotal], ['Hope Chapel', 2, 5500 + 60 * 20]);
-    assert.deepEqual(o.lineItems.map((l: any) => [l.qty, l.unitPrice]), [[50, 60], [10, 250]]);
+    assert.deepEqual([o.customerName, o.lineItems.length, o.totals.grandTotal], ['Hope Chapel', 2, 5700 + 60 * 20]);
+    assert.deepEqual(o.lineItems.map((l: any) => [l.qty, l.unitPrice]), [[50, 60], [10, 270]]);
   });
 });

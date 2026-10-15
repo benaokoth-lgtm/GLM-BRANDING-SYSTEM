@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, jobCalc, sheetCalc, summariseRoll, todayStr } from '@glm/shared';
+import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, lowestArtworkPrice, runningMetreCalc, sheetCalc, summariseRoll, todayStr } from '@glm/shared';
 import type { DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
@@ -50,7 +50,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const roll = open.find((r) => r.id === rollId);
   const run = num(f.run);
   const pcs = num(f.pieces);
-  const c = jobCalc(run, pcs, settings.fixedChargePerMetre, settings.minPricePerPiece);
+  const c = runningMetreCalc(run, pcs, settings.fixedChargePerMetre);
   const used =
     data.sales.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.metres, 0) +
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
@@ -59,7 +59,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   // The system's price is the recommended one (blank = charge it). Charging MORE earns commission on the extra. Charging LESS — down to
   // the per-piece floor — is a discount: it needs a manager's approval before the job is paid for or produced, and no other discount applies.
   const system = c.finalPerPiece;
-  const floor = settings.minPricePerPiece;
+  const floor = lowestArtworkPrice(settings.minPricePerPiece, system);
   const priceIn = f.price.trim() === '' ? null : num(f.price);
   const belowFloor = priceIn != null && pcs > 0 && priceIn < Math.max(floor, 0.01) - 0.005; // a price of nothing is never allowed, with or without a minimum
   const chosen = priceIn != null && !belowFloor && Math.abs(priceIn - system) > 0.005 ? priceIn : system;
@@ -72,7 +72,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const impact =
     belowSystem && roll && data.canManage
       ? (() => {
-          const hypothetical = { id: 'new', rollId, jobOn: todayStr(), client: '', runningMetres: run, pieces: pcs, fixedChargePerMetreAtJob: settings.fixedChargePerMetre, minPricePerPieceAtJob: settings.minPricePerPiece, chargedPerPiece: chosen, approvalStatus: 'Approved' as const };
+          const hypothetical = { id: 'new', rollId, jobOn: todayStr(), client: '', runningMetres: run, pieces: pcs, fixedChargePerMetreAtJob: settings.fixedChargePerMetre, minPricePerPieceAtJob: 0, chargedPerPiece: chosen, approvalStatus: 'Approved' as const };
           return { now: summariseRoll(settings, roll, data.sales, data.jobs), after: summariseRoll(settings, roll, data.sales, [...data.jobs, hypothetical]) };
         })()
       : null;
@@ -80,8 +80,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const lines: [string, string, string][] = [
     ['Film for this length', `${fmtKsh(settings.fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m — the empty space is paid for too`, run > 0 ? fmtKsh(Math.round(settings.fixedChargePerMetre * run * 100) / 100) : '—'],
     ['Each artwork\'s share', `÷ ${fmtNum(pcs)} artworks`, pcs > 0 && run > 0 ? fmtKsh(Math.round(((settings.fixedChargePerMetre * run) / pcs) * 100) / 100) : '—'],
-    ...(floor > 0 ? ([['Minimum per piece', 'added to each artwork', fmtKsh(floor)]] as [string, string, string][]) : []),
-    ['Recommended price / piece', floor > 0 ? 'share + minimum' : 'each artwork\'s share of the film', fmtKsh(system)],
+    ['Recommended price / piece', 'each artwork\'s share of the film', fmtKsh(system)],
     ...(chosen > system + 0.005 ? ([['Price charged / piece', `${fmtKsh(chosen - system)} above recommended`, fmtKsh(chosen)]] as [string, string, string][]) : []),
     ...(belowSystem ? ([['Price charged / piece', `${fmtKsh(system - chosen)} below recommended — needs approval`, fmtKsh(chosen)]] as [string, string, string][]) : []),
   ];

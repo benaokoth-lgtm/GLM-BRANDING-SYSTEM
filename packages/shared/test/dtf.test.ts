@@ -4,6 +4,8 @@ import {
   DEFAULT_DTF_SETTINGS as S,
   dtfDashboard as dashboard,
   jobCalc,
+  lowestArtworkPrice,
+  runningMetreCalc,
   saleCalc,
   summariseRoll,
   type DtfArtworkJob,
@@ -88,7 +90,7 @@ const sale = (rollId: string, metres: number, price = 500): DtfFilmSale => ({
 });
 const job = (rollId: string, m: number, pieces = 10): DtfArtworkJob => ({
   id: 'j' + m + rollId, rollId, jobOn: '2026-01-02', client: 'x', runningMetres: m, pieces,
-  fixedChargePerMetreAtJob: S.fixedChargePerMetre, minPricePerPieceAtJob: S.minPricePerPiece,
+  fixedChargePerMetreAtJob: 2160, minPricePerPieceAtJob: 30, // a job recorded under the older sum: 30 a piece + 2,160 a metre shared
 });
 
 test('roll roll-up: wastage only on closed rolls, profit absorbs it', () => {
@@ -119,4 +121,13 @@ test('artwork job on running metres alone: (charge per metre × metres) ÷ artwo
   assert.equal(jobCalc(0.53, 4, 600, 0).finalPerPiece, 79.5);
   // and the whole length is always paid for, whatever the number of artworks
   assert.equal(jobCalc(0.53, 3, 600, 0).jobTotal, 318);
+});
+
+test('runningMetreCalc adds nothing per piece; the lowest price of an artwork never exceeds the recommended price', () => {
+  assert.equal(runningMetreCalc(0.53, 2, 600).finalPerPiece, 159);
+  assert.equal(runningMetreCalc(0.53, 2, 600).jobTotal, 318);
+  assert.equal(runningMetreCalc(1, 108, 2160).finalPerPiece, 20); // the old 30 a piece is not added
+  assert.equal(lowestArtworkPrice(30, 159), 30);
+  assert.equal(lowestArtworkPrice(30, 10.7), 10.7); // many artworks on a short length: nobody is asked for more than the recommendation
+  assert.equal(lowestArtworkPrice(0, 159), 0);
 });

@@ -8,13 +8,8 @@ export interface DtfSettings {
   stdPricePerM: number; // the standard film price — what a sale defaults to; staff may charge MORE (there is no ceiling)
   minPricePerM: number; // the floor, and the base that film commission is measured from
   wastageTolerancePct: number;
-  // Artwork-job billing (see jobCalc): every piece pays this per-piece floor
-  // plus a share of a fixed per-running-metre charge, split across however
-  // many pieces that metre covers. The fixed charge is billed against the
-  // whole running length regardless of how much of the roll's width it
-  // actually used — a half-empty strip just has fewer pieces to share it
-  // with, so the client bears that wastage automatically, with no separate
-  // width measurement needed.
+  // Artwork billing (see runningMetreCalc): the film is charged by the running metres it uses, and that charge — fixedChargePerMetre × running metres — is shared equally between the
+  // artworks on the length, so the client bears the empty space; nothing is added per piece. minPricePerPiece is only the lowest price an artwork may be charged (0 = none).
   minPricePerPiece: number;
   fixedChargePerMetre: number;
 }
@@ -26,7 +21,7 @@ export const DEFAULT_DTF_SETTINGS: DtfSettings = {
   minPricePerM: 400,
   wastageTolerancePct: 5,
   minPricePerPiece: 30,
-  fixedChargePerMetre: 2160,
+  fixedChargePerMetre: 3780, // 108 artworks on 2 m come to 70 each
 };
 
 /**
@@ -45,8 +40,8 @@ export const DTF_SERVICE_NAMES: Record<DtfProduct, { film: string; artwork: stri
 };
 
 /**
- * UV DTF starts from these: a 30 cm × 50 m roll, film sold at KES 1,500 a metre (VAT included) with a floor of 1,200, and artwork charged as 30 a piece plus a fixed 1,070 for every
- * running metre shared across the pieces on it — 107 pieces on a metre come to 40 each (4,280 a metre). Editable in DTF → UV DTF → Setup.
+ * UV DTF starts from these: a 30 cm × 50 m roll, film sold at KES 1,500 a metre (VAT included) with a floor of 1,200, and artwork charged 4,280 for every running metre, shared across
+ * the artworks on it — 107 artworks on a metre come to 40 each. Editable in DTF → UV DTF → Setup.
  */
 export const UV_DTF_SETTINGS: DtfSettings = {
   rollLengthM: 50,
@@ -55,7 +50,7 @@ export const UV_DTF_SETTINGS: DtfSettings = {
   minPricePerM: 1200,
   wastageTolerancePct: 5,
   minPricePerPiece: 30,
-  fixedChargePerMetre: 1070,
+  fixedChargePerMetre: 4280, // 107 artworks on a metre come to 40 each
 };
 
 export interface DtfRoll {
@@ -178,6 +173,18 @@ export function jobCalc(
     jobTotal: r2(finalPerPiece * pieces),
   };
 }
+
+/**
+ * How ALL new artwork is priced: the film is charged by the running metres it uses, whether or not the artworks fill its width, and that charge is shared equally between the artworks on
+ * the length — (charge per running metre × running metres) ÷ artworks, so the client bears the empty space. There is no per-piece amount added. (jobCalc above keeps the older
+ * "minimum per piece + share" sum only so that jobs recorded under it, which carry their own snapshot, are read back as they were saved.)
+ */
+export function runningMetreCalc(runningMetres: number, pieces: number, chargePerMetre: number): JobCalc {
+  return jobCalc(runningMetres, pieces, chargePerMetre, 0);
+}
+
+/** The lowest price an artwork may be charged: the minimum in Setup, unless the recommended price itself is lower (many artworks on a short length) — nobody is asked for more than that. */
+export const lowestArtworkPrice = (minPricePerPiece: number, recommendedPerPiece: number): number => Math.min(minPricePerPiece, recommendedPerPiece);
 
 /** The recommended price per piece the system works out for a job (before any extra the staff member charged). */
 export function systemJobCalc(j: DtfArtworkJob): JobCalc {

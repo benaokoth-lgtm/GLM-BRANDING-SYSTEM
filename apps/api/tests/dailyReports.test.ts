@@ -43,9 +43,9 @@ describe('DTF daily roll-ups and business head detail', () => {
     server = app.listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 
-    // artwork: 2 m / 108 pcs (recommended 70) at the recommended price, paid in full; 1 m / 36 pcs (recommended 90) charged 100, part paid
+    // artwork: 2 m / 108 pcs (recommended 70) at the recommended price, paid in full; 1 m / 42 pcs (recommended 90) charged 100, part paid
     const j1 = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Daily One', runningMetres: 2, pieces: 108, heatPressFee: 20, amountPaid: 9720 });
-    const j2 = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Daily Two', runningMetres: 1, pieces: 36, pricePerPiece: 100, heatPressFee: 20, amountPaid: 1000 });
+    const j2 = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Daily Two', runningMetres: 1, pieces: 42, pricePerPiece: 100, heatPressFee: 20, amountPaid: 1000 });
     // film: 10 m at 450 paid in full; 5 m at 500 with 1,000 paid
     const s1 = await call('printer', 'POST', '/dtf/sales', { rollId: ROLL, client: 'Film One', metres: 10, pricePerM: 450, amountPaid: 4500 });
     const s2 = await call('printer', 'POST', '/dtf/sales', { rollId: ROLL, client: 'Film Two', metres: 5, pricePerM: 500, amountPaid: 1000 });
@@ -76,9 +76,9 @@ describe('DTF daily roll-ups and business head detail', () => {
     const two = ours.find((o: any) => o.orderNo === orderNos.j2);
     assert.equal(two.recommendedPerPiece, 90);
     assert.equal(two.finalPerPiece, 100);
-    assert.equal(two.total, 4320);
+    assert.equal(two.total, 5040);
     assert.equal(two.paid, 1000);
-    assert.equal(two.balance, 3320);
+    assert.equal(two.balance, 4040);
 
     // the figures for the day are the sum of its orders
     const sum = (k: string) => Math.round(d.orders.filter((o: any) => o.approval !== 'Pending').reduce((a: number, o: any) => a + o[k], 0) * 100) / 100;
@@ -97,14 +97,14 @@ describe('DTF daily roll-ups and business head detail', () => {
     await prisma.dtfArtworkJob.updateMany({ where: { rollId: ROLL }, data: { jobOn: '2033-06-01' } });
     const d = (await call('lead', 'GET', '/dtf/daily?kind=jobs&from=2033-06-01&to=2033-06-01')).body.days[0];
     assert.equal(d.count, 2);
-    assert.equal(d.pieces, 144);
+    assert.equal(d.pieces, 150);
     assert.equal(d.metres, 3);
-    assert.equal(d.avgPricePerJob, 7020); // (9,720 + 4,320) ÷ 2
-    assert.equal(d.avgRecommendedPerPiece, 75); // (70 × 108 + 90 × 36) ÷ 144
-    assert.equal(d.avgFinalPerPiece, 77.5); // (70 × 108 + 100 × 36) ÷ 144
-    assert.equal(d.total, 14040);
+    assert.equal(d.avgPricePerJob, 7380); // (9,720 + 5,040) ÷ 2
+    assert.equal(d.avgRecommendedPerPiece, 75.6); // (70 × 108 + 90 × 42) ÷ 150
+    assert.equal(d.avgFinalPerPiece, 78.4); // (70 × 108 + 100 × 42) ÷ 150
+    assert.equal(d.total, 14760);
     assert.equal(d.paid, 10720);
-    assert.equal(d.balance, 3320);
+    assert.equal(d.balance, 4040);
   });
 
   it('film sales roll up by date: metres, average price per metre and the money, with the orders behind the day', async () => {

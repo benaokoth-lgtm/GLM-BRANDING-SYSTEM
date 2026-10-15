@@ -109,7 +109,7 @@ export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, mi
         {(
           [
             ['Artworks placed in rows', expected > 0 ? `of the ${fmtNum(expected)} on ${fmtNum(run, 2)} m` : `on ${fmtNum(run, 2)} m`, fmtNum(calc.pieces)],
-            ['Recommended total', `${fmtKsh(fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m${minPricePerPiece > 0 ? ` + ${fmtKsh(minPricePerPiece)} × ${fmtNum(expected > 0 ? expected : calc.pieces)}` : ''}`, calc.pieces > 0 && run > 0 ? fmtKsh(calc.recommendedTotal) : '—'],
+            ['Recommended total', `${fmtKsh(fixedChargePerMetre)}/m × ${fmtNum(run, 2)} m`, calc.pieces > 0 && run > 0 ? fmtKsh(calc.recommendedTotal) : '—'],
             ['Your total', 'the rows added up', fmtKsh(calc.enteredTotal)],
           ] as [string, string, string][]
         ).map(([l, fm, v]) => (

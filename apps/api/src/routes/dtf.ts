@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { notifyApprovers } from '../approvals';
 import { randomUUID } from 'node:crypto';
-import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, jobCalc, jobTotals, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
@@ -30,7 +30,7 @@ const productOf = (v: unknown): DtfProduct => (v === 'uv' ? 'uv' : 'dtf');
 const settingsId = (product: DtfProduct) => (product === 'uv' ? 2 : 1);
 async function getSettings(product: DtfProduct = 'dtf') {
   if (product === 'uv') return prisma.dtfSetting.upsert({ where: { id: 2 }, update: {}, create: { id: 2, ...UV_DTF_SETTINGS } });
-  return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+  return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
 }
 /** The ids of the UV DTF rolls (a roll belongs to a product; the DTF ones are everything else). */
 async function uvRollIds(): Promise<string[]> {
@@ -924,8 +924,7 @@ dtfRouter.delete('/sales/:id', requireRole('Admin'), async (req, res) => {
 });
 
 // ── Artwork jobs ─────────────────────────────────────────────────────────
-// Price per piece = minPricePerPiece + fixedChargePerMetre × runningMetres ÷
-// pieces — see jobCalc in packages/shared/src/dtf.ts. One physical film
+// Price per piece = fixedChargePerMetre × runningMetres ÷ pieces — see runningMetreCalc in packages/shared/src/dtf.ts (the empty space on the film is borne by the artworks). One physical film
 // print is consumed per piece pressed (a DTF transfer is single-use), so
 // there's no way to press the same printed design onto more pieces than
 // were actually printed on the film — the client only enters pieces and
@@ -968,9 +967,10 @@ dtfRouter.post('/jobs', async (req, res) => {
   if (product === 'dtf' && d.heatPressFee == null) return res.status(400).json({ error: 'Choose the heat press fee — a job cannot be processed without it' });
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const settings = await getSettings(product);
-  const sys = jobCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece);
-  if (d.pricePerPiece != null && d.pricePerPiece < settings.minPricePerPiece - 0.005) {
-    return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${settings.minPricePerPiece} KES` });
+  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre);
+  const lowest = lowestArtworkPrice(settings.minPricePerPiece, sys.finalPerPiece);
+  if (d.pricePerPiece != null && d.pricePerPiece < lowest - 0.005) {
+    return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${lowest} KES` });
   }
   const chargedPerPiece = d.pricePerPiece != null && Math.abs(d.pricePerPiece - sys.finalPerPiece) > 0.005 ? Math.round(d.pricePerPiece * 100) / 100 : null;
   const needsApproval = chargedPerPiece != null && chargedPerPiece < sys.finalPerPiece - 0.005;
@@ -1009,7 +1009,7 @@ dtfRouter.post('/jobs', async (req, res) => {
           runningMetres: d.runningMetres,
           pieces: d.pieces,
           fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
-          minPricePerPieceAtJob: settings.minPricePerPiece,
+          minPricePerPieceAtJob: 0, // nothing is added per piece: the price is the artwork's share of the running metres
           chargedPerPiece,
           approvalStatus: needsApproval ? 'Pending' : 'Approved',
           capturedByName: req.user!.name,
@@ -1136,7 +1136,7 @@ dtfRouter.post('/sheets', async (req, res) => {
             runningMetres: c.metres,
             pieces: c.pieces,
             fixedChargePerMetreAtJob: settings.fixedChargePerMetre,
-            minPricePerPieceAtJob: settings.minPricePerPiece,
+            minPricePerPieceAtJob: 0, // nothing is added per piece: the price is the artwork's share of the running metres
             chargedPerPiece: Math.abs(avg - calc.recommendedPerPiece) > 0.005 ? avg : null,
             chargedTotal: c.amount,
             sheetId,

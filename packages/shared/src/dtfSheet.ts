@@ -1,12 +1,12 @@
-import { jobCalc } from './dtf';
+import { lowestArtworkPrice, runningMetreCalc } from './dtf';
 
 // DTF / UV DTF artwork order with artworks of different sizes on one length of film, possibly for different clients ("a sheet"). The sales person enters rows — a size, how many artworks of it,
 // and the price for each — and the system checks that the rows together bring in at least what the usual formula asks for the whole length:
 //
-//     recommended total = (minimum price per piece + fixed charge per metre × metres ÷ ALL the artworks) × all the artworks
+//     recommended total = charge per running metre × running metres      (shared equally: each artwork's recommended price is that ÷ ALL the artworks)
 //
 // The cost is shared by NUMBER of artworks, not by their size, so the recommended price of every artwork is the same; the rows are free to charge sizes differently (the large ones more, the
-// small ones less) as long as the total is not below the recommended total, and no row is below the minimum price for a piece. Rows with the same client make that client's order (one line per
+// small ones less) as long as the total is not below the recommended total, and no row is below the lowest price for a piece (the minimum in Setup, if there is one). Rows with the same client make that client's order (one line per
 // size); the film is taken from the roll once, as the metres entered, and each client's order carries its share of those metres by number of artworks. Prices are what the customer pays, VAT
 // included, before the heat press fee.
 
@@ -69,16 +69,17 @@ export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre:
   const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.label.trim() || r.client.trim());
   if (!(metres > 0)) problems.push('Enter the running metres');
   if (live.length === 0) problems.push('Add at least one row of artworks');
-  live.forEach((r, i) => {
-    const n = i + 1;
-    if (!Number.isInteger(r.qty) || r.qty < 1) problems.push(`Row ${n}: enter how many artworks`);
-    if (!(r.price >= minPricePerPiece - 0.005)) problems.push(`Row ${n}: the price of an artwork cannot be below the minimum of ${minPricePerPiece}`);
-  });
   const pieces = live.reduce((a, r) => a + (Number.isInteger(r.qty) && r.qty > 0 ? r.qty : 0), 0);
   if (expectedPieces > 0 && pieces > 0 && pieces !== expectedPieces) problems.push(`The rows add up to ${pieces} artworks but the length has ${expectedPieces} — ${pieces < expectedPieces ? `${expectedPieces - pieces} still to place` : `${pieces - expectedPieces} too many`}`);
   // the recommended price is the one the sales person saw: worked out on the artworks entered beside the metres when they gave them
   const basis = expectedPieces > 0 ? expectedPieces : pieces;
-  const rec = pieces > 0 && metres > 0 ? jobCalc(metres, basis, fixedChargePerMetre, minPricePerPiece) : { finalPerPiece: 0, jobTotal: 0 };
+  const rec = pieces > 0 && metres > 0 ? runningMetreCalc(metres, basis, fixedChargePerMetre) : { finalPerPiece: 0, jobTotal: 0 };
+  const lowest = lowestArtworkPrice(minPricePerPiece, rec.finalPerPiece);
+  live.forEach((r, i) => {
+    const n = i + 1;
+    if (!Number.isInteger(r.qty) || r.qty < 1) problems.push(`Row ${n}: enter how many artworks`);
+    if (!(r.price > 0) || !(r.price >= lowest - 0.005)) problems.push(`Row ${n}: the price of an artwork cannot be below the minimum of ${Math.max(lowest, 0.01)}`);
+  });
   const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0);
   const enteredTotal = r2(valid.reduce((a, r) => a + r.qty * r.price, 0));
 

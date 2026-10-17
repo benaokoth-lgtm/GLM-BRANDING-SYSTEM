@@ -39,6 +39,31 @@ export function priceApprovalPending(o: { dtfArtworkJob?: { approvalStatus: stri
 
 export type FullOrder = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 
+// What the order LISTS need, and no more: the lists (All Orders) are the heaviest read in the system, and loading the whole staff row, the material and every column of each payment for
+// thousands of orders was most of their time. A FullOrder satisfies this shape too, so every summary caller keeps working.
+export const orderListInclude = Prisma.validator<Prisma.OrderInclude>()({
+  staff: { select: { id: true, name: true } },
+  corporateClient: { select: { id: true, name: true, email: true, phone: true, contactPerson: true } },
+  lineItems: {
+    select: {
+      itemType: true,
+      serviceId: true,
+      materialId: true,
+      qty: true,
+      unitPrice: true,
+      discountPct: true,
+      discountAmt: true,
+      heatPressFee: true,
+      service: { select: { name: true, businessHead: { select: { name: true } } } },
+    },
+  },
+  payments: { select: { date: true, amount: true, method: true }, orderBy: { id: 'asc' } },
+  dtfArtworkJob: { select: { approvalStatus: true } },
+  embroideryJob: { select: { approvalStatus: true } },
+  dtfFilmSale: { select: { id: true } },
+});
+export type ListOrder = Prisma.OrderGetPayload<{ include: typeof orderListInclude }>;
+
 function toLineItemInput(li: {
   itemType: string;
   serviceId: number | null;
@@ -61,7 +86,7 @@ function toLineItemInput(li: {
   };
 }
 
-export function serializeSummary(order: FullOrder) {
+export function serializeSummary(order: ListOrder) {
   const lineItems = order.lineItems.map(toLineItemInput);
   const payments: PaymentRecord[] = order.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method as PaymentRecord['method'] }));
   const totals = computeOrderTotals({ lineItems, orderDiscountPct: order.orderDiscountPct, orderDiscountAmt: order.orderDiscountAmt }, payments);
@@ -250,8 +275,15 @@ export async function recordOrderPayments(
 
 // ── List ─────────────────────────────────────────────────────────────────
 ordersRouter.get('/', async (req, res) => {
-  const { staffId, status, channel } = req.query as { staffId?: string; status?: string; channel?: string };
+  const { staffId, status, channel, days } = req.query as { staffId?: string; status?: string; channel?: string; days?: string };
   const where: Record<string, unknown> = {};
+  // days=N (All Orders): the orders raised in the last N days, plus everything still open however old — not yet completed, or handed over on credit with a balance — so the
+  // screen's open-order figures stay complete while years of finished orders are left out. Without it the whole list is returned, as before.
+  const window = Number(days);
+  if (Number.isInteger(window) && window > 0 && window <= 3650) {
+    const cutoff = new Date(Date.now() - window * 86400000).toISOString().slice(0, 10);
+    where.OR = [{ createdDate: { gte: cutoff } }, { stage: { not: 'Completed' }, status: { not: 'Quote' } }, { handedOverOnCredit: true }];
+  }
 
   if (!(await seesAllOrders(req.user!))) {
     where.staffId = req.user!.id;
@@ -268,7 +300,7 @@ ordersRouter.get('/', async (req, res) => {
     where.dtfArtworkJob = { isNot: null };
   } else if (channel && channel !== 'all') where.channel = channel;
 
-  const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: 'desc' } });
+  const orders = await prisma.order.findMany({ where, include: orderListInclude, orderBy: { id: 'desc' } });
   res.json(orders.map(serializeSummary));
 });
 

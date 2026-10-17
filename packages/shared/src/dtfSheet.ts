@@ -64,7 +64,7 @@ export function sheetClientKey(client: string, phone: string): string {
  * `expectedPieces` is the number of artworks on the length as the sales person entered it (the number that, with the metres, gives the base price); when it is given the rows must add up to it,
  * so the recommended price every artwork is judged against is the one they saw. Left out, the rows themselves say how many there are.
  */
-export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre: number, minPricePerPiece: number, defaultClient = '', defaultPhone = '', expectedPieces = 0, smallSharePrice = 0): SheetCalc {
+export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre: number, minPricePerPiece: number, defaultClient = '', defaultPhone = '', expectedPieces = 0, smallSharePrice = 0, smallShareBelow = 0): SheetCalc {
   const problems: string[] = [];
   const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.label.trim() || r.client.trim());
   if (!(metres > 0)) problems.push('Enter the running metres');
@@ -73,7 +73,7 @@ export function sheetCalc(rows: SheetRow[], metres: number, fixedChargePerMetre:
   if (expectedPieces > 0 && pieces > 0 && pieces !== expectedPieces) problems.push(`The rows add up to ${pieces} artworks but the length has ${expectedPieces} — ${pieces < expectedPieces ? `${expectedPieces - pieces} still to place` : `${pieces - expectedPieces} too many`}`);
   // the recommended price is the one the sales person saw: worked out on the artworks entered beside the metres when they gave them
   const basis = expectedPieces > 0 ? expectedPieces : pieces;
-  const rec = pieces > 0 && metres > 0 ? runningMetreCalc(metres, basis, fixedChargePerMetre, minPricePerPiece, smallSharePrice) : { finalPerPiece: 0, jobTotal: 0 };
+  const rec = pieces > 0 && metres > 0 ? runningMetreCalc(metres, basis, fixedChargePerMetre, smallShareBelow, smallSharePrice) : { finalPerPiece: 0, jobTotal: 0 };
   const lowest = lowestArtworkPrice(minPricePerPiece, rec.finalPerPiece);
   live.forEach((r, i) => {
     const n = i + 1;

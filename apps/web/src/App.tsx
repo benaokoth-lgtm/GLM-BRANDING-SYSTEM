@@ -1,30 +1,31 @@
+import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './state/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import RequireRole from './components/RequireRole';
 import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
-import Privacy from './pages/Privacy';
-import NewWalkinOrder from './pages/NewWalkinOrder';
-import NewFilmOrder from './pages/NewFilmOrder';
-import NewArtworkOrder from './pages/NewArtworkOrder';
-import Orders from './pages/Orders';
-import Payments from './pages/Payments';
-import MasterData from './pages/MasterData';
-import Finance from './pages/Finance';
-import PettyCashDesk from './pages/PettyCashDesk';
-import Hr from './pages/Hr';
-import Approvals from './pages/Approvals';
-import NewEmbroideryOrder from './pages/NewEmbroideryOrder';
-import JobCosting from './pages/JobCosting';
-import Compliance from './pages/Compliance';
-import Accounting from './pages/Accounting';
-import Production from './pages/Production';
-import Quality from './pages/Quality';
-import Commission from './pages/Commission';
-import Reports from './pages/Reports';
-import Stock from './pages/Stock';
-import Dtf from './pages/Dtf';
+const Privacy = lazy(() => import('./pages/Privacy'));
+const NewWalkinOrder = lazy(() => import('./pages/NewWalkinOrder'));
+const NewFilmOrder = lazy(() => import('./pages/NewFilmOrder'));
+const NewArtworkOrder = lazy(() => import('./pages/NewArtworkOrder'));
+const Orders = lazy(() => import('./pages/Orders'));
+const Payments = lazy(() => import('./pages/Payments'));
+const MasterData = lazy(() => import('./pages/MasterData'));
+const Finance = lazy(() => import('./pages/Finance'));
+const PettyCashDesk = lazy(() => import('./pages/PettyCashDesk'));
+const Hr = lazy(() => import('./pages/Hr'));
+const Approvals = lazy(() => import('./pages/Approvals'));
+const NewEmbroideryOrder = lazy(() => import('./pages/NewEmbroideryOrder'));
+const JobCosting = lazy(() => import('./pages/JobCosting'));
+const Compliance = lazy(() => import('./pages/Compliance'));
+const Accounting = lazy(() => import('./pages/Accounting'));
+const Production = lazy(() => import('./pages/Production'));
+const Quality = lazy(() => import('./pages/Quality'));
+const Commission = lazy(() => import('./pages/Commission'));
+const Reports = lazy(() => import('./pages/Reports'));
+const Stock = lazy(() => import('./pages/Stock'));
+const Dtf = lazy(() => import('./pages/Dtf'));
 import { useFeatures } from './hooks/useFeatures';
 
 // The Commission module exists only while an Admin has switched the scheme on (Master Data → Company Info).
@@ -45,6 +46,7 @@ export default function App() {
   const { user } = useAuth();
 
   return (
+    <Suspense fallback={<p className="note" style={{ padding: 'var(--space-4)' }}>Loading…</p>}>
     <Routes>
       <Route path="/login" element={<Login />} />
       {/* Public: what the system stores and why (Google asks for this address when Drive backups are connected). */}
@@ -229,5 +231,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
+    </Suspense>
   );
 }

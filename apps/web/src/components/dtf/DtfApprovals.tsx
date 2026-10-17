@@ -3,6 +3,7 @@ import { fmtDate, fmtKsh, fmtNum, summariseRoll } from '@glm/shared';
 import { api } from '../../api/client';
 import { useAuth } from '../../state/AuthContext';
 import { Card, Field } from './shared';
+import ApprovedPriceReport from './ApprovedPriceReport';
 import type { DtfTabProps } from './shared';
 
 // Price approvals: an artwork job or an embroidery job charged BELOW the recommended price waits here. It cannot be paid for or produced until a manager
@@ -72,6 +73,7 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
 
   const pending = rows.filter((r) => r.status === 'Pending');
   const decided = rows.filter((r) => r.status !== 'Pending');
+  const rejected = decided.filter((r) => r.status === 'Rejected');
 
   // The roll as it stands, and as it would stand if this job were approved (its metres are already on the roll while it waits).
   const rollImpact = (a: Approval) => {
@@ -173,38 +175,39 @@ export default function DtfApprovals({ data, reload, setError }: DtfTabProps) {
         )}
       </Card>
 
-      <Card title="Decided">
-        {decided.length === 0 ? (
-          <p className="note" style={{ margin: 0 }}>No decisions yet.</p>
+      <ApprovedPriceReport product={data.product} refreshKey={rows.length + ':' + decided.filter((r) => r.status === 'Approved').length} />
+
+      <Card title={`Rejected (${rejected.length})`}>
+        {rejected.length === 0 ? (
+          <p className="note" style={{ margin: 0 }}>Nothing has been rejected.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="table" style={{ whiteSpace: 'nowrap' }}>
               <thead>
                 <tr>
+                  <th>Date requested</th>
                   <th>Order</th>
                   <th>Roll / job</th>
                   <th>Client</th>
-                  <th style={{ textAlign: 'right' }}>Recommended</th>
-                  <th style={{ textAlign: 'right' }}>Charged</th>
-                  <th style={{ textAlign: 'right' }}>Discount</th>
+                  <th style={{ textAlign: 'right' }}>Suggested price</th>
+                  <th style={{ textAlign: 'right' }}>Price asked for</th>
                   <th>Asked by</th>
-                  <th>Decision</th>
+                  <th>Rejected by</th>
+                  <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
-                {decided.map((a) => (
+                {rejected.map((a) => (
                   <tr key={a.id}>
+                    <td>{fmtDate(a.requestedAt.slice(0, 10))}</td>
                     <td>{a.orderNo}</td>
                     <td>{a.kind === 'embroidery' ? 'Embroidery' : a.rollId}</td>
                     <td>{a.client}</td>
                     <td style={{ textAlign: 'right' }}>{fmtNum(a.systemPerPiece, 2)}</td>
                     <td style={{ textAlign: 'right' }}>{fmtNum(a.chargedPerPiece, 2)}</td>
-                    <td style={{ textAlign: 'right' }}>{fmtKsh(a.shortfall)}</td>
                     <td>{a.requestedByName}</td>
-                    <td>
-                      <span className={a.status === 'Approved' ? 'tag tag-accent' : 'tag tag-neutral'}>{a.status}</span> <span className="text-muted">{a.decidedByName}</span>
-                      {a.reason && <div className="note" style={{ margin: 0 }}>{a.reason}</div>}
-                    </td>
+                    <td>{a.decidedByName}</td>
+                    <td>{a.reason}</td>
                   </tr>
                 ))}
               </tbody>

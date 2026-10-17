@@ -65489,6 +65489,7 @@ var DEFAULT_DTF_SETTINGS = {
   minPricePerPiece: 30,
   fixedChargePerMetre: 3780,
   // 108 artworks on 2 m come to 70 each
+  smallShareBelow: 30,
   smallSharePrice: 40
 };
 var DTF_SERVICE_NAMES = {
@@ -65504,6 +65505,8 @@ var UV_DTF_SETTINGS = {
   minPricePerPiece: 30,
   fixedChargePerMetre: 4280,
   // 107 artworks on a metre come to 40 each
+  smallShareBelow: 40,
+  // the recommended price of an artwork is never below 40
   smallSharePrice: 40
 };
 var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -65526,13 +65529,13 @@ function jobCalc(runningMetres, pieces, fixedChargePerMetre, minPricePerPiece) {
     jobTotal: r2(finalPerPiece * pieces)
   };
 }
-function runningMetreCalc(runningMetres, pieces, chargePerMetre, lowestPrice = 0, smallSharePrice = 0) {
+function runningMetreCalc(runningMetres, pieces, chargePerMetre, belowPrice = 0, smallSharePrice = 0) {
   const share = jobCalc(runningMetres, pieces, chargePerMetre, 0);
-  if (lowestPrice > 0 && smallSharePrice > 0 && pieces > 0 && share.finalPerPiece < lowestPrice - 5e-3) return { finalPerPiece: r2(smallSharePrice), jobTotal: r2(smallSharePrice * pieces) };
+  if (belowPrice > 0 && smallSharePrice > 0 && pieces > 0 && share.finalPerPiece < belowPrice - 5e-3) return { finalPerPiece: r2(smallSharePrice), jobTotal: r2(smallSharePrice * pieces) };
   return share;
 }
-function usesSmallSharePrice(runningMetres, pieces, chargePerMetre, lowestPrice = 0, smallSharePrice = 0) {
-  return runningMetreCalc(runningMetres, pieces, chargePerMetre, lowestPrice, smallSharePrice).finalPerPiece !== jobCalc(runningMetres, pieces, chargePerMetre, 0).finalPerPiece;
+function usesSmallSharePrice(runningMetres, pieces, chargePerMetre, belowPrice = 0, smallSharePrice = 0) {
+  return runningMetreCalc(runningMetres, pieces, chargePerMetre, belowPrice, smallSharePrice).finalPerPiece !== jobCalc(runningMetres, pieces, chargePerMetre, 0).finalPerPiece;
 }
 function chargeToSnapshot(runningMetres, calc, chargePerMetre, usedSmallShare) {
   return usedSmallShare && runningMetres > 0 ? calc.jobTotal / runningMetres : chargePerMetre;
@@ -66706,7 +66709,7 @@ function sheetClientKey(client, phone) {
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
-function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultClient = "", defaultPhone = "", expectedPieces = 0, smallSharePrice = 0) {
+function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultClient = "", defaultPhone = "", expectedPieces = 0, smallSharePrice = 0, smallShareBelow = 0) {
   const problems = [];
   const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.label.trim() || r.client.trim());
   if (!(metres > 0)) problems.push("Enter the running metres");
@@ -66714,7 +66717,7 @@ function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultC
   const pieces = live.reduce((a2, r) => a2 + (Number.isInteger(r.qty) && r.qty > 0 ? r.qty : 0), 0);
   if (expectedPieces > 0 && pieces > 0 && pieces !== expectedPieces) problems.push(`The rows add up to ${pieces} artworks but the length has ${expectedPieces} \u2014 ${pieces < expectedPieces ? `${expectedPieces - pieces} still to place` : `${pieces - expectedPieces} too many`}`);
   const basis = expectedPieces > 0 ? expectedPieces : pieces;
-  const rec = pieces > 0 && metres > 0 ? runningMetreCalc(metres, basis, fixedChargePerMetre, minPricePerPiece, smallSharePrice) : { finalPerPiece: 0, jobTotal: 0 };
+  const rec = pieces > 0 && metres > 0 ? runningMetreCalc(metres, basis, fixedChargePerMetre, smallShareBelow, smallSharePrice) : { finalPerPiece: 0, jobTotal: 0 };
   const lowest = lowestArtworkPrice(minPricePerPiece, rec.finalPerPiece);
   live.forEach((r, i) => {
     const n = i + 1;
@@ -73308,6 +73311,27 @@ var orderInclude = import_client2.Prisma.validator()({
 function priceApprovalPending(o) {
   return o.dtfArtworkJob?.approvalStatus === "Pending" || o.embroideryJob?.approvalStatus === "Pending";
 }
+var orderListInclude = import_client2.Prisma.validator()({
+  staff: { select: { id: true, name: true } },
+  corporateClient: { select: { id: true, name: true, email: true, phone: true, contactPerson: true } },
+  lineItems: {
+    select: {
+      itemType: true,
+      serviceId: true,
+      materialId: true,
+      qty: true,
+      unitPrice: true,
+      discountPct: true,
+      discountAmt: true,
+      heatPressFee: true,
+      service: { select: { name: true, businessHead: { select: { name: true } } } }
+    }
+  },
+  payments: { select: { date: true, amount: true, method: true }, orderBy: { id: "asc" } },
+  dtfArtworkJob: { select: { approvalStatus: true } },
+  embroideryJob: { select: { approvalStatus: true } },
+  dtfFilmSale: { select: { id: true } }
+});
 function toLineItemInput(li) {
   return {
     itemType: li.itemType,
@@ -73455,8 +73479,13 @@ async function recordOrderPayments(tx, order, lines, staffId, date = todayStr())
   }
 }
 ordersRouter.get("/", async (req, res) => {
-  const { staffId, status, channel } = req.query;
+  const { staffId, status, channel, days } = req.query;
   const where = {};
+  const window2 = Number(days);
+  if (Number.isInteger(window2) && window2 > 0 && window2 <= 3650) {
+    const cutoff = new Date(Date.now() - window2 * 864e5).toISOString().slice(0, 10);
+    where.OR = [{ createdDate: { gte: cutoff } }, { stage: { not: "Completed" }, status: { not: "Quote" } }, { handedOverOnCredit: true }];
+  }
   if (!await seesAllOrders(req.user)) {
     where.staffId = req.user.id;
   } else if (staffId && staffId !== "all") {
@@ -73470,7 +73499,7 @@ ordersRouter.get("/", async (req, res) => {
     where.channel = "dtf";
     where.dtfArtworkJob = { isNot: null };
   } else if (channel && channel !== "all") where.channel = channel;
-  const orders = await prisma.order.findMany({ where, include: orderInclude, orderBy: { id: "desc" } });
+  const orders = await prisma.order.findMany({ where, include: orderListInclude, orderBy: { id: "desc" } });
   res.json(orders.map(serializeSummary));
 });
 ordersRouter.get("/:id/pdf", async (req, res) => {
@@ -79027,11 +79056,12 @@ dtfRouter.get("/data", async (req, res) => {
   const perms = await permissionsForRole(req.user.role);
   const canManage = perms.canManageDtf;
   const product = productOf(req.query.product);
+  const openOnly = !canManage || req.query.scope === "order";
   const [settings, rolls, sales, jobs] = await Promise.all([
     getSettings(product),
-    prisma.dtfRoll.findMany({ where: { product, ...canManage ? {} : { status: "open" } }, orderBy: { id: "asc" } }),
-    prisma.dtfFilmSale.findMany({ where: { roll: { product } }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] }),
-    prisma.dtfArtworkJob.findMany({ where: { roll: { product } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
+    prisma.dtfRoll.findMany({ where: { product, ...openOnly ? { status: "open" } : {} }, orderBy: { id: "asc" } }),
+    prisma.dtfFilmSale.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] }),
+    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
   ]);
   const uvIds = await uvRollIds();
   res.json({
@@ -79045,6 +79075,7 @@ dtfRouter.get("/data", async (req, res) => {
       wastageTolerancePct: settings.wastageTolerancePct,
       minPricePerPiece: settings.minPricePerPiece,
       fixedChargePerMetre: settings.fixedChargePerMetre,
+      smallShareBelow: settings.smallShareBelow,
       smallSharePrice: settings.smallSharePrice
     },
     rolls: rolls.map((r) => ({
@@ -79391,8 +79422,9 @@ var settingsSchema6 = external_exports.object({
   wastageTolerancePct: external_exports.number().min(0).max(100),
   minPricePerPiece: external_exports.number().min(0),
   fixedChargePerMetre: external_exports.number().min(0),
+  smallShareBelow: external_exports.number().min(0).optional(),
   smallSharePrice: external_exports.number().min(0).optional()
-}).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" }).refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: "The price used for a small share cannot be below the lowest price of an artwork" });
+}).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" }).refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: "The price used for a small share cannot be below the lowest price of an artwork" }).refine((s) => !((s.smallShareBelow ?? 0) > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < (s.smallShareBelow ?? 0)), { message: "The price used for a small share cannot be below the share it applies to" });
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
   const parsed = settingsSchema6.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
@@ -79675,8 +79707,8 @@ dtfRouter.post("/jobs", async (req, res) => {
   if (product === "dtf" && d.heatPressFee == null) return res.status(400).json({ error: "Choose the heat press fee \u2014 a job cannot be processed without it" });
   const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
   const settings = await getSettings(product);
-  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
-  const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
+  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
+  const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   const lowest = lowestArtworkPrice(settings.minPricePerPiece, sys.finalPerPiece);
   if (d.pricePerPiece != null && d.pricePerPiece < lowest - 5e-3) {
     return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${lowest} KES` });
@@ -79789,8 +79821,8 @@ dtfRouter.post("/sheets", async (req, res) => {
   if (product === "dtf" && d.heatPressFee == null) return res.status(400).json({ error: "Choose the heat press fee \u2014 a job cannot be processed without it" });
   const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
   const settings = await getSettings(product);
-  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice);
-  const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
+  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice, settings.smallShareBelow);
+  const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? "The sheet cannot be priced" });
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
@@ -79930,10 +79962,27 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
   });
   res.json({ kind, days });
 });
-dtfRouter.get("/approvals", manageOnly, async (req, res) => {
+var approvalOut = (r) => ({ ...r, requestedAt: r.requestedAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null, pctBelow: r.systemPerPiece > 0 ? Math.round((r.systemPerPiece - r.chargedPerPiece) / r.systemPerPiece * 1e3) / 10 : 0 });
+var approvalScope = async (product) => {
   const uvIds = await uvRollIds();
-  const rows = await prisma.priceApproval.findMany({ where: productOf(req.query.product) === "uv" ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } }, orderBy: [{ status: "asc" }, { id: "desc" }], take: 200 });
-  res.json(rows.map((r) => ({ ...r, requestedAt: r.requestedAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null, pctBelow: r.systemPerPiece > 0 ? Math.round((r.systemPerPiece - r.chargedPerPiece) / r.systemPerPiece * 1e3) / 10 : 0 })));
+  return product === "uv" ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } };
+};
+dtfRouter.get("/approvals", manageOnly, async (req, res) => {
+  const scope = await approvalScope(productOf(req.query.product));
+  const pending = await prisma.priceApproval.findMany({ where: { ...scope, status: "Pending" }, orderBy: { id: "desc" } });
+  const decided2 = await prisma.priceApproval.findMany({ where: { ...scope, NOT: { status: "Pending" } }, orderBy: { id: "desc" }, take: 100 });
+  res.json([...decided2, ...pending].map(approvalOut));
+});
+dtfRouter.get("/approvals/report", manageOnly, async (req, res) => {
+  const scope = await approvalScope(productOf(req.query.product));
+  const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? /* @__PURE__ */ new Date(`${req.query.from}T00:00:00`) : null;
+  const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? /* @__PURE__ */ new Date(`${req.query.to}T23:59:59.999`) : null;
+  const rows = await prisma.priceApproval.findMany({
+    where: { ...scope, status: "Approved", ...from || to ? { requestedAt: { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } } : {} },
+    orderBy: [{ requestedAt: "desc" }, { id: "desc" }]
+  });
+  const out = rows.map(approvalOut);
+  res.json({ rows: out, count: out.length, totalDiscount: round2(out.reduce((a2, r) => a2 + r.shortfall, 0)) });
 });
 dtfRouter.post("/approvals/:id/approve", manageOnly, async (req, res) => {
   const a2 = await prisma.priceApproval.findUnique({ where: { id: Number(req.params.id) } });

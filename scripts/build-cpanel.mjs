@@ -25,7 +25,9 @@ const out = path.join(root, 'deploy');
 const apiOut = path.join(out, 'api');
 const webOut = path.join(out, 'web');
 
-const API_URL = process.env.VITE_API_URL || 'https://api.glmgroup.co.ke/api';
+// The web app talks to its own address (/api — the VPS Caddy proxies it to the API), so the browser makes no cross-site "may I?" request before each call. Set VITE_API_URL to build for a
+// separate API address instead.
+const API_URL = process.env.VITE_API_URL || '/api';
 const PRISMA_VERSION = JSON.parse(fs.readFileSync(path.join(root, 'apps/api/package.json'), 'utf8')).dependencies['@prisma/client'];
 
 fs.rmSync(out, { recursive: true, force: true });

@@ -4,7 +4,7 @@
 #   sudo /opt/glm-pos/deploy-vps/update.sh
 #
 # Order: back up the database → pull the latest commit → install the runtime packages → generate the Prisma client → update the tables
-# (additive changes only; anything that would delete data stops here instead) → copy the web files → restart the API → check it answers.
+# (additive changes only; anything that would delete data stops here instead) → apply the Caddy settings → copy the web files → restart the API → check it answers.
 set -euo pipefail
 
 APP_DIR=/opt/glm-pos
@@ -27,6 +27,10 @@ sudo -u glm bash -c "cd '$APP_DIR/deploy/api' && npm install --omit=dev && npx p
 say "Updating the database tables"
 # No --accept-data-loss: if a change would drop data this fails and nothing is changed — tell me what it printed.
 sudo -u glm env DATABASE_URL="$DATABASE_URL" bash -c "cd '$APP_DIR/deploy/api' && npx prisma db push --schema=prisma/schema.prisma --skip-generate"
+
+say "Caddy settings (the web address also serves /api, and replies are compressed)"
+# Checked by Caddy before it is reloaded, and put back if Caddy rejects it. If this stops, nothing below runs, so the web files are not switched to an address that cannot answer yet.
+"$APP_DIR/deploy-vps/apply-caddy.sh"
 
 say "Web files"
 rsync -a --delete "$APP_DIR/deploy/web/" /var/www/pos/

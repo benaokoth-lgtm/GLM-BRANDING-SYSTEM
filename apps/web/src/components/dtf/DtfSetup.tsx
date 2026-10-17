@@ -12,12 +12,13 @@ const FIELDS: [string, string][] = [
   ['wastageTolerancePct', 'Wastage tolerance (%)'],
   ['fixedChargePerMetre', 'Charge per running metre (artwork jobs)'],
   ['minPricePerPiece', 'Lowest price / artwork (0 for none)'],
-  ['smallSharePrice', 'Recommended price when an artwork\'s share is below that (0 for none)'],
+  ['smallShareBelow', 'Small share: an artwork\'s share of the film below (0 for none)'],
+  ['smallSharePrice', 'Small share: the recommended price is then'],
 ];
 
 // wastageTolerancePct can legitimately be 0 (no tolerance), and so can the lowest price of an artwork (none) — everything else
 // must be a real positive number.
-const ALLOW_ZERO = new Set(['wastageTolerancePct', 'minPricePerPiece', 'smallSharePrice']);
+const ALLOW_ZERO = new Set(['wastageTolerancePct', 'minPricePerPiece', 'smallShareBelow', 'smallSharePrice']);
 
 export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
   const [f, setF] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(data.settings).map(([k, v]) => [k, String(v)])));
@@ -25,7 +26,7 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
   const [saved, setSaved] = useState(false);
   const v = Object.fromEntries(Object.entries(f).map(([k, x]) => [k, num(x)])) as Record<string, number>;
   // the worked example under the fields, from what is typed: 0.53 m of film carrying 2 artworks
-  const eg = runningMetreCalc(0.53, 2, v.fixedChargePerMetre || 0, v.minPricePerPiece || 0, v.smallSharePrice || 0);
+  const eg = runningMetreCalc(0.53, 2, v.fixedChargePerMetre || 0, v.smallShareBelow || 0, v.smallSharePrice || 0);
   const example = v.fixedChargePerMetre > 0 ? `For example, 0.53 m with 2 artworks on it: ${fmtKsh(v.fixedChargePerMetre)} × 0.53 m = ${fmtKsh(Math.round(v.fixedChargePerMetre * 0.53 * 100) / 100)}, shared by 2 = ${fmtKsh(eg.finalPerPiece)} each (${fmtKsh(eg.jobTotal)} in all).` : '';
   const problem =
     FIELDS.some(([k]) => (ALLOW_ZERO.has(k) ? v[k] < 0 : !(v[k] > 0)))
@@ -34,7 +35,9 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
         ? 'Minimum price cannot be above the standard price.'
         : v.minPricePerPiece > 0 && v.smallSharePrice > 0 && v.smallSharePrice < v.minPricePerPiece
           ? 'The price used for a small share cannot be below the lowest price of an artwork.'
-          : '';
+          : v.smallShareBelow > 0 && v.smallSharePrice > 0 && v.smallSharePrice < v.smallShareBelow
+            ? 'The price used for a small share cannot be below the share it applies to.'
+            : '';
 
   async function save() {
     setBusy(true);
@@ -70,7 +73,7 @@ export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
         <p className="note" style={{ marginTop: 'var(--space-2)' }}>
           <b>How an artwork job is charged.</b> The film is charged by the <b>running metres</b> it uses, whether or not the artwork fills the width: the charge per running metre × the running metres
           is shared equally between the artworks on that length, so the client bears the empty space. Price per artwork = (charge per metre × running metres) ÷ artworks — nothing else is added.
-          {v.minPricePerPiece > 0 ? ` The lowest price of an artwork is the least anyone may charge for one.` : ''}{v.minPricePerPiece > 0 && v.smallSharePrice > 0 ? ` When an artwork's share of the film comes to less than ${fmtKsh(v.minPricePerPiece)}, its recommended price is ${fmtKsh(v.smallSharePrice)} instead.` : ''} {example}
+          {v.minPricePerPiece > 0 ? ` The lowest price of an artwork is the least anyone may charge for one.` : ''}{v.smallShareBelow > 0 && v.smallSharePrice > 0 ? ` When an artwork's share of the film comes to less than ${fmtKsh(v.smallShareBelow)}, its recommended price is ${fmtKsh(v.smallSharePrice)} instead.` : ''} {example}
         </p>
         <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', marginTop: 'var(--space-3)' }}>
           <button type="button" className="btn btn-primary blueprint" disabled={busy || !!problem} onClick={save}>

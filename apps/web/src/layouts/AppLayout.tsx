@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
 import ChangePinDialog from '../components/ChangePinDialog';
@@ -273,7 +273,10 @@ function AppLayoutInner() {
           <strong style={{ fontFamily: 'var(--font-heading)' }}>{branding?.systemName ?? ''}</strong>
         </div>
         <main style={{ flex: 1, padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 1280, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
-          <Outlet />
+          {/* a module opens the first time it is used; the menu stays put while it loads */}
+          <Suspense fallback={<p className="note">Loading…</p>}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       {badge.notice && (

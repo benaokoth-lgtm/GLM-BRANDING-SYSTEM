@@ -232,11 +232,14 @@ dtfRouter.get('/data', async (req, res) => {
   const perms = await permissionsForRole(req.user!.role);
   const canManage = perms.canManageDtf;
   const product = productOf(req.query.product);
+  // The order screens (scope=order) and anyone without canManageDtf only work on the OPEN rolls, so they get those rolls and the sales and jobs on them — not the whole history, which grows
+  // every month and only the manager screens (dashboard, rolls, history) need.
+  const openOnly = !canManage || req.query.scope === 'order';
   const [settings, rolls, sales, jobs] = await Promise.all([
     getSettings(product),
-    prisma.dtfRoll.findMany({ where: { product, ...(canManage ? {} : { status: 'open' }) }, orderBy: { id: 'asc' } }),
-    prisma.dtfFilmSale.findMany({ where: { roll: { product } }, orderBy: [{ soldOn: 'desc' }, { id: 'desc' }] }),
-    prisma.dtfArtworkJob.findMany({ where: { roll: { product } }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] }),
+    prisma.dtfRoll.findMany({ where: { product, ...(openOnly ? { status: 'open' } : {}) }, orderBy: { id: 'asc' } }),
+    prisma.dtfFilmSale.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, orderBy: [{ soldOn: 'desc' }, { id: 'desc' }] }),
+    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] }),
   ]);
   const uvIds = await uvRollIds();
   res.json({
@@ -250,6 +253,7 @@ dtfRouter.get('/data', async (req, res) => {
       wastageTolerancePct: settings.wastageTolerancePct,
       minPricePerPiece: settings.minPricePerPiece,
       fixedChargePerMetre: settings.fixedChargePerMetre,
+      smallShareBelow: settings.smallShareBelow,
       smallSharePrice: settings.smallSharePrice,
     },
     rolls: rolls.map((r) => ({
@@ -653,10 +657,12 @@ const settingsSchema = z
     wastageTolerancePct: z.number().min(0).max(100),
     minPricePerPiece: z.number().min(0),
     fixedChargePerMetre: z.number().min(0),
+    smallShareBelow: z.number().min(0).optional(),
     smallSharePrice: z.number().min(0).optional(),
   })
   .refine((s) => s.minPricePerM <= s.stdPricePerM, { message: 'Minimum price cannot be above the standard price' })
-  .refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: 'The price used for a small share cannot be below the lowest price of an artwork' });
+  .refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: 'The price used for a small share cannot be below the lowest price of an artwork' })
+  .refine((s) => !((s.smallShareBelow ?? 0) > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < (s.smallShareBelow ?? 0)), { message: 'The price used for a small share cannot be below the share it applies to' });
 
 dtfRouter.put('/settings', manageOnly, async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
@@ -1002,8 +1008,8 @@ dtfRouter.post('/jobs', async (req, res) => {
   if (product === 'dtf' && d.heatPressFee == null) return res.status(400).json({ error: 'Choose the heat press fee — a job cannot be processed without it' });
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const settings = await getSettings(product);
-  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
-  const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
+  const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
+  const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   const lowest = lowestArtworkPrice(settings.minPricePerPiece, sys.finalPerPiece);
   if (d.pricePerPiece != null && d.pricePerPiece < lowest - 0.005) {
     return res.status(400).json({ error: `The price per piece cannot be below the minimum of ${lowest} KES` });
@@ -1125,8 +1131,8 @@ dtfRouter.post('/sheets', async (req, res) => {
   if (product === 'dtf' && d.heatPressFee == null) return res.status(400).json({ error: 'Choose the heat press fee — a job cannot be processed without it' });
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const settings = await getSettings(product);
-  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice);
-  const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.minPricePerPiece, settings.smallSharePrice);
+  const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice, settings.smallShareBelow);
+  const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The sheet cannot be priced' });
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
@@ -1274,10 +1280,31 @@ dtfRouter.get('/daily', manageOnly, async (req, res) => {
 });
 
 // ── Price approvals — a job priced below the recommended price is held until a DTF manager decides ──
-dtfRouter.get('/approvals', manageOnly, async (req, res) => {
+const approvalOut = (r: Awaited<ReturnType<typeof prisma.priceApproval.findMany>>[number]) => ({ ...r, requestedAt: r.requestedAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null, pctBelow: r.systemPerPiece > 0 ? Math.round(((r.systemPerPiece - r.chargedPerPiece) / r.systemPerPiece) * 1000) / 10 : 0 });
+const approvalScope = async (product: DtfProduct) => {
   const uvIds = await uvRollIds();
-  const rows = await prisma.priceApproval.findMany({ where: productOf(req.query.product) === 'uv' ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } }, orderBy: [{ status: 'asc' }, { id: 'desc' }], take: 200 });
-  res.json(rows.map((r) => ({ ...r, requestedAt: r.requestedAt.toISOString(), decidedAt: r.decidedAt?.toISOString() ?? null, pctBelow: r.systemPerPiece > 0 ? Math.round(((r.systemPerPiece - r.chargedPerPiece) / r.systemPerPiece) * 1000) / 10 : 0 })));
+  return product === 'uv' ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } };
+};
+dtfRouter.get('/approvals', manageOnly, async (req, res) => {
+  const scope = await approvalScope(productOf(req.query.product));
+  // everything still waiting (never cut off), then the latest decided ones; the full record of approved prices is the report below
+  const pending = await prisma.priceApproval.findMany({ where: { ...scope, status: 'Pending' }, orderBy: { id: 'desc' } });
+  const decided = await prisma.priceApproval.findMany({ where: { ...scope, NOT: { status: 'Pending' } }, orderBy: { id: 'desc' }, take: 100 });
+  res.json([...decided, ...pending].map(approvalOut));
+});
+
+// The report of every approved price change: when it was asked for, the price the system suggested (the recommended price), the price that was approved, and who asked and approved. Optional
+// from / to (dates, on the day it was requested). Newest first; nothing is cut off.
+dtfRouter.get('/approvals/report', manageOnly, async (req, res) => {
+  const scope = await approvalScope(productOf(req.query.product));
+  const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? new Date(`${req.query.from}T00:00:00`) : null;
+  const to = typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? new Date(`${req.query.to}T23:59:59.999`) : null;
+  const rows = await prisma.priceApproval.findMany({
+    where: { ...scope, status: 'Approved', ...(from || to ? { requestedAt: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } } : {}) },
+    orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+  });
+  const out = rows.map(approvalOut);
+  res.json({ rows: out, count: out.length, totalDiscount: round2(out.reduce((a, r) => a + r.shortfall, 0)) });
 });
 
 // Approving releases the job: it can now be paid for and produced, and its revenue counts on the roll. Whoever captured it cannot approve it.

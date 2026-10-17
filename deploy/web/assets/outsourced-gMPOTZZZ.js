@@ -1,0 +1,1 @@
+const u=n=>Math.round((n+Number.EPSILON)*100)/100;function m(n,o,t){const r=Math.max(0,Number(n)||0),c=Math.max(0,Number(t)||0),e=o==="amount"?r+c:r*(1+c/100);return Math.ceil(u(e)-1e-9)+0}function a(n,o){const t=Number(n)||0,r=Number(o)||0;return{amount:u(r-t),percent:t>0?u((r-t)/t*100):null}}export{a as m,m as p};

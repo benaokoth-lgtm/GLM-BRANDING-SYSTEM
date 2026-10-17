@@ -37,7 +37,7 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
       .then((c) => setFilmBands(c.filmBands))
       .catch(() => setFilmBands(null));
     api
-      .get<DtfData>(`/dtf/data?product=${product}`)
+      .get<DtfData>(`/dtf/data?product=${product}&scope=order`)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load DTF data'));
   }, [product]);

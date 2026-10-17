@@ -40,10 +40,16 @@ export default function Orders() {
   const [dateTo, setDateTo] = useState('');
   const [page, setPage] = useState(1);
 
+  // The list is kept short so the screen opens fast: the last RECENT_DAYS days plus every order still open (not completed, or handed over on credit), however old. "Show all orders"
+  // loads the lot; looking for an older day or an order number that is not in the recent list switches to it by itself.
+  const RECENT_DAYS = 120;
+  const [showAll, setShowAll] = useState(false);
+
   function load() {
     setLoading(true);
     const params = new URLSearchParams();
     if (viewAll && staffFilter !== 'all') params.set('staffId', staffFilter);
+    if (!showAll) params.set('days', String(RECENT_DAYS));
     api
       .get<OrderSummary[]>(`/orders?${params.toString()}`)
       .then((r) => {
@@ -54,7 +60,7 @@ export default function Orders() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(load, [viewAll, staffFilter]);
+  useEffect(load, [viewAll, staffFilter, showAll]);
 
   const staffOnly = staff.filter((s: StaffUser) => s.role === 'Staff');
 
@@ -94,6 +100,11 @@ export default function Orders() {
   const pageCount = Math.max(1, Math.ceil(found.length / PAGE_SIZE));
   const thisPage = Math.min(page, pageCount);
   const pageRows = found.slice((thisPage - 1) * PAGE_SIZE, thisPage * PAGE_SIZE);
+  // an older day, or a number that is not in the recent list: look in all of them
+  const recentCutoff = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
+  useEffect(() => {
+    if (!showAll && !loading && ((from && from < recentCutoff) || (q && found.length === 0))) setShowAll(true);
+  }, [showAll, loading, from, q, found.length, recentCutoff]);
   // back to the first page whenever what is being looked at changes
   useEffect(() => setPage(1), [orderQ, dateFrom, dateTo, category, dtfPart, kind, invoiceView, staffFilter]);
 
@@ -119,6 +130,12 @@ export default function Orders() {
 
   return (
     <div>
+      <p className="note no-print" style={{ margin: '0 0 var(--space-3)' }}>
+        {showAll ? 'Showing every order.' : `Showing the last ${RECENT_DAYS} days and every order still open.`}{' '}
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAll(!showAll)}>
+          {showAll ? 'Back to recent orders' : 'Show all orders'}
+        </button>
+      </p>
       <div className="seg" role="radiogroup" aria-label="Business head" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
         {categories.map((k) => (
           <label key={k} className={'seg-opt' + (category === k ? ' checked' : '')}>

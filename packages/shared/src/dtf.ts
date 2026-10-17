@@ -12,7 +12,8 @@ export interface DtfSettings {
   // artworks on the length, so the client bears the empty space; nothing is added per piece. minPricePerPiece is only the lowest price an artwork may be charged (0 = none).
   minPricePerPiece: number;
   fixedChargePerMetre: number;
-  /** When an artwork's share of the film comes to less than minPricePerPiece, its recommended price is this instead (0 = no such rule). */
+  /** When an artwork's share of the film comes to less than this, its recommended price is smallSharePrice instead (0 = no such rule). DTF: under 30 → 40; UV DTF: under 40 → 40, a base price of 40. */
+  smallShareBelow: number;
   smallSharePrice: number;
 }
 
@@ -24,6 +25,7 @@ export const DEFAULT_DTF_SETTINGS: DtfSettings = {
   wastageTolerancePct: 5,
   minPricePerPiece: 30,
   fixedChargePerMetre: 3780, // 108 artworks on 2 m come to 70 each
+  smallShareBelow: 30,
   smallSharePrice: 40,
 };
 
@@ -54,6 +56,7 @@ export const UV_DTF_SETTINGS: DtfSettings = {
   wastageTolerancePct: 5,
   minPricePerPiece: 30,
   fixedChargePerMetre: 4280, // 107 artworks on a metre come to 40 each
+  smallShareBelow: 40, // the recommended price of an artwork is never below 40
   smallSharePrice: 40,
 };
 
@@ -183,16 +186,16 @@ export function jobCalc(
  * the length — (charge per running metre × running metres) ÷ artworks, so the client bears the empty space. There is no per-piece amount added. (jobCalc above keeps the older
  * "minimum per piece + share" sum only so that jobs recorded under it, which carry their own snapshot, are read back as they were saved.)
  */
-export function runningMetreCalc(runningMetres: number, pieces: number, chargePerMetre: number, lowestPrice = 0, smallSharePrice = 0): JobCalc {
+export function runningMetreCalc(runningMetres: number, pieces: number, chargePerMetre: number, belowPrice = 0, smallSharePrice = 0): JobCalc {
   const share = jobCalc(runningMetres, pieces, chargePerMetre, 0);
-  // an artwork whose share of the film is below the lowest price is recommended at the small-share price instead (e.g. under 30 → 40)
-  if (lowestPrice > 0 && smallSharePrice > 0 && pieces > 0 && share.finalPerPiece < lowestPrice - 0.005) return { finalPerPiece: r2(smallSharePrice), jobTotal: r2(smallSharePrice * pieces) };
+  // an artwork whose share of the film is below `belowPrice` is recommended at the small-share price instead (DTF: under 30 → 40; UV DTF: under 40 → 40)
+  if (belowPrice > 0 && smallSharePrice > 0 && pieces > 0 && share.finalPerPiece < belowPrice - 0.005) return { finalPerPiece: r2(smallSharePrice), jobTotal: r2(smallSharePrice * pieces) };
   return share;
 }
 
-/** True when the artworks' share of the film came to less than the lowest price, so the small-share price was recommended instead. */
-export function usesSmallSharePrice(runningMetres: number, pieces: number, chargePerMetre: number, lowestPrice = 0, smallSharePrice = 0): boolean {
-  return runningMetreCalc(runningMetres, pieces, chargePerMetre, lowestPrice, smallSharePrice).finalPerPiece !== jobCalc(runningMetres, pieces, chargePerMetre, 0).finalPerPiece;
+/** True when the artworks' share of the film came to less than the threshold, so the small-share price was recommended instead. */
+export function usesSmallSharePrice(runningMetres: number, pieces: number, chargePerMetre: number, belowPrice = 0, smallSharePrice = 0): boolean {
+  return runningMetreCalc(runningMetres, pieces, chargePerMetre, belowPrice, smallSharePrice).finalPerPiece !== jobCalc(runningMetres, pieces, chargePerMetre, 0).finalPerPiece;
 }
 
 /**

@@ -19,13 +19,13 @@ async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens[who]}` }, body: body === undefined ? undefined : JSON.stringify(body) });
   return { status: res.status, body: (await res.json().catch(() => null)) as any };
 }
-const setup = (extra: object = {}) => ({ ...UV_DTF_SETTINGS, fixedChargePerMetre: 600, minPricePerPiece: 0, ...extra });
+const setup = (extra: object = {}) => ({ ...UV_DTF_SETTINGS, fixedChargePerMetre: 600, minPricePerPiece: 0, smallShareBelow: 0, ...extra });
 
 describe('artwork charged on running metres', () => {
   before(async () => {
     await prisma.role.create({ data: { name: 'Printer (run metres test)', canAccessDtf: true, canCaptureOrders: true } });
     await prisma.role.create({ data: { name: 'Lead (run metres test)', canAccessDtf: true, canManageDtf: true, canCaptureOrders: true } });
-    for (const [key, role] of [['printer', 'Printer (run metres test)'], ['lead', 'Lead (run metres test)']] as const) {
+    for (const [key, role] of [['printer', 'Printer (run metres test)'], ['lead', 'Lead (run metres test)'], ['lead2', 'Lead (run metres test)']] as const) {
       const u = await prisma.user.create({ data: { name: `${key} (run metres test)`, role, pinHash: 'x' } });
       tokens[key] = signToken({ id: u.id, name: u.name, role });
     }
@@ -106,9 +106,10 @@ describe('artwork charged on running metres', () => {
     assert.equal((await call('printer', 'GET', '/dtf/artwork-rate/history?product=uv')).status, 403);
   });
 
-  it('an artwork whose share of the film is under the lowest price (30) is recommended at 40; a manager may not set the small-share price below the lowest price', async () => {
-    assert.equal((await call('lead', 'PUT', '/dtf/settings?product=uv', setup({ minPricePerPiece: 30, smallSharePrice: 20 }))).status, 400);
-    assert.equal((await call('lead', 'PUT', '/dtf/settings?product=uv', setup({ minPricePerPiece: 30, smallSharePrice: 40 }))).status, 200);
+  it('UV DTF has a base price of 40: an artwork whose share of the film is under 40 is recommended at 40; the small-share price cannot be set below the lowest price or the share it applies to', async () => {
+    assert.equal((await call('lead', 'PUT', '/dtf/settings?product=uv', setup({ minPricePerPiece: 30, smallShareBelow: 40, smallSharePrice: 20 }))).status, 400);
+    assert.equal((await call('lead', 'PUT', '/dtf/settings?product=uv', setup({ minPricePerPiece: 30, smallShareBelow: 50, smallSharePrice: 40 }))).status, 400);
+    assert.equal((await call('lead', 'PUT', '/dtf/settings?product=uv', setup({ minPricePerPiece: 30, smallShareBelow: 40, smallSharePrice: 40 }))).status, 200);
     // 600 × 0.53 ÷ 30 = 10.60 each is under 30, so 40 each: 1,200 in all
     const small = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Small Client', runningMetres: 0.53, pieces: 30 });
     assert.equal(small.status, 201, JSON.stringify(small.body));
@@ -123,9 +124,11 @@ describe('artwork charged on running metres', () => {
     assert.equal(lower.status, 201, JSON.stringify(lower.body));
     assert.equal(lower.body.approval, 'Pending');
     assert.equal((await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'x', runningMetres: 0.53, pieces: 30, pricePerPiece: 25 })).status, 400);
-    // a share of 30 or more is left alone: 600 × 0.53 ÷ 6 = 53
+    // a share of 40 or more is left alone: 600 × 0.53 ÷ 6 = 53; just under (÷ 8 = 39.75) is brought up to the base price of 40
     const fine = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Small Client', runningMetres: 0.53, pieces: 6 });
     assert.equal(fine.body.order.totals.grandTotal, 318);
+    const base = await call('printer', 'POST', '/dtf/jobs', { rollId: ROLL, client: 'Small Client', runningMetres: 0.53, pieces: 8 });
+    assert.equal(base.body.order.totals.grandTotal, 320);
     // a sheet: 30 artworks on 0.53 m must add up to 1,200, not 318
     const rows = (price: number) => [{ client: 'A', phone: '', label: 'tiny', qty: 30, price }];
     const low = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 0.53, pieces: 30, rows: rows(35) });
@@ -134,5 +137,25 @@ describe('artwork charged on running metres', () => {
     const ok = await call('printer', 'POST', '/dtf/sheets', { rollId: ROLL, runningMetres: 0.53, pieces: 30, rows: rows(40) });
     assert.equal(ok.status, 201, JSON.stringify(ok.body));
     assert.equal(ok.body.recommendedTotal, 1200);
+
+    // the report of approved price changes: the 35 that waited for a manager is listed once a manager approves it (not the person who asked)
+    const waiting = (await call('lead', 'GET', '/dtf/approvals?product=uv')).body.find((a: any) => a.orderNo === lower.body.order.orderNo);
+    assert.equal(waiting.status, 'Pending');
+    assert.equal((await call('printer', 'POST', `/dtf/approvals/${waiting.id}/approve`, {})).status, 403);
+    const before = (await call('lead', 'GET', '/dtf/approvals/report?product=uv')).body;
+    assert.ok(!before.rows.some((r: any) => r.orderNo === waiting.orderNo)); // not before it is approved
+    assert.equal((await call('lead2', 'POST', `/dtf/approvals/${waiting.id}/approve`, {})).status, 200);
+    const rep = (await call('lead', 'GET', '/dtf/approvals/report?product=uv')).body;
+    const mine = rep.rows.find((r: any) => r.orderNo === waiting.orderNo);
+    assert.ok(mine);
+    assert.deepEqual([mine.systemPerPiece, mine.chargedPerPiece, mine.pieces, mine.shortfall, mine.status, mine.requestedByName, mine.decidedByName], [40, 35, 30, 150, 'Approved', 'printer (run metres test)', 'lead2 (run metres test)']);
+    assert.ok(mine.requestedAt && mine.decidedAt);
+    assert.equal(rep.count, rep.rows.length);
+    // by date; the DTF report does not show UV ones; managers only
+    const today = new Date().toISOString().slice(0, 10);
+    assert.equal((await call('lead', 'GET', '/dtf/approvals/report?product=uv&from=2000-01-01&to=2000-01-02')).body.count, 0);
+    assert.ok((await call('lead', 'GET', `/dtf/approvals/report?product=uv&from=${today}&to=${today}`)).body.rows.some((r: any) => r.orderNo === waiting.orderNo));
+    assert.ok(!(await call('lead', 'GET', '/dtf/approvals/report')).body.rows.some((r: any) => r.orderNo === waiting.orderNo));
+    assert.equal((await call('printer', 'GET', '/dtf/approvals/report?product=uv')).status, 403);
   });
 });

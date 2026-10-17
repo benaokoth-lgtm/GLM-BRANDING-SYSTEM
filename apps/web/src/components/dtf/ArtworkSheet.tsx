@@ -37,6 +37,7 @@ interface PanelProps {
   minPricePerPiece: number;
   /** The recommended price of an artwork whose share of the film is below the lowest price (0 = none). */
   smallSharePrice?: number;
+  smallShareBelow?: number;
   defaultClient: string;
   artworkRate: number | null;
   /** The artworks on the length, as entered beside the metres: the rows must add up to it. */
@@ -44,8 +45,8 @@ interface PanelProps {
 }
 
 /** The rows of the sheet, and what they come to against the recommended total. */
-export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, minPricePerPiece, smallSharePrice = 0, defaultClient, artworkRate, pieces: expected }: PanelProps) {
-  const calc = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient || 'Walk-in', '', expected, smallSharePrice);
+export function ArtworkSheetPanel({ rows, onChange, run, fixedChargePerMetre, minPricePerPiece, smallSharePrice = 0, smallShareBelow = 0, defaultClient, artworkRate, pieces: expected }: PanelProps) {
+  const calc = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient || 'Walk-in', '', expected, smallSharePrice, smallShareBelow);
   const set = (key: number, patch: Partial<UiRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const rec = calc.recommendedPerPiece;
   // The artworks of all the rows can never be more than the length carries: a row takes at most what the others have left.
@@ -165,13 +166,14 @@ interface DialogProps {
   minPricePerPiece: number;
   /** The recommended price of an artwork whose share of the film is below the lowest price (0 = none). */
   smallSharePrice?: number;
+  smallShareBelow?: number;
   defaultClient: string;
   onClose: () => void;
   onDone: () => void;
 }
 
 /** Completes the sheet: the heat press fee, who it is credited to, each client's phone and what they pay now. Print records the orders — one for each client — and offers each one's receipt. */
-export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, run, rows, fixedChargePerMetre, minPricePerPiece, smallSharePrice = 0, defaultClient, onClose, onDone }: DialogProps) {
+export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, run, rows, fixedChargePerMetre, minPricePerPiece, smallSharePrice = 0, smallShareBelow = 0, defaultClient, onClose, onDone }: DialogProps) {
   const { user } = useAuth();
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
   const salesPeople = useSalesPeople(forOthers);
@@ -186,13 +188,13 @@ export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, r
   const noPress = product === 'uv';
 
   // clients are told apart by name here; once a phone is typed it tells them apart on the server
-  const base = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient, '', expected, smallSharePrice);
+  const base = sheetCalc(toSheetRows(rows), run, fixedChargePerMetre, minPricePerPiece, defaultClient, '', expected, smallSharePrice, smallShareBelow);
   const nameKey = (client: string) => sheetClientKey(client, '');
   const withPhones = toSheetRows(rows).map((r) => {
     const c = r.client.trim() || defaultClient.trim();
     return { ...r, phone: phones[nameKey(c)] ?? '' };
   });
-  const calc = sheetCalc(withPhones, run, fixedChargePerMetre, minPricePerPiece, defaultClient, '', expected, smallSharePrice);
+  const calc = sheetCalc(withPhones, run, fixedChargePerMetre, minPricePerPiece, defaultClient, '', expected, smallSharePrice, smallShareBelow);
   useEffect(() => {
     api.get<CompanySettings>('/master-data/settings').then(setCompany).catch(() => undefined);
   }, []);

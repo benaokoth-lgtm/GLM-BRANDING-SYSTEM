@@ -79,7 +79,7 @@ export default function ArtworkRate({ data, reload }: DtfTabProps) {
     void loadHistory();
   }, [data.product]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { minPricePerPiece: lowest, smallSharePrice } = data.settings;
+  const { smallShareBelow: lowest, smallSharePrice } = data.settings;
   const calc = runningMetreCalc(num(run), num(pieces), current, lowest, smallSharePrice);
   const smallShare = usesSmallSharePrice(num(run), num(pieces), current, lowest, smallSharePrice);
   const shown = num(run) > 0 && num(pieces) > 0;

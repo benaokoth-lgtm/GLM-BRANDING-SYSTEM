@@ -4,13 +4,13 @@
 
 # The web app: static files built by `npm run build:cpanel` (deploy/web), copied to /var/www/pos by update.sh.
 __WEB_HOST__ {
-	root * /var/www/pos
-	encode gzip
+	# Everything this address sends is compressed — the web files and the API's replies alike (the lists are large JSON).
+	encode zstd gzip
 
 	# Hashed build files never change: cache them hard. The page itself is never cached, so a new deploy shows on the next load.
 	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=31536000, immutable"
-	@page not path /assets/*
+	@page not path /assets/* /api/*
 	header @page Cache-Control "no-cache"
 
 	# Security headers: HTTPS only for a year, no sniffing, no framing (clickjacking), no referrer leaks, no camera/microphone/location.
@@ -26,13 +26,34 @@ __WEB_HOST__ {
 		-Server
 	}
 
+	# The API on THIS address too (/api/…): the web app then talks to its own address, so the browser does not make a separate "may I?" request before every call and does not open a
+	# second secure connection. The api. address below keeps working for anything that still uses it (M-Pesa callbacks, old pages).
+	# A backup being restored is uploaded in one request, so that one address takes a much larger body …
+	handle /api/backup/restore {
+		request_body {
+			max_size 250MB
+		}
+		reverse_proxy 127.0.0.1:__API_PORT__
+	}
+	# … and the rest of the API stays small: a company logo is sent as a base64 data URL in a JSON body (the API accepts up to 5 MB).
+	handle /api/* {
+		request_body {
+			max_size 6MB
+		}
+		reverse_proxy 127.0.0.1:__API_PORT__
+	}
+
 	# Single-page app: unknown paths (/orders/all …) load index.html.
-	try_files {path} /index.html
-	file_server
+	handle {
+		root * /var/www/pos
+		try_files {path} /index.html
+		file_server
+	}
 }
 
 # The API: Node, listening only on 127.0.0.1.
 __API_HOST__ {
+	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000"
 		-Server

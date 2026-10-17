@@ -3,6 +3,9 @@ import { fmtKsh, runningMetreCalc } from '@glm/shared';
 import { api } from '../../api/client';
 import { Card, Corners, Field, num } from './shared';
 import type { DtfTabProps } from './shared';
+import type { PriceList } from '@glm/shared';
+import ListSwitch from './ListSwitch';
+import DtfFreelancerSetup from './DtfFreelancerSetup';
 
 const FIELDS: [string, string][] = [
   ['rollLengthM', 'Roll length (m)'],
@@ -20,7 +23,18 @@ const FIELDS: [string, string][] = [
 // must be a real positive number.
 const ALLOW_ZERO = new Set(['wastageTolerancePct', 'minPricePerPiece', 'smallShareBelow', 'smallSharePrice']);
 
-export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
+export default function DtfSetup(props: DtfTabProps) {
+  // GLM Sales rates (the saved setup) or the Freelancer Sales rates
+  const [list, setList] = useState<PriceList>('glm');
+  return (
+    <>
+      <ListSwitch value={list} onChange={setList} />
+      {list === 'freelancer' ? <DtfFreelancerSetup {...props} /> : <GlmSetup {...props} />}
+    </>
+  );
+}
+
+function GlmSetup({ data, reload, setError }: DtfTabProps) {
   const [f, setF] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(data.settings).map(([k, v]) => [k, String(v)])));
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);

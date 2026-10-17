@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fmtKsh, fmtNum, runningMetreCalc, usesSmallSharePrice } from '@glm/shared';
-import type { DtfProduct } from '@glm/shared';
+import type { DtfProduct, DtfSettings, PriceList } from '@glm/shared';
+import ListSwitch from './ListSwitch';
 import { api } from '../../api/client';
 import { Card, num } from './shared';
 import type { DtfTabProps } from './shared';
@@ -16,7 +17,7 @@ interface Change {
 }
 
 /** The input and Save, small enough to sit on the artwork order screen too. */
-export function ArtworkRateEditor({ product, current, onSaved, compact = false }: { product: DtfProduct; current: number; onSaved: () => void | Promise<void>; compact?: boolean }) {
+export function ArtworkRateEditor({ product, current, onSaved, compact = false, list = 'glm' }: { product: DtfProduct; current: number; onSaved: () => void | Promise<void>; compact?: boolean; list?: PriceList }) {
   const [v, setV] = useState(String(current));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -28,9 +29,9 @@ export function ArtworkRateEditor({ product, current, onSaved, compact = false }
     setBusy(true);
     setMsg(null);
     try {
-      await api.put('/dtf/artwork-rate', { product, pricePerMetre: price });
+      await api.put('/dtf/artwork-rate', { product, pricePerMetre: price, ...(list === 'freelancer' ? { priceList: 'freelancer' } : {}) });
       await onSaved();
-      setMsg({ ok: true, text: `Saved. Artwork is now ${fmtKsh(price)} a running metre, from this moment.` });
+      setMsg({ ok: true, text: `Saved. ${list === 'freelancer' ? 'Freelancer Sales artwork' : 'Artwork'} is now ${fmtKsh(price)} a running metre, from this moment.` });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Could not save the price' });
     } finally {
@@ -65,36 +66,65 @@ export function ArtworkRateEditor({ product, current, onSaved, compact = false }
 
 /** DTF → Artwork price: set it, see what it makes for a run of film, and who changed it when. */
 export default function ArtworkRate({ data, reload }: DtfTabProps) {
-  const current = data.settings.fixedChargePerMetre;
+  // GLM Sales (the saved rate) or Freelancer Sales (the GLM rate less the default percentage, or a rate typed by hand here)
+  const [list, setList] = useState<PriceList>('glm');
+  const [fl, setFl] = useState<{ settings: DtfSettings; freelancerManual?: Record<string, boolean>; freelancerDiscountPct?: number } | null>(null);
+  const loadFl = () => api.get<NonNullable<typeof fl>>(`/dtf/data?product=${data.product}&scope=order&priceList=freelancer`).then(setFl).catch(() => setFl(null));
+  useEffect(() => {
+    if (list === 'freelancer') void loadFl();
+  }, [list, data.product]); // eslint-disable-line react-hooks/exhaustive-deps
+  const settings = list === 'freelancer' && fl ? fl.settings : data.settings;
+  const typedByHand = list === 'freelancer' && !!fl?.freelancerManual?.fixedChargePerMetre;
+  const current = settings.fixedChargePerMetre;
   const [history, setHistory] = useState<Change[] | null>(null);
   const [run, setRun] = useState('0.53');
   const [pieces, setPieces] = useState('2');
 
   const loadHistory = () =>
     api
-      .get<Change[]>(`/dtf/artwork-rate/history?product=${data.product}`)
+      .get<Change[]>(`/dtf/artwork-rate/history?product=${data.product}&priceList=${list}`)
       .then(setHistory)
       .catch(() => setHistory([]));
   useEffect(() => {
     void loadHistory();
-  }, [data.product]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [data.product, list]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { smallShareBelow: lowest, smallSharePrice } = data.settings;
+  const { smallShareBelow: lowest, smallSharePrice } = settings;
   const calc = runningMetreCalc(num(run), num(pieces), current, lowest, smallSharePrice);
   const smallShare = usesSmallSharePrice(num(run), num(pieces), current, lowest, smallSharePrice);
   const shown = num(run) > 0 && num(pieces) > 0;
 
   return (
     <div style={{ display: 'grid', gap: 'var(--space-4)', maxWidth: 760 }}>
-      <Card title={`${data.product === 'uv' ? 'UV DTF' : 'DTF'} artwork — price per running metre`}>
+      <ListSwitch value={list} onChange={setList} />
+      <Card title={`${data.product === 'uv' ? 'UV DTF' : 'DTF'} artwork — price per running metre${list === 'freelancer' ? ' (Freelancer Sales)' : ''}`}>
         <ArtworkRateEditor
           product={data.product}
+          list={list}
           current={current}
           onSaved={async () => {
             await reload();
+            if (list === 'freelancer') await loadFl();
             await loadHistory();
           }}
         />
+        {list === 'freelancer' && (
+          <p className="note" style={{ marginTop: 'var(--space-2)' }}>
+            {typedByHand ? 'This rate was typed by hand for Freelancer Sales.' : `This rate follows the GLM rate less ${fl?.freelancerDiscountPct ?? 0}% (Master Data → Freelancer Prices).`}{' '}
+            {typedByHand && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={async () => {
+                  await api.put(`/dtf/settings?priceList=freelancer&product=${data.product}`, { fixedChargePerMetre: null });
+                  await loadFl();
+                }}
+              >
+                Follow the percentage again
+              </button>
+            )}
+          </p>
+        )}
         <p className="note" style={{ marginTop: 'var(--space-3)' }}>
           Every artwork order is worked out from this: <b>(price per running metre × running metres) ÷ artworks</b>. The film is paid for whether or not the artworks fill its width, so the
           client bears the empty space, and nothing else is added per piece. Change it whenever you need to — it applies to new orders from the moment you save, and jobs already recorded keep the

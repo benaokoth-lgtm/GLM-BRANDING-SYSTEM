@@ -70,7 +70,9 @@ export default function Orders() {
   const inDtfPart = (o: OrderSummary, p: string) => (p === 'film' || p === 'artwork' ? o.dtfKind === p : p === 'other' ? !o.dtfKind : true);
   // The standing business heads are always listed (even with nothing in them yet), then any other head that has orders; General Order last.
   const categories = ['all', ...[...new Set<string>([...DEFAULT_BUSINESS_HEADS, ...orders.flatMap(heads)])].sort((a, b) => headRank(a) - headRank(b) || a.localeCompare(b))];
-  const ofHead = orders.filter((o) => inCategory(o, category) && (category !== 'DTF Printing' || inDtfPart(o, dtfPart)));
+  // GLM Sales and Freelancer Sales orders, together or each on its own
+  const [listFilter, setListFilter] = useState<'all' | 'glm' | 'freelancer'>('all');
+  const ofHead = orders.filter((o) => inCategory(o, category) && (category !== 'DTF Printing' || inDtfPart(o, dtfPart)) && (listFilter === 'all' || (o.priceList ?? 'glm') === listFilter));
   const dtfOrders = orders.filter((o) => inCategory(o, 'DTF Printing'));
   const dtfSplit: ['all' | 'film' | 'artwork' | 'other', string][] = [
     ['all', 'All DTF Printing'],
@@ -106,7 +108,7 @@ export default function Orders() {
     if (!showAll && !loading && ((from && from < recentCutoff) || (q && found.length === 0))) setShowAll(true);
   }, [showAll, loading, from, q, found.length, recentCutoff]);
   // back to the first page whenever what is being looked at changes
-  useEffect(() => setPage(1), [orderQ, dateFrom, dateTo, category, dtfPart, kind, invoiceView, staffFilter]);
+  useEffect(() => setPage(1), [orderQ, dateFrom, dateTo, category, dtfPart, kind, invoiceView, staffFilter, listFilter]);
 
   // The summary figures, each with the orders behind it (click one to open them). A quotation is an offer, not an order in hand or money owed,
   // so it is left out of "in production" and "pending balance".
@@ -136,6 +138,14 @@ export default function Orders() {
           {showAll ? 'Back to recent orders' : 'Show all orders'}
         </button>
       </p>
+      <div className="seg no-print" role="radiogroup" aria-label="Price list" style={{ marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+        {([['all', 'Both price lists'], ['glm', 'GLM Sales'], ['freelancer', 'Freelancer Sales']] as const).map(([k, label]) => (
+          <label key={k} className={'seg-opt' + (listFilter === k ? ' checked' : '')}>
+            <input type="radio" name="ordlist" checked={listFilter === k} onChange={() => setListFilter(k)} />
+            {label}
+          </label>
+        ))}
+      </div>
       <div className="seg" role="radiogroup" aria-label="Business head" style={{ marginBottom: 'var(--space-4)', flexWrap: 'wrap' }}>
         {categories.map((k) => (
           <label key={k} className={'seg-opt' + (category === k ? ' checked' : '')}>
@@ -369,6 +379,7 @@ export default function Orders() {
               <tr key={row.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(row.id)}>
                 <td>
                   {row.orderNo}
+                  {row.priceList === 'freelancer' && <div><span className="tag tag-neutral">Freelancer</span></div>}
                   {row.priceApproval === 'Pending' && <div><span className="tag tag-outline">Awaiting price approval</span></div>}
                 </td>
                 <td className="text-muted">{fmtDate(row.createdDate)}</td>

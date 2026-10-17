@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { WALK_IN_CLIENT, computeOrderTotals, exceedsDiscountCeiling, fmtKsh, isNamedClient } from '@glm/shared';
 import type { CompanySettings, DraftLineItem, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
+import { PriceListBanner, usePriceList, withListPrices } from '../state/PriceListContext';
 import LineItemsEditor, { isBlankLine, makeDefaultLine } from '../components/LineItemsEditor';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
@@ -15,11 +16,14 @@ import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../
 import type { PaymentRow } from '../components/SplitPayments';
 
 export default function NewWalkinOrder() {
-  const { services: allServices, materials, maxDiscountPct, loading } = useCatalog();
+  const list = usePriceList();
+  const { services: allServices, materials: allMaterials, maxDiscountPct, loading } = useCatalog();
+  // the prices offered are the ones on the price list this screen is under
+  const materials = withListPrices(allMaterials, list);
   // DTF Printing / DTF Sheet are sold exclusively through the DTF Sales &
   // Roll Tracker's own "Record sale"/"Record job" order popup (see
   // components/dtf/DtfOrderDialog.tsx) — not picked as a line item here.
-  const services = allServices.filter((s) => !s.soldViaDtfModule);
+  const services = withListPrices(allServices.filter((s) => !s.soldViaDtfModule), list);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -78,6 +82,7 @@ export default function NewWalkinOrder() {
     try {
       const [order, company] = await Promise.all([
         api.post<OrderDetail>('/orders/walkin', {
+          priceList: list,
           customerName: customerName.trim() || WALK_IN_CLIENT,
           phone,
           // Front office: the order is for the chosen sales person (or the shop); everyone else captures in their own name.
@@ -112,6 +117,7 @@ export default function NewWalkinOrder() {
       <i className="corner br"></i>
       <div className="card-kicker">Walk-in customer</div>
       <div className="card-title">New Order</div>
+      <PriceListBanner />
 
       <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
 

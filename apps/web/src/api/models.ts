@@ -18,6 +18,10 @@ export interface CatalogService {
   size?: string;
   unit: ServiceUnit;
   price: number;
+  /** The Freelancer Sales price: typed by hand, or the GLM price less the default percentage. */
+  freelancerPrice?: number;
+  /** The Freelancer price typed by hand for this item (null = follows the percentage). */
+  freelancerOverride?: number | null;
   businessHeadId?: number | null;
   usesArtworkPricing: boolean;
   chargesPressingFee: boolean;
@@ -40,6 +44,9 @@ export interface CatalogMaterial {
   size?: string;
   unit?: string;
   price: number;
+  /** The Freelancer Sales price: typed by hand, or the GLM price less the default percentage. */
+  freelancerPrice?: number;
+  freelancerOverride?: number | null;
   stockQty: number;
   reorderLevel: number;
   businessHeadId?: number | null;
@@ -57,6 +64,9 @@ export interface CorporateClient {
 
 export interface CompanySettings {
   maxDiscountPct: number;
+  /** Freelancer Sales prices: the GLM price less this percentage, rounded to the nearest freelancerRoundTo shillings (0 = exact). */
+  freelancerDiscountPct?: number;
+  freelancerRoundTo?: number;
   companyName: string;
   legalName: string;
   companyAddress: string;
@@ -79,6 +89,8 @@ export interface OrderSummary {
   orderNo: string;
   kind: 'walkin' | 'corporate';
   channel: 'general' | 'dtf';
+  /** The price list it was captured under: GLM Sales or Freelancer Sales. */
+  priceList?: 'glm' | 'freelancer';
   customerName: string | null;
   phone: string | null;
   corporateClient: { id: number; name: string; email: string; phone: string; contactPerson?: string } | null;

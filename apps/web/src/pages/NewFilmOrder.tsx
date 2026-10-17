@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { DTF_PRODUCT_LABEL, VAT_RATE, filmPremiumCommission, filmPremiumPerM, fmtKsh, fmtNum, saleCalc, todayStr } from '@glm/shared';
 import type { Band, DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
+import { PriceListBanner, usePriceList } from '../state/PriceListContext';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import UvPenCosting from '../components/dtf/UvPenCosting';
 import UvFlatbedCosting from '../components/dtf/UvFlatbedCosting';
@@ -17,6 +18,7 @@ const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Numb
 // once the popup's Print button is pressed (see DtfOrderDialog.tsx).
 export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct }) {
   const label = DTF_PRODUCT_LABEL[product];
+  const list = usePriceList();
   const navigate = useNavigate();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,10 +39,10 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
       .then((c) => setFilmBands(c.filmBands))
       .catch(() => setFilmBands(null));
     api
-      .get<DtfData>(`/dtf/data?product=${product}&scope=order`)
+      .get<DtfData>(`/dtf/data?product=${product}&scope=order&priceList=${list}`)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load DTF data'));
-  }, [product]);
+  }, [product, list]);
 
   const tabs =
     product === 'uv' ? (
@@ -102,6 +104,7 @@ export default function NewFilmOrder({ product = 'dtf' }: { product?: DtfProduct
       <i className="corner br"></i>
       <div className="card-kicker">{label} film order</div>
       <div className="card-title">New {label} film sale</div>
+      <PriceListBanner />
 
       {error && (
         <p className="note" style={{ color: 'var(--color-error)' }}>

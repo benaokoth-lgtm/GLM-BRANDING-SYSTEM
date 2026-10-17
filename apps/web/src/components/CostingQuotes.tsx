@@ -9,6 +9,7 @@ import SourcingField from './SourcingField';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import type { PaymentRow } from './SplitPayments';
 import { Loading, Tag, numStyle } from '../pages/accounting/shared';
+import { usePriceList } from '../state/PriceListContext';
 
 // Sales → Job Costing → Saved quotes. A costing kept for a client. When the client agrees a price (perhaps after talking the margin down) it is recorded here; a price at or above the
 // floor goes straight through, a lower one waits for Finance, the General Manager or Admin (never the person who quoted it). The accepted quote is then captured as an ordinary order
@@ -301,6 +302,7 @@ function QuoteDialog({ quote: q, canSeeCosts, onClose, onChanged }: { quote: Quo
 }
 
 function CaptureDialog({ quote: q, total, onClose, onDone }: { quote: QuoteView; total: number; onClose: () => void; onDone: () => Promise<unknown> }) {
+  const list = usePriceList(); // the price list the screen is under, for the order
   const { user } = useAuth();
   const [name, setName] = useState(q.clientName);
   const [phone, setPhone] = useState(q.phone);
@@ -320,6 +322,7 @@ function CaptureDialog({ quote: q, total, onClose, onDone }: { quote: QuoteView;
     try {
       const [order, company] = await Promise.all([
         api.post<OrderDetail>(`/costing/quotes/${q.id}/capture`, {
+          priceList: list,
           customerName: name,
           phone,
           sourcedBy: sourced ? q.staffId : null,

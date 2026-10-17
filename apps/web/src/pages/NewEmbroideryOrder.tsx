@@ -5,6 +5,7 @@ import type { EmbroideryBasis } from '@glm/shared';
 import type { EmbroiderySettingsValues } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
+import { PriceListBanner, usePriceList, withListPrices } from '../state/PriceListContext';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printOrderDocument } from '../utils/printInvoice';
@@ -50,7 +51,9 @@ let nextKey = 1;
 const blankDesign = (): DesignRow => ({ key: nextKey++, name: '', stitches: '', save: true, basis: 'stitch', price: '' });
 
 export default function NewEmbroideryOrder() {
-  const { materials, loading } = useCatalog();
+  const list = usePriceList();
+  const { materials: allMaterials, loading } = useCatalog();
+  const materials = withListPrices(allMaterials, list); // blank garments sold with the job follow the price list
   const { user } = useAuth();
   const navigate = useNavigate();
   const [config, setConfig] = useState<Config | null>(null);
@@ -145,6 +148,7 @@ export default function NewEmbroideryOrder() {
     try {
       const [order, company] = await Promise.all([
         api.post<OrderDetail>('/embroidery/orders', {
+          priceList: list,
           customerName: customerName.trim() || WALK_IN_CLIENT,
           phone,
           staffId: forOthers ? salesPersonId ?? staffId : staffId,
@@ -192,6 +196,7 @@ export default function NewEmbroideryOrder() {
       <i className="corner br"></i>
       <div className="card-kicker">Embroidery order</div>
       <div className="card-title">New embroidery job</div>
+      <PriceListBanner note="Embroidery stitch prices are the same on both lists for now; garments sold with the job follow the list." />
 
       <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
 

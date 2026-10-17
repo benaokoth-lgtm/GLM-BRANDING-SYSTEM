@@ -6,6 +6,7 @@ import { useTheme, type Theme } from '../hooks/useTheme';
 import Icon from '../components/NavIcons';
 import type { CurrentUser } from '../state/AuthContext';
 import { useApprovalsBadge } from '../hooks/useApprovals';
+import { priceListsFor } from '@glm/shared';
 
 // Built from the logged-in user's permissions rather than a hardcoded map
 // keyed by role name — a custom role created in Master Data → Roles &
@@ -25,16 +26,21 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
 
   // Approvals: the inbox of everything waiting for a decision, and how your own requests went — for everyone signed in.
   tabs.push(['/approvals', 'Approvals']);
-  if (isAdmin || p.canCaptureOrders) {
-    tabs.push(['/orders/new/walkin', 'General Order']);
-  }
-  if (isAdmin || p.canAccessDtf || p.canManageDtf) {
-    tabs.push(['/orders/new/film', 'DTF Film Order'], ['/orders/new/artwork', 'DTF Artwork Order'], ['/orders/new/uv-film', 'UV DTF Film Order'], ['/orders/new/uv-artwork', 'UV DTF Artwork Order']);
-  }
-  // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
-  if (isAdmin || p.canCaptureOrders) tabs.push(['/orders/new/embroidery', 'Embroidery Order']);
-  // Costing an outsourced branding job (business cards, signage) from the supplier rates under Sales → Job Costing → Rates, to quote a price.
-  if (isAdmin || p.canCaptureOrders || p.canAccessFinance) tabs.push(['/costing', 'Job Costing']);
+  // The sales screens, once under each price list: GLM Sales (our own staff, GLM prices) and Freelancer Sales (sales persons, freelancer prices). A person sees the lists their role may capture under:
+  // a sales person only Freelancer Sales, the front office and managers both, GLM's own staff GLM Sales.
+  const salesScreens = (prefix: string) => {
+    if (isAdmin || p.canCaptureOrders) tabs.push([prefix + '/orders/new/walkin', 'General Order']);
+    if (isAdmin || p.canAccessDtf || p.canManageDtf) {
+      tabs.push([prefix + '/orders/new/film', 'DTF Film Order'], [prefix + '/orders/new/artwork', 'DTF Artwork Order'], [prefix + '/orders/new/uv-film', 'UV DTF Film Order'], [prefix + '/orders/new/uv-artwork', 'UV DTF Artwork Order']);
+    }
+    // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
+    if (isAdmin || p.canCaptureOrders) tabs.push([prefix + '/orders/new/embroidery', 'Embroidery Order']);
+    // Costing an outsourced branding job (business cards, signage) from the supplier rates under Job Costing → Rates, to quote a price.
+    if (isAdmin || p.canCaptureOrders || p.canAccessFinance) tabs.push([prefix + '/costing', 'Job Costing']);
+  };
+  const lists = priceListsFor(user.role, p);
+  if (lists.includes('glm')) salesScreens('');
+  if (lists.includes('freelancer')) salesScreens('/freelancer');
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
@@ -68,22 +74,24 @@ import { useFeatures } from '../hooks/useFeatures';
 
 // The sidebar, in one column: the signed-in person at the top (their menu has Change PIN and Log out), the modules in labelled groups, and the everyday
 // utilities (colour scheme, collapse) at the bottom. Only the modules a person's role allows are listed, so a group with nothing in it does not appear.
-type Group = 'sales' | 'operations' | 'finance' | 'admin';
+type Group = 'sales' | 'glm' | 'freelancer' | 'operations' | 'finance' | 'admin';
 const GROUPS: [Group, string][] = [
   ['sales', 'Sales'],
+  ['glm', 'GLM Sales'],
+  ['freelancer', 'Freelancer Sales'],
   ['operations', 'Operations'],
   ['finance', 'Finance'],
   ['admin', 'Admin'],
 ];
 const GROUP_OF: Record<string, Group> = {
   '/approvals': 'sales',
-  '/orders/new/walkin': 'sales',
-  '/orders/new/film': 'sales',
-  '/orders/new/artwork': 'sales',
-  '/orders/new/uv-film': 'sales',
-  '/orders/new/uv-artwork': 'sales',
-  '/orders/new/embroidery': 'sales',
-  '/costing': 'sales',
+  '/orders/new/walkin': 'glm',
+  '/orders/new/film': 'glm',
+  '/orders/new/artwork': 'glm',
+  '/orders/new/uv-film': 'glm',
+  '/orders/new/uv-artwork': 'glm',
+  '/orders/new/embroidery': 'glm',
+  '/costing': 'glm',
   '/orders/all': 'sales',
   '/commission': 'sales',
   '/production': 'operations',
@@ -123,7 +131,9 @@ const ICON_OF: Record<string, string> = {
   '/reports': 'reports',
   '/master-data': 'masterdata',
 };
-const groupOf = (path: string): Group => GROUP_OF[path] ?? 'sales';
+// the Freelancer Sales screens are the same ones under /freelancer
+const groupOf = (path: string): Group => (path.startsWith('/freelancer/') ? 'freelancer' : GROUP_OF[path] ?? 'sales');
+const iconOf = (path: string): string => ICON_OF[path] ?? ICON_OF[path.replace(/^\/freelancer/, '')] ?? 'orders';
 const THEME_ICONS: [Theme, string, string][] = [
   ['organic', 'sun', 'Organic'],
   ['nocturne', 'moon', 'Nocturne'],
@@ -235,7 +245,7 @@ function AppLayoutInner() {
                 <div className="side-group-title">{label}</div>
                 {items.map(([path, text]) => (
                   <NavLink key={path} to={path} title={text} onClick={subNav.goHome} className={({ isActive }) => 'side-link' + (isActive ? ' active' : '')}>
-                    <span className="icon-wrap"><Icon name={ICON_OF[path] ?? 'orders'} size={19} /></span>
+                    <span className="icon-wrap"><Icon name={iconOf(path)} size={19} /></span>
                     <span>{text}</span>
                     {path === '/approvals' && badge.count > 0 && <b className="nav-badge" title={`${badge.waiting} waiting for your decision${badge.news ? `, ${badge.news} of your requests decided` : ''}`}>{badge.count}</b>}
                   </NavLink>

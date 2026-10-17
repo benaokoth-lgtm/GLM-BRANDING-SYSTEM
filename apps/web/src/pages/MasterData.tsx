@@ -16,8 +16,9 @@ import StaffEditDialog from '../components/StaffEditDialog';
 import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
+import FreelancerPrices from '../components/FreelancerPrices';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'discount' | 'company' | 'mpesa' | 'ncba' | 'embroidery' | 'email' | 'whatsapp' | 'backup' | 'security';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'freelancer' | 'discount' | 'company' | 'mpesa' | 'ncba' | 'embroidery' | 'email' | 'whatsapp' | 'backup' | 'security';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -25,6 +26,7 @@ const TABS: [MasterTab, string][] = [
   ['services', 'Service Price List'],
   ['heads', 'Business Heads'],
   ['materials', 'Stock Price List'],
+  ['freelancer', 'Freelancer Prices'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
   ['mpesa', 'M-Pesa'],
@@ -1300,6 +1302,8 @@ export default function MasterData() {
       )}
 
       {tab === 'heads' && <BusinessHeadsPanel heads={heads} onChanged={() => { loadHeads(); catalog.reload(); }} />}
+
+      {tab === 'freelancer' && <FreelancerPrices />}
 
       {tab === 'discount' && (
         <>

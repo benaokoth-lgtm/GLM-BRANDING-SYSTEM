@@ -9,6 +9,7 @@ import type { CompanySettings, OrderDetail } from '../../api/models';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../SplitPayments';
 import type { PaymentRow } from '../SplitPayments';
 import { Corners, Field } from './shared';
+import { usePriceList } from '../../state/PriceListContext';
 
 // DTF / UV DTF artwork order, artworks of different sizes (and perhaps different clients) on one length of film. The sales person enters rows — a size, how many artworks, the price of each —
 // and the rows must add up to at least the recommended total for the whole length, which is worked out the usual way: the fixed charge per metre shared by NUMBER of artworks, plus the
@@ -174,6 +175,7 @@ interface DialogProps {
 
 /** Completes the sheet: the heat press fee, who it is credited to, each client's phone and what they pay now. Print records the orders — one for each client — and offers each one's receipt. */
 export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, run, rows, fixedChargePerMetre, minPricePerPiece, smallSharePrice = 0, smallShareBelow = 0, defaultClient, onClose, onDone }: DialogProps) {
+  const list = usePriceList(); // the price list the screen is under, for the orders
   const { user } = useAuth();
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
   const salesPeople = useSalesPeople(forOthers);
@@ -213,6 +215,7 @@ export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, r
     try {
       const clientPayments = base.clients.map((c) => ({ key: sheetClientKey(c.client, phones[c.key] ?? ''), payments: toApiPayments(rowsFor(c.key)) }));
       const r = await api.post<{ orders: OrderDetail[] }>('/dtf/sheets', {
+        priceList: list,
         rollId,
         jobOn,
         client: defaultClient,

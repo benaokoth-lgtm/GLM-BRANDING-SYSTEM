@@ -27,6 +27,8 @@ const Reports = lazy(() => import('./pages/Reports'));
 const Stock = lazy(() => import('./pages/Stock'));
 const Dtf = lazy(() => import('./pages/Dtf'));
 import { useFeatures } from './hooks/useFeatures';
+import { PriceListProvider } from './state/PriceListContext';
+import type { PermissionKey, PriceList } from '@glm/shared';
 
 // The Commission module exists only while an Admin has switched the scheme on (Master Data → Company Info).
 function CommissionGate() {
@@ -42,6 +44,30 @@ function DefaultRedirect() {
   return <Navigate to={user.permissions.canCaptureOrders && user.role !== 'Admin' ? '/orders/new/walkin' : '/orders/all'} replace />;
 }
 
+// The seven sales screens exist under each price list: the original addresses are GLM Sales, the same screens under /freelancer are Freelancer Sales (the menu you key from decides the list).
+function salesRoutes(prefix: string, list: PriceList) {
+  const entries: [string, PermissionKey[], JSX.Element][] = [
+    ['/orders/new/walkin', ['canCaptureOrders'], <NewWalkinOrder />],
+    ['/orders/new/film', ['canAccessDtf', 'canManageDtf'], <NewFilmOrder />],
+    ['/orders/new/artwork', ['canAccessDtf', 'canManageDtf'], <NewArtworkOrder />],
+    ['/orders/new/uv-film', ['canAccessDtf', 'canManageDtf'], <NewFilmOrder product="uv" />],
+    ['/orders/new/uv-artwork', ['canAccessDtf', 'canManageDtf'], <NewArtworkOrder product="uv" />],
+    ['/orders/new/embroidery', ['canCaptureOrders'], <NewEmbroideryOrder />],
+    ['/costing', ['canCaptureOrders', 'canAccessFinance'], <JobCosting />],
+  ];
+  return entries.map(([path, keys, screen]) => (
+    <Route
+      key={prefix + path}
+      path={prefix + path}
+      element={
+        <RequirePermission keys={keys}>
+          <PriceListProvider list={list}>{screen}</PriceListProvider>
+        </RequirePermission>
+      }
+    />
+  ));
+}
+
 export default function App() {
   const { user } = useAuth();
 
@@ -53,62 +79,8 @@ export default function App() {
       <Route path="/privacy" element={<Privacy />} />
       <Route element={user ? <AppLayout /> : <Navigate to="/login" replace />}>
         <Route index element={<DefaultRedirect />} />
-        <Route
-          path="/orders/new/walkin"
-          element={
-            <RequirePermission keys={['canCaptureOrders']}>
-              <NewWalkinOrder />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/orders/new/film"
-          element={
-            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
-              <NewFilmOrder />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/costing"
-          element={
-            <RequirePermission keys={['canCaptureOrders', 'canAccessFinance']}>
-              <JobCosting />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/orders/new/embroidery"
-          element={
-            <RequirePermission keys={['canCaptureOrders']}>
-              <NewEmbroideryOrder />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/orders/new/uv-film"
-          element={
-            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
-              <NewFilmOrder product="uv" />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/orders/new/uv-artwork"
-          element={
-            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
-              <NewArtworkOrder product="uv" />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="/orders/new/artwork"
-          element={
-            <RequirePermission keys={['canAccessDtf', 'canManageDtf']}>
-              <NewArtworkOrder />
-            </RequirePermission>
-          }
-        />
+        {salesRoutes('', 'glm')}
+        {salesRoutes('/freelancer', 'freelancer')}
         {/* One Orders screen: the whole list for people who may see every order, a member of staff's own orders otherwise. */}
         <Route
           path="/orders/all"

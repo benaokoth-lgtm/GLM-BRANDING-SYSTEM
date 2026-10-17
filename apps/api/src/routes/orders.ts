@@ -8,6 +8,7 @@ import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import type { CreditLine } from '../commission';
 import { resolveCapture } from '../frontOffice';
+import { resolvePriceList } from '../priceLists';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
 import { buildOrderPdf, documentKind } from '../orderPdf';
@@ -96,6 +97,8 @@ export function serializeSummary(order: ListOrder) {
     orderNo: order.orderNo,
     kind: order.kind,
     channel: order.channel,
+    // The price list it was captured under: GLM Sales or Freelancer Sales.
+    priceList: order.priceList,
     customerName: order.customerName,
     phone: order.phone,
     corporateClient: order.corporateClient
@@ -356,6 +359,8 @@ const lineItemSchema = z
   });
 
 export const walkinSchema = z.object({
+  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales). Left out, it follows who the order is credited to.
+  priceList: z.enum(['glm', 'freelancer']).optional(),
   // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
   customerName: z.string().optional(),
   phone: z.string().optional(),
@@ -399,6 +404,8 @@ export async function captureWalkin(req: import('express').Request, res: import(
   // Who the order is credited to (the sales person) and who keys it (the cashier): decided here, from the person's role and whether their order taking is on.
   const cap = await resolveCapture(req.user!, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  const pl = await resolvePriceList(req.user!, form.priceList, cap.staffId, { phone: form.phone, name: form.customerName });
+  if (!pl.ok) return res.status(400).json({ error: pl.error });
   const costs = extra.keepCosts ? true : await canSeeCosts(req.user!.role);
 
   // Payments taken at capture: the new list form, or the older single amount + method.
@@ -432,6 +439,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
       data: {
         orderNo,
         kind: 'walkin',
+        priceList: pl.priceList,
         customerName: form.customerName?.trim() || WALK_IN_CLIENT,
         phone: form.phone?.trim() || null,
         staffId: cap.staffId,

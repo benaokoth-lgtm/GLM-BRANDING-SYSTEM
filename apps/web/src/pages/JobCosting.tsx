@@ -9,6 +9,7 @@ import CostingRatesPanel from '../components/CostingRatesPanel';
 import PrintCosting from '../components/PrintCosting';
 import StaffClientPicker from '../components/StaffClientPicker';
 import { useAuth } from '../state/AuthContext';
+import { PriceListBanner } from '../state/PriceListContext';
 
 // Sales → Job Costing. Staff pick a kind of job (business cards, indoor or outdoor signage), say how many and how big, and are given the price to quote: what the supplier rates
 // add up to (the materials and services kept under Rates, here, by an Admin), plus the margin, plus VAT. The margin and the profit are shown only to people who may see costs
@@ -168,6 +169,7 @@ export default function JobCosting() {
       <div className="no-print">
         <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>Sales</div>
         <h1 style={{ fontFamily: 'var(--font-heading)', fontWeight: 600, fontSize: 38, lineHeight: 1.05, margin: 0 }}>Job costing</h1>
+        <PriceListBanner note="Costed jobs are priced from the supplier rates and mark-ups; separate Freelancer mark-ups follow in a later step." />
         <p className="note" style={{ marginBottom: 0 }}>
           Cost an outsourced branding job from the supplier rates and get the price to quote. The calculator keeps nothing until you press “Save as quote”; a saved quote can then be agreed with the client and captured as an order.
         </p>

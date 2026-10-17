@@ -141,6 +141,8 @@ model Service {
   size                String  @default("")
   unit                String // 'piece' | 'metre' | 'sqm'
   price               Float
+  // The Freelancer Sales price typed by hand (null = the GLM price less the default percentage, rounded).
+  freelancerPriceOverride Float?
   // An sqm-priced service billed off one artwork's area (length x width) —
   // e.g. DTF Printing or Embroidery. Governs whether order line items show
   // the "Artwork size (sqm)" field and compute unit price
@@ -188,6 +190,8 @@ model Material {
   size         String @default("")
   unit         String @default("piece")
   price        Float
+  // The Freelancer Sales price typed by hand (null = the GLM price less the default percentage, rounded).
+  freelancerPriceOverride Float?
   stockQty     Float  @default(0)
   reorderLevel Float  @default(0)
   // The business head this material is normally bought for — purchases of it are tagged to it unless changed on the purchase order.
@@ -245,6 +249,9 @@ model Setting {
   // The company's KRA PIN — printed as the employer's PIN on the payroll and the P9.
   kraPin         String  @default("")
   maxDiscountPct Float   @default(15)
+  // Freelancer Sales prices: the GLM price less this percentage, rounded to the nearest freelancerRoundTo shillings (0 = exact). A price typed by hand for one item wins.
+  freelancerDiscountPct Float @default(0)
+  freelancerRoundTo     Float @default(5)
   nextWalkinNo   Int     @default(1001)
   nextCorpNo     Int     @default(2001)
   // Order numbering for the DTF Sales & Roll Tracker's own order-capture
@@ -570,6 +577,8 @@ model Order {
   // order popup — see routes/dtf.ts). Lets "My Orders" filter the two apart
   // without joining to DtfFilmSale/DtfArtworkJob.
   channel           String   @default("general")
+  // The price list it was captured under — the menu it was keyed from: 'glm' (GLM Sales) or 'freelancer' (Freelancer Sales). Every order before the two lists existed is 'glm'.
+  priceList         String   @default("glm")
   customerName      String?
   phone             String?
   corporateClientId Int?
@@ -1130,6 +1139,17 @@ model QualityCheck {
 
 // Single row (id = 1), created on first read.
 // One row per product: id 1 is DTF, id 2 is UV DTF (created with the UV defaults the first time it is read).
+// The Freelancer Sales prices of DTF / UV DTF that were typed by hand (id 1 = DTF, 2 = UV DTF). A blank (null) follows the GLM rate less the default percentage (Setting.freelancerDiscountPct).
+model DtfFreelancerSetting {
+  id                  Int    @id
+  stdPricePerM        Float?
+  minPricePerM        Float?
+  fixedChargePerMetre Float?
+  minPricePerPiece    Float?
+  smallShareBelow     Float?
+  smallSharePrice     Float?
+}
+
 model DtfSetting {
   id                  Int   @id @default(1)
   rollLengthM         Float @default(100)

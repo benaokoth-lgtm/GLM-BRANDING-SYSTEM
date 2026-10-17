@@ -10,6 +10,7 @@ import SourcingField from '../SourcingField';
 import StaffClientPicker from '../StaffClientPicker';
 import { useSalesPeople } from '../../hooks/useSalesPeople';
 import { useAuth } from '../../state/AuthContext';
+import { priceOnList, usePriceList } from '../../state/PriceListContext';
 import SplitPayments, { newPaymentRow, paymentProblem, paymentsTotal, toApiPayments } from '../SplitPayments';
 import type { PaymentRow } from '../SplitPayments';
 
@@ -42,6 +43,7 @@ interface Props {
 // DtfFilmSale/DtfArtworkJob roll-consumption row) and prints two thermal
 // receipts — nothing is saved before that.
 export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qty, unitPrice, client, needsApproval = false, onClose, onDone }: Props) {
+  const list = usePriceList();
   const { materials } = useCatalog();
   const { user } = useAuth();
   // The client's name, prefilled from the previous page but editable here, beside the phone: crediting a client to a staff member needs both, and a
@@ -67,7 +69,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
   const materialsTotal = materialLines.reduce((a, ml) => {
     const mt = materials.find((m) => m.id === ml.materialId);
     const q = Number(ml.qty) || 0;
-    return a + (mt ? mt.price * q : 0);
+    return a + (mt ? priceOnList(mt, list) * q : 0);
   }, 0);
   const grandTotal = Math.round((serviceLineTotal + materialsTotal) * 100) / 100;
   const paid = paymentsTotal(paymentRows);
@@ -98,6 +100,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
     try {
       const payload = {
         ...basePayload,
+        priceList: list,
         client: clientName,
         phone,
         // Front office: credited to the chosen sales person (their client when ticked); everyone else captures in their own name.
@@ -194,7 +197,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
                 <select className="input" value={ml.materialId} onChange={(e) => updateMaterialLine(idx, { materialId: Number(e.target.value) })}>
                   {materials.map((mt) => (
                     <option key={mt.id} value={mt.id}>
-                      {mt.name} ({fmtKsh(mt.price)})
+                      {mt.name} ({fmtKsh(priceOnList(mt, list))})
                     </option>
                   ))}
                 </select>

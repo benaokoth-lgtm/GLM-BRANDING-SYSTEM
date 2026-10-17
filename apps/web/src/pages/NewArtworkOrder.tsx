@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DTF_PRODUCT_LABEL, VAT_RATE, artworkPremiumCommission, fmtKsh, fmtNum, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, sheetCalc, summariseRoll, todayStr } from '@glm/shared';
 import type { DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
+import { PriceListBanner, usePriceList } from '../state/PriceListContext';
 import DtfOrderDialog from '../components/dtf/DtfOrderDialog';
 import { ArtworkSheetDialog, ArtworkSheetPanel, newSheetRow, toSheetRows } from '../components/dtf/ArtworkSheet';
 import type { UiRow } from '../components/dtf/ArtworkSheet';
@@ -32,17 +33,18 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const [sheetOn, setSheetOn] = useState(false);
   const [sheetRows, setSheetRows] = useState<UiRow[]>(() => [newSheetRow(), newSheetRow()]);
 
-  const reloadData = () => api.get<DtfData>(`/dtf/data?product=${product}&scope=order`).then(setData);
+  const list = usePriceList();
+  const reloadData = () => api.get<DtfData>(`/dtf/data?product=${product}&scope=order&priceList=${list}`).then(setData);
   useEffect(() => {
     api
       .get<{ artworkRatePct: number }>('/commission/settings')
       .then((c) => setArtworkRate(c.artworkRatePct))
       .catch(() => setArtworkRate(null));
     api
-      .get<DtfData>(`/dtf/data?product=${product}&scope=order`)
+      .get<DtfData>(`/dtf/data?product=${product}&scope=order&priceList=${list}`)
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : 'Could not load DTF data'));
-  }, [product]);
+  }, [product, list]);
 
   if (!data) return <p className="note">{error ?? 'Loading…'}</p>;
 
@@ -96,6 +98,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
       <i className="corner br"></i>
       <div className="card-kicker">{label} artwork order</div>
       <div className="card-title">New {label} artwork job</div>
+      <PriceListBanner />
 
       {error && (
         <p className="note" style={{ color: 'var(--color-error)' }}>
@@ -109,7 +112,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
             Price per running metre: <b>{fmtKsh(settings.fixedChargePerMetre)}</b> — change
           </summary>
           <div style={{ marginTop: 'var(--space-2)' }}>
-            <ArtworkRateEditor product={product} current={settings.fixedChargePerMetre} onSaved={reloadData} compact />
+            <ArtworkRateEditor product={product} list={list} current={settings.fixedChargePerMetre} onSaved={reloadData} compact />
           </div>
         </details>
       )}

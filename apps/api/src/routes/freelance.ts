@@ -9,7 +9,8 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission, userHasPermission } from '../middleware/auth';
 import { ensureChartOnce } from '../accounting/chart';
 import { settlePayout } from '../freelancePay';
-import { sendPayoutToPhone } from '../mpesaB2c';
+import { backToApproved, sendPayoutToPhone } from '../mpesaB2c';
+import { contractorFromMonth, contractorsOn, settleCommissionPayout } from '../contractorPay';
 import { pettyCashShortfall } from '../accounting/ledger';
 import { buildFreelanceStatements, commissionEnabled, getCommissionConfig } from '../commission';
 import { isB2cReady, loadMpesaConfig } from '../mpesaConfig';
@@ -91,6 +92,8 @@ function tidy(d: { nationalId?: string; kraPin?: string; mpesaNumber?: string })
 freelanceRouter.post('/agents', capture, async (req, res) => {
   const parsed = z.object(agentFields).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  // From the contractor month freelance accounts are retired: sales persons are the ones who bring and keep clients (their Client Register).
+  if (contractorsOn(await contractorFromMonth(), todayStr().slice(0, 7))) return res.status(400).json({ error: 'Freelance accounts have been retired — orders are credited to a sales person, and their clients are kept in their Client Register' });
   const d = parsed.data;
   const phone = kePhone(d.phone);
   if (!phone) return res.status(400).json({ error: 'Enter a valid Kenyan phone number (e.g. 0712 345 678)' });
@@ -222,6 +225,8 @@ freelanceRouter.post('/payouts/approve', manage, async (req, res) => {
   const body = z.object({ weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: 'Choose the week' });
   const week = weekStart(body.data.weekStart);
+  // Weeks from the contractor month on are not approved any more (there are no freelance accounts to credit); earlier weeks are settled as before.
+  if (contractorsOn(await contractorFromMonth(), week.slice(0, 7))) return res.status(400).json({ error: 'This week is in the month sales persons became contractors — their pay is the monthly one under Team & payouts' });
   const { statements } = await buildFreelanceStatements(week);
   const out: { agentId: number; agentName: string; amount: number; status: string }[] = [];
   const skipped: { agentName: string; amount: number; reason: string }[] = [];
@@ -322,7 +327,7 @@ freelanceRouter.post('/disbursements/:id/resolve', manage, async (req, res) => {
   if (parsed.data.outcome === 'failed') {
     await prisma.$transaction([
       prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Failed', resultDesc: `Marked as not sent by ${req.user!.name}`, completedAt: new Date() } }),
-      prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: 'Sending' }, data: { status: 'Approved' } }),
+      backToApproved(d),
     ]);
     return res.json({ ok: true });
   }
@@ -332,7 +337,8 @@ freelanceRouter.post('/disbursements/:id/resolve', manage, async (req, res) => {
   await ensureChartOnce();
   await prisma.$transaction(async (tx) => {
     await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Success', receipt, resultDesc: `Confirmed by hand by ${req.user!.name}`, completedAt: new Date() } });
-    await settlePayout(tx, d.payoutId, { method: 'M-Pesa', byName: req.user!.name, receipt, paidOut: d.amount });
+    if (d.commissionPayoutId) await settleCommissionPayout(tx, d.commissionPayoutId, { method: 'M-Pesa', byName: req.user!.name, receipt, paidOut: d.amount });
+    else if (d.payoutId) await settlePayout(tx, d.payoutId, { method: 'M-Pesa', byName: req.user!.name, receipt, paidOut: d.amount });
   });
   res.json({ ok: true });
 });
@@ -347,20 +353,45 @@ freelanceRouter.get('/withholding', manage, async (req, res) => {
     include: { agent: { select: { name: true, kraPin: true, nationalId: true } } },
     orderBy: [{ paidOn: 'asc' }, { id: 'asc' }],
   });
-  const out = rows.map((r) => ({
-    id: r.id,
-    paidOn: r.paidOn,
-    weekStart: r.weekStart,
-    agentName: r.agent.name,
-    kraPin: r.agent.kraPin,
-    nationalId: r.agent.nationalId,
-    gross: r.amount,
-    rate: r.withholdingRate,
-    withheld: r.withholdingTax,
-    net: round2(r.amount - r.withholdingTax),
-    method: r.paidMethod,
-    reference: r.receipt,
-  }));
+  const monthly = await prisma.commissionPayout.findMany({
+    where: { contractor: true, status: 'Paid', paidOn: { gte: `${month}-01`, lte: `${month}-31` } },
+    include: { staff: { select: { name: true, kraPin: true, nationalId: true } } },
+    orderBy: [{ paidOn: 'asc' }, { id: 'asc' }],
+  });
+  const out = [
+    ...rows.map((r) => ({
+      id: r.id,
+      kind: 'Freelancer' as const,
+      paidOn: r.paidOn,
+      weekStart: r.weekStart as string | null,
+      period: null as string | null,
+      agentName: r.agent.name,
+      kraPin: r.agent.kraPin,
+      nationalId: r.agent.nationalId,
+      gross: r.amount,
+      rate: r.withholdingRate,
+      withheld: r.withholdingTax,
+      net: round2(r.amount - r.withholdingTax),
+      method: r.paidMethod,
+      reference: r.receipt,
+    })),
+    ...monthly.map((r) => ({
+      id: 100000000 + r.id, // (apart from the weekly ones)
+      kind: 'Sales person' as const,
+      paidOn: r.paidOn,
+      weekStart: null as string | null,
+      period: r.period as string | null,
+      agentName: r.staff.name,
+      kraPin: r.staff.kraPin,
+      nationalId: r.staff.nationalId,
+      gross: r.amount,
+      rate: r.withholdingRate,
+      withheld: r.withholdingTax,
+      net: round2(r.amount - r.withholdingTax),
+      method: r.paidMethod,
+      reference: r.receipt,
+    })),
+  ].sort((a, b) => String(a.paidOn).localeCompare(String(b.paidOn)));
   res.json({
     month,
     rows: out,
@@ -380,14 +411,28 @@ freelanceRouter.get('/annual', manage, async (req, res) => {
     include: { agent: { select: { id: true, name: true, kraPin: true, nationalId: true, phone: true } } },
     orderBy: [{ paidOn: 'asc' }, { id: 'asc' }],
   });
-  const by = new Map<number, { agentId: number; agentName: string; kraPin: string; nationalId: string; weeks: number; gross: number; withheld: number; net: number }>();
+  const by = new Map<number, { agentId: number; kind: string; agentName: string; kraPin: string; nationalId: string; weeks: number; gross: number; withheld: number; net: number }>();
   for (const r of rows) {
-    const cur = by.get(r.agentId) ?? { agentId: r.agentId, agentName: r.agent.name, kraPin: r.agent.kraPin ?? '', nationalId: r.agent.nationalId ?? '', weeks: 0, gross: 0, withheld: 0, net: 0 };
+    const cur = by.get(r.agentId) ?? { agentId: r.agentId, kind: 'Freelancer', agentName: r.agent.name, kraPin: r.agent.kraPin ?? '', nationalId: r.agent.nationalId ?? '', weeks: 0, gross: 0, withheld: 0, net: 0 };
     cur.weeks += 1;
     cur.gross = round2(cur.gross + r.amount);
     cur.withheld = round2(cur.withheld + r.withholdingTax);
     cur.net = round2(cur.gross - cur.withheld);
     by.set(r.agentId, cur);
+  }
+  // sales persons paid monthly as contractors (a month counts in "weeks" as a payment)
+  const monthly = await prisma.commissionPayout.findMany({
+    where: { contractor: true, status: 'Paid', paidOn: { gte: `${year}-01-01`, lte: `${year}-12-31` } },
+    include: { staff: { select: { id: true, name: true, kraPin: true, nationalId: true } } },
+  });
+  for (const r of monthly) {
+    const key = 100000000 + r.staffId;
+    const cur = by.get(key) ?? { agentId: key, kind: 'Sales person', agentName: r.staff.name, kraPin: r.staff.kraPin ?? '', nationalId: r.staff.nationalId ?? '', weeks: 0, gross: 0, withheld: 0, net: 0 };
+    cur.weeks += 1;
+    cur.gross = round2(cur.gross + r.amount);
+    cur.withheld = round2(cur.withheld + r.withholdingTax);
+    cur.net = round2(cur.gross - cur.withheld);
+    by.set(key, cur);
   }
   const people = [...by.values()].sort((a, b) => b.gross - a.gross || a.agentName.localeCompare(b.agentName));
   res.json({

@@ -22,6 +22,9 @@ interface Guide {
     filmBands: Rate[];
     artworkRatePct: number;
     ownershipMonths: number;
+    /** The month sales persons start being paid as contractors ('' = not switched on) and the standard withholding tax rate. */
+    contractorFrom?: string;
+    freelanceWhtRate?: number;
   };
   vatRate: number;
   examples: { gross: number; label: string; nssf: number; shif: number; housingLevy: number; paye: number; net: number }[];
@@ -61,6 +64,16 @@ export default function PayGuide() {
         </button>
         <span className="note" style={{ margin: 0 }}>This guide is written from the current settings, so it is always up to date. Print it to give staff a copy.</span>
       </div>
+
+      {c.contractorFrom && (
+        <Card title={`Paid as a contractor from ${c.contractorFrom}`}>
+          <ul className="note" style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>
+            <li>From <b>{c.contractorFrom}</b> your month is <b>one total</b> — the band payout, the film and artwork premium and any commission — with <b>withholding tax ({c.freelanceWhtRate ?? 5}% unless you have your own rate) taken off it</b>. You receive the rest.</li>
+            <li>It is paid <b>outside payroll</b>, so there is no PAYE, NSSF or SHIF, by <b>M-Pesa to your phone</b> or by the method agreed with you, once the month is over. You get a tax withheld certificate from the company; keep your <b>KRA PIN</b> and M-Pesa number up to date with the office.</li>
+            <li>The minimum wage shown below is paid only if the office has switched it on for you.</li>
+          </ul>
+        </Card>
+      )}
 
       <Card title="Your pay — the short version">
         <ul className="note" style={{ margin: 0, paddingLeft: 'var(--space-4)' }}>

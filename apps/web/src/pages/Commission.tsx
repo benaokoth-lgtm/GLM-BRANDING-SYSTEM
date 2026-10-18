@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { useLocation } from 'react-router-dom';
 import { useSubTab } from '../state/SubNavContext';
 import ClientRegister from './ClientRegister';
+import ContractorPay from '../components/ContractorPay';
 import { useAuth } from '../state/AuthContext';
 import { useCatalog } from '../hooks/useCatalog';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from './accounting/shared';
@@ -51,6 +52,11 @@ interface Pay {
   minimumWage: number;
   amount: number;
   topUp: number;
+  /** A sales person paid as a contractor: `amount` is the gross; the tax comes off it and `net` is what they receive. */
+  contractor?: boolean;
+  whtRate?: number;
+  withholdingTax?: number;
+  net?: number;
 }
 interface Scheme {
   mode: 'steps' | 'percent';
@@ -120,6 +126,10 @@ interface Payout {
   amount: number;
   paidOn: string | null;
   paidMethod: string | null;
+  contractor?: boolean;
+  withholdingTax?: number;
+  net?: number;
+  receipt?: string | null;
 }
 interface MyData {
   period: string;
@@ -174,7 +184,7 @@ interface MonthlyData {
   totals: MonthlyTotals;
 }
 
-type Tab = 'mine' | 'guide' | 'team' | 'register' | 'monthly' | 'clients' | 'freelance' | 'rates';
+type Tab = 'mine' | 'guide' | 'team' | 'register' | 'paydetails' | 'monthly' | 'clients' | 'freelance' | 'rates';
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 // up to two decimals, no trailing zeros: 10 → "10%", 3.5 → "3.5%" (stripping zeros from a whole number would turn 10 into 1)
 const pct = (n: number) => `${parseFloat(Number(n).toFixed(2))}%`;
@@ -547,11 +557,12 @@ function MyTab({ period }: { period: string }) {
       )}
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
         <Stat
-          label={s.pay.onBands ? 'Your pay' : 'Your commission'}
-          value={fmtKsh(s.pay.amount)}
+          label={s.pay.contractor ? 'Your pay this month' : s.pay.onBands ? 'Your pay' : 'Your commission'}
+          value={fmtKsh(s.pay.contractor ? s.pay.net ?? s.pay.amount : s.pay.amount)}
           sub={data.payout ? `${data.payout.status === 'Paid' && s.pay.onBands ? 'in payroll' : data.payout.status}${data.payout.paidOn ? ' on ' + fmtDate(data.payout.paidOn) : ''}` : s.pay.onBands ? 'goes into payroll when the month is approved' : 'not yet approved'}
         />
-        {s.pay.onBands && s.pay.topUp > 0 && <Stat label="Minimum wage" value={fmtKsh(s.pay.minimumWage)} sub={`your band pays ${fmtKsh(s.total)}, so ${fmtKsh(s.pay.topUp)} is added to reach it`} />}
+        {s.pay.contractor && <Stat label="Before tax" value={fmtKsh(s.pay.amount)} sub={`${s.pay.whtRate ?? 0}% withholding tax ${fmtKsh(s.pay.withholdingTax ?? 0)} is taken off; you receive ${fmtKsh(s.pay.net ?? s.pay.amount)}`} />}
+        {(s.pay.onBands || s.pay.contractor) && s.pay.topUp > 0 && <Stat label="Minimum wage" value={fmtKsh(s.pay.minimumWage)} sub={`your band pays ${fmtKsh(s.total)}, so ${fmtKsh(s.pay.topUp)} is added to reach it`} />}
         <Stat label="Sales you sourced" value={fmtKsh(s.general.commission)} sub={steps ? `${fmtKsh(s.scheme.sales)} net received · pay band ${s.scheme.step?.index ?? 0}` : s.target.held ? `${fmtKsh(s.general.netSales)} net received · below your sales target` : `${fmtKsh(s.general.netSales)} net received · ${pct(s.general.band.rate)} band`} />
         <Stat label="Film" value={fmtKsh(s.film.commission)} />
         <Stat label="Artwork" value={fmtKsh(s.artwork.commission)} />
@@ -598,10 +609,54 @@ function MyTab({ period }: { period: string }) {
 }
 
 // ── Team & payouts ──────────────────────────────────────────────────────────
+const PHONE = 'phone' as const; // paying a contractor by M-Pesa to their phone
+
+/** A payment to a phone whose answer from Safaricom has not come: see the attempt, and settle it by hand once the Paybill statement shows what happened. */
+function SendingResolver({ payoutId, onDone }: { payoutId: number; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState<{ id: number; status: string; amount: number; phone: string; resultDesc: string }[] | null>(null);
+  const [receipt, setReceipt] = useState('');
+  const [err, setErr] = useState('');
+  async function show() {
+    setOpen(!open);
+    if (!open) setRows(await api.get<NonNullable<typeof rows>>(`/commission/payouts/${payoutId}/disbursements`).catch(() => []));
+  }
+  async function resolve(id: number, outcome: 'failed' | 'sent') {
+    setErr('');
+    try {
+      await api.post(`/commission/disbursements/${id}/resolve`, { outcome, ...(outcome === 'sent' ? { receipt } : {}) });
+      setOpen(false);
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not settle it');
+    }
+  }
+  const pending = rows?.find((r) => r.status === 'Pending');
+  return (
+    <>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={show}>Settle…</button>
+      {open && (
+        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          {!pending ? <span className="note" style={{ margin: 0 }}>No attempt is waiting.</span> : (
+            <>
+              <span className="note" style={{ margin: 0 }}>{fmtKsh(pending.amount)} to {pending.phone}: check the Paybill statement.</span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => resolve(pending.id, 'failed')}>It was not sent</button>
+              <input className="input" style={{ width: 120 }} placeholder="Receipt code" value={receipt} onChange={(e) => setReceipt(e.target.value)} aria-label="M-Pesa receipt code" />
+              <button type="button" className="btn btn-secondary btn-sm" disabled={receipt.trim().length !== 10} onClick={() => resolve(pending.id, 'sent')}>It was sent</button>
+            </>
+          )}
+          {err && <span className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{err}</span>}
+        </span>
+      )}
+    </>
+  );
+}
+
 function TeamTab({ period }: { period: string }) {
   const { data, error, loading, reload } = useLoad<TeamData>(`/commission/statement?period=${period}`);
   const [open, setOpen] = useState<number | null>(null);
-  const [method, setMethod] = useState<(typeof EXPENSE_METHODS)[number]>('Bank Transfer');
+  const [method, setMethod] = useState<(typeof EXPENSE_METHODS)[number] | typeof PHONE>('Bank Transfer');
+  const [reference, setReference] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -629,7 +684,7 @@ function TeamTab({ period }: { period: string }) {
       {data.open && <p className="note">This month is not over, so more money may still come in. Approve it once the month has closed.</p>}
       <Card
         title={`Commission for ${period}`}
-        hint={`${fmtKsh(data.statements.reduce((a, s) => a + s.pay.amount, 0))} in total, on money received this month. People on the pay bands are paid through payroll, at least the minimum wage.`}
+        hint={`${fmtKsh(data.statements.reduce((a, s) => a + s.pay.amount, 0))} in total, on money received this month. ${data.statements.some((s) => s.pay.contractor) ? 'Sales persons are paid as contractors: the month’s total less withholding tax, outside payroll — by M-Pesa to their phone or by hand. ' : ''}${data.statements.some((s) => s.pay.onBands) ? 'People on the pay bands are paid through payroll, at least the minimum wage.' : ''}`}
         actions={
           <button type="button" className="btn btn-primary btn-sm" disabled={busy || !approvable} onClick={() => run(async () => {
             const r = await api.post<{ payouts: { staffName: string; status: string; inPayroll?: boolean; note?: string }[] }>('/commission/payouts/approve', { period });
@@ -690,19 +745,35 @@ function TeamTab({ period }: { period: string }) {
                     <td style={{ ...numStyle, fontWeight: 700 }} title={s.pay.topUp > 0 ? `Earned ${fmtKsh(s.total)}; topped up to the minimum wage of ${fmtKsh(s.pay.minimumWage)}` : undefined}>
                       {fmtKsh(s.pay.amount)}
                       {s.pay.topUp > 0 && <span className="text-muted" style={{ fontSize: 11, fontWeight: 400 }}> min wage</span>}
+                      {s.pay.contractor && <div className="text-muted" style={{ fontSize: 11, fontWeight: 400 }}>tax {fmtKsh(s.pay.withholdingTax ?? 0)} ({s.pay.whtRate ?? 0}%) · they receive {fmtKsh(s.pay.net ?? s.pay.amount)}</div>}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {!s.payout && s.pay.amount > 0 && <Tag>{s.pay.onBands ? 'not in payroll' : 'not approved'}</Tag>}
+                      {s.payout?.status === 'Sending' && (
+                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <Tag tone="bad">on its way to their phone</Tag>
+                          <SendingResolver payoutId={s.payout.id} onDone={reload} />
+                        </span>
+                      )}
                       {s.payout?.status === 'Approved' && (
-                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+                        <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                           <Tag tone="bad">approved</Tag>
-                          <select className="input" style={{ width: 130 }} value={method} onChange={(e) => setMethod(e.target.value as (typeof EXPENSE_METHODS)[number])}>
+                          <select className="input" style={{ width: s.pay.contractor ? 210 : 130 }} value={method} onChange={(e) => setMethod(e.target.value as typeof method)}>
+                            {s.pay.contractor && <option value={PHONE}>M-Pesa to their phone (automatic)</option>}
                             {EXPENSE_METHODS.map((m) => (
                               <option key={m}>{m}</option>
                             ))}
                           </select>
-                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(async () => { await api.post(`/commission/payouts/${s.payout!.id}/pay`, { method }); return `${s.staffName} paid ${fmtKsh(s.payout!.amount)} by ${method}`; })}>
-                            Mark paid
+                          {s.pay.contractor && method !== PHONE && <input className="input" style={{ width: 120 }} placeholder="Reference" value={reference} onChange={(e) => setReference(e.target.value)} aria-label="Reference of the payment" />}
+                          <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => run(async () => {
+                            if (s.payout!.contractor && method === PHONE) {
+                              const r = await api.post<{ message?: string }>(`/commission/payouts/${s.payout!.id}/send-mpesa`, {});
+                              return `${s.staffName}: ${r.message ?? 'sent to M-Pesa'}`;
+                            }
+                            await api.post(`/commission/payouts/${s.payout!.id}/pay`, { method, ...(reference.trim() ? { reference: reference.trim() } : {}) });
+                            return `${s.staffName} paid ${fmtKsh(s.payout!.contractor ? s.payout!.net ?? s.payout!.amount : s.payout!.amount)}${s.payout!.contractor && (s.payout!.withholdingTax ?? 0) > 0 ? ` (after ${fmtKsh(s.payout!.withholdingTax ?? 0)} withholding tax)` : ''} by ${method}`;
+                          })}>
+                            {s.payout.contractor && method === PHONE ? 'Send' : 'Mark paid'}
                           </button>
                           <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => run(async () => { await api.del(`/commission/payouts/${s.payout!.id}`); return 'Approval withdrawn'; })}>
                             Withdraw
@@ -1294,7 +1365,7 @@ export default function Commission() {
   if (canMine) tabs.push(['mine', 'My commission'], ['guide', 'How you are paid']);
   if (manager) tabs.push(['team', 'Team & payouts']);
   if (canRegister) tabs.push(['register', 'Client Register']);
-  if (manager) tabs.push(['monthly', 'Monthly report'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
+  if (manager) tabs.push(['paydetails', 'Pay details'], ['monthly', 'Monthly report'], ['clients', 'Clients'], ['freelance', 'Freelancers'], ['rates', 'Rates']);
 
   return (
     <>
@@ -1322,6 +1393,7 @@ export default function Commission() {
       {tab === 'guide' && canMine && <PayGuide />}
       {tab === 'team' && manager && <TeamTab period={period} />}
       {tab === 'register' && canRegister && <ClientRegister embedded />}
+      {tab === 'paydetails' && manager && <ContractorPay />}
       {tab === 'monthly' && manager && <MonthlyTab />}
       {tab === 'clients' && manager && <ClientsTab />}
       {tab === 'freelance' && manager && <FreelancePanel />}

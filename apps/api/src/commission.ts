@@ -114,6 +114,8 @@ export interface CommissionConfig {
   minimumWage: number;
   /** The day of the month people on the pay bands are paid, for the month before. */
   payday: number;
+  /** The first month ('YYYY-MM') sales persons are paid as contractors (the month's total less withholding tax, outside payroll); '' = not switched on. */
+  contractorFrom: string;
 }
 
 function readBands(json: string | null | undefined, fallback: Band[]): Band[] {
@@ -156,6 +158,7 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
     minimumWage: row?.minimumWage ?? DEFAULT_MINIMUM_WAGE,
     payday: row?.payday ?? DEFAULT_PAYDAY,
+    contractorFrom: row?.contractorFrom ?? '',
   };
 }
 
@@ -346,6 +349,9 @@ export async function claimProblem(
 ): Promise<string | null> {
   if (o.freelanceAgentId) {
     if (!(await commissionEnabled())) return null; // switched off: ignored, like a staff claim
+    // From the contractor month freelance accounts are retired: the order is credited to the sales person it is for, and the client is theirs through their Client Register.
+    const from = (await prisma.commissionSettings.findUnique({ where: { id: 1 } }))?.contractorFrom ?? '';
+    if (from && todayStr().slice(0, 7) >= from) return 'Freelance accounts have been retired — credit the order to the sales person it is for';
     // One order, one owner: a staff claim and a freelance account cannot both be on the same order.
     if (o.sourcedBy) return 'An order is credited either to a staff member or to a freelance sales person — not both';
     const agent = await prisma.freelanceAgent.findUnique({ where: { id: o.freelanceAgentId } });
@@ -403,7 +409,17 @@ export interface StaffStatement {
   /** What would have been paid on the month's sales had the target been met (shown, never paid, and not carried into the next month). Artwork is never held: it is earned whether or not the target is met. */
   heldCommission: number;
   /** What the person is paid for the month. For someone paid on the pay bands (`onBands`) it is what they earned, topped up to the minimum wage if it falls short, and it goes into payroll; for anyone else it is the commission earned. */
-  pay: { onBands: boolean; minimumWage: number; amount: number; topUp: number };
+  pay: {
+    onBands: boolean;
+    minimumWage: number;
+    amount: number;
+    topUp: number;
+    /** A sales person paid as a contractor: `amount` is the gross (never through payroll), the withholding tax comes off it, and `net` is what they receive. */
+    contractor?: boolean;
+    whtRate?: number;
+    withholdingTax?: number;
+    net?: number;
+  };
   /** How the month's general sales were paid, where the person stands in the pay bands, and whether the month is below the performance floor. */
   scheme: {
     mode: GeneralMode;
@@ -546,6 +562,11 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     return s;
   };
 
+  // Who a General (non-DTF) order's money counts for: the sales person whose client it is. From the contractor month, every Freelancer Sales order is the sales person it is credited to
+  // (Order.staffId), clients or not — that is what Freelancer Sales is. (Before it, only clients claimed by a staff member earn general commission, as always.)
+  const contractorMonth = !!config.contractorFrom && period >= config.contractorFrom;
+  const generalCredit = (o: { sourcedByStaffId: number | null; priceList: string; staffId: number }) => o.sourcedByStaffId ?? (contractorMonth && o.priceList === 'freelancer' ? o.staffId : null);
+
   // Commission on money received
   for (const o of flowOrders) {
     // An order credited to a freelance sales person is theirs alone: it earns no staff commission and counts towards no staff target.
@@ -584,9 +605,10 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
         addDtfNet(o.staffId, net);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net), commission: c });
       }
-    } else if (o.channel !== 'dtf' && o.sourcedByStaffId && o.status !== 'Quote') {
-      cell(o.sourcedByStaffId, type).received += net;
-      const st = who(o.sourcedByStaffId);
+    } else if (o.channel !== 'dtf' && o.status !== 'Quote' && generalCredit(o)) {
+      const to = generalCredit(o)!;
+      cell(to, type).received += net;
+      const st = who(to);
       st.general.received = round2(st.general.received + net);
       st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
     }
@@ -632,10 +654,26 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
   // salary in the month (net of VAT, money received); then the bands start at the target ('above') or apply to everything ('all').
   // People paid on the pay bands are in every month, even one with no sales — their pay is at least the minimum wage — and are measured against the performance floor.
   const [py, pm] = period.split('-').map(Number) as [number, number];
-  const bandUsers = config.generalMode === 'steps' ? await prisma.user.findMany({ where: { paidOnBands: true, active: true, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, select: { id: true } }) : [];
+  // From the contractor month, sales persons (roles marked "can be assigned orders") are paid as contractors — the month's total less withholding tax, outside payroll — whatever their pay-on-bands setting was.
+  const contractors = new Map<number, { whtRate: number; floor: boolean }>();
+  if (config.contractorFrom && period >= config.contractorFrom) {
+    const roles = await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } });
+    const people2 = roles.length ? await prisma.user.findMany({ where: { active: true, role: { in: roles.map((r) => r.name) }, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, include: { contractorProfile: true } }) : [];
+    for (const u of people2) contractors.set(u.id, { whtRate: u.contractorProfile?.whtRate ?? config.freelanceWhtRate, floor: !!u.contractorProfile?.minWageFloor });
+  }
+  const bandUsers = config.generalMode === 'steps' ? await prisma.user.findMany({ where: { paidOnBands: true, active: true, id: { notIn: [...contractors.keys()] }, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, select: { id: true } }) : [];
   const bandSet = new Set(bandUsers.map((u) => u.id));
   for (const id of bandSet) who(id);
+  // a contractor with the minimum-wage switch on is in every month, even one with no sales; the others appear when they have something
+  for (const [id, c] of contractors) if (c.floor) who(id);
   const payFor = (st: StaffStatement) => {
+    const contractor = contractors.get(st.staffId);
+    if (contractor) {
+      const pp = contractor.floor ? salesPay(st.total, config.minimumWage) : { amount: st.total, topUp: 0 };
+      const tax = round2((pp.amount * contractor.whtRate) / 100);
+      st.pay = { onBands: false, minimumWage: contractor.floor ? config.minimumWage : 0, amount: pp.amount, topUp: pp.topUp, contractor: true, whtRate: contractor.whtRate, withholdingTax: tax, net: round2(pp.amount - tax) };
+      return;
+    }
     const onBands = bandSet.has(st.staffId);
     const pp = onBands ? salesPay(st.total, config.minimumWage) : { amount: st.total, topUp: 0 };
     st.pay = { onBands, minimumWage: onBands ? config.minimumWage : 0, amount: pp.amount, topUp: pp.topUp };

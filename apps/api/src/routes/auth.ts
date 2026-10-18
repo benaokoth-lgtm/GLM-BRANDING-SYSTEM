@@ -11,6 +11,8 @@ import type { User } from '@prisma/client';
 import { permissionsForUser } from '../frontOffice';
 import { commissionEnabled } from '../commission';
 import { systemName } from '../company';
+import { contractorFromMonth, contractorsOn } from '../contractorPay';
+import { todayStr } from '@glm/shared';
 
 export const authRouter = Router();
 
@@ -41,7 +43,8 @@ authRouter.get('/branding', async (_req, res) => {
 
 // Which optional parts of the system are switched on (read fresh each time: an Admin can change them at any moment).
 authRouter.get('/features', requireAuth, async (_req, res) => {
-  res.json({ commission: await commissionEnabled() });
+  // contractors: sales persons are paid as contractors from now (so freelance accounts are retired and no order is credited to one)
+  res.json({ commission: await commissionEnabled(), contractors: contractorsOn(await contractorFromMonth(), todayStr().slice(0, 7)) });
 });
 
 authRouter.get('/users', async (_req, res) => {

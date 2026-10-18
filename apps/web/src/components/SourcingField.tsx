@@ -45,6 +45,8 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
   const frontOffice = !!salesPeople;
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [viaFreelance, setViaFreelance] = useState((freelanceId ?? null) !== null);
+  // From the contractor month freelance accounts are retired: an order is credited to a sales person, never to a freelance account.
+  const freelanceRetired = !!useFeatures()?.contractors;
 
   useEffect(() => {
     const qs = new URLSearchParams();
@@ -112,7 +114,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
         </p>
       ) : (
         <>
-          {onFreelanceChange && (
+          {onFreelanceChange && !freelanceRetired && (
             <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
               <label style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', fontWeight: 400 }}>
                 <input

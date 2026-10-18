@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { EXPENSE_METHODS, FREELANCE_PAY_METHODS, addWeeks, fmtDate, fmtKsh, fmtNum, todayStr, weekStart } from '@glm/shared';
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from '../pages/accounting/shared';
+import { useFeatures } from '../hooks/useFeatures';
 import FreelanceGuide from './FreelanceGuide';
 import FreelanceSetup from './FreelanceSetup';
 
@@ -321,6 +322,7 @@ interface ClientsData {
 
 /** The register of freelance sales persons: add, edit, approve, suspend, and see each one's account. Also shown under Master Data. */
 export function PeopleTab() {
+  const retired = !!useFeatures()?.contractors;
   const { data, error, loading, reload } = useLoad<AgentRow[]>('/freelance/agents');
   const [account, setAccount] = useState<number | null>(null);
   const [form, setForm] = useState(blank);
@@ -537,47 +539,49 @@ export function PeopleTab() {
         )}
       </Card>
 
+      {!retired && (
       <Card title="Add a freelance sales person" hint="Added here, they are approved straight away. (When staff add one at order capture, you approve it above.)">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--space-2)' }}>
-          {(['name', 'phone', 'mpesaNumber', 'nationalId', 'kraPin', 'bankName', 'bankAccount'] as const).map((k) => (
-            <div className="field" style={{ margin: 0 }} key={k}>
-              <label>{{ name: 'Full name *', phone: 'Phone number *', mpesaNumber: 'M-Pesa number (if different)', nationalId: 'National ID', kraPin: 'KRA PIN', bankName: 'Bank (optional)', bankAccount: 'Account number (optional)' }[k]}</label>
-              <input className="input" value={form[k]} onChange={set(setForm, form, k)} />
-            </div>
-          ))}
-        </div>
-        <div className="field" style={{ margin: 'var(--space-2) 0 0', maxWidth: 260 }}>
-          <label>Withholding tax rate % (blank = standard, 0 = exempt)</label>
-          <input className="input" inputMode="decimal" value={form.whtRate} onChange={(e) => setForm({ ...form, whtRate: e.target.value })} />
-        </div>
-        <div className="field" style={{ margin: 'var(--space-2) 0 0', maxWidth: 260 }}>
-          <label>Usually paid by</label>
-          <select className="input" value={form.payMethod} onChange={(e) => setForm({ ...form, payMethod: e.target.value })}>
-            {FREELANCE_PAY_METHODS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--space-2)' }}>
+            {(['name', 'phone', 'mpesaNumber', 'nationalId', 'kraPin', 'bankName', 'bankAccount'] as const).map((k) => (
+              <div className="field" style={{ margin: 0 }} key={k}>
+                <label>{{ name: 'Full name *', phone: 'Phone number *', mpesaNumber: 'M-Pesa number (if different)', nationalId: 'National ID', kraPin: 'KRA PIN', bankName: 'Bank (optional)', bankAccount: 'Account number (optional)' }[k]}</label>
+                <input className="input" value={form[k]} onChange={set(setForm, form, k)} />
+              </div>
             ))}
-          </select>
-        </div>
-        <div style={{ marginTop: 'var(--space-3)' }}>
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            disabled={busy || !form.name.trim() || !form.phone.trim()}
-            onClick={() => run(async () => {
-              const body: Record<string, string | number> = { name: form.name, phone: form.phone, payMethod: form.payMethod };
-              if (form.whtRate.trim() !== '') body.whtRate = Number(form.whtRate);
-              for (const k of ['mpesaNumber', 'nationalId', 'kraPin', 'bankName', 'bankAccount'] as const) if (form[k].trim()) body[k] = form[k];
-              const r = await api.post<{ name: string; existing: boolean }>('/freelance/agents', body);
-              setForm(blank);
-              return r.existing ? `${r.name} already has an account` : `${r.name} is added`;
-            })}
-          >
-            Add
-          </button>
-        </div>
-      </Card>
+          </div>
+          <div className="field" style={{ margin: 'var(--space-2) 0 0', maxWidth: 260 }}>
+            <label>Withholding tax rate % (blank = standard, 0 = exempt)</label>
+            <input className="input" inputMode="decimal" value={form.whtRate} onChange={(e) => setForm({ ...form, whtRate: e.target.value })} />
+          </div>
+          <div className="field" style={{ margin: 'var(--space-2) 0 0', maxWidth: 260 }}>
+            <label>Usually paid by</label>
+            <select className="input" value={form.payMethod} onChange={(e) => setForm({ ...form, payMethod: e.target.value })}>
+              {FREELANCE_PAY_METHODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ marginTop: 'var(--space-3)' }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={busy || !form.name.trim() || !form.phone.trim()}
+              onClick={() => run(async () => {
+                const body: Record<string, string | number> = { name: form.name, phone: form.phone, payMethod: form.payMethod };
+                if (form.whtRate.trim() !== '') body.whtRate = Number(form.whtRate);
+                for (const k of ['mpesaNumber', 'nationalId', 'kraPin', 'bankName', 'bankAccount'] as const) if (form[k].trim()) body[k] = form[k];
+                const r = await api.post<{ name: string; existing: boolean }>('/freelance/agents', body);
+                setForm(blank);
+                return r.existing ? `${r.name} already has an account` : `${r.name} is added`;
+              })}
+            >
+              Add
+            </button>
+          </div>
+        </Card>
+      )}
     </>
   );
 }
@@ -585,7 +589,7 @@ export function PeopleTab() {
 // ── Tax withheld ────────────────────────────────────────────────────────────
 interface AnnualData {
   year: number;
-  people: { agentId: number; agentName: string; kraPin: string; nationalId: string; weeks: number; gross: number; withheld: number; net: number }[];
+  people: { agentId: number; kind?: string; agentName: string; kraPin: string; nationalId: string; weeks: number; gross: number; withheld: number; net: number }[];
   totals: { gross: number; withheld: number; net: number };
   missingPin: string[];
   missingId: string[];
@@ -593,7 +597,7 @@ interface AnnualData {
 
 interface TaxData {
   month: string;
-  rows: { id: number; paidOn: string | null; agentName: string; kraPin: string; nationalId: string; gross: number; rate: number; withheld: number; net: number; method: string | null; reference: string | null }[];
+  rows: { id: number; kind?: string; period?: string | null; paidOn: string | null; agentName: string; kraPin: string; nationalId: string; gross: number; rate: number; withheld: number; net: number; method: string | null; reference: string | null }[];
   totals: { gross: number; withheld: number; net: number };
   missingPin: string[];
 }
@@ -638,7 +642,7 @@ function AnnualCard() {
               <tbody>
                 {data.people.map((p) => (
                   <tr key={p.agentId}>
-                    <td>{p.agentName}</td>
+                    <td>{p.agentName}{p.kind === 'Sales person' && <span className="text-muted" style={{ fontSize: 11 }}> · sales person</span>}</td>
                     <td>{p.kraPin || <Tag tone="bad">missing</Tag>}</td>
                     <td>{p.nationalId || <Tag tone="bad">missing</Tag>}</td>
                     <td style={numStyle}>{p.weeks}</td>
@@ -677,7 +681,7 @@ function TaxTab() {
         <Loading loading={loading} error={error} />
       ) : (
         <Card
-          title="Withholding tax on freelance commission"
+          title="Withholding tax on commission paid to sales persons and freelancers"
           hint={`${fmtKsh(data.totals.withheld)} withheld from ${fmtKsh(data.totals.gross)} of commission paid in the month — the figures for the withholding return. The tax is held in Withholding Tax Payable until it is paid over to KRA.`}
         >
           {data.missingPin.length > 0 && (
@@ -706,7 +710,7 @@ function TaxTab() {
                   {data.rows.map((r) => (
                     <tr key={r.id}>
                       <td>{r.paidOn ? fmtDate(r.paidOn) : ''}</td>
-                      <td>{r.agentName}</td>
+                      <td>{r.agentName}{r.kind === 'Sales person' && <span className="text-muted" style={{ fontSize: 11 }}> · sales person, {r.period}</span>}</td>
                       <td>{r.kraPin || <Tag tone="bad">missing</Tag>}</td>
                       <td style={numStyle}>{fmtKsh(r.gross)}</td>
                       <td style={numStyle}>{r.rate}%</td>
@@ -749,8 +753,15 @@ function TaxTab() {
 
 export default function FreelancePanel() {
   const [part, setPart] = useState<'week' | 'people' | 'tax' | 'rates' | 'how'>('week');
+  const retired = !!useFeatures()?.contractors;
   return (
     <>
+      {retired && (
+        <p className="note" style={{ borderLeft: '3px solid var(--color-accent)', paddingLeft: 'var(--space-2)' }}>
+          <b>Freelance accounts are retired.</b> Sales persons are now paid as contractors, monthly, under <b>Team &amp; payouts</b> (their bank and M-Pesa details are under <b>Pay details</b>). This is the archive: weeks from before the change can still be paid,
+          and <b>Tax withheld</b> carries both the old freelance payments and the sales persons’ monthly ones.
+        </p>
+      )}
       <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
         <button type="button" className={'btn btn-sm ' + (part === 'week' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('week')}>
           Weekly pay
@@ -761,14 +772,18 @@ export default function FreelancePanel() {
         <button type="button" className={'btn btn-sm ' + (part === 'tax' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('tax')}>
           Tax withheld
         </button>
-        <button type="button" className={'btn btn-sm ' + (part === 'rates' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('rates')}>
-          Rates &amp; set-up
-        </button>
-        <button type="button" className={'btn btn-sm ' + (part === 'how' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('how')}>
-          How it works
-        </button>
+        {!retired && (
+          <>
+            <button type="button" className={'btn btn-sm ' + (part === 'rates' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('rates')}>
+              Rates &amp; set-up
+            </button>
+            <button type="button" className={'btn btn-sm ' + (part === 'how' ? 'btn-primary' : 'btn-secondary')} onClick={() => setPart('how')}>
+              How it works
+            </button>
+          </>
+        )}
       </div>
-      {part === 'rates' ? <FreelanceSetup /> : part === 'how' ? <FreelanceGuide /> : part === 'week' ? <WeekTab /> : part === 'people' ? <PeopleTab /> : (
+      {part === 'rates' && !retired ? <FreelanceSetup /> : part === 'how' && !retired ? <FreelanceGuide /> : part === 'week' ? <WeekTab /> : part === 'people' ? <PeopleTab /> : (
         <>
           <TaxTab />
           <AnnualCard />

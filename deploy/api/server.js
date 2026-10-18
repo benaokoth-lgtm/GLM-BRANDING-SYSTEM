@@ -67154,7 +67154,8 @@ async function getCommissionConfig(db = prisma) {
     payBands: readSteps(row?.payBandsJson),
     performanceFloor: row?.performanceFloor ?? DEFAULT_PERFORMANCE_FLOOR,
     minimumWage: row?.minimumWage ?? DEFAULT_MINIMUM_WAGE,
-    payday: row?.payday ?? DEFAULT_PAYDAY
+    payday: row?.payday ?? DEFAULT_PAYDAY,
+    contractorFrom: row?.contractorFrom ?? ""
   };
 }
 async function freelanceShare(db, lines, orderDiscountPct = 0, orderDiscountAmt = 0) {
@@ -67244,6 +67245,8 @@ async function resolveSourcing(db, o) {
 async function claimProblem(user, o) {
   if (o.freelanceAgentId) {
     if (!await commissionEnabled()) return null;
+    const from = (await prisma.commissionSettings.findUnique({ where: { id: 1 } }))?.contractorFrom ?? "";
+    if (from && todayStr().slice(0, 7) >= from) return "Freelance accounts have been retired \u2014 credit the order to the sales person it is for";
     if (o.sourcedBy) return "An order is credited either to a staff member or to a freelance sales person \u2014 not both";
     const agent = await prisma.freelanceAgent.findUnique({ where: { id: o.freelanceAgentId } });
     if (!agent) return "That freelance sales person does not exist";
@@ -67357,6 +67360,8 @@ async function buildStatements(period, only) {
     if (!s) people.set(id, s = blankStatement(id));
     return s;
   };
+  const contractorMonth = !!config.contractorFrom && period >= config.contractorFrom;
+  const generalCredit = (o) => o.sourcedByStaffId ?? (contractorMonth && o.priceList === "freelancer" ? o.staffId : null);
   for (const o of flowOrders) {
     if (o.freelanceAgentId) continue;
     const f = flows.get(o.id);
@@ -67393,9 +67398,10 @@ async function buildStatements(period, only) {
         addDtfNet(o.staffId, net8);
         st.artwork.jobs.push({ orderNo: o.orderNo, customer: customerOf(o), pieces: j.pieces, systemPerPiece: sys, chargedPerPiece: charged, orderTotal: round2(total), moneyIn: round2(net8), commission: c });
       }
-    } else if (o.channel !== "dtf" && o.sourcedByStaffId && o.status !== "Quote") {
-      cell(o.sourcedByStaffId, type).received += net8;
-      const st = who(o.sourcedByStaffId);
+    } else if (o.channel !== "dtf" && o.status !== "Quote" && generalCredit(o)) {
+      const to = generalCredit(o);
+      cell(to, type).received += net8;
+      const st = who(to);
       st.general.received = round2(st.general.received + net8);
       st.general.orders.push({ orderNo: o.orderNo, customer: customerOf(o), received: round2(f.received), refunded: round2(f.refunded) });
     }
@@ -67435,10 +67441,24 @@ async function buildStatements(period, only) {
     p.filmAvgPremiumPerM = p.filmMetres > 0 ? round2(b.filmPremium / p.filmMetres) : null;
   }
   const [py, pm] = period.split("-").map(Number);
-  const bandUsers = config.generalMode === "steps" ? await prisma.user.findMany({ where: { paidOnBands: true, active: true, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, select: { id: true } }) : [];
+  const contractors = /* @__PURE__ */ new Map();
+  if (config.contractorFrom && period >= config.contractorFrom) {
+    const roles = await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } });
+    const people2 = roles.length ? await prisma.user.findMany({ where: { active: true, role: { in: roles.map((r) => r.name) }, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, include: { contractorProfile: true } }) : [];
+    for (const u of people2) contractors.set(u.id, { whtRate: u.contractorProfile?.whtRate ?? config.freelanceWhtRate, floor: !!u.contractorProfile?.minWageFloor });
+  }
+  const bandUsers = config.generalMode === "steps" ? await prisma.user.findMany({ where: { paidOnBands: true, active: true, id: { notIn: [...contractors.keys()] }, createdAt: { lt: new Date(Date.UTC(py, pm, 1)) } }, select: { id: true } }) : [];
   const bandSet = new Set(bandUsers.map((u) => u.id));
   for (const id of bandSet) who(id);
+  for (const [id, c] of contractors) if (c.floor) who(id);
   const payFor = (st) => {
+    const contractor = contractors.get(st.staffId);
+    if (contractor) {
+      const pp2 = contractor.floor ? salesPay(st.total, config.minimumWage) : { amount: st.total, topUp: 0 };
+      const tax = round2(pp2.amount * contractor.whtRate / 100);
+      st.pay = { onBands: false, minimumWage: contractor.floor ? config.minimumWage : 0, amount: pp2.amount, topUp: pp2.topUp, contractor: true, whtRate: contractor.whtRate, withholdingTax: tax, net: round2(pp2.amount - tax) };
+      return;
+    }
     const onBands = bandSet.has(st.staffId);
     const pp = onBands ? salesPay(st.total, config.minimumWage) : { amount: st.total, topUp: 0 };
     st.pay = { onBands, minimumWage: onBands ? config.minimumWage : 0, amount: pp.amount, topUp: pp.topUp };
@@ -67588,6 +67608,46 @@ async function systemName() {
   return s.systemName.trim() || s.companyName.trim() || "the system";
 }
 
+// apps/api/src/contractorPay.ts
+async function settleCommissionPayout(tx, payoutId, o) {
+  const payout = await tx.commissionPayout.findUniqueOrThrow({ where: { id: payoutId }, include: { staff: { select: { name: true } } } });
+  if (payout.status === "Paid") return payout;
+  const date = o.date ?? todayStr();
+  const wht = payout.withholdingTax;
+  const amount = o.paidOut !== void 0 ? round2(o.paidOut + wht) : payout.amount;
+  const expense = await tx.expense.create({
+    data: {
+      date,
+      category: "Sales Commission",
+      amount,
+      withholdingTax: wht,
+      supplier: payout.staff.name,
+      note: `Sales commission ${payout.period} \u2014 ${payout.staff.name}${o.receipt ? ` (${o.method} ${o.receipt})` : ""}`,
+      capturedByName: o.byName,
+      paid: true,
+      method: o.method
+    }
+  });
+  return tx.commissionPayout.update({
+    where: { id: payout.id },
+    data: { status: "Paid", amount, paidOn: date, paidMethod: o.method, paidByName: o.byName, expenseId: expense.id, receipt: o.receipt ?? null }
+  });
+}
+async function contractorFromMonth() {
+  return (await prisma.commissionSettings.findUnique({ where: { id: 1 } }))?.contractorFrom ?? "";
+}
+function contractorsOn(from, period) {
+  return !!from && period >= from;
+}
+function payPhone(p) {
+  for (const raw of [p?.mpesaNumber, p?.phone]) {
+    const d = (raw ?? "").replace(/\D/g, "");
+    const n = d.startsWith("254") ? d : d.startsWith("0") ? "254" + d.slice(1) : d.length === 9 ? "254" + d : d;
+    if (/^254[17]\d{8}$/.test(n)) return n;
+  }
+  return null;
+}
+
 // apps/api/src/routes/auth.ts
 var authRouter = (0, import_express.Router)();
 var loginLimiter = lib_default({ windowMs: 15 * 60 * 1e3, max: 30, standardHeaders: true, legacyHeaders: false });
@@ -67604,7 +67664,7 @@ authRouter.get("/branding", async (_req, res) => {
   res.json({ companyName: s.companyName, systemName: s.systemName.trim() || s.companyName, logoDataUrl: s.logoDataUrl });
 });
 authRouter.get("/features", requireAuth, async (_req, res) => {
-  res.json({ commission: await commissionEnabled() });
+  res.json({ commission: await commissionEnabled(), contractors: contractorsOn(await contractorFromMonth(), todayStr().slice(0, 7)) });
 });
 authRouter.get("/users", async (_req, res) => {
   const users = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
@@ -77877,6 +77937,62 @@ async function sendPayoutToPhone(payoutId, requestedByName) {
     return fail(err instanceof DarajaError ? err.message : err instanceof Error ? err.message : "Could not reach Safaricom");
   }
 }
+function backToApproved(d) {
+  return d.commissionPayoutId ? prisma.commissionPayout.updateMany({ where: { id: d.commissionPayoutId, status: "Sending" }, data: { status: "Approved" } }) : prisma.freelancePayout.updateMany({ where: { id: d.payoutId ?? -1, status: "Sending" }, data: { status: "Approved" } });
+}
+async function sendCommissionPayoutToPhone(payoutId, requestedByName) {
+  const cfg = await loadMpesaConfig();
+  if (!isB2cReady(cfg)) return { ok: false, error: "Sending money to phones is not set up \u2014 an Admin can set it up under Master Data \u2192 M-Pesa (pay-outs)." };
+  const urls = callbackUrls(cfg);
+  if (!urls) return { ok: false, error: "M-Pesa needs this installation\u2019s public web address \u2014 add it under Master Data \u2192 M-Pesa." };
+  const payout = await prisma.commissionPayout.findUnique({ where: { id: payoutId }, include: { staff: { include: { contractorProfile: true } } } });
+  if (!payout) return { ok: false, error: "Payout not found" };
+  if (payout.status === "Paid") return { ok: false, error: "Already paid" };
+  if (payout.status === "Sending") return { ok: false, error: "A payment to their phone is already on its way \u2014 wait for Safaricom\u2019s answer." };
+  if (!payout.contractor) return { ok: false, error: "This pay goes through payroll, not to a phone" };
+  const phone = payPhone(payout.staff.contractorProfile);
+  if (!phone) return { ok: false, error: `${payout.staff.name} has no valid M-Pesa number on file (Commission \u2192 Pay details)` };
+  const amount = Math.round(payout.amount - payout.withholdingTax);
+  if (amount < B2C_MIN) return { ok: false, error: `Ksh ${amount} is below the smallest M-Pesa payment (Ksh ${B2C_MIN}). Pay it another way.` };
+  if (amount > B2C_MAX) return { ok: false, error: `M-Pesa sends at most Ksh ${B2C_MAX.toLocaleString("en-KE")} at a time. Pay this one another way.` };
+  const locked = await prisma.commissionPayout.updateMany({ where: { id: payoutId, status: "Approved" }, data: { status: "Sending" } });
+  if (locked.count !== 1) return { ok: false, error: "This payout is not waiting to be paid (it may already be on its way)" };
+  const originatorConversationId = (0, import_node_crypto11.randomUUID)();
+  const d = await prisma.mpesaDisbursement.create({ data: { commissionPayoutId: payoutId, phone, amount, originatorConversationId, requestedByName } });
+  const fail = async (error2) => {
+    await prisma.$transaction([
+      prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultDesc: error2, completedAt: /* @__PURE__ */ new Date() } }),
+      prisma.commissionPayout.update({ where: { id: payoutId }, data: { status: "Approved" } })
+    ]);
+    return { ok: false, error: error2, disbursementId: d.id };
+  };
+  try {
+    const token = await getAccessToken(cfg);
+    const res = await fetch(`${darajaBaseUrl(cfg)}/mpesa/b2c/v3/paymentrequest`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        OriginatorConversationID: originatorConversationId,
+        InitiatorName: cfg.initiatorName,
+        SecurityCredential: securityCredential(cfg),
+        CommandID: cfg.b2cCommand || "BusinessPayment",
+        Amount: amount,
+        PartyA: cfg.b2cShortCode || cfg.shortCode,
+        PartyB: phone,
+        Remarks: `Sales commission ${payout.period}`.slice(0, 100),
+        QueueTimeOutURL: urls.b2cTimeout,
+        ResultURL: urls.b2cResult,
+        Occasion: payout.staff.name.slice(0, 100)
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || String(data.ResponseCode ?? "") !== "0") return fail(data.errorMessage || data.ResponseDescription || `Safaricom refused the request (${res.status})`);
+    await prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { conversationId: data.ConversationID ?? "" } });
+    return { ok: true, disbursementId: d.id };
+  } catch (err) {
+    return fail(err instanceof DarajaError ? err.message : err instanceof Error ? err.message : "Could not reach Safaricom");
+  }
+}
 async function handleB2cResult(body) {
   const r = body?.Result;
   if (!r?.OriginatorConversationID) return;
@@ -77890,12 +78006,14 @@ async function handleB2cResult(body) {
     await ensureChartOnce();
     await prisma.$transaction(async (tx) => {
       await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Success", resultCode: 0, resultDesc: r.ResultDesc ?? "", receipt, conversationId: r.ConversationID ?? d.conversationId, completedAt: /* @__PURE__ */ new Date(), rawJson: raw } });
-      await settlePayout(tx, d.payoutId, { method: "M-Pesa", date: todayStr(), byName: `${d.requestedByName} (M-Pesa)`, receipt, paidOut: d.amount });
+      const o = { method: "M-Pesa", date: todayStr(), byName: `${d.requestedByName} (M-Pesa)`, receipt, paidOut: d.amount };
+      if (d.commissionPayoutId) await settleCommissionPayout(tx, d.commissionPayoutId, o);
+      else if (d.payoutId) await settlePayout(tx, d.payoutId, o);
     });
   } else {
     await prisma.$transaction([
       prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultCode: Number(r.ResultCode), resultDesc: r.ResultDesc ?? "Safaricom could not send it", completedAt: /* @__PURE__ */ new Date(), rawJson: raw } }),
-      prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: "Sending" }, data: { status: "Approved" } })
+      backToApproved(d)
     ]);
   }
 }
@@ -77906,7 +78024,7 @@ async function handleB2cTimeout(body) {
   if (!d || d.status !== "Pending") return;
   await prisma.$transaction([
     prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultDesc: "Safaricom did not process the request in time \u2014 nothing was sent", completedAt: /* @__PURE__ */ new Date(), rawJson: JSON.stringify(body).slice(0, 8e3) } }),
-    prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: "Sending" }, data: { status: "Approved" } })
+    backToApproved(d)
   ]);
 }
 
@@ -81477,7 +81595,9 @@ var settingsSchema7 = external_exports.object({
   // The least a person on the pay bands is paid for a month (a band payout below it is topped up to it).
   minimumWage: external_exports.number().min(0).max(1e9).optional(),
   // The day of the month people on the pay bands are paid, for the month before (1–28 so it exists in every month).
-  payday: external_exports.number().int().min(1).max(28).optional()
+  payday: external_exports.number().int().min(1).max(28).optional(),
+  // The first month sales persons are paid as contractors (withholding tax on the month's total, outside payroll); blank = not switched on.
+  contractorFrom: external_exports.union([external_exports.literal(""), external_exports.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "The month must be YYYY-MM")]).optional()
 });
 commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   const parsed = settingsSchema7.safeParse(req.body);
@@ -81503,6 +81623,7 @@ commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
     ...d.performanceFloor !== void 0 ? { performanceFloor: d.performanceFloor } : {},
     ...d.minimumWage !== void 0 ? { minimumWage: d.minimumWage } : {},
     ...d.payday !== void 0 ? { payday: d.payday } : {},
+    ...d.contractorFrom !== void 0 ? { contractorFrom: d.contractorFrom } : {},
     updatedByName: req.user.name
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -81586,7 +81707,7 @@ commissionRouter.get("/statement", manage, async (req, res) => {
     config,
     statements: statements.map((s) => {
       const p = byStaff.get(s.staffId);
-      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
+      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod, contractor: p.contractor, withholdingTax: p.withholdingTax, net: round2(p.amount - p.withholdingTax), receipt: p.receipt } : null };
     }),
     totals: { commission: round2(statements.reduce((a2, s) => a2 + s.total, 0)) }
   });
@@ -81738,24 +81859,33 @@ commissionRouter.post("/payouts/approve", manage, async (req, res) => {
       out.push(await putInPayroll(s, period.data, req.user.name));
       continue;
     }
-    if (s.total <= 0) continue;
+    const contractor = !!s.pay.contractor;
+    const gross = contractor ? s.pay.amount : s.total;
+    if (gross <= 0) continue;
     const existing = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: s.staffId } } });
-    if (existing?.status === "Paid") {
-      out.push({ staffId: s.staffId, staffName: s.staffName, amount: existing.amount, status: "Paid" });
+    if (existing?.status === "Paid" || existing?.status === "Sending") {
+      out.push({ staffId: s.staffId, staffName: s.staffName, amount: existing.amount, status: existing.status });
+      continue;
+    }
+    if (contractor && period.data >= thisMonth()) {
+      out.push({ staffId: s.staffId, staffName: s.staffName, amount: gross, status: "Waiting", note: "the month is not over yet" });
       continue;
     }
     const data = {
       generalAmount: s.general.commission,
       filmAmount: s.film.commission,
       artworkAmount: s.artwork.commission,
-      amount: s.total,
-      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, target: s.target }),
+      amount: gross,
+      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, target: s.target, ...contractor ? { scheme: s.scheme, pay: s.pay } : {} }),
       status: "Approved",
       approvedByName: req.user.name,
-      approvedAt: /* @__PURE__ */ new Date()
+      approvedAt: /* @__PURE__ */ new Date(),
+      contractor,
+      withholdingRate: contractor ? s.pay.whtRate ?? 0 : 0,
+      withholdingTax: contractor ? s.pay.withholdingTax ?? 0 : 0
     };
     await prisma.commissionPayout.upsert({ where: { period_staffId: { period: period.data, staffId: s.staffId } }, update: data, create: { period: period.data, staffId: s.staffId, ...data } });
-    out.push({ staffId: s.staffId, staffName: s.staffName, amount: s.total, status: "Approved" });
+    out.push({ staffId: s.staffId, staffName: s.staffName, amount: gross, status: "Approved" });
   }
   res.json({ period: period.data, payouts: out });
 });
@@ -81798,33 +81928,140 @@ async function putInPayroll(s, period, byName) {
 commissionRouter.get("/payouts", manage, async (req, res) => {
   const where = typeof req.query.period === "string" ? { period: req.query.period } : {};
   const rows = await prisma.commissionPayout.findMany({ where, include: { staff: { select: { name: true } } }, orderBy: [{ period: "desc" }, { id: "asc" }], take: 300 });
-  res.json(rows.map((r) => ({ id: r.id, period: r.period, staffId: r.staffId, staffName: r.staff.name, amount: r.amount, generalAmount: r.generalAmount, filmAmount: r.filmAmount, artworkAmount: r.artworkAmount, status: r.status, approvedByName: r.approvedByName, paidOn: r.paidOn, paidMethod: r.paidMethod })));
+  res.json(rows.map((r) => ({ id: r.id, period: r.period, staffId: r.staffId, staffName: r.staff.name, amount: r.amount, generalAmount: r.generalAmount, filmAmount: r.filmAmount, artworkAmount: r.artworkAmount, status: r.status, approvedByName: r.approvedByName, paidOn: r.paidOn, paidMethod: r.paidMethod, contractor: r.contractor, withholdingRate: r.withholdingRate, withholdingTax: r.withholdingTax, net: round2(r.amount - r.withholdingTax), receipt: r.receipt })));
 });
-var paySchema = external_exports.object({ method: external_exports.enum(EXPENSE_METHODS), date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+var paySchema = external_exports.object({ method: external_exports.enum(EXPENSE_METHODS), date: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), reference: external_exports.string().trim().max(60).optional() });
 commissionRouter.post("/payouts/:id/pay", manage, async (req, res) => {
   const parsed = paySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const payout = await prisma.commissionPayout.findUnique({ where: { id: Number(req.params.id) }, include: { staff: { select: { name: true } } } });
   if (!payout) return res.status(404).json({ error: "Not found" });
   if (payout.status === "Paid") return res.status(400).json({ error: "Already paid" });
+  if (payout.status === "Sending") return res.status(400).json({ error: "A payment to their phone is already on its way \u2014 wait for Safaricom\u2019s answer, or settle that attempt first" });
   const date = parsed.data.date ?? todayStr();
+  const pays = round2(payout.amount - payout.withholdingTax);
   if (parsed.data.method === PETTY_CASH_METHOD) {
-    const check = await pettyCashShortfall(payout.amount, date);
+    const check = await pettyCashShortfall(pays, date);
     if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString("en-KE")} available, Ksh ${Math.round(payout.amount).toLocaleString("en-KE")} needed)` });
   }
   await ensureChartOnce();
-  const updated = await prisma.$transaction(async (tx) => {
-    const expense = await tx.expense.create({
-      data: { date, category: "Sales Commission", amount: payout.amount, supplier: payout.staff.name, note: `Sales commission ${payout.period} \u2014 ${payout.staff.name}`, capturedByName: req.user.name, paid: true, method: parsed.data.method }
-    });
-    return tx.commissionPayout.update({ where: { id: payout.id }, data: { status: "Paid", paidOn: date, paidMethod: parsed.data.method, paidByName: req.user.name, expenseId: expense.id } });
-  });
+  const updated = await prisma.$transaction((tx) => settleCommissionPayout(tx, payout.id, { method: parsed.data.method, date, byName: req.user.name, receipt: parsed.data.reference ?? null }));
   res.json(updated);
+});
+commissionRouter.post("/payouts/:id/send-mpesa", manage, async (req, res) => {
+  const r = await sendCommissionPayoutToPhone(Number(req.params.id), req.user.name);
+  if (!r.ok) return res.status(400).json({ error: r.error, disbursementId: r.disbursementId });
+  res.status(202).json({ ok: true, disbursementId: r.disbursementId, message: "Sent to M-Pesa \u2014 it is marked paid when Safaricom confirms it." });
+});
+commissionRouter.get("/payouts/:id/disbursements", manage, async (req, res) => {
+  const rows = await prisma.mpesaDisbursement.findMany({ where: { commissionPayoutId: Number(req.params.id) }, orderBy: { id: "desc" } });
+  res.json(rows.map((d) => ({ id: d.id, status: d.status, amount: d.amount, phone: d.phone, resultDesc: d.resultDesc, receipt: d.receipt, requestedByName: d.requestedByName, createdAt: d.createdAt, completedAt: d.completedAt })));
+});
+commissionRouter.post("/disbursements/:id/resolve", manage, async (req, res) => {
+  const parsed = external_exports.object({ outcome: external_exports.enum(["failed", "sent"]), receipt: external_exports.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, "Enter the M-Pesa receipt code (10 letters and numbers)").optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = await prisma.mpesaDisbursement.findUnique({ where: { id: Number(req.params.id) } });
+  if (!d || !d.commissionPayoutId) return res.status(404).json({ error: "Not found" });
+  if (d.status !== "Pending") return res.status(400).json({ error: "This attempt has already been settled" });
+  if (parsed.data.outcome === "failed") {
+    await prisma.$transaction([
+      prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultDesc: `Marked as not sent by ${req.user.name}`, completedAt: /* @__PURE__ */ new Date() } }),
+      backToApproved(d)
+    ]);
+    return res.json({ ok: true });
+  }
+  const receipt = parsed.data.receipt;
+  if (!receipt) return res.status(400).json({ error: "Enter the M-Pesa receipt code from the Paybill statement" });
+  if (await prisma.mpesaDisbursement.findUnique({ where: { receipt } })) return res.status(400).json({ error: `${receipt} is already on record against another payment` });
+  await ensureChartOnce();
+  await prisma.$transaction(async (tx) => {
+    await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Success", receipt, resultDesc: `Confirmed by hand by ${req.user.name}`, completedAt: /* @__PURE__ */ new Date() } });
+    await settleCommissionPayout(tx, d.commissionPayoutId, { method: "M-Pesa", byName: req.user.name, receipt, paidOut: d.amount });
+  });
+  res.json({ ok: true });
+});
+async function salesPersonRows() {
+  const roles = await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } });
+  if (roles.length === 0) return [];
+  return prisma.user.findMany({ where: { active: true, role: { in: roles.map((r) => r.name) } }, include: { contractorProfile: true }, orderBy: { name: "asc" } });
+}
+commissionRouter.get("/contractors", manage, async (_req, res) => {
+  const [people, cfg] = await Promise.all([salesPersonRows(), getCommissionConfig()]);
+  res.json({
+    standardWhtRate: cfg.freelanceWhtRate,
+    contractorFrom: cfg.contractorFrom,
+    people: people.map((u) => {
+      const p = u.contractorProfile;
+      const missing = [!u.kraPin && "KRA PIN", !u.nationalId && "National ID", !payPhone(p) && "M-Pesa number"].filter(Boolean);
+      return {
+        staffId: u.id,
+        name: u.name,
+        role: u.role,
+        kraPin: u.kraPin ?? "",
+        nationalId: u.nationalId ?? "",
+        phone: p?.phone ?? "",
+        mpesaNumber: p?.mpesaNumber ?? "",
+        payMethod: p?.payMethod ?? "M-Pesa",
+        bankName: p?.bankName ?? "",
+        bankAccount: p?.bankAccount ?? "",
+        whtRate: p?.whtRate ?? null,
+        effectiveWhtRate: p?.whtRate ?? cfg.freelanceWhtRate,
+        minWageFloor: p?.minWageFloor ?? false,
+        note: p?.note ?? "",
+        missing
+      };
+    })
+  });
+});
+var contractorSchema = external_exports.object({
+  kraPin: external_exports.string().trim().max(40).optional(),
+  nationalId: external_exports.string().trim().max(20).optional(),
+  phone: external_exports.string().trim().max(20).optional(),
+  mpesaNumber: external_exports.string().trim().max(20).optional(),
+  payMethod: external_exports.enum(EXPENSE_METHODS).optional(),
+  bankName: external_exports.string().trim().max(80).optional(),
+  bankAccount: external_exports.string().trim().max(60).optional(),
+  whtRate: external_exports.number().min(0).max(100).nullable().optional(),
+  // null = the standard rate; 0 = exempt
+  minWageFloor: external_exports.boolean().optional(),
+  note: external_exports.string().trim().max(300).optional()
+});
+commissionRouter.put("/contractors/:staffId", manage, async (req, res) => {
+  const parsed = contractorSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const staffId = Number(req.params.staffId);
+  const user = (await salesPersonRows()).find((u) => u.id === staffId);
+  if (!user) return res.status(404).json({ error: "That is not a sales person" });
+  const { kraPin, nationalId, ...profile } = parsed.data;
+  for (const k of ["phone", "mpesaNumber"]) {
+    const v = profile[k];
+    if (v && !payPhone({ [k]: v })) return res.status(400).json({ error: `${k === "phone" ? "The phone" : "The M-Pesa number"} must be a Kenyan mobile number (07\u2026 or 2547\u2026)` });
+  }
+  const userData = {};
+  if (kraPin !== void 0) {
+    const c = cleanKraPin(kraPin);
+    if (c.error) return res.status(400).json({ error: c.error });
+    if (c.value && await prisma.user.findFirst({ where: { kraPin: c.value, id: { not: staffId } } })) return res.status(400).json({ error: "That KRA PIN is already on another staff member" });
+    userData.kraPin = c.value ?? null;
+  }
+  if (nationalId !== void 0) {
+    if (nationalId && !/^\d{7,8}$/.test(nationalId)) return res.status(400).json({ error: "A National ID is 7 or 8 digits" });
+    if (nationalId && await prisma.user.findFirst({ where: { nationalId, id: { not: staffId } } })) return res.status(400).json({ error: "That National ID is already on another staff member" });
+    userData.nationalId = nationalId || null;
+  }
+  const norm = (v) => v ? payPhone({ phone: v }) ?? v : v;
+  const data = { ...profile, ...profile.phone !== void 0 ? { phone: norm(profile.phone) ?? "" } : {}, ...profile.mpesaNumber !== void 0 ? { mpesaNumber: norm(profile.mpesaNumber) ?? "" } : {}, updatedByName: req.user.name };
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(userData).length) await tx.user.update({ where: { id: staffId }, data: userData });
+    await tx.contractorProfile.upsert({ where: { staffId }, create: { staffId, ...data }, update: data });
+  });
+  res.json({ ok: true });
 });
 commissionRouter.delete("/payouts/:id", manage, async (req, res) => {
   const payout = await prisma.commissionPayout.findUnique({ where: { id: Number(req.params.id) } });
   if (!payout) return res.status(404).json({ error: "Not found" });
   if (payout.status === "Paid") return res.status(400).json({ error: "A paid commission cannot be withdrawn" });
+  if (payout.status === "Sending") return res.status(400).json({ error: "A payment to their phone is on its way \u2014 it cannot be withdrawn now" });
   await prisma.commissionPayout.delete({ where: { id: payout.id } });
   res.status(204).end();
 });
@@ -82690,6 +82927,7 @@ function tidy2(d) {
 freelanceRouter.post("/agents", capture, async (req, res) => {
   const parsed = external_exports.object(agentFields).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  if (contractorsOn(await contractorFromMonth(), todayStr().slice(0, 7))) return res.status(400).json({ error: "Freelance accounts have been retired \u2014 orders are credited to a sales person, and their clients are kept in their Client Register" });
   const d = parsed.data;
   const phone = kePhone(d.phone);
   if (!phone) return res.status(400).json({ error: "Enter a valid Kenyan phone number (e.g. 0712 345 678)" });
@@ -82811,6 +83049,7 @@ freelanceRouter.post("/payouts/approve", manage2, async (req, res) => {
   const body = external_exports.object({ weekStart: external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: "Choose the week" });
   const week = weekStart(body.data.weekStart);
+  if (contractorsOn(await contractorFromMonth(), week.slice(0, 7))) return res.status(400).json({ error: "This week is in the month sales persons became contractors \u2014 their pay is the monthly one under Team & payouts" });
   const { statements } = await buildFreelanceStatements(week);
   const out = [];
   const skipped = [];
@@ -82892,7 +83131,7 @@ freelanceRouter.post("/disbursements/:id/resolve", manage2, async (req, res) => 
   if (parsed.data.outcome === "failed") {
     await prisma.$transaction([
       prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Failed", resultDesc: `Marked as not sent by ${req.user.name}`, completedAt: /* @__PURE__ */ new Date() } }),
-      prisma.freelancePayout.updateMany({ where: { id: d.payoutId, status: "Sending" }, data: { status: "Approved" } })
+      backToApproved(d)
     ]);
     return res.json({ ok: true });
   }
@@ -82902,7 +83141,8 @@ freelanceRouter.post("/disbursements/:id/resolve", manage2, async (req, res) => 
   await ensureChartOnce();
   await prisma.$transaction(async (tx) => {
     await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: "Success", receipt, resultDesc: `Confirmed by hand by ${req.user.name}`, completedAt: /* @__PURE__ */ new Date() } });
-    await settlePayout(tx, d.payoutId, { method: "M-Pesa", byName: req.user.name, receipt, paidOut: d.amount });
+    if (d.commissionPayoutId) await settleCommissionPayout(tx, d.commissionPayoutId, { method: "M-Pesa", byName: req.user.name, receipt, paidOut: d.amount });
+    else if (d.payoutId) await settlePayout(tx, d.payoutId, { method: "M-Pesa", byName: req.user.name, receipt, paidOut: d.amount });
   });
   res.json({ ok: true });
 });
@@ -82913,20 +83153,46 @@ freelanceRouter.get("/withholding", manage2, async (req, res) => {
     include: { agent: { select: { name: true, kraPin: true, nationalId: true } } },
     orderBy: [{ paidOn: "asc" }, { id: "asc" }]
   });
-  const out = rows.map((r) => ({
-    id: r.id,
-    paidOn: r.paidOn,
-    weekStart: r.weekStart,
-    agentName: r.agent.name,
-    kraPin: r.agent.kraPin,
-    nationalId: r.agent.nationalId,
-    gross: r.amount,
-    rate: r.withholdingRate,
-    withheld: r.withholdingTax,
-    net: round2(r.amount - r.withholdingTax),
-    method: r.paidMethod,
-    reference: r.receipt
-  }));
+  const monthly = await prisma.commissionPayout.findMany({
+    where: { contractor: true, status: "Paid", paidOn: { gte: `${month}-01`, lte: `${month}-31` } },
+    include: { staff: { select: { name: true, kraPin: true, nationalId: true } } },
+    orderBy: [{ paidOn: "asc" }, { id: "asc" }]
+  });
+  const out = [
+    ...rows.map((r) => ({
+      id: r.id,
+      kind: "Freelancer",
+      paidOn: r.paidOn,
+      weekStart: r.weekStart,
+      period: null,
+      agentName: r.agent.name,
+      kraPin: r.agent.kraPin,
+      nationalId: r.agent.nationalId,
+      gross: r.amount,
+      rate: r.withholdingRate,
+      withheld: r.withholdingTax,
+      net: round2(r.amount - r.withholdingTax),
+      method: r.paidMethod,
+      reference: r.receipt
+    })),
+    ...monthly.map((r) => ({
+      id: 1e8 + r.id,
+      // (apart from the weekly ones)
+      kind: "Sales person",
+      paidOn: r.paidOn,
+      weekStart: null,
+      period: r.period,
+      agentName: r.staff.name,
+      kraPin: r.staff.kraPin,
+      nationalId: r.staff.nationalId,
+      gross: r.amount,
+      rate: r.withholdingRate,
+      withheld: r.withholdingTax,
+      net: round2(r.amount - r.withholdingTax),
+      method: r.paidMethod,
+      reference: r.receipt
+    }))
+  ].sort((a2, b) => String(a2.paidOn).localeCompare(String(b.paidOn)));
   res.json({
     month,
     rows: out,
@@ -82944,12 +83210,25 @@ freelanceRouter.get("/annual", manage2, async (req, res) => {
   });
   const by = /* @__PURE__ */ new Map();
   for (const r of rows) {
-    const cur = by.get(r.agentId) ?? { agentId: r.agentId, agentName: r.agent.name, kraPin: r.agent.kraPin ?? "", nationalId: r.agent.nationalId ?? "", weeks: 0, gross: 0, withheld: 0, net: 0 };
+    const cur = by.get(r.agentId) ?? { agentId: r.agentId, kind: "Freelancer", agentName: r.agent.name, kraPin: r.agent.kraPin ?? "", nationalId: r.agent.nationalId ?? "", weeks: 0, gross: 0, withheld: 0, net: 0 };
     cur.weeks += 1;
     cur.gross = round2(cur.gross + r.amount);
     cur.withheld = round2(cur.withheld + r.withholdingTax);
     cur.net = round2(cur.gross - cur.withheld);
     by.set(r.agentId, cur);
+  }
+  const monthly = await prisma.commissionPayout.findMany({
+    where: { contractor: true, status: "Paid", paidOn: { gte: `${year}-01-01`, lte: `${year}-12-31` } },
+    include: { staff: { select: { id: true, name: true, kraPin: true, nationalId: true } } }
+  });
+  for (const r of monthly) {
+    const key2 = 1e8 + r.staffId;
+    const cur = by.get(key2) ?? { agentId: key2, kind: "Sales person", agentName: r.staff.name, kraPin: r.staff.kraPin ?? "", nationalId: r.staff.nationalId ?? "", weeks: 0, gross: 0, withheld: 0, net: 0 };
+    cur.weeks += 1;
+    cur.gross = round2(cur.gross + r.amount);
+    cur.withheld = round2(cur.withheld + r.withholdingTax);
+    cur.net = round2(cur.gross - cur.withheld);
+    by.set(key2, cur);
   }
   const people = [...by.values()].sort((a2, b) => b.gross - a2.gross || a2.agentName.localeCompare(b.agentName));
   res.json({

@@ -15,6 +15,7 @@ generator client {
 
 model User {
   id               Int       @id @default(autoincrement())
+  contractorProfile ContractorProfile?
   // The full name used everywhere (login screen, orders, reports) — always first + middle + surname joined.
   name             String
   // The name as captured: first name and surname are compulsory, the middle name is optional. Empty only for staff added before names were
@@ -1315,6 +1316,9 @@ model CommissionSettings {
   // margin: [{from: margin %, rate: % of gross profit}]. outsourcedBandWeightPct: how much of an outsourced job's sales also counts towards the pay bands / floor (0 = none, because it is paid on profit).
   outsourcedBandsJson String  @default("[{\"from\":0,\"rate\":0},{\"from\":10,\"rate\":10},{\"from\":20,\"rate\":15},{\"from\":30,\"rate\":20}]")
   outsourcedBandWeightPct Float @default(0)
+  // Sales persons are paid as contractors from this month ('YYYY-MM'; blank = not switched on yet): the month's total (bands + premium + commission) less withholding tax, outside payroll, by M-Pesa or by hand.
+  // Before it, everything is paid exactly as it was. From it, no order can be credited to a freelance account any more (sales persons take over their clients).
+  contractorFrom   String   @default("")
   updatedByName    String   @default("")
   updatedAt        DateTime @updatedAt
 }
@@ -1394,8 +1398,11 @@ model FreelancePayout {
 // Success settles the payout (and books the expense). A failed or timed-out attempt leaves the payout approved, so it can be tried again.
 model MpesaDisbursement {
   id                       Int      @id @default(autoincrement())
-  payoutId                 Int
-  payout                   FreelancePayout @relation(fields: [payoutId], references: [id])
+  // Either a freelance weekly payout (retired) or a sales person's monthly commission payout.
+  payoutId                 Int?
+  payout                   FreelancePayout? @relation(fields: [payoutId], references: [id])
+  commissionPayoutId       Int?
+  commissionPayout         CommissionPayout? @relation(fields: [commissionPayoutId], references: [id])
   phone                    String
   amount                   Float // whole shillings — what was sent
   status                   String   @default("Pending") // Pending | Success | Failed
@@ -1412,6 +1419,24 @@ model MpesaDisbursement {
 
 // A month's commission for one staff member, approved by a manager and later paid. Approving freezes the figures; paying records the
 // expense (category 'Sales Commission') so it reaches the books.
+// How a sales person is paid once sales persons are contractors (Commission → Pay details): where their money goes, the withholding tax rate that applies to them, and whether a month below the minimum wage
+// is topped up to it (off unless switched on for the person). Their KRA PIN and National ID are the ones on their staff record.
+model ContractorProfile {
+  staffId       Int      @id
+  staff         User     @relation(fields: [staffId], references: [id])
+  phone         String   @default("") // 2547XXXXXXXX
+  mpesaNumber   String   @default("") // where the monthly pay is sent (defaults to the phone)
+  payMethod     String   @default("M-Pesa") // M-Pesa | Cash | Cheque | Bank Transfer | Card — any method can still be used for a payout
+  bankName      String   @default("")
+  bankAccount   String   @default("")
+  // Withholding tax rate for THIS person (percent): blank = the standard rate; 0 = exempt (an exemption certificate)
+  whtRate       Float?
+  minWageFloor  Boolean  @default(false)
+  note          String   @default("")
+  updatedByName String   @default("")
+  updatedAt     DateTime @updatedAt
+}
+
 model CommissionPayout {
   id            Int      @id @default(autoincrement())
   period        String // 'YYYY-MM' — the month the money was received
@@ -1429,6 +1454,13 @@ model CommissionPayout {
   paidMethod    String?
   paidByName    String?
   expenseId     Int?
+  // A sales person paid as a contractor: `amount` is the gross (bands + premium + commission, plus any minimum-wage top-up); they are paid amount − withholdingTax, and the tax is held in
+  // Withholding Tax Payable until it is paid over to KRA. `receipt`: the M-Pesa receipt code, cheque number or bank reference of the payment.
+  contractor     Boolean @default(false)
+  withholdingRate Float  @default(0)
+  withholdingTax  Float  @default(0)
+  receipt        String?
+  disbursements  MpesaDisbursement[]
 
   @@unique([period, staffId])
 

@@ -6,6 +6,8 @@ import { api } from '../api/client';
 
 export interface Features {
   commission: boolean;
+  /** Sales persons are paid as contractors from now: freelance accounts are retired and no order is credited to one. */
+  contractors?: boolean;
 }
 
 const EVENT = 'glm-features-changed';

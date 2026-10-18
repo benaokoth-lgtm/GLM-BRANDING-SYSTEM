@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { registerPhone } from './staffClients';
+import { cleanKraPin } from '@glm/shared';
+import { payPhone, settleCommissionPayout } from '../contractorPay';
+import { backToApproved, sendCommissionPayoutToPhone } from '../mpesaB2c';
 import { z } from 'zod';
 import { EXPENSE_METHODS, GENERAL_MODES, VAT_RATE, artworkPremiumCommission, computePay, filmPremiumCommission, PETTY_CASH_METHOD, TARGET_MODES, bandsProblem, payStepsProblem, clientKeyFor, ownershipEnd, round2, todayStr } from '@glm/shared';
 import { prisma } from '../db';
@@ -57,6 +60,8 @@ const settingsSchema = z.object({
   minimumWage: z.number().min(0).max(1e9).optional(),
   // The day of the month people on the pay bands are paid, for the month before (1–28 so it exists in every month).
   payday: z.number().int().min(1).max(28).optional(),
+  // The first month sales persons are paid as contractors (withholding tax on the month's total, outside payroll); blank = not switched on.
+  contractorFrom: z.union([z.literal(''), z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'The month must be YYYY-MM')]).optional(),
 });
 
 // The rates — the pay bands, minimum wage, percentages, ownership periods — are set by an Admin only. Managers and staff can read them (everyone sees the scheme they are paid under).
@@ -84,6 +89,7 @@ commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
     ...(d.performanceFloor !== undefined ? { performanceFloor: d.performanceFloor } : {}),
     ...(d.minimumWage !== undefined ? { minimumWage: d.minimumWage } : {}),
     ...(d.payday !== undefined ? { payday: d.payday } : {}),
+    ...(d.contractorFrom !== undefined ? { contractorFrom: d.contractorFrom } : {}),
     updatedByName: req.user!.name,
   };
   await prisma.commissionSettings.upsert({ where: { id: 1 }, update: data, create: { id: 1, ...data } });
@@ -176,7 +182,7 @@ commissionRouter.get('/statement', manage, async (req, res) => {
     config,
     statements: statements.map((s) => {
       const p = byStaff.get(s.staffId);
-      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod } : null };
+      return { ...s, payout: p ? { id: p.id, status: p.status, amount: p.amount, paidOn: p.paidOn, paidMethod: p.paidMethod, contractor: p.contractor, withholdingTax: p.withholdingTax, net: round2(p.amount - p.withholdingTax), receipt: p.receipt } : null };
     }),
     totals: { commission: round2(statements.reduce((a, s) => a + s.total, 0)) },
   });
@@ -349,24 +355,34 @@ commissionRouter.post('/payouts/approve', manage, async (req, res) => {
       out.push(await putInPayroll(s, period.data, req.user!.name));
       continue;
     }
-    if (s.total <= 0) continue;
+    const contractor = !!s.pay.contractor;
+    const gross = contractor ? s.pay.amount : s.total;
+    if (gross <= 0) continue;
     const existing = await prisma.commissionPayout.findUnique({ where: { period_staffId: { period: period.data, staffId: s.staffId } } });
-    if (existing?.status === 'Paid') {
-      out.push({ staffId: s.staffId, staffName: s.staffName, amount: existing.amount, status: 'Paid' });
+    if (existing?.status === 'Paid' || existing?.status === 'Sending') {
+      out.push({ staffId: s.staffId, staffName: s.staffName, amount: existing.amount, status: existing.status });
+      continue;
+    }
+    // A contractor's month is approved once it is over (the pay, and the tax withheld from it, are for the whole month).
+    if (contractor && period.data >= thisMonth()) {
+      out.push({ staffId: s.staffId, staffName: s.staffName, amount: gross, status: 'Waiting', note: 'the month is not over yet' });
       continue;
     }
     const data = {
       generalAmount: s.general.commission,
       filmAmount: s.film.commission,
       artworkAmount: s.artwork.commission,
-      amount: s.total,
-      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, target: s.target }),
+      amount: gross,
+      detailJson: JSON.stringify({ general: s.general, film: s.film, artwork: s.artwork, target: s.target, ...(contractor ? { scheme: s.scheme, pay: s.pay } : {}) }),
       status: 'Approved',
       approvedByName: req.user!.name,
       approvedAt: new Date(),
+      contractor,
+      withholdingRate: contractor ? s.pay.whtRate ?? 0 : 0,
+      withholdingTax: contractor ? s.pay.withholdingTax ?? 0 : 0,
     };
     await prisma.commissionPayout.upsert({ where: { period_staffId: { period: period.data, staffId: s.staffId } }, update: data, create: { period: period.data, staffId: s.staffId, ...data } });
-    out.push({ staffId: s.staffId, staffName: s.staffName, amount: s.total, status: 'Approved' });
+    out.push({ staffId: s.staffId, staffName: s.staffName, amount: gross, status: 'Approved' });
   }
   res.json({ period: period.data, payouts: out });
 });
@@ -418,10 +434,10 @@ async function putInPayroll(s: StaffStatement, period: string, byName: string) {
 commissionRouter.get('/payouts', manage, async (req, res) => {
   const where = typeof req.query.period === 'string' ? { period: req.query.period } : {};
   const rows = await prisma.commissionPayout.findMany({ where, include: { staff: { select: { name: true } } }, orderBy: [{ period: 'desc' }, { id: 'asc' }], take: 300 });
-  res.json(rows.map((r) => ({ id: r.id, period: r.period, staffId: r.staffId, staffName: r.staff.name, amount: r.amount, generalAmount: r.generalAmount, filmAmount: r.filmAmount, artworkAmount: r.artworkAmount, status: r.status, approvedByName: r.approvedByName, paidOn: r.paidOn, paidMethod: r.paidMethod })));
+  res.json(rows.map((r) => ({ id: r.id, period: r.period, staffId: r.staffId, staffName: r.staff.name, amount: r.amount, generalAmount: r.generalAmount, filmAmount: r.filmAmount, artworkAmount: r.artworkAmount, status: r.status, approvedByName: r.approvedByName, paidOn: r.paidOn, paidMethod: r.paidMethod, contractor: r.contractor, withholdingRate: r.withholdingRate, withholdingTax: r.withholdingTax, net: round2(r.amount - r.withholdingTax), receipt: r.receipt })));
 });
 
-const paySchema = z.object({ method: z.enum(EXPENSE_METHODS), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+const paySchema = z.object({ method: z.enum(EXPENSE_METHODS), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), reference: z.string().trim().max(60).optional() });
 
 /** Paying records an expense under the Sales Commission head, so it reaches the books and, from petty cash, the float. */
 commissionRouter.post('/payouts/:id/pay', manage, async (req, res) => {
@@ -430,19 +446,141 @@ commissionRouter.post('/payouts/:id/pay', manage, async (req, res) => {
   const payout = await prisma.commissionPayout.findUnique({ where: { id: Number(req.params.id) }, include: { staff: { select: { name: true } } } });
   if (!payout) return res.status(404).json({ error: 'Not found' });
   if (payout.status === 'Paid') return res.status(400).json({ error: 'Already paid' });
+  if (payout.status === 'Sending') return res.status(400).json({ error: 'A payment to their phone is already on its way — wait for Safaricom’s answer, or settle that attempt first' });
   const date = parsed.data.date ?? todayStr();
+  // only what is paid out of the float: the commission less the tax withheld
+  const pays = round2(payout.amount - payout.withholdingTax);
   if (parsed.data.method === PETTY_CASH_METHOD) {
-    const check = await pettyCashShortfall(payout.amount, date);
+    const check = await pettyCashShortfall(pays, date);
     if (check.short) return res.status(400).json({ error: `Insufficient petty cash balance (Ksh ${Math.round(check.available).toLocaleString('en-KE')} available, Ksh ${Math.round(payout.amount).toLocaleString('en-KE')} needed)` });
   }
   await ensureChartOnce();
-  const updated = await prisma.$transaction(async (tx) => {
-    const expense = await tx.expense.create({
-      data: { date, category: 'Sales Commission', amount: payout.amount, supplier: payout.staff.name, note: `Sales commission ${payout.period} — ${payout.staff.name}`, capturedByName: req.user!.name, paid: true, method: parsed.data.method },
-    });
-    return tx.commissionPayout.update({ where: { id: payout.id }, data: { status: 'Paid', paidOn: date, paidMethod: parsed.data.method, paidByName: req.user!.name, expenseId: expense.id } });
-  });
+  // one place settles a payout (the expense with the tax withheld, and the payout marked Paid) — the same for a payment by hand and one sent to their phone
+  const updated = await prisma.$transaction((tx) => settleCommissionPayout(tx, payout.id, { method: parsed.data.method, date, byName: req.user!.name, receipt: parsed.data.reference ?? null }));
   res.json(updated);
+});
+
+// ── Sending a sales person's pay to their M-Pesa phone ───────────────────────
+// An STK push asks a customer to pay US; to pay someone we ask Safaricom (Daraja B2C) to send money from our Paybill to their number. Safaricom accepts the request at once and reports the real
+// outcome a moment later; only then is the payout marked Paid and the expense booked. A failed or timed-out attempt leaves the payout approved, ready to be sent again.
+commissionRouter.post('/payouts/:id/send-mpesa', manage, async (req, res) => {
+  const r = await sendCommissionPayoutToPhone(Number(req.params.id), req.user!.name);
+  if (!r.ok) return res.status(400).json({ error: r.error, disbursementId: r.disbursementId });
+  res.status(202).json({ ok: true, disbursementId: r.disbursementId, message: 'Sent to M-Pesa — it is marked paid when Safaricom confirms it.' });
+});
+
+commissionRouter.get('/payouts/:id/disbursements', manage, async (req, res) => {
+  const rows = await prisma.mpesaDisbursement.findMany({ where: { commissionPayoutId: Number(req.params.id) }, orderBy: { id: 'desc' } });
+  res.json(rows.map((d) => ({ id: d.id, status: d.status, amount: d.amount, phone: d.phone, resultDesc: d.resultDesc, receipt: d.receipt, requestedByName: d.requestedByName, createdAt: d.createdAt, completedAt: d.completedAt })));
+});
+
+// If Safaricom's answer never arrives a manager settles the attempt by hand, after checking the Paybill's own statement: it was NOT sent (so it can be tried again), or it WAS (with the M-Pesa receipt code).
+commissionRouter.post('/disbursements/:id/resolve', manage, async (req, res) => {
+  const parsed = z.object({ outcome: z.enum(['failed', 'sent']), receipt: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{10}$/, 'Enter the M-Pesa receipt code (10 letters and numbers)').optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = await prisma.mpesaDisbursement.findUnique({ where: { id: Number(req.params.id) } });
+  if (!d || !d.commissionPayoutId) return res.status(404).json({ error: 'Not found' });
+  if (d.status !== 'Pending') return res.status(400).json({ error: 'This attempt has already been settled' });
+  if (parsed.data.outcome === 'failed') {
+    await prisma.$transaction([
+      prisma.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Failed', resultDesc: `Marked as not sent by ${req.user!.name}`, completedAt: new Date() } }),
+      backToApproved(d),
+    ]);
+    return res.json({ ok: true });
+  }
+  const receipt = parsed.data.receipt;
+  if (!receipt) return res.status(400).json({ error: 'Enter the M-Pesa receipt code from the Paybill statement' });
+  if (await prisma.mpesaDisbursement.findUnique({ where: { receipt } })) return res.status(400).json({ error: `${receipt} is already on record against another payment` });
+  await ensureChartOnce();
+  await prisma.$transaction(async (tx) => {
+    await tx.mpesaDisbursement.update({ where: { id: d.id }, data: { status: 'Success', receipt, resultDesc: `Confirmed by hand by ${req.user!.name}`, completedAt: new Date() } });
+    await settleCommissionPayout(tx, d.commissionPayoutId!, { method: 'M-Pesa', byName: req.user!.name, receipt, paidOut: d.amount });
+  });
+  res.json({ ok: true });
+});
+
+// ── Pay details of the sales persons (Commission → Pay details) ───────────────
+// Who is paid as a contractor, where their money goes, the withholding tax rate that applies to them and whether a month below the minimum wage is topped up (off unless switched on for the
+// person). Their KRA PIN and National ID are the ones on their staff record, set here too. Managers see and change them; the standard rate and the month it starts are in the settings (Admin).
+async function salesPersonRows() {
+  const roles = await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } });
+  if (roles.length === 0) return [];
+  return prisma.user.findMany({ where: { active: true, role: { in: roles.map((r) => r.name) } }, include: { contractorProfile: true }, orderBy: { name: 'asc' } });
+}
+
+commissionRouter.get('/contractors', manage, async (_req, res) => {
+  const [people, cfg] = await Promise.all([salesPersonRows(), getCommissionConfig()]);
+  res.json({
+    standardWhtRate: cfg.freelanceWhtRate,
+    contractorFrom: cfg.contractorFrom,
+    people: people.map((u) => {
+      const p = u.contractorProfile;
+      const missing = [!u.kraPin && 'KRA PIN', !u.nationalId && 'National ID', !payPhone(p) && 'M-Pesa number'].filter(Boolean);
+      return {
+        staffId: u.id,
+        name: u.name,
+        role: u.role,
+        kraPin: u.kraPin ?? '',
+        nationalId: u.nationalId ?? '',
+        phone: p?.phone ?? '',
+        mpesaNumber: p?.mpesaNumber ?? '',
+        payMethod: p?.payMethod ?? 'M-Pesa',
+        bankName: p?.bankName ?? '',
+        bankAccount: p?.bankAccount ?? '',
+        whtRate: p?.whtRate ?? null,
+        effectiveWhtRate: p?.whtRate ?? cfg.freelanceWhtRate,
+        minWageFloor: p?.minWageFloor ?? false,
+        note: p?.note ?? '',
+        missing,
+      };
+    }),
+  });
+});
+
+const contractorSchema = z.object({
+  kraPin: z.string().trim().max(40).optional(),
+  nationalId: z.string().trim().max(20).optional(),
+  phone: z.string().trim().max(20).optional(),
+  mpesaNumber: z.string().trim().max(20).optional(),
+  payMethod: z.enum(EXPENSE_METHODS).optional(),
+  bankName: z.string().trim().max(80).optional(),
+  bankAccount: z.string().trim().max(60).optional(),
+  whtRate: z.number().min(0).max(100).nullable().optional(), // null = the standard rate; 0 = exempt
+  minWageFloor: z.boolean().optional(),
+  note: z.string().trim().max(300).optional(),
+});
+
+commissionRouter.put('/contractors/:staffId', manage, async (req, res) => {
+  const parsed = contractorSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const staffId = Number(req.params.staffId);
+  const user = (await salesPersonRows()).find((u) => u.id === staffId);
+  if (!user) return res.status(404).json({ error: 'That is not a sales person' });
+  const { kraPin, nationalId, ...profile } = parsed.data;
+  for (const k of ['phone', 'mpesaNumber'] as const) {
+    const v = profile[k];
+    if (v && !payPhone({ [k]: v })) return res.status(400).json({ error: `${k === 'phone' ? 'The phone' : 'The M-Pesa number'} must be a Kenyan mobile number (07… or 2547…)` });
+  }
+  // KRA PIN and National ID live on the staff record (unique among staff)
+  const userData: { kraPin?: string | null; nationalId?: string | null } = {};
+  if (kraPin !== undefined) {
+    const c = cleanKraPin(kraPin);
+    if (c.error) return res.status(400).json({ error: c.error });
+    if (c.value && (await prisma.user.findFirst({ where: { kraPin: c.value, id: { not: staffId } } }))) return res.status(400).json({ error: 'That KRA PIN is already on another staff member' });
+    userData.kraPin = c.value ?? null;
+  }
+  if (nationalId !== undefined) {
+    if (nationalId && !/^\d{7,8}$/.test(nationalId)) return res.status(400).json({ error: 'A National ID is 7 or 8 digits' });
+    if (nationalId && (await prisma.user.findFirst({ where: { nationalId, id: { not: staffId } } }))) return res.status(400).json({ error: 'That National ID is already on another staff member' });
+    userData.nationalId = nationalId || null;
+  }
+  const norm = (v?: string) => (v ? payPhone({ phone: v }) ?? v : v);
+  const data = { ...profile, ...(profile.phone !== undefined ? { phone: norm(profile.phone) ?? '' } : {}), ...(profile.mpesaNumber !== undefined ? { mpesaNumber: norm(profile.mpesaNumber) ?? '' } : {}), updatedByName: req.user!.name };
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(userData).length) await tx.user.update({ where: { id: staffId }, data: userData });
+    await tx.contractorProfile.upsert({ where: { staffId }, create: { staffId, ...data }, update: data });
+  });
+  res.json({ ok: true });
 });
 
 /** Takes an approval back (before it is paid) so the month can be recalculated and approved again. */
@@ -450,6 +588,7 @@ commissionRouter.delete('/payouts/:id', manage, async (req, res) => {
   const payout = await prisma.commissionPayout.findUnique({ where: { id: Number(req.params.id) } });
   if (!payout) return res.status(404).json({ error: 'Not found' });
   if (payout.status === 'Paid') return res.status(400).json({ error: 'A paid commission cannot be withdrawn' });
+  if (payout.status === 'Sending') return res.status(400).json({ error: 'A payment to their phone is on its way — it cannot be withdrawn now' });
   await prisma.commissionPayout.delete({ where: { id: payout.id } });
   res.status(204).end();
 });

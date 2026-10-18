@@ -6,7 +6,7 @@ import { useTheme, type Theme } from '../hooks/useTheme';
 import Icon from '../components/NavIcons';
 import type { CurrentUser } from '../state/AuthContext';
 import { useApprovalsBadge } from '../hooks/useApprovals';
-import { priceListsFor } from '@glm/shared';
+import { salesScreensFor } from '../components/SalesHub';
 
 // Built from the logged-in user's permissions rather than a hardcoded map
 // keyed by role name — a custom role created in Master Data → Roles &
@@ -28,19 +28,11 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   tabs.push(['/approvals', 'Approvals']);
   // The sales screens, once under each price list: GLM Sales (our own staff, GLM prices) and Freelancer Sales (sales persons, freelancer prices). A person sees the lists their role may capture under:
   // a sales person only Freelancer Sales, the front office and managers both, GLM's own staff GLM Sales.
-  const salesScreens = (prefix: string) => {
-    if (isAdmin || p.canCaptureOrders) tabs.push([prefix + '/orders/new/walkin', 'General Order']);
-    if (isAdmin || p.canAccessDtf || p.canManageDtf) {
-      tabs.push([prefix + '/orders/new/film', 'DTF Film Order'], [prefix + '/orders/new/artwork', 'DTF Artwork Order'], [prefix + '/orders/new/uv-film', 'UV DTF Film Order'], [prefix + '/orders/new/uv-artwork', 'UV DTF Artwork Order']);
-    }
-    // Embroidery is taken like a General Order (anyone who captures orders), priced by stitch count.
-    if (isAdmin || p.canCaptureOrders) tabs.push([prefix + '/orders/new/embroidery', 'Embroidery Order']);
-    // Costing an outsourced branding job (business cards, signage) from the supplier rates under Job Costing → Rates, to quote a price.
-    if (isAdmin || p.canCaptureOrders || p.canAccessFinance) tabs.push([prefix + '/costing', 'Job Costing']);
-  };
-  const lists = priceListsFor(user.role, p);
-  if (lists.includes('glm')) salesScreens('');
-  if (lists.includes('freelancer')) salesScreens('/freelancer');
+  // Each is ONE entry that opens the list's sales screens as a row of buttons (SalesHub); it links to the first screen the person may use.
+  const glmScreens = salesScreensFor(user, 'glm');
+  if (glmScreens.length) tabs.push([glmScreens[0]!.path, 'GLM Sales']);
+  const flScreens = salesScreensFor(user, 'freelancer');
+  if (flScreens.length) tabs.push([flScreens[0]!.path, 'Freelancer Sales']);
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
@@ -74,24 +66,22 @@ import { useFeatures } from '../hooks/useFeatures';
 
 // The sidebar, in one column: the signed-in person at the top (their menu has Change PIN and Log out), the modules in labelled groups, and the everyday
 // utilities (colour scheme, collapse) at the bottom. Only the modules a person's role allows are listed, so a group with nothing in it does not appear.
-type Group = 'sales' | 'glm' | 'freelancer' | 'operations' | 'finance' | 'admin';
+type Group = 'sales' | 'operations' | 'finance' | 'admin';
 const GROUPS: [Group, string][] = [
   ['sales', 'Sales'],
-  ['glm', 'GLM Sales'],
-  ['freelancer', 'Freelancer Sales'],
   ['operations', 'Operations'],
   ['finance', 'Finance'],
   ['admin', 'Admin'],
 ];
 const GROUP_OF: Record<string, Group> = {
   '/approvals': 'sales',
-  '/orders/new/walkin': 'glm',
-  '/orders/new/film': 'glm',
-  '/orders/new/artwork': 'glm',
-  '/orders/new/uv-film': 'glm',
-  '/orders/new/uv-artwork': 'glm',
-  '/orders/new/embroidery': 'glm',
-  '/costing': 'glm',
+  '/orders/new/walkin': 'sales',
+  '/orders/new/film': 'sales',
+  '/orders/new/artwork': 'sales',
+  '/orders/new/uv-film': 'sales',
+  '/orders/new/uv-artwork': 'sales',
+  '/orders/new/embroidery': 'sales',
+  '/costing': 'sales',
   '/orders/all': 'sales',
   '/commission': 'sales',
   '/production': 'operations',
@@ -131,9 +121,11 @@ const ICON_OF: Record<string, string> = {
   '/reports': 'reports',
   '/master-data': 'masterdata',
 };
-// the Freelancer Sales screens are the same ones under /freelancer
-const groupOf = (path: string): Group => (path.startsWith('/freelancer/') ? 'freelancer' : GROUP_OF[path] ?? 'sales');
+const groupOf = (path: string): Group => GROUP_OF[path] ?? 'sales';
 const iconOf = (path: string): string => ICON_OF[path] ?? ICON_OF[path.replace(/^\/freelancer/, '')] ?? 'orders';
+// GLM Sales and Freelancer Sales are one entry each: filled in while any of their screens is open (and the icon is the list's, not the first screen's)
+const GLM_SCREEN = /^\/(orders\/new\/|costing$)/;
+const isHubOpen = (label: string, pathname: string): boolean => (label === 'GLM Sales' ? GLM_SCREEN.test(pathname) : label === 'Freelancer Sales' ? pathname.startsWith('/freelancer/') : false);
 const THEME_ICONS: [Theme, string, string][] = [
   ['organic', 'sun', 'Organic'],
   ['nocturne', 'moon', 'Nocturne'],
@@ -244,8 +236,8 @@ function AppLayoutInner() {
               <div key={g} className="side-group">
                 <div className="side-group-title">{label}</div>
                 {items.map(([path, text]) => (
-                  <NavLink key={path} to={path} title={text} onClick={subNav.goHome} className={({ isActive }) => 'side-link' + (isActive ? ' active' : '')}>
-                    <span className="icon-wrap"><Icon name={iconOf(path)} size={19} /></span>
+                  <NavLink key={path} to={path} title={text} onClick={subNav.goHome} className={({ isActive }) => 'side-link' + (isActive || isHubOpen(text, pathname) ? ' active' : '')}>
+                    <span className="icon-wrap"><Icon name={text === 'GLM Sales' ? 'order' : text === 'Freelancer Sales' ? 'people' : iconOf(path)} size={19} /></span>
                     <span>{text}</span>
                     {path === '/approvals' && badge.count > 0 && <b className="nav-badge" title={`${badge.waiting} waiting for your decision${badge.news ? `, ${badge.news} of your requests decided` : ''}`}>{badge.count}</b>}
                   </NavLink>

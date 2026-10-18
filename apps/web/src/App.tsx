@@ -27,8 +27,9 @@ const Reports = lazy(() => import('./pages/Reports'));
 const Stock = lazy(() => import('./pages/Stock'));
 const Dtf = lazy(() => import('./pages/Dtf'));
 import { useFeatures } from './hooks/useFeatures';
-import { PriceListProvider } from './state/PriceListContext';
-import type { PermissionKey, PriceList } from '@glm/shared';
+import SalesHub from './components/SalesHub';
+import { priceListsFor } from '@glm/shared';
+import type { PermissionKey } from '@glm/shared';
 
 // The Commission module exists only while an Admin has switched the scheme on (Master Data → Company Info).
 function CommissionGate() {
@@ -41,11 +42,14 @@ function CommissionGate() {
 function DefaultRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={user.permissions.canCaptureOrders && user.role !== 'Admin' ? '/orders/new/walkin' : '/orders/all'} replace />;
+  // someone who captures orders starts on their own sales screen: a sales person under Freelancer Sales, GLM's own staff under GLM Sales
+  const lists = priceListsFor(user.role, user.permissions);
+  return <Navigate to={user.permissions.canCaptureOrders && user.role !== 'Admin' ? (lists.includes('glm') ? '/orders/new/walkin' : '/freelancer/orders/new/walkin') : '/orders/all'} replace />;
 }
 
-// The seven sales screens exist under each price list: the original addresses are GLM Sales, the same screens under /freelancer are Freelancer Sales (the menu you key from decides the list).
-function salesRoutes(prefix: string, list: PriceList) {
+// The seven sales screens exist under each price list: the original addresses are GLM Sales, the same screens under /freelancer are Freelancer Sales (the menu you key from decides the list). Each list is
+// one place in the menu (SalesHub): a row of buttons across the top, the screen pressed below.
+function salesRoutes(prefix: string) {
   const entries: [string, PermissionKey[], JSX.Element][] = [
     ['/orders/new/walkin', ['canCaptureOrders'], <NewWalkinOrder />],
     ['/orders/new/film', ['canAccessDtf', 'canManageDtf'], <NewFilmOrder />],
@@ -59,11 +63,7 @@ function salesRoutes(prefix: string, list: PriceList) {
     <Route
       key={prefix + path}
       path={prefix + path}
-      element={
-        <RequirePermission keys={keys}>
-          <PriceListProvider list={list}>{screen}</PriceListProvider>
-        </RequirePermission>
-      }
+      element={<RequirePermission keys={keys}>{screen}</RequirePermission>}
     />
   ));
 }
@@ -79,8 +79,8 @@ export default function App() {
       <Route path="/privacy" element={<Privacy />} />
       <Route element={user ? <AppLayout /> : <Navigate to="/login" replace />}>
         <Route index element={<DefaultRedirect />} />
-        {salesRoutes('', 'glm')}
-        {salesRoutes('/freelancer', 'freelancer')}
+        <Route element={<SalesHub list="glm" />}>{salesRoutes('')}</Route>
+        <Route element={<SalesHub list="freelancer" />}>{salesRoutes('/freelancer')}</Route>
         {/* One Orders screen: the whole list for people who may see every order, a member of staff's own orders otherwise. */}
         <Route
           path="/orders/all"

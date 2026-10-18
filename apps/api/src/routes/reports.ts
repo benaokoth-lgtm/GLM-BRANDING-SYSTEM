@@ -6,6 +6,8 @@ import { ensureBusinessHeadsOnce, ensurePurchasesOnce } from '../purchases';
 import type { LineItemInput, PaymentRecord } from '@glm/shared';
 import type { Prisma } from '@prisma/client';
 import { DTF_HEAD, primaryHead } from '../orderHeads';
+import { isSalesPersonOrder, salesPersonIds } from '../orderSource';
+import { clientKeyFor } from '@glm/shared';
 
 export const reportsRouter = Router();
 reportsRouter.use(requireAuth, requirePermission('canAccessReports'));
@@ -236,6 +238,109 @@ reportsRouter.get('/embroidery-profitability', async (req, res) => {
     marginPerGarment,
     underpriced: marginPerGarment != null && marginPerGarment < 0,
     byBand: [...bands.entries()].sort((x, y) => x[0] - y[0]).map(([from, v]) => ({ from, jobs: v.jobs, garments: v.garments, revenue: round(v.revenue), avgPerGarment: v.garments > 0 ? round(v.revenue / v.garments) : null })),
+  });
+});
+
+// ── Sales performance: GLM's own sales against the sales persons' ──────────────────────────────────────────────
+// Orders raised in the period (orders and invoices, not quotations), told apart by who they are credited to: GLM's own (the shop's) or a sales person's (the person it was allocated to, the one whose
+// client it is, or an old freelance account). For each: how many orders, what was sold (net of the 16% VAT, after discounts), how much of it has been paid and what is still owed, the average order, and
+// the clients; then each line of business and each month; then each sales person with what they were paid for the months in the period, as a share of what they sold.
+reportsRouter.get('/sales-performance', async (req, res) => {
+  const range = parseRange(req);
+  if (!range) return res.status(400).json({ error: 'from and to query params are required (YYYY-MM-DD)' });
+  await ensureBusinessHeadsOnce();
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const people = await salesPersonIds();
+  const orders = await prisma.order.findMany({
+    where: { status: { not: 'Quote' }, createdDate: { gte: range.from, lte: range.to } },
+    include: { ...headInclude, staff: { select: { id: true, name: true } } },
+  });
+  const paidBy = new Map<number, number>();
+  if (orders.length) {
+    for (const p of await prisma.payment.findMany({ where: { orderId: { in: orders.map((o) => o.id) } }, select: { orderId: true, amount: true } })) paidBy.set(p.orderId, (paidBy.get(p.orderId) ?? 0) + p.amount);
+  }
+  type Src = 'glm' | 'sales';
+  const blank = () => ({ orders: 0, gross: 0, net: 0, paid: 0, balance: 0, clients: new Set<string>() });
+  const totals: Record<Src, ReturnType<typeof blank>> = { glm: blank(), sales: blank() };
+  const byHead = new Map<string, Record<Src, { orders: Set<number>; net: number }>>();
+  const byMonth = new Map<string, Record<Src, { orders: number; net: number }>>();
+  const per = new Map<number, { staffId: number; name: string; orders: number; net: number; paid: number; clients: Set<string> }>();
+  let legacy = { orders: 0, net: 0, paid: 0 };
+  const nameOf = new Map<number, string>();
+  for (const o of orders) {
+    const src: Src = isSalesPersonOrder(o, people) ? 'sales' : 'glm';
+    const { grandTotal, lines } = headLines(o);
+    const net = grandTotal / (1 + VAT_RATE);
+    const paid = Math.min(paidBy.get(o.id) ?? 0, grandTotal);
+    const t = totals[src];
+    t.orders++;
+    t.gross += grandTotal;
+    t.net += net;
+    t.paid += paid;
+    t.balance += Math.max(0, grandTotal - paid);
+    const key = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.customerName });
+    if (key) t.clients.add(key);
+    const m = byMonth.get(o.createdDate.slice(0, 7)) ?? { glm: { orders: 0, net: 0 }, sales: { orders: 0, net: 0 } };
+    m[src].orders++;
+    m[src].net += net;
+    byMonth.set(o.createdDate.slice(0, 7), m);
+    for (const l of lines) {
+      const h = byHead.get(l.head) ?? { glm: { orders: new Set<number>(), net: 0 }, sales: { orders: new Set<number>(), net: 0 } };
+      h[src].orders.add(o.id);
+      h[src].net += l.gross / (1 + VAT_RATE);
+      byHead.set(l.head, h);
+    }
+    if (src === 'sales') {
+      if (o.freelanceAgentId != null) {
+        legacy = { orders: legacy.orders + 1, net: legacy.net + net, paid: legacy.paid + paid };
+      } else {
+        const id = o.sourcedByStaffId ?? o.staffId;
+        if (!nameOf.has(id)) nameOf.set(id, id === o.staff.id ? o.staff.name : '');
+        const r = per.get(id) ?? { staffId: id, name: '', orders: 0, net: 0, paid: 0, clients: new Set<string>() };
+        r.orders++;
+        r.net += net;
+        r.paid += paid;
+        if (key) r.clients.add(key);
+        per.set(id, r);
+      }
+    }
+  }
+  // names of the sales persons (someone credited through a client may not be the one who keyed the order)
+  const users = per.size ? await prisma.user.findMany({ where: { id: { in: [...per.keys()] } }, select: { id: true, name: true } }) : [];
+  for (const u of users) nameOf.set(u.id, u.name);
+  // what they were paid for the months of the period (contractor payouts: the gross, before the tax)
+  const months = [...new Set([range.from.slice(0, 7), range.to.slice(0, 7), ...byMonth.keys()])];
+  const payouts = per.size ? await prisma.commissionPayout.findMany({ where: { staffId: { in: [...per.keys()] }, period: { gte: range.from.slice(0, 7), lte: range.to.slice(0, 7) } } }) : [];
+  void months;
+  const paidOut = new Map<number, number>();
+  for (const p of payouts) paidOut.set(p.staffId, (paidOut.get(p.staffId) ?? 0) + p.amount);
+  const salesNet = totals.sales.net || 0;
+  const fin = (t: ReturnType<typeof blank>) => ({ orders: t.orders, sales: round(t.net), salesWithVat: round(t.gross), paid: round(t.paid), balance: round(t.balance), avgOrder: t.orders > 0 ? round(t.net / t.orders) : null, clients: t.clients.size });
+  const allNet = totals.glm.net + totals.sales.net;
+  res.json({
+    from: range.from,
+    to: range.to,
+    glm: { ...fin(totals.glm), sharePct: allNet > 0 ? round((totals.glm.net / allNet) * 100) : null },
+    sales: { ...fin(totals.sales), sharePct: allNet > 0 ? round((totals.sales.net / allNet) * 100) : null },
+    heads: [...byHead.entries()]
+      .map(([head, v]) => ({ head, glm: { orders: v.glm.orders.size, sales: round(v.glm.net) }, sales: { orders: v.sales.orders.size, sales: round(v.sales.net) } }))
+      .sort((a, b) => b.glm.sales + b.sales.sales - (a.glm.sales + a.sales.sales)),
+    months: [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([month, v]) => ({ month, glm: { orders: v.glm.orders, sales: round(v.glm.net) }, sales: { orders: v.sales.orders, sales: round(v.sales.net) } })),
+    people: [...per.values()]
+      .map((r) => ({
+        staffId: r.staffId,
+        name: nameOf.get(r.staffId) || r.name || `#${r.staffId}`,
+        orders: r.orders,
+        sales: round(r.net),
+        paid: round(r.paid),
+        avgOrder: r.orders > 0 ? round(r.net / r.orders) : null,
+        clients: r.clients.size,
+        sharePct: salesNet > 0 ? round((r.net / salesNet) * 100) : null,
+        paidToThem: round(paidOut.get(r.staffId) ?? 0),
+        paidToThemPct: r.net > 0 && paidOut.has(r.staffId) ? round(((paidOut.get(r.staffId) ?? 0) / r.net) * 100) : null,
+      }))
+      .sort((a, b) => b.sales - a.sales),
+    legacyFreelancers: { orders: legacy.orders, sales: round(legacy.net), paid: round(legacy.paid) },
   });
 });
 

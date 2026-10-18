@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { useFeatures } from '../hooks/useFeatures';
-import { usePriceList } from '../state/PriceListContext';
 import type { SalesPerson } from '../hooks/useSalesPeople';
 
 // Starting an order from the staff client register: pick the sales person (the front office does; a sales person is already themselves), then pick one of THEIR clients, and the client's name and
@@ -28,7 +27,6 @@ interface Props {
 export default function StaffClientPicker({ forOthers = false, salesPeople = [], salesPersonId = null, onSalesPersonChange, onPick }: Props) {
   const { user } = useAuth();
   const features = useFeatures();
-  const list = usePriceList();
   const [clients, setClients] = useState<RegisterClient[]>([]);
   const [failed, setFailed] = useState(false);
   const [chosen, setChosen] = useState('');
@@ -58,8 +56,6 @@ export default function StaffClientPicker({ forOthers = false, salesPeople = [],
 
   // the register belongs to commission: with it switched off there is nothing to pick from
   if (!features?.commission || failed) return null;
-  // the front office picks a sales person only under Freelancer Sales — a GLM Sales order is credited to nobody
-  if (forOthers && list === 'glm') return null;
   // a sales person with no clients in their own register is not bothered with an empty list
   if (!forOthers && clients.length === 0) return null;
   const who = forOthers ? salesPeople.find((p) => p.id === salesPersonId)?.name : undefined;

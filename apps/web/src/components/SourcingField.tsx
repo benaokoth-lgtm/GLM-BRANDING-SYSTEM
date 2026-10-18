@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { fmtDate, isNamedClient } from '@glm/shared';
 import { api } from '../api/client';
 import { useFeatures } from '../hooks/useFeatures';
-import { usePriceList } from '../state/PriceListContext';
 import FreelancePicker from './FreelancePicker';
 
 interface Lookup {
@@ -28,6 +27,9 @@ interface SourcingFieldProps {
   salesPeople?: { id: number; name: string; orderTakingOff?: boolean }[];
   salesPersonId?: number | null;
   onSalesPersonChange?: (id: number | null) => void;
+  /** The front office must choose who the order is for before it can be captured: false until they do (leave out to default to GLM). */
+  allocated?: boolean;
+  onAllocatedChange?: (chosen: boolean) => void;
 }
 
 // "Who brought this order?" — on every order. Either a staff member brought the client in through their own network — then the client is credited
@@ -42,15 +44,12 @@ export default function SourcingField(props: SourcingFieldProps) {
   return <SourcingFieldInner {...props} />;
 }
 
-function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked, onChange, freelanceId, onFreelanceChange, salesPeople, salesPersonId, onSalesPersonChange }: SourcingFieldProps) {
+function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked, onChange, freelanceId, onFreelanceChange, salesPeople, salesPersonId, onSalesPersonChange, allocated, onAllocatedChange }: SourcingFieldProps) {
   const frontOffice = !!salesPeople;
   const [lookup, setLookup] = useState<Lookup | null>(null);
   const [viaFreelance, setViaFreelance] = useState((freelanceId ?? null) !== null);
   // From the contractor month freelance accounts are retired: an order is credited to a sales person, never to a freelance account.
   const freelanceRetired = !!useFeatures()?.contractors;
-  // Under Freelancer Sales the sales person IS the freelancer and records their own sales (the front office picks which sales person it is for), so there is no "shop or our own staff" / "freelance account" choice;
-  // under GLM Sales an order is the shop's and is credited to no sales person.
-  const list = usePriceList();
 
   useEffect(() => {
     const qs = new URLSearchParams();
@@ -92,8 +91,11 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
   }, [freelanceOwner, checked, onChange]);
   // Front office: a client who already belongs to a sales person decides who the order is for; a freelancer's order is for no sales person.
   useEffect(() => {
-    if (frontOffice && owner && salesPersonId !== owner.staffId) onSalesPersonChange?.(owner.staffId);
-  }, [frontOffice, owner, salesPersonId, onSalesPersonChange]);
+    if (frontOffice && owner && salesPersonId !== owner.staffId) {
+      onSalesPersonChange?.(owner.staffId);
+      onAllocatedChange?.(true);
+    }
+  }, [frontOffice, owner, salesPersonId, onSalesPersonChange, onAllocatedChange]);
   useEffect(() => {
     if (frontOffice && viaFreelance && salesPersonId) {
       onSalesPersonChange?.(null);
@@ -118,7 +120,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
         </p>
       ) : (
         <>
-          {onFreelanceChange && !freelanceRetired && list === 'glm' && (
+          {onFreelanceChange && !freelanceRetired && (
             <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap', marginBottom: 'var(--space-2)' }}>
               <label style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center', fontWeight: 400 }}>
                 <input
@@ -152,12 +154,24 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
               </p>
             </>
           ) : (
-            frontOffice && list === 'glm' ? (
-              <p className="note" style={{ margin: 0 }}>GLM Sales: the order is the shop’s and is credited to no sales person. For a sales person’s order — or a client in their Client Register — use Freelancer Sales.</p>
-            ) : frontOffice ? (
+            frontOffice ? (
               <>
-                <select className="input" value={salesPersonId ?? ''} aria-label="Sales person" onChange={(e) => { const id = e.target.value ? Number(e.target.value) : null; onSalesPersonChange?.(id); onChange(!!id); }}>
-                  <option value="">{list === 'freelancer' ? 'Choose the sales person…' : 'The shop: no sales person (a house sale)'}</option>
+                {/* The front office allocates every order: GLM's own (the shop) or a sales person. With `allocated` given, nothing is chosen until they choose. */}
+                <select
+                  className="input"
+                  value={allocated === false ? '' : salesPersonId != null ? String(salesPersonId) : 'glm'}
+                  aria-label="Allocate the order to"
+                  style={allocated === false ? { borderColor: 'var(--color-error)' } : undefined}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    const id = v && v !== 'glm' ? Number(v) : null;
+                    onAllocatedChange?.(v !== '');
+                    onSalesPersonChange?.(id);
+                    onChange(!!id);
+                  }}
+                >
+                  {allocated === false && <option value="">Allocate this order to…</option>}
+                  <option value="glm">GLM — the shop’s own sale (no sales person)</option>
                   {salesPeople!.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
@@ -173,7 +187,7 @@ function SourcingFieldInner({ corporateClientId, phone, name, staffName, checked
                     </span>
                   </label>
                 ) : (
-                  <p className="note" style={list === 'freelancer' ? { margin: 'var(--space-1) 0 0', color: 'var(--color-error)' } : { margin: 'var(--space-1) 0 0' }}>{list === 'freelancer' ? 'Choose the sales person this order is for — a Freelancer Sales order is always theirs.' : 'Choose the sales person this order is for. It is theirs — film and artwork extras, sales target, and (when ticked) the client.'}</p>
+                  <p className="note" style={allocated === false ? { margin: 'var(--space-1) 0 0', color: 'var(--color-error)' } : { margin: 'var(--space-1) 0 0' }}>{allocated === false ? 'Choose who this order is for: GLM (the shop) or a sales person.' : 'A GLM order is the shop’s and is credited to no sales person. Choose a sales person and it is theirs — film and artwork extras, sales target, and (when ticked) the client.'}</p>
                 )}
                 {needsDetails && <p className="note" style={{ color: 'var(--color-error)', margin: 'var(--space-1) 0 0' }}>Enter the client’s name and phone number — they are needed to credit the client and to recognise them on their next order.</p>}
               </>

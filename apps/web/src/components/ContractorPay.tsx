@@ -22,6 +22,8 @@ interface Person {
   whtRate: number | null;
   effectiveWhtRate: number;
   minWageFloor: boolean;
+  /** Captures their own orders too; off = only the front office captures for them. */
+  capturesOwn: boolean;
   note: string;
   missing: string[];
 }
@@ -100,7 +102,7 @@ function Switch() {
 
 function PersonRow({ p, standard, onSaved }: { p: Person; standard: number; onSaved: () => void }) {
   const [edit, setEdit] = useState(false);
-  const [f, setF] = useState({ kraPin: p.kraPin, nationalId: p.nationalId, phone: p.phone, mpesaNumber: p.mpesaNumber, payMethod: p.payMethod, bankName: p.bankName, bankAccount: p.bankAccount, whtRate: p.whtRate == null ? '' : String(p.whtRate), minWageFloor: p.minWageFloor, note: p.note });
+  const [f, setF] = useState({ kraPin: p.kraPin, nationalId: p.nationalId, phone: p.phone, mpesaNumber: p.mpesaNumber, payMethod: p.payMethod, bankName: p.bankName, bankAccount: p.bankAccount, whtRate: p.whtRate == null ? '' : String(p.whtRate), minWageFloor: p.minWageFloor, capturesOwn: p.capturesOwn, note: p.note });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
@@ -129,6 +131,7 @@ function PersonRow({ p, standard, onSaved }: { p: Person; standard: number; onSa
         <td>{p.payMethod}</td>
         <td style={{ textAlign: 'right' }}>{p.effectiveWhtRate}%{p.whtRate == null ? <span className="text-muted" style={{ fontSize: 11 }}> standard</span> : p.whtRate === 0 ? <span className="text-muted" style={{ fontSize: 11 }}> exempt</span> : null}</td>
         <td>{p.minWageFloor ? <Tag tone="good">topped up</Tag> : <span className="text-muted">no</span>}</td>
+        <td>{p.capturesOwn ? <Tag tone="good">yes</Tag> : <span className="text-muted">front office only</span>}</td>
         <td>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(!edit)}>
             {edit ? 'Close' : 'Edit'}
@@ -137,7 +140,7 @@ function PersonRow({ p, standard, onSaved }: { p: Person; standard: number; onSa
       </tr>
       {edit && (
         <tr>
-          <td colSpan={8} style={{ background: 'var(--color-surface-2, transparent)' }}>
+          <td colSpan={9} style={{ background: 'var(--color-surface-2, transparent)' }}>
             <div style={{ padding: 'var(--space-3)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 'var(--space-3)' }}>
               {([['kraPin', 'KRA PIN'], ['nationalId', 'National ID'], ['phone', 'Phone (07… or 2547…)'], ['mpesaNumber', 'M-Pesa number (if different)'], ['bankName', 'Bank'], ['bankAccount', 'Bank account']] as const).map(([k, label]) => (
                 <div className="field" style={{ margin: 0 }} key={k}>
@@ -158,6 +161,10 @@ function PersonRow({ p, standard, onSaved }: { p: Person; standard: number; onSa
               <label style={{ display: 'flex', gap: 8, alignItems: 'center', alignSelf: 'end' }}>
                 <input type="checkbox" checked={f.minWageFloor} onChange={(e) => setF({ ...f, minWageFloor: e.target.checked })} aria-label={`Top up to the minimum wage for ${p.name}`} />
                 Top a month up to the minimum wage
+              </label>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', alignSelf: 'end' }}>
+                <input type="checkbox" checked={f.capturesOwn} onChange={(e) => setF({ ...f, capturesOwn: e.target.checked })} aria-label={`${p.name} captures their own orders`} />
+                Captures their own orders (the front office can too)
               </label>
               <div className="field" style={{ margin: 0, gridColumn: '1 / -1' }}>
                 <label>Note</label>
@@ -197,6 +204,7 @@ export default function ContractorPay() {
                   <th>Paid by</th>
                   <th style={{ textAlign: 'right' }}>Tax withheld</th>
                   <th>Minimum wage</th>
+                  <th>Captures own orders</th>
                   <th></th>
                 </tr>
               </thead>

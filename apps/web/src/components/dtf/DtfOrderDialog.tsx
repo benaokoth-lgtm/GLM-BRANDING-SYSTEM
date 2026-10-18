@@ -10,7 +10,6 @@ import SourcingField from '../SourcingField';
 import StaffClientPicker from '../StaffClientPicker';
 import { useSalesPeople } from '../../hooks/useSalesPeople';
 import { useAuth } from '../../state/AuthContext';
-import { priceOnList, usePriceList } from '../../state/PriceListContext';
 import SplitPayments, { newPaymentRow, paymentProblem, paymentsTotal, toApiPayments } from '../SplitPayments';
 import type { PaymentRow } from '../SplitPayments';
 
@@ -43,7 +42,6 @@ interface Props {
 // DtfFilmSale/DtfArtworkJob roll-consumption row) and prints two thermal
 // receipts — nothing is saved before that.
 export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qty, unitPrice, client, needsApproval = false, onClose, onDone }: Props) {
-  const list = usePriceList();
   const { materials } = useCatalog();
   const { user } = useAuth();
   // The client's name, prefilled from the previous page but editable here, beside the phone: crediting a client to a staff member needs both, and a
@@ -55,6 +53,9 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
   const salesPeople = useSalesPeople(forOthers);
   const [salesPersonId, setSalesPersonId] = useState<number | null>(null);
+  // the front office allocates every order (GLM or a sales person) before it is taken
+  const [allocated, setAllocated] = useState(false);
+  const allocationMissing = forOthers && !allocated;
   const [materialLines, setMaterialLines] = useState<MaterialLine[]>([]);
   const [heatPressFee, setHeatPressFee] = useState('');
   // Any mix of methods can pay now (e.g. part cash, part M-Pesa) — see components/SplitPayments.tsx.
@@ -69,7 +70,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
   const materialsTotal = materialLines.reduce((a, ml) => {
     const mt = materials.find((m) => m.id === ml.materialId);
     const q = Number(ml.qty) || 0;
-    return a + (mt ? priceOnList(mt, list) * q : 0);
+    return a + (mt ? mt.price * q : 0);
   }, 0);
   const grandTotal = Math.round((serviceLineTotal + materialsTotal) * 100) / 100;
   const paid = paymentsTotal(paymentRows);
@@ -100,7 +101,6 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
     try {
       const payload = {
         ...basePayload,
-        priceList: list,
         client: clientName,
         phone,
         // Front office: credited to the chosen sales person (their client when ticked); everyone else captures in their own name.
@@ -162,7 +162,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
           {clientName.trim() ? `Client: ${clientName.trim()}` : 'Walk-in client'} — {mode === 'pens' ? 'pens' : mode === 'flatbed' ? 'flatbed printing' : mode === 'sale' ? 'film' : 'artwork'} line: {fmtKsh(serviceLineTotal)}
         </p>
 
-        <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setClientName(c.name); setPhone(c.phone); }} />
+        <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={(id) => { setSalesPersonId(id); if (id) setAllocated(true); }} onPick={(c) => { setClientName(c.name); setPhone(c.phone); }} />
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 'var(--space-3)', marginTop: 'var(--space-3)' }}>
           <Field label={sourced ? 'Client name *' : 'Client name (optional)'}>
@@ -173,7 +173,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
             <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="07xx xxx xxx" style={sourced && !phone.trim() ? { borderColor: 'var(--color-error)' } : undefined} />
           </Field>
 
-          <SourcingField phone={phone} name={clientName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} />
+          <SourcingField phone={phone} name={clientName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} allocated={forOthers ? allocated : undefined} onAllocatedChange={setAllocated} />
 
           {mode === 'job' && !noPress && (
             <Field label="Heat press fee (Ksh/pc) — required">
@@ -197,7 +197,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
                 <select className="input" value={ml.materialId} onChange={(e) => updateMaterialLine(idx, { materialId: Number(e.target.value) })}>
                   {materials.map((mt) => (
                     <option key={mt.id} value={mt.id}>
-                      {mt.name} ({fmtKsh(priceOnList(mt, list))})
+                      {mt.name} ({fmtKsh(mt.price)})
                     </option>
                   ))}
                 </select>
@@ -246,7 +246,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
             <Corners />
             Cancel
           </button>
-          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!payProblem || sourcingIncomplete || heatPressMissing}>
+          <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!payProblem || sourcingIncomplete || allocationMissing || heatPressMissing}>
             <Corners />
             {needsApproval ? 'Send for approval' : 'Print'}
           </button>

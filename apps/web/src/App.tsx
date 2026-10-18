@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './state/AuthContext';
 import AppLayout from './layouts/AppLayout';
 import RequireRole from './components/RequireRole';
@@ -28,7 +28,6 @@ const Stock = lazy(() => import('./pages/Stock'));
 const Dtf = lazy(() => import('./pages/Dtf'));
 import { useFeatures } from './hooks/useFeatures';
 import SalesHub from './components/SalesHub';
-import { priceListsFor } from '@glm/shared';
 import type { PermissionKey } from '@glm/shared';
 
 // The Commission module exists only while an Admin has switched the scheme on (Master Data → Company Info).
@@ -42,13 +41,16 @@ function CommissionGate() {
 function DefaultRedirect() {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  // someone who captures orders starts on their own sales screen: a sales person under Freelancer Sales, GLM's own staff under GLM Sales
-  const lists = priceListsFor(user.role, user.permissions);
-  return <Navigate to={user.permissions.canCaptureOrders && user.role !== 'Admin' ? (lists.includes('glm') ? '/orders/new/walkin' : '/freelancer/orders/new/walkin') : '/orders/all'} replace />;
+  return <Navigate to={user.permissions.canCaptureOrders && user.role !== 'Admin' ? '/orders/new/walkin' : '/orders/all'} replace />;
 }
 
-// The seven sales screens exist under each price list: the original addresses are GLM Sales, the same screens under /freelancer are Freelancer Sales (the menu you key from decides the list). Each list is
-// one place in the menu (SalesHub): a row of buttons across the top, the screen pressed below.
+// An address from the time there were two menus (/freelancer/…) opens the same screen at its own address.
+function FreelancerRedirect() {
+  const { pathname, search } = useLocation();
+  return <Navigate to={(pathname.replace(/^\/freelancer/, '') || '/orders/new/walkin') + search} replace />;
+}
+
+// The seven sales screens, one place in the menu (SalesHub): a row of buttons across the top, the screen pressed below.
 function salesRoutes(prefix: string) {
   const entries: [string, PermissionKey[], JSX.Element][] = [
     ['/orders/new/walkin', ['canCaptureOrders'], <NewWalkinOrder />],
@@ -79,8 +81,8 @@ export default function App() {
       <Route path="/privacy" element={<Privacy />} />
       <Route element={user ? <AppLayout /> : <Navigate to="/login" replace />}>
         <Route index element={<DefaultRedirect />} />
-        <Route element={<SalesHub list="glm" />}>{salesRoutes('')}</Route>
-        <Route element={<SalesHub list="freelancer" />}>{salesRoutes('/freelancer')}</Route>
+        <Route element={<SalesHub />}>{salesRoutes('')}</Route>
+        <Route path="/freelancer/*" element={<FreelancerRedirect />} />
         {/* One Orders screen: the whole list for people who may see every order, a member of staff's own orders otherwise. */}
         <Route
           path="/orders/all"

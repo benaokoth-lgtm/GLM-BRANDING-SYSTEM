@@ -5,12 +5,14 @@ import { api } from '../api/client';
 import type { EmbroideryProfitabilityData, OrderSummary, SalesByBusinessHeadData, SalesByCategoryData } from '../api/models';
 import OrderDetailDialog from '../components/OrderDetailDialog';
 import BusinessHeadDetail from '../components/reports/BusinessHeadDetail';
+import SalesPerformance from '../components/reports/SalesPerformance';
 
-type ReportTab = 'sales' | 'heads' | 'category' | 'embroidery';
+type ReportTab = 'sales' | 'performance' | 'heads' | 'category' | 'embroidery';
 type Preset = 'today' | 'month' | 'year' | 'custom';
 
 const TABS: [ReportTab, string][] = [
   ['sales', 'Sales'],
+  ['performance', 'GLM vs Sales Persons'],
   ['heads', 'Sales by Business Head'],
   ['category', 'Sales by Category'],
   ['embroidery', 'Embroidery Profitability'],
@@ -150,6 +152,8 @@ export default function Reports() {
           {error}
         </p>
       )}
+
+      {tab === 'performance' && <SalesPerformance from={fromDate} to={toDate} />}
 
       {tab === 'sales' && (
         <>

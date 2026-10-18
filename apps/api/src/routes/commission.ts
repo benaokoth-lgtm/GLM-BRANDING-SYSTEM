@@ -530,6 +530,8 @@ commissionRouter.get('/contractors', manage, async (_req, res) => {
         whtRate: p?.whtRate ?? null,
         effectiveWhtRate: p?.whtRate ?? cfg.freelanceWhtRate,
         minWageFloor: p?.minWageFloor ?? false,
+        // Captures their own orders (and the front office may capture for them too); switched off, only the front office captures for them (Master Data → Staff & Users has the same switch).
+        capturesOwn: !u.orderTakingOff,
         note: p?.note ?? '',
         missing,
       };
@@ -547,6 +549,7 @@ const contractorSchema = z.object({
   bankAccount: z.string().trim().max(60).optional(),
   whtRate: z.number().min(0).max(100).nullable().optional(), // null = the standard rate; 0 = exempt
   minWageFloor: z.boolean().optional(),
+  capturesOwn: z.boolean().optional(),
   note: z.string().trim().max(300).optional(),
 });
 
@@ -556,13 +559,14 @@ commissionRouter.put('/contractors/:staffId', manage, async (req, res) => {
   const staffId = Number(req.params.staffId);
   const user = (await salesPersonRows()).find((u) => u.id === staffId);
   if (!user) return res.status(404).json({ error: 'That is not a sales person' });
-  const { kraPin, nationalId, ...profile } = parsed.data;
+  const { kraPin, nationalId, capturesOwn, ...profile } = parsed.data;
   for (const k of ['phone', 'mpesaNumber'] as const) {
     const v = profile[k];
     if (v && !payPhone({ [k]: v })) return res.status(400).json({ error: `${k === 'phone' ? 'The phone' : 'The M-Pesa number'} must be a Kenyan mobile number (07… or 2547…)` });
   }
   // KRA PIN and National ID live on the staff record (unique among staff)
-  const userData: { kraPin?: string | null; nationalId?: string | null } = {};
+  const userData: { kraPin?: string | null; nationalId?: string | null; orderTakingOff?: boolean } = {};
+  if (capturesOwn !== undefined) userData.orderTakingOff = !capturesOwn;
   if (kraPin !== undefined) {
     const c = cleanKraPin(kraPin);
     if (c.error) return res.status(400).json({ error: c.error });

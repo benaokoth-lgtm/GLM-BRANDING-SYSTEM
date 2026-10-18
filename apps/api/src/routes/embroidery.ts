@@ -15,7 +15,6 @@ import {
 import type { EmbroiderySettingsValues } from '@glm/shared';
 import type { CreditLine } from '../commission';
 import { captureWalkin, walkinSchema } from './orders';
-import { priceListConfig, priceOnList } from '../priceLists';
 
 // Embroidery orders, priced by stitch count (the "Embroidery Pricing Calculator" handoff): the settings an Admin keeps (Master Data → Embroidery Pricing),
 // the saved designs a repeat order picks from, and the order itself — a General Order underneath, so payments, receipts, invoices, front-office capture,
@@ -152,8 +151,7 @@ embroideryRouter.post('/orders', mayQuote, async (req, res) => {
   for (const g of garments) {
     const m = await prisma.material.findUnique({ where: { id: g.materialId } });
     if (!m) return res.status(400).json({ error: 'A garment on the order is not in the stock list any more' });
-    // blank garments follow the price list the order is captured under (the stitch rates themselves follow in a later step)
-    add({ itemType: 'material', serviceId: null, materialId: m.id, qty: g.qty, unitPrice: priceOnList(m, form.priceList === 'freelancer' ? 'freelancer' : 'glm', await priceListConfig()), discountPct: 0, discountAmt: 0 });
+    add({ itemType: 'material', serviceId: null, materialId: m.id, qty: g.qty, unitPrice: m.price, discountPct: 0, discountAmt: 0 });
   }
 
   const walkin = { ...form, lineItems, orderDiscountPct: 0, orderDiscountAmt: 0 };

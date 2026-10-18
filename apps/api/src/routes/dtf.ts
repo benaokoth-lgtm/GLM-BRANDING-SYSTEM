@@ -2,10 +2,11 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { notifyApprovers } from '../approvals';
-import { dtfFreelancerId, dtfFreelancerOverrides, dtfSettingsOnList, priceListConfig, priceOnList, resolvePriceList, ownedClientProblem } from '../priceLists';
+import { labelFor } from '../orderSource';
+import type { OrderLabel } from '../orderSource';
 import { randomUUID } from 'node:crypto';
-import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, asPriceList, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
-import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod, PriceList } from '@glm/shared';
+import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
+import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
@@ -62,16 +63,14 @@ const materialLineSchema = z.object({
 async function materialLineItems(
   tx: Prisma.TransactionClient,
   lines: { materialId: number; qty: number; unitPrice?: number }[],
-  list: PriceList = 'glm',
 ) {
-  const cfg = list === 'freelancer' ? await priceListConfig(tx) : { discountPct: 0, roundTo: 0 };
   const items: { itemType: string; materialId: number; qty: number; unitPrice: number; discountPct: number; discountAmt: number }[] = [];
   for (const line of lines) {
     let unitPrice = line.unitPrice;
     if (unitPrice == null) {
       const material = await tx.material.findUnique({ where: { id: line.materialId } });
       if (!material) throw new Error('Material not found');
-      unitPrice = priceOnList(material, list, cfg);
+      unitPrice = material.price;
     }
     items.push({ itemType: 'material', materialId: line.materialId, qty: line.qty, unitPrice, discountPct: 0, discountAmt: 0 });
   }
@@ -101,7 +100,7 @@ async function createDtfOrder(
     capturedByName: string;
     product?: DtfProduct;
     /** The price list it was captured under (the menu it was keyed from). */
-    priceList?: PriceList;
+    priceList?: OrderLabel;
     /** 'dtf' for film sales and artwork jobs; UV pens are an ordinary order ('general'), so a sourced client earns the general-order commission. */
     channel?: 'dtf' | 'general';
     serviceLine: { itemType: string; serviceId: number; qty: number; unitPrice: number; heatPressFee?: number | null; description?: string };
@@ -126,7 +125,7 @@ async function createDtfOrder(
   const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
   if (!staffExists) throw new Error('Your session is out of date (the underlying user record no longer exists) — please log out and log back in, then try again.');
 
-  const materialItems = await materialLineItems(tx, opts.materialLines, opts.priceList ?? 'glm');
+  const materialItems = await materialLineItems(tx, opts.materialLines);
   const lineItemInputs: LineItemInput[] = [
     { itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
     ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: l.qty, unitPrice: l.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: l.heatPressFee ?? null })),
@@ -238,7 +237,6 @@ dtfRouter.get('/data', async (req, res) => {
   const perms = await permissionsForRole(req.user!.role);
   const canManage = perms.canManageDtf;
   const product = productOf(req.query.product);
-  const list = asPriceList(req.query.priceList);
   // The order screens (scope=order) and anyone without canManageDtf only work on the OPEN rolls, so they get those rolls and the sales and jobs on them — not the whole history, which grows
   // every month and only the manager screens (dashboard, rolls, history) need.
   const openOnly = !canManage || req.query.scope === 'order';
@@ -249,30 +247,19 @@ dtfRouter.get('/data', async (req, res) => {
     prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] }),
   ]);
   const uvIds = await uvRollIds();
-  const onList = await dtfSettingsOnList(settings, product, list);
-  const manual = list === 'freelancer' ? await dtfFreelancerOverrides(product) : null;
   res.json({
     product,
-    priceList: list,
     canManage,
-    // Freelancer list only: which rates were typed by hand (the others follow the GLM rate less the default percentage), and that percentage.
-    ...(list === 'freelancer'
-      ? {
-          freelancerManual: Object.fromEntries(['stdPricePerM', 'minPricePerM', 'fixedChargePerMetre', 'minPricePerPiece', 'smallShareBelow', 'smallSharePrice'].map((f) => [f, ((manual as Record<string, unknown> | null)?.[f] ?? null) != null])),
-          freelancerDiscountPct: (await priceListConfig()).discountPct,
-          glmSettings: { stdPricePerM: settings.stdPricePerM, minPricePerM: settings.minPricePerM, fixedChargePerMetre: settings.fixedChargePerMetre, minPricePerPiece: settings.minPricePerPiece, smallShareBelow: settings.smallShareBelow, smallSharePrice: settings.smallSharePrice },
-        }
-      : {}),
     settings: {
-      rollLengthM: onList.rollLengthM,
-      rollWidthCm: onList.rollWidthCm,
-      stdPricePerM: onList.stdPricePerM,
-      minPricePerM: onList.minPricePerM,
-      wastageTolerancePct: onList.wastageTolerancePct,
-      minPricePerPiece: onList.minPricePerPiece,
-      fixedChargePerMetre: onList.fixedChargePerMetre,
-      smallShareBelow: onList.smallShareBelow,
-      smallSharePrice: onList.smallSharePrice,
+      rollLengthM: settings.rollLengthM,
+      rollWidthCm: settings.rollWidthCm,
+      stdPricePerM: settings.stdPricePerM,
+      minPricePerM: settings.minPricePerM,
+      wastageTolerancePct: settings.wastageTolerancePct,
+      minPricePerPiece: settings.minPricePerPiece,
+      fixedChargePerMetre: settings.fixedChargePerMetre,
+      smallShareBelow: settings.smallShareBelow,
+      smallSharePrice: settings.smallSharePrice,
     },
     rolls: rolls.map((r) => ({
       id: r.id,
@@ -355,8 +342,6 @@ const penOrderSchema = z.object({
   freelanceAgentId: z.number().int().nullable().optional(),
   // The sales person the order is credited to, when the front office captures it for them (see frontOffice.ts).
   staffId: z.number().int().nullable().optional(),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: z.enum(['glm', 'freelancer']).optional(),
   // a discount on the unit price: given outright by Finance, the General Manager or an Admin, or taken from an approved request (see discount requests above)
   unitDiscount: unitDiscountSchema.nullable().default(null),
   discountRequestId: z.number().int().nullable().default(null),
@@ -684,29 +669,7 @@ const settingsSchema = z
   .refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: 'The price used for a small share cannot be below the lowest price of an artwork' })
   .refine((s) => !((s.smallShareBelow ?? 0) > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < (s.smallShareBelow ?? 0)), { message: 'The price used for a small share cannot be below the share it applies to' });
 
-// The Freelancer Sales rates typed by hand (priceList=freelancer): any of the six; a number sets it, null goes back to following the GLM rate less the default percentage.
-const freelancerRatesSchema = z.object({
-  stdPricePerM: z.number().positive().nullable().optional(),
-  minPricePerM: z.number().positive().nullable().optional(),
-  fixedChargePerMetre: z.number().min(0).nullable().optional(),
-  minPricePerPiece: z.number().min(0).nullable().optional(),
-  smallShareBelow: z.number().min(0).nullable().optional(),
-  smallSharePrice: z.number().min(0).nullable().optional(),
-});
-
 dtfRouter.put('/settings', manageOnly, async (req, res) => {
-  if (req.query.priceList === 'freelancer') {
-    const f = freelancerRatesSchema.safeParse(req.body);
-    if (!f.success) return res.status(400).json({ error: f.error.issues[0]?.message ?? 'Invalid input' });
-    const product = productOf(req.query.product);
-    const id = dtfFreelancerId(product);
-    const cur = await prisma.dtfFreelancerSetting.findUnique({ where: { id } });
-    const next = { ...(cur ?? {}), ...f.data };
-    if ((next.stdPricePerM ?? 0) > 0 && (next.minPricePerM ?? 0) > (next.stdPricePerM ?? 0)) return res.status(400).json({ error: 'Minimum price cannot be above the standard price' });
-    if ((next.minPricePerPiece ?? 0) > 0 && (next.smallSharePrice ?? 0) > 0 && (next.smallSharePrice ?? 0) < (next.minPricePerPiece ?? 0)) return res.status(400).json({ error: 'The price used for a small share cannot be below the lowest price of an artwork' });
-    await prisma.dtfFreelancerSetting.upsert({ where: { id }, create: { id, ...f.data }, update: f.data });
-    return res.json(await dtfFreelancerOverrides(product));
-  }
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const product = productOf(req.query.product);
@@ -721,7 +684,6 @@ dtfRouter.put('/settings', manageOnly, async (req, res) => {
 // The audit log keeps who set what and when, and the history below is read from it.
 const artworkRateSchema = z.object({
   product: z.enum(['dtf', 'uv']).optional(),
-  priceList: z.enum(['glm', 'freelancer']).optional(), // freelancer: the Freelancer Sales rate typed by hand
   pricePerMetre: z.number({ required_error: 'Enter the price per running metre', invalid_type_error: 'Enter the price per running metre' }).positive('The price per running metre must be more than 0').max(1_000_000),
 });
 dtfRouter.put('/artwork-rate', manageOnly, async (req, res) => {
@@ -730,28 +692,20 @@ dtfRouter.put('/artwork-rate', manageOnly, async (req, res) => {
   const product = productOf(parsed.data.product ?? req.query.product);
   const before = await getSettings(product);
   const price = round2(parsed.data.pricePerMetre);
-  if (parsed.data.priceList === 'freelancer') {
-    const id = dtfFreelancerId(product);
-    const previous = (await dtfSettingsOnList(before, product, 'freelancer')).fixedChargePerMetre;
-    await prisma.dtfFreelancerSetting.upsert({ where: { id }, create: { id, fixedChargePerMetre: price }, update: { fixedChargePerMetre: price } });
-    return res.json({ product, priceList: 'freelancer', pricePerMetre: price, previous });
-  }
   await prisma.dtfSetting.update({ where: { id: settingsId(product) }, data: { fixedChargePerMetre: price } });
-  res.json({ product, priceList: 'glm', pricePerMetre: price, previous: before.fixedChargePerMetre });
+  res.json({ product, pricePerMetre: price, previous: before.fixedChargePerMetre });
 });
 
 dtfRouter.get('/artwork-rate/history', manageOnly, async (req, res) => {
   const product = productOf(req.query.product);
-  const list = asPriceList(req.query.priceList);
   const rows = await prisma.auditLog.findMany({ where: { action: 'PUT /api/dtf/artwork-rate', status: { lt: 400 } }, orderBy: { id: 'desc' }, take: 200 });
   const out = rows
     .map((r) => {
       const price = Number(/pricePerMetre=([0-9.]+)/.exec(r.detail)?.[1]);
       const prod = /product=(uv|dtf)/.exec(r.detail)?.[1] ?? 'dtf';
-      const pl = /priceList=(freelancer|glm)/.exec(r.detail)?.[1] ?? 'glm';
-      return { at: r.at.toISOString(), by: r.userName, pricePerMetre: price, product: prod, priceList: pl };
+      return { at: r.at.toISOString(), by: r.userName, pricePerMetre: price, product: prod };
     })
-    .filter((r) => r.product === product && r.priceList === list && Number.isFinite(r.pricePerMetre))
+    .filter((r) => r.product === product && Number.isFinite(r.pricePerMetre))
     .slice(0, 15);
   res.json(out);
 });
@@ -899,8 +853,6 @@ async function openRoll(rollId: string) {
 // ── Film sales ───────────────────────────────────────────────────────────
 const saleSchema = z.object({
   rollId: z.string().min(1),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: z.enum(['glm', 'freelancer']).optional(),
   soldOn: dateStr.optional(),
   client: z.string().max(200).default(''),
   phone: z.string().max(40).default(''),
@@ -931,9 +883,8 @@ dtfRouter.post('/sales', async (req, res) => {
   const product = productOf(found.roll.product);
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user!, d.priceList, cap.staffId, { phone: d.phone, name: d.client });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
-  const settings = await dtfSettingsOnList(await getSettings(product), product, pl.priceList);
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   // The floor is enforced here, not just in the form. There is no ceiling: charging more is rewarded (see Sales Commission).
   const c = saleCalc(settings, d.metres, d.pricePerM ?? null, paid);
@@ -954,7 +905,7 @@ dtfRouter.post('/sales', async (req, res) => {
         staffId: cap.staffId,
         capturedById: cap.capturedById,
         capturedByName: cap.capturedByName,
-        priceList: pl.priceList,
+        priceList: label,
         serviceLine: { itemType: 'per-metre', serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
         payments: paymentLines,
@@ -1028,8 +979,6 @@ dtfRouter.delete('/sales/:id', requireRole('Admin'), async (req, res) => {
 // running metres; there's no separate "artworks" or width measurement.
 const jobSchema = z.object({
   rollId: z.string().min(1),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: z.enum(['glm', 'freelancer']).optional(),
   jobOn: dateStr.optional(),
   client: z.string().max(200).default(''),
   phone: z.string().max(40).default(''),
@@ -1067,9 +1016,8 @@ dtfRouter.post('/jobs', async (req, res) => {
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user!, d.priceList, cap.staffId, { phone: d.phone, name: d.client });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
-  const settings = await dtfSettingsOnList(await getSettings(product), product, pl.priceList);
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
   const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   const lowest = lowestArtworkPrice(settings.minPricePerPiece, sys.finalPerPiece);
@@ -1091,7 +1039,7 @@ dtfRouter.post('/jobs', async (req, res) => {
       const service = await dtfService(tx, 'artwork', product);
       const order = await createDtfOrder(tx, {
         product,
-        priceList: pl.priceList,
+        priceList: label,
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: cap.staffId,
@@ -1156,8 +1104,6 @@ dtfRouter.post('/jobs', async (req, res) => {
 // recommendation; commission is on what the sheet brings in above it (see jobExtras).
 const sheetSchema = z.object({
   rollId: z.string().min(1),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: z.enum(['glm', 'freelancer']).optional(),
   jobOn: dateStr.optional(),
   /** The client for rows that name none. */
   client: z.string().max(200).default(''),
@@ -1195,18 +1141,12 @@ dtfRouter.post('/sheets', async (req, res) => {
   const heatPressFee = product === 'uv' ? null : (d.heatPressFee ?? null);
   const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user!, d.priceList, cap.staffId, { phone: d.phone, name: d.client });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
-  const settings = await dtfSettingsOnList(await getSettings(product), product, pl.priceList);
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
   const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice, settings.smallShareBelow);
   const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The sheet cannot be priced' });
   for (const c of calc.clients) {
-    // each client of the sheet: under GLM Sales none may belong to a sales person's register
-    if (pl.priceList === 'glm' && d.priceList === 'glm') {
-      const owned = await ownedClientProblem({ phone: c.phone, name: c.client });
-      if (owned) return res.status(400).json({ error: owned });
-    }
     const claim = await claimProblem(req.user!, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
     if (claim) return res.status(400).json({ error: claim });
   }
@@ -1227,7 +1167,7 @@ dtfRouter.post('/sheets', async (req, res) => {
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
           product,
-          priceList: pl.priceList,
+          priceList: label,
           customerName: c.client.trim() || WALK_IN_CLIENT,
           phone: c.phone.trim(),
           staffId: cap.staffId,

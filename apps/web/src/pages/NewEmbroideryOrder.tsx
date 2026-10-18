@@ -5,7 +5,6 @@ import type { EmbroideryBasis } from '@glm/shared';
 import type { EmbroiderySettingsValues } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
-import { PriceListBanner, usePriceList, withListPrices } from '../state/PriceListContext';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
 import { printOrderDocument } from '../utils/printInvoice';
@@ -51,9 +50,7 @@ let nextKey = 1;
 const blankDesign = (): DesignRow => ({ key: nextKey++, name: '', stitches: '', save: true, basis: 'stitch', price: '' });
 
 export default function NewEmbroideryOrder() {
-  const list = usePriceList();
-  const { materials: allMaterials, loading } = useCatalog();
-  const materials = withListPrices(allMaterials, list); // blank garments sold with the job follow the price list
+  const { materials, loading } = useCatalog();
   const { user } = useAuth();
   const navigate = useNavigate();
   const [config, setConfig] = useState<Config | null>(null);
@@ -65,6 +62,9 @@ export default function NewEmbroideryOrder() {
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
   const salesPeople = useSalesPeople(forOthers);
   const [salesPersonId, setSalesPersonId] = useState<number | null>(null);
+  // the front office allocates every order (GLM or a sales person) before it is taken
+  const [allocated, setAllocated] = useState(false);
+  const allocationMissing = forOthers && !allocated;
   const [sourced, setSourced] = useState(false);
   const [freelanceId, setFreelanceId] = useState<number | null>(null);
   const [paymentTiming, setPaymentTiming] = useState<'onAcceptance' | 'onCompletion'>('onAcceptance');
@@ -124,7 +124,7 @@ export default function NewEmbroideryOrder() {
   const payNow = paymentTiming === 'onAcceptance' && !needsApproval;
   const payProblem = payNow ? paymentProblem(paymentRows, grandTotal) : null;
   const garmentsOk = garmentRows.every((g) => g.m && g.q > 0);
-  const canSave = !!staffId && designsOk && garmentsOk && !payProblem && !sourcingIncomplete && !submitting;
+  const canSave = !!staffId && designsOk && garmentsOk && !payProblem && !sourcingIncomplete && !allocationMissing && !submitting;
 
   const setDesign = (key: number, patch: Partial<DesignRow>) => setDesigns((ds) => ds.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 
@@ -148,7 +148,6 @@ export default function NewEmbroideryOrder() {
     try {
       const [order, company] = await Promise.all([
         api.post<OrderDetail>('/embroidery/orders', {
-          priceList: list,
           customerName: customerName.trim() || WALK_IN_CLIENT,
           phone,
           staffId: forOthers ? salesPersonId ?? staffId : staffId,
@@ -196,9 +195,8 @@ export default function NewEmbroideryOrder() {
       <i className="corner br"></i>
       <div className="card-kicker">Embroidery order</div>
       <div className="card-title">New embroidery job</div>
-      <PriceListBanner note="Embroidery stitch prices are the same on both lists for now; garments sold with the job follow the list." />
 
-      <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
+      <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={(id) => { setSalesPersonId(id); if (id) setAllocated(true); }} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <div className="field">
@@ -225,7 +223,7 @@ export default function NewEmbroideryOrder() {
       </div>
 
       <div style={{ marginTop: 'var(--space-3)' }}>
-        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} />
+        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} allocated={forOthers ? allocated : undefined} onAllocatedChange={setAllocated} />
       </div>
 
       <div className="hr" />

@@ -18,7 +18,6 @@ import { ensureBusinessHeadsOnce } from '../purchases';
 import { MARKUP_TYPES } from '@glm/shared';
 import { commissionEnabled } from '../commission';
 import { systemName } from '../company';
-import { freelancerCatalogPrice, priceListConfig } from '../priceLists';
 import { createTransport, explainMailError, getMailer, getMailSettingsRow, loadMailConfig, refusal } from '../mailer';
 
 export const masterDataRouter = Router();
@@ -508,9 +507,7 @@ masterDataRouter.get('/services', async (req, res) => {
   await ensureMaterialItemsOnce();
   const costs = await canSeeCosts(req.user!.role);
   const services = await prisma.service.findMany({ where: { retired: false }, orderBy: { name: 'asc' } });
-  const cfg = await priceListConfig();
-  // freelancerPrice: what a Freelancer Sales order is offered (typed by hand, or the GLM price less the default percentage); freelancerOverride: the price typed by hand, if any
-  res.json(services.map(({ markupType, markupValue, defaultSupplierCost, freelancerPriceOverride, ...s }) => ({ ...(costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s), freelancerPrice: freelancerCatalogPrice(s.price, freelancerPriceOverride, cfg), freelancerOverride: freelancerPriceOverride })));
+  res.json(services.map(({ markupType, markupValue, defaultSupplierCost, freelancerPriceOverride: _unused, ...s }) => (costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s)));
 });
 
 // Delete a service from the price list. One that no order has ever used is removed outright; one that has been sold is only retired — taken off the price
@@ -565,8 +562,6 @@ const serviceUpdateSchema = z
     unit: z.enum(['piece', 'metre', 'sqm']).optional(),
     usesArtworkPricing: z.boolean().optional(),
     chargesPressingFee: z.boolean().optional(),
-    // The Freelancer Sales price typed by hand; null goes back to the GLM price less the default percentage.
-    freelancerOverride: z.number().positive().nullable().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
@@ -577,8 +572,7 @@ masterDataRouter.put('/services/:id', requireRole('Admin'), async (req, res) => 
   const id = Number(req.params.id);
   const current = await prisma.service.findUnique({ where: { id } });
   if (!current) return res.status(404).json({ error: 'Service not found' });
-  const { size: sizeRaw, item: itemRaw, freelancerOverride, ...restFields } = parsed.data;
-  const rest = { ...restFields, ...(freelancerOverride !== undefined ? { freelancerPriceOverride: freelancerOverride } : {}) };
+  const { size: sizeRaw, item: itemRaw, ...rest } = parsed.data;
   const oldItem = current.item || current.name;
   const newItem = itemRaw !== undefined ? itemRaw.replace(/\s+/g, ' ') : oldItem;
   const newSize = sizeRaw !== undefined ? sizeRaw.replace(/\s+/g, ' ') : current.size;
@@ -648,9 +642,8 @@ masterDataRouter.delete('/business-heads/:id', requireRole('Admin'), async (req,
 // price and stock; the line's name — what orders, purchases and stock show — is the item and its size together ("Polo Shirt — L").
 masterDataRouter.get('/materials', async (_req, res) => {
   await ensureMaterialItemsOnce();
-  const cfg = await priceListConfig();
   const materials = await prisma.material.findMany({ orderBy: { name: 'asc' } });
-  res.json(materials.map(({ freelancerPriceOverride, ...m }) => ({ ...m, freelancerPrice: freelancerCatalogPrice(m.price, freelancerPriceOverride, cfg), freelancerOverride: freelancerPriceOverride })));
+  res.json(materials.map(({ freelancerPriceOverride: _unused, ...m }) => m));
 });
 
 const same = (a: string, b: string) => a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -715,8 +708,6 @@ const materialUpdateSchema = z
     description: z.string().trim().max(300).optional(),
     size: z.string().trim().max(40).optional(),
     unit: z.string().trim().min(1).max(30).optional(),
-    // The Freelancer Sales price typed by hand; null goes back to the GLM price less the default percentage.
-    freelancerOverride: z.number().positive().nullable().optional(),
   })
   .refine((obj) => Object.keys(obj).length > 0, { message: 'No fields to update' });
 
@@ -727,8 +718,7 @@ masterDataRouter.put('/materials/:id', requirePermission('canApproveStock'), asy
   const id = Number(req.params.id);
   const current = await prisma.material.findUnique({ where: { id } });
   if (!current) return res.status(404).json({ error: 'Material not found' });
-  const { item: newItemRaw, size: newSizeRaw, freelancerOverride, ...restFields } = parsed.data;
-  const rest = { ...restFields, ...(freelancerOverride !== undefined ? { freelancerPriceOverride: freelancerOverride } : {}) };
+  const { item: newItemRaw, size: newSizeRaw, ...rest } = parsed.data;
 
   const oldItem = current.item || current.name;
   const newItem = (newItemRaw ?? oldItem).replace(/\s+/g, ' ');
@@ -810,8 +800,6 @@ masterDataRouter.put('/commission-switch', requireRole('Admin'), async (req, res
 function serializeSettings(settings: {
   kraPin: string;
   maxDiscountPct: number;
-  freelancerDiscountPct: number;
-  freelancerRoundTo: number;
   companyName: string;
   legalName: string;
   companyAddress: string;
@@ -827,8 +815,6 @@ function serializeSettings(settings: {
   return {
     kraPin: settings.kraPin,
     maxDiscountPct: settings.maxDiscountPct,
-    freelancerDiscountPct: settings.freelancerDiscountPct,
-    freelancerRoundTo: settings.freelancerRoundTo,
     companyName: settings.companyName,
     legalName: settings.legalName,
     companyAddress: settings.companyAddress,
@@ -853,9 +839,6 @@ masterDataRouter.get('/settings', async (_req, res) => {
 const settingsSchema = z
   .object({
     maxDiscountPct: z.number().min(0).optional(),
-    // Freelancer Sales prices: the GLM price less this percentage, rounded to the nearest freelancerRoundTo shillings (0 = exact).
-    freelancerDiscountPct: z.number().min(0).max(90).optional(),
-    freelancerRoundTo: z.number().min(0).max(1000).optional(),
     companyName: z.string().min(1).max(200).optional(),
     // The name on the system screens (header, browser tab, sign-in), exactly as typed; blank = use the company name.
     systemName: z.string().trim().max(200).optional(),

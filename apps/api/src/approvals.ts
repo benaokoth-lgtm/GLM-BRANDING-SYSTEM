@@ -2,7 +2,6 @@ import { DISCOUNT_ROLES, VAT_RATE, canGiveDiscount, costingJobLabel, salesTypeOf
 import type { Prisma } from '@prisma/client';
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
-import { priceListsForRole } from './priceLists';
 import { getMailer } from './mailer';
 
 // The approvals inbox: everything that is waiting for somebody's decision, in one list. Each kind of request keeps its own rules and its own decision endpoint (a quote's price, a discount,
@@ -152,8 +151,6 @@ async function artwork(u: Who, perms: Awaited<ReturnType<typeof permissionsForRo
 async function discount(u: Who): Promise<Part> {
   const since = recentSince();
   const may = canGiveDiscount(u.role);
-  // a sales person opens the screen under Freelancer Sales (their only list), everyone else under GLM Sales
-  const linkPrefix = (await priceListsForRole(u.role)).includes('glm') ? '' : '/freelancer';
   const rows = await prisma.discountRequest.findMany({
     where: { OR: [...(may ? [{ status: 'Pending', requestedById: { not: u.id } }] : []), { requestedById: u.id, OR: [{ status: 'Pending' }, { decidedAt: { gte: since } }] }] },
     orderBy: { id: 'desc' },
@@ -177,7 +174,7 @@ async function discount(u: Who): Promise<Part> {
       decidedAt: r.decidedAt?.toISOString() ?? null,
       note: r.reason,
       // UV Pen Costing or UV Flatbed, with the job of the request filled in (and an approved discount ready to use)
-      link: `${linkPrefix}/orders/new/uv-film?tab=${r.product === 'pens' ? 'pens' : 'flatbed'}&request=${r.id}`,
+      link: `/orders/new/uv-film?tab=${r.product === 'pens' ? 'pens' : 'flatbed'}&request=${r.id}`,
       openLabel: r.status === 'Approved' ? 'Continue — capture the order' : 'Open',
       openPrimary: r.status === 'Approved',
       decide: { approve: `/dtf/discount-requests/${r.id}/approve`, reject: `/dtf/discount-requests/${r.id}/reject`, needsReason: true },

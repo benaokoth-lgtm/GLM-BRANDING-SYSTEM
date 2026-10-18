@@ -28,11 +28,9 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   tabs.push(['/approvals', 'Approvals']);
   // The sales screens, once under each price list: GLM Sales (our own staff, GLM prices) and Freelancer Sales (sales persons, freelancer prices). A person sees the lists their role may capture under:
   // a sales person only Freelancer Sales, the front office and managers both, GLM's own staff GLM Sales.
-  // Each is ONE entry that opens the list's sales screens as a row of buttons (SalesHub); it links to the first screen the person may use.
-  const glmScreens = salesScreensFor(user, 'glm');
-  if (glmScreens.length) tabs.push([glmScreens[0]!.path, 'GLM Sales']);
-  const flScreens = salesScreensFor(user, 'freelancer');
-  if (flScreens.length) tabs.push([flScreens[0]!.path, 'Freelancer Sales']);
+  // The sales screens are ONE entry that opens them as a row of buttons (SalesHub); it links to the first screen the person may use.
+  const screens = salesScreensFor(user);
+  if (screens.length) tabs.push([screens[0]!.path, 'New Order']);
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
   // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
@@ -123,9 +121,9 @@ const ICON_OF: Record<string, string> = {
 };
 const groupOf = (path: string): Group => GROUP_OF[path] ?? 'sales';
 const iconOf = (path: string): string => ICON_OF[path] ?? ICON_OF[path.replace(/^\/freelancer/, '')] ?? 'orders';
-// GLM Sales and Freelancer Sales are one entry each: filled in while any of their screens is open (and the icon is the list's, not the first screen's)
-const GLM_SCREEN = /^\/(orders\/new\/|costing$)/;
-const isHubOpen = (label: string, pathname: string): boolean => (label === 'GLM Sales' ? GLM_SCREEN.test(pathname) : label === 'Freelancer Sales' ? pathname.startsWith('/freelancer/') : false);
+// New Order is one entry for all the sales screens: filled in while any of them is open (and its icon is the order's, not the first screen's)
+const SALES_SCREEN = /^\/(orders\/new\/|costing$)/;
+const isHubOpen = (label: string, pathname: string): boolean => label === 'New Order' && SALES_SCREEN.test(pathname);
 const THEME_ICONS: [Theme, string, string][] = [
   ['organic', 'sun', 'Organic'],
   ['nocturne', 'moon', 'Nocturne'],
@@ -237,7 +235,7 @@ function AppLayoutInner() {
                 <div className="side-group-title">{label}</div>
                 {items.map(([path, text]) => (
                   <NavLink key={path} to={path} title={text} onClick={subNav.goHome} className={({ isActive }) => 'side-link' + (isActive || isHubOpen(text, pathname) ? ' active' : '')}>
-                    <span className="icon-wrap"><Icon name={text === 'GLM Sales' ? 'order' : text === 'Freelancer Sales' ? 'people' : iconOf(path)} size={19} /></span>
+                    <span className="icon-wrap"><Icon name={text === 'New Order' ? 'order' : iconOf(path)} size={19} /></span>
                     <span>{text}</span>
                     {path === '/approvals' && badge.count > 0 && <b className="nav-badge" title={`${badge.waiting} waiting for your decision${badge.news ? `, ${badge.news} of your requests decided` : ''}`}>{badge.count}</b>}
                   </NavLink>

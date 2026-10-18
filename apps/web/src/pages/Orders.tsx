@@ -70,9 +70,9 @@ export default function Orders() {
   const inDtfPart = (o: OrderSummary, p: string) => (p === 'film' || p === 'artwork' ? o.dtfKind === p : p === 'other' ? !o.dtfKind : true);
   // The standing business heads are always listed (even with nothing in them yet), then any other head that has orders; General Order last.
   const categories = ['all', ...[...new Set<string>([...DEFAULT_BUSINESS_HEADS, ...orders.flatMap(heads)])].sort((a, b) => headRank(a) - headRank(b) || a.localeCompare(b))];
-  // GLM Sales and Freelancer Sales orders, together or each on its own
-  const [listFilter, setListFilter] = useState<'all' | 'glm' | 'freelancer'>('all');
-  const ofHead = orders.filter((o) => inCategory(o, category) && (category !== 'DTF Printing' || inDtfPart(o, dtfPart)) && (listFilter === 'all' || (o.priceList ?? 'glm') === listFilter));
+  // GLM's own sales and the sales persons', together or each on its own (decided by who the order is credited to)
+  const [listFilter, setListFilter] = useState<'all' | 'glm' | 'sales'>('all');
+  const ofHead = orders.filter((o) => inCategory(o, category) && (category !== 'DTF Printing' || inDtfPart(o, dtfPart)) && (listFilter === 'all' || (o.source ?? 'glm') === listFilter));
   const dtfOrders = orders.filter((o) => inCategory(o, 'DTF Printing'));
   const dtfSplit: ['all' | 'film' | 'artwork' | 'other', string][] = [
     ['all', 'All DTF Printing'],
@@ -138,8 +138,8 @@ export default function Orders() {
           {showAll ? 'Back to recent orders' : 'Show all orders'}
         </button>
       </p>
-      <div className="seg no-print" role="radiogroup" aria-label="Price list" style={{ marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
-        {([['all', 'Both price lists'], ['glm', 'GLM Sales'], ['freelancer', 'Freelancer Sales']] as const).map(([k, label]) => (
+      <div className="seg no-print" role="radiogroup" aria-label="Whose sales" style={{ marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
+        {([['all', 'All sales'], ['glm', 'GLM’s own'], ['sales', 'Sales persons’']] as const).map(([k, label]) => (
           <label key={k} className={'seg-opt' + (listFilter === k ? ' checked' : '')}>
             <input type="radio" name="ordlist" checked={listFilter === k} onChange={() => setListFilter(k)} />
             {label}
@@ -379,7 +379,7 @@ export default function Orders() {
               <tr key={row.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(row.id)}>
                 <td>
                   {row.orderNo}
-                  {row.priceList === 'freelancer' && <div><span className="tag tag-neutral">Freelancer</span></div>}
+                  {row.source === 'sales' && <div><span className="tag tag-neutral">Sales person</span></div>}
                   {row.priceApproval === 'Pending' && <div><span className="tag tag-outline">Awaiting price approval</span></div>}
                 </td>
                 <td className="text-muted">{fmtDate(row.createdDate)}</td>

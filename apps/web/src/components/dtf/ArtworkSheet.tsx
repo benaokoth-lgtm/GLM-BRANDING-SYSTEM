@@ -9,7 +9,6 @@ import type { CompanySettings, OrderDetail } from '../../api/models';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../SplitPayments';
 import type { PaymentRow } from '../SplitPayments';
 import { Corners, Field } from './shared';
-import { usePriceList } from '../../state/PriceListContext';
 
 // DTF / UV DTF artwork order, artworks of different sizes (and perhaps different clients) on one length of film. The sales person enters rows — a size, how many artworks, the price of each —
 // and the rows must add up to at least the recommended total for the whole length, which is worked out the usual way: the fixed charge per metre shared by NUMBER of artworks, plus the
@@ -175,11 +174,13 @@ interface DialogProps {
 
 /** Completes the sheet: the heat press fee, who it is credited to, each client's phone and what they pay now. Print records the orders — one for each client — and offers each one's receipt. */
 export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, run, rows, fixedChargePerMetre, minPricePerPiece, smallSharePrice = 0, smallShareBelow = 0, defaultClient, onClose, onDone }: DialogProps) {
-  const list = usePriceList(); // the price list the screen is under, for the orders
   const { user } = useAuth();
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
   const salesPeople = useSalesPeople(forOthers);
   const [salesPersonId, setSalesPersonId] = useState<number | null>(null);
+  // the front office allocates every order (GLM or a sales person) before it is taken
+  const [allocated, setAllocated] = useState(false);
+  const allocationMissing = forOthers && salesPeople.length > 0 && !allocated;
   const [heatPressFee, setHeatPressFee] = useState('');
   const [phones, setPhones] = useState<Record<string, string>>({});
   const [pay, setPay] = useState<Record<string, PaymentRow[]>>({});
@@ -215,7 +216,6 @@ export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, r
     try {
       const clientPayments = base.clients.map((c) => ({ key: sheetClientKey(c.client, phones[c.key] ?? ''), payments: toApiPayments(rowsFor(c.key)) }));
       const r = await api.post<{ orders: OrderDetail[] }>('/dtf/sheets', {
-        priceList: list,
         rollId,
         jobOn,
         client: defaultClient,
@@ -283,9 +283,20 @@ export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, r
                   </Field>
                 )}
                 {forOthers && salesPeople.length > 0 && (
-                  <Field label="Credit the sale to">
-                    <select className="input" value={salesPersonId ?? ''} onChange={(e) => setSalesPersonId(e.target.value ? Number(e.target.value) : null)}>
-                      <option value="">Me ({user?.name})</option>
+                  <Field label="Allocate the sale to">
+                    <select
+                      className="input"
+                      value={!allocated ? '' : salesPersonId != null ? String(salesPersonId) : 'glm'}
+                      aria-label="Allocate the sale to"
+                      style={!allocated ? { borderColor: 'var(--color-error)' } : undefined}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAllocated(v !== '');
+                        setSalesPersonId(v && v !== 'glm' ? Number(v) : null);
+                      }}
+                    >
+                      {!allocated && <option value="">Allocate this sale to…</option>}
+                      <option value="glm">GLM — the shop’s own sale (no sales person)</option>
                       {salesPeople.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -325,7 +336,7 @@ export function ArtworkSheetDialog({ product, pieces: expected, rollId, jobOn, r
                 <Corners />
                 Cancel
               </button>
-              <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!problem || missingFee || !calc.ok}>
+              <button type="button" className="btn btn-primary blueprint" onClick={print} disabled={busy || !!problem || missingFee || allocationMissing || !calc.ok}>
                 <Corners />
                 Record {base.clients.length > 1 ? `${base.clients.length} orders` : 'the order'}
               </button>

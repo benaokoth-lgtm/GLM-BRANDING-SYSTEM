@@ -23,4 +23,3 @@ export * from './unitDiscount';
 export * from './printCosting';
 export * from './salesTypes';
 export * from './hr';
-export * from './priceList';

@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { WALK_IN_CLIENT, computeOrderTotals, exceedsDiscountCeiling, fmtKsh, isNamedClient } from '@glm/shared';
 import type { CompanySettings, DraftLineItem, OrderDetail } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
-import { PriceListBanner, usePriceList, withListPrices } from '../state/PriceListContext';
 import LineItemsEditor, { isBlankLine, makeDefaultLine } from '../components/LineItemsEditor';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
@@ -16,14 +15,11 @@ import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from '../
 import type { PaymentRow } from '../components/SplitPayments';
 
 export default function NewWalkinOrder() {
-  const list = usePriceList();
-  const { services: allServices, materials: allMaterials, maxDiscountPct, loading } = useCatalog();
-  // the prices offered are the ones on the price list this screen is under
-  const materials = withListPrices(allMaterials, list);
+  const { services: allServices, materials, maxDiscountPct, loading } = useCatalog();
   // DTF Printing / DTF Sheet are sold exclusively through the DTF Sales &
   // Roll Tracker's own "Record sale"/"Record job" order popup (see
   // components/dtf/DtfOrderDialog.tsx) — not picked as a line item here.
-  const services = withListPrices(allServices.filter((s) => !s.soldViaDtfModule), list);
+  const services = allServices.filter((s) => !s.soldViaDtfModule);
   const { user } = useAuth();
   const navigate = useNavigate();
 
@@ -34,6 +30,9 @@ export default function NewWalkinOrder() {
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
   const salesPeople = useSalesPeople(forOthers);
   const [salesPersonId, setSalesPersonId] = useState<number | null>(null);
+  // the front office allocates every order (GLM or a sales person) before it is taken
+  const [allocated, setAllocated] = useState(false);
+  const allocationMissing = forOthers && !allocated;
   // Ticked when the staff member brought this client in through their own network (credited to them for 12 months).
   const [sourced, setSourced] = useState(false);
   const [freelanceId, setFreelanceId] = useState<number | null>(null);
@@ -73,7 +72,7 @@ export default function NewWalkinOrder() {
   const payProblem = paymentTiming === 'onAcceptance' ? paymentProblem(paymentRows, totals.grandTotal) : null;
 
   async function submit() {
-    if (!staffId || payProblem || sourcingIncomplete || normalized.length === 0) return;
+    if (!staffId || payProblem || sourcingIncomplete || allocationMissing || normalized.length === 0) return;
     setSubmitting(true);
     setError(null);
     // Open the popup synchronously (before any await) so browser popup
@@ -82,7 +81,6 @@ export default function NewWalkinOrder() {
     try {
       const [order, company] = await Promise.all([
         api.post<OrderDetail>('/orders/walkin', {
-          priceList: list,
           customerName: customerName.trim() || WALK_IN_CLIENT,
           phone,
           // Front office: the order is for the chosen sales person (or the shop); everyone else captures in their own name.
@@ -117,9 +115,8 @@ export default function NewWalkinOrder() {
       <i className="corner br"></i>
       <div className="card-kicker">Walk-in customer</div>
       <div className="card-title">New Order</div>
-      <PriceListBanner />
 
-      <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
+      <StaffClientPicker forOthers={forOthers} salesPeople={salesPeople} salesPersonId={salesPersonId} onSalesPersonChange={(id) => { setSalesPersonId(id); if (id) setAllocated(true); }} onPick={(c) => { setCustomerName(c.name); setPhone(c.phone); }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-4)' }}>
         <div className="field">
@@ -146,7 +143,7 @@ export default function NewWalkinOrder() {
       </div>
 
       <div style={{ marginTop: 'var(--space-3)' }}>
-        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} />
+        <SourcingField phone={phone} name={customerName} staffName={user?.name ?? ''} checked={sourced} onChange={setSourced} freelanceId={freelanceId} onFreelanceChange={setFreelanceId} salesPeople={forOthers ? salesPeople : undefined} salesPersonId={salesPersonId} onSalesPersonChange={setSalesPersonId} allocated={forOthers ? allocated : undefined} onAllocatedChange={setAllocated} />
       </div>
 
       <LineItemsEditor lineItems={items} services={services} materials={materials} onChange={setLineItems} />
@@ -215,7 +212,7 @@ export default function NewWalkinOrder() {
           type="button"
           className="btn btn-primary blueprint"
           onClick={submit}
-          disabled={submitting || !!payProblem || sourcingIncomplete || normalized.length === 0}
+          disabled={submitting || !!payProblem || sourcingIncomplete || allocationMissing || normalized.length === 0}
         >
           <i className="corner tl"></i>
           <i className="corner tr"></i>

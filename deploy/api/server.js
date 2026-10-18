@@ -66969,28 +66969,6 @@ function dateSpanLabel(start, end) {
   return start === end ? f(start) : `${f(start)} \u2013 ${f(end)}`;
 }
 
-// packages/shared/src/priceList.ts
-var PRICE_LIST_LABEL = { glm: "GLM Sales", freelancer: "Freelancer Sales" };
-var asPriceList = (v) => v === "freelancer" ? "freelancer" : "glm";
-function roundToStep(n, step) {
-  return step > 0 ? Math.round(n / step) * step : Math.round((n + Number.EPSILON) * 100) / 100;
-}
-function freelancerPrice(glmPrice, discountPct, step, override) {
-  if (override != null && Number.isFinite(override) && override > 0) return override;
-  if (!(glmPrice > 0)) return glmPrice;
-  if (!(discountPct > 0)) return glmPrice;
-  const exact = glmPrice * (1 - Math.min(Math.max(discountPct, 0), 100) / 100);
-  const rounded = roundToStep(exact, step);
-  if (!(rounded > 0)) return Math.round((exact + Number.EPSILON) * 100) / 100;
-  return Math.min(glmPrice, rounded);
-}
-function priceListsFor(role, p) {
-  if (role === "Admin" || p.canCaptureForOthers) return ["glm", "freelancer"];
-  const freelancer = p.canBeAssignedOrders || p.canManageCommission || p.canManageDtf;
-  const glm = !p.canBeAssignedOrders && (p.canCaptureOrders || p.canAccessDtf || p.canManageDtf || p.canAccessFinance);
-  return [...glm ? ["glm"] : [], ...freelancer ? ["freelancer"] : []];
-}
-
 // apps/api/src/pins.ts
 var PIN_ROUNDS = 10;
 var MAX_ATTEMPTS = 5;
@@ -72050,55 +72028,6 @@ function costFieldsFor(li, allowed) {
   };
 }
 
-// apps/api/src/priceLists.ts
-async function priceListConfig(db = prisma) {
-  const s = await db.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-  return { discountPct: s.freelancerDiscountPct, roundTo: s.freelancerRoundTo };
-}
-async function priceListsForRole(role) {
-  return priceListsFor(role, await permissionsForRole(role));
-}
-function freelancerCatalogPrice(price, override, cfg) {
-  return freelancerPrice(price, cfg.discountPct, cfg.roundTo, override);
-}
-function priceOnList(item, list, cfg) {
-  return list === "freelancer" ? freelancerCatalogPrice(item.price, item.freelancerPriceOverride, cfg) : item.price;
-}
-async function resolvePriceList(user, requested, staffId, client) {
-  const credited = await prisma.user.findUnique({ where: { id: staffId }, select: { role: true } });
-  const creditedIsSalesPerson = credited ? (await permissionsForRole(credited.role)).canBeAssignedOrders : false;
-  if (requested !== "glm" && requested !== "freelancer") return { ok: true, priceList: creditedIsSalesPerson ? "freelancer" : "glm" };
-  const list = requested;
-  const allowed = await priceListsForRole(user.role);
-  if (!allowed.includes(list)) return { ok: false, error: `Your role captures orders under ${allowed.map((l) => PRICE_LIST_LABEL[l]).join(" or ") || "neither list"}, not ${PRICE_LIST_LABEL[list]}` };
-  if (list === "freelancer") {
-    if (!creditedIsSalesPerson) return { ok: false, error: "Freelancer Sales orders are credited to a sales person \u2014 choose who this order is for" };
-    return { ok: true, priceList: list };
-  }
-  if (creditedIsSalesPerson) return { ok: false, error: "GLM Sales orders are not credited to a sales person \u2014 use Freelancer Sales for their orders" };
-  const owned = await ownedClientProblem(client);
-  if (owned) return { ok: false, error: owned };
-  return { ok: true, priceList: list };
-}
-async function ownedClientProblem(client) {
-  const key2 = clientKeyFor(client);
-  if (!key2 || !(key2.startsWith("p:") || key2.startsWith("c:"))) return null;
-  const owner = await activeOwner(prisma, key2);
-  return owner ? `This client is in ${owner.staffName}'s Client Register \u2014 capture the order under Freelancer Sales, so it is credited to them at Freelancer prices` : null;
-}
-var DTF_PRICE_FIELDS = ["stdPricePerM", "minPricePerM", "fixedChargePerMetre", "minPricePerPiece", "smallShareBelow", "smallSharePrice"];
-var dtfFreelancerId = (product) => product === "uv" ? 2 : 1;
-async function dtfFreelancerOverrides(product) {
-  return prisma.dtfFreelancerSetting.findUnique({ where: { id: dtfFreelancerId(product) } });
-}
-async function dtfSettingsOnList(glm, product, list) {
-  if (list !== "freelancer") return glm;
-  const [cfg, over] = await Promise.all([priceListConfig(), dtfFreelancerOverrides(product)]);
-  const out = { ...glm };
-  for (const f of DTF_PRICE_FIELDS) out[f] = freelancerPrice(glm[f], cfg.discountPct, cfg.roundTo, over?.[f] ?? null);
-  return out;
-}
-
 // apps/api/src/routes/masterdata.ts
 var masterDataRouter = (0, import_express2.Router)();
 masterDataRouter.use(requireAuth);
@@ -72514,8 +72443,7 @@ masterDataRouter.get("/services", async (req, res) => {
   await ensureMaterialItemsOnce();
   const costs = await canSeeCosts(req.user.role);
   const services2 = await prisma.service.findMany({ where: { retired: false }, orderBy: { name: "asc" } });
-  const cfg = await priceListConfig();
-  res.json(services2.map(({ markupType, markupValue, defaultSupplierCost, freelancerPriceOverride, ...s }) => ({ ...costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s, freelancerPrice: freelancerCatalogPrice(s.price, freelancerPriceOverride, cfg), freelancerOverride: freelancerPriceOverride })));
+  res.json(services2.map(({ markupType, markupValue, defaultSupplierCost, freelancerPriceOverride: _unused, ...s }) => costs ? { ...s, markupType, markupValue, defaultSupplierCost } : s));
 });
 masterDataRouter.delete("/services/:id", requireRole("Admin"), async (req, res) => {
   const id = Number(req.params.id);
@@ -72557,9 +72485,7 @@ var serviceUpdateSchema = external_exports.object({
   businessHeadId: external_exports.number().int().nullable().optional(),
   unit: external_exports.enum(["piece", "metre", "sqm"]).optional(),
   usesArtworkPricing: external_exports.boolean().optional(),
-  chargesPressingFee: external_exports.boolean().optional(),
-  // The Freelancer Sales price typed by hand; null goes back to the GLM price less the default percentage.
-  freelancerOverride: external_exports.number().positive().nullable().optional()
+  chargesPressingFee: external_exports.boolean().optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => {
   const parsed = serviceUpdateSchema.safeParse(req.body);
@@ -72568,8 +72494,7 @@ masterDataRouter.put("/services/:id", requireRole("Admin"), async (req, res) => 
   const id = Number(req.params.id);
   const current = await prisma.service.findUnique({ where: { id } });
   if (!current) return res.status(404).json({ error: "Service not found" });
-  const { size: sizeRaw, item: itemRaw, freelancerOverride, ...restFields } = parsed.data;
-  const rest = { ...restFields, ...freelancerOverride !== void 0 ? { freelancerPriceOverride: freelancerOverride } : {} };
+  const { size: sizeRaw, item: itemRaw, ...rest } = parsed.data;
   const oldItem = current.item || current.name;
   const newItem = itemRaw !== void 0 ? itemRaw.replace(/\s+/g, " ") : oldItem;
   const newSize = sizeRaw !== void 0 ? sizeRaw.replace(/\s+/g, " ") : current.size;
@@ -72628,9 +72553,8 @@ masterDataRouter.delete("/business-heads/:id", requireRole("Admin"), async (req,
 });
 masterDataRouter.get("/materials", async (_req, res) => {
   await ensureMaterialItemsOnce();
-  const cfg = await priceListConfig();
   const materials = await prisma.material.findMany({ orderBy: { name: "asc" } });
-  res.json(materials.map(({ freelancerPriceOverride, ...m }) => ({ ...m, freelancerPrice: freelancerCatalogPrice(m.price, freelancerPriceOverride, cfg), freelancerOverride: freelancerPriceOverride })));
+  res.json(materials.map(({ freelancerPriceOverride: _unused, ...m }) => m));
 });
 var same = (a2, b) => a2.trim().replace(/\s+/g, " ").toLowerCase() === b.trim().replace(/\s+/g, " ").toLowerCase();
 var variantSchema = external_exports.object({ size: external_exports.string().trim().max(40).optional().default(""), price: external_exports.number().positive("Every size needs a price greater than 0") });
@@ -72683,9 +72607,7 @@ var materialUpdateSchema = external_exports.object({
   item: external_exports.string().trim().min(1).max(120).optional(),
   description: external_exports.string().trim().max(300).optional(),
   size: external_exports.string().trim().max(40).optional(),
-  unit: external_exports.string().trim().min(1).max(30).optional(),
-  // The Freelancer Sales price typed by hand; null goes back to the GLM price less the default percentage.
-  freelancerOverride: external_exports.number().positive().nullable().optional()
+  unit: external_exports.string().trim().min(1).max(30).optional()
 }).refine((obj) => Object.keys(obj).length > 0, { message: "No fields to update" });
 masterDataRouter.put("/materials/:id", requirePermission("canApproveStock"), async (req, res) => {
   const parsed = materialUpdateSchema.safeParse(req.body);
@@ -72694,8 +72616,7 @@ masterDataRouter.put("/materials/:id", requirePermission("canApproveStock"), asy
   const id = Number(req.params.id);
   const current = await prisma.material.findUnique({ where: { id } });
   if (!current) return res.status(404).json({ error: "Material not found" });
-  const { item: newItemRaw, size: newSizeRaw, freelancerOverride, ...restFields } = parsed.data;
-  const rest = { ...restFields, ...freelancerOverride !== void 0 ? { freelancerPriceOverride: freelancerOverride } : {} };
+  const { item: newItemRaw, size: newSizeRaw, ...rest } = parsed.data;
   const oldItem = current.item || current.name;
   const newItem = (newItemRaw ?? oldItem).replace(/\s+/g, " ");
   const newSize = (newSizeRaw ?? current.size).replace(/\s+/g, " ");
@@ -72759,8 +72680,6 @@ function serializeSettings(settings) {
   return {
     kraPin: settings.kraPin,
     maxDiscountPct: settings.maxDiscountPct,
-    freelancerDiscountPct: settings.freelancerDiscountPct,
-    freelancerRoundTo: settings.freelancerRoundTo,
     companyName: settings.companyName,
     legalName: settings.legalName,
     companyAddress: settings.companyAddress,
@@ -72780,9 +72699,6 @@ masterDataRouter.get("/settings", async (_req, res) => {
 });
 var settingsSchema = external_exports.object({
   maxDiscountPct: external_exports.number().min(0).optional(),
-  // Freelancer Sales prices: the GLM price less this percentage, rounded to the nearest freelancerRoundTo shillings (0 = exact).
-  freelancerDiscountPct: external_exports.number().min(0).max(90).optional(),
-  freelancerRoundTo: external_exports.number().min(0).max(1e3).optional(),
   companyName: external_exports.string().min(1).max(200).optional(),
   // The name on the system screens (header, browser tab, sign-in), exactly as typed; blank = use the company name.
   systemName: external_exports.string().trim().max(200).optional(),
@@ -72894,6 +72810,25 @@ async function validateAccountChoice(requested, type) {
   if (!acc || !acc.active) throw new Error("Choose an existing, active account");
   if (acc.type !== type) throw new Error(`That head must be linked to an ${type} account`);
   return acc.id;
+}
+
+// apps/api/src/orderSource.ts
+async function salesPersonRoleNames() {
+  return (await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } })).map((r) => r.name);
+}
+async function salesPersonIds() {
+  const roles = await salesPersonRoleNames();
+  if (roles.length === 0) return /* @__PURE__ */ new Set();
+  return new Set((await prisma.user.findMany({ where: { role: { in: roles } }, select: { id: true } })).map((u) => u.id));
+}
+async function labelFor(staffId) {
+  const u = await prisma.user.findUnique({ where: { id: staffId }, select: { role: true } });
+  if (!u) return "glm";
+  const roles = await salesPersonRoleNames();
+  return roles.includes(u.role) ? "freelancer" : "glm";
+}
+function isSalesPersonOrder(o, people) {
+  return o.freelanceAgentId != null || people.has(o.sourcedByStaffId ?? o.staffId);
 }
 
 // apps/api/src/orderHeads.ts
@@ -73499,7 +73434,7 @@ function serializeSummary(order) {
     orderNo: order.orderNo,
     kind: order.kind,
     channel: order.channel,
-    // The price list it was captured under: GLM Sales or Freelancer Sales.
+    // Whether the order was captured for a sales person ('freelancer') or for GLM ('glm'): the label it was given at capture.
     priceList: order.priceList,
     customerName: order.customerName,
     phone: order.phone,
@@ -73626,7 +73561,7 @@ async function recordOrderPayments(tx, order, lines, staffId, date = todayStr())
   }
 }
 ordersRouter.get("/", async (req, res) => {
-  const { staffId, status, channel, days } = req.query;
+  const { staffId, status, channel, days, source } = req.query;
   const where = {};
   const window2 = Number(days);
   if (Number.isInteger(window2) && window2 > 0 && window2 <= 3650) {
@@ -73646,8 +73581,12 @@ ordersRouter.get("/", async (req, res) => {
     where.channel = "dtf";
     where.dtfArtworkJob = { isNot: null };
   } else if (channel && channel !== "all") where.channel = channel;
+  const people = await salesPersonIds();
+  const peopleList = [...people];
+  if (source === "sales") where.AND = [{ OR: [{ freelanceAgentId: { not: null } }, { sourcedByStaffId: { in: peopleList } }, { AND: [{ sourcedByStaffId: null }, { staffId: { in: peopleList } }] }] }];
+  else if (source === "glm") where.AND = [{ freelanceAgentId: null }, { OR: [{ sourcedByStaffId: { notIn: peopleList } }, { AND: [{ sourcedByStaffId: null }, { staffId: { notIn: peopleList } }] }] }];
   const orders = await prisma.order.findMany({ where, include: orderListInclude, orderBy: { id: "desc" } });
-  res.json(orders.map(serializeSummary));
+  res.json(orders.map((o) => ({ ...serializeSummary(o), source: isSalesPersonOrder(o, people) ? "sales" : "glm" })));
 });
 ordersRouter.get("/:id/pdf", async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
@@ -73691,8 +73630,6 @@ var lineItemSchema = external_exports.object({
   message: "A material line needs a material, a service line needs a service"
 });
 var walkinSchema = external_exports.object({
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales). Left out, it follows who the order is credited to.
-  priceList: external_exports.enum(["glm", "freelancer"]).optional(),
   // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
   customerName: external_exports.string().optional(),
   phone: external_exports.string().optional(),
@@ -73719,8 +73656,7 @@ ordersRouter.post("/walkin", requirePermission("canCaptureOrders"), async (req, 
 async function captureWalkin(req, res, form, extra = {}) {
   const cap = await resolveCapture(req.user, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user, form.priceList, cap.staffId, { phone: form.phone, name: form.customerName });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
+  const label = await labelFor(cap.staffId);
   const costs = extra.keepCosts ? true : await canSeeCosts(req.user.role);
   const paymentLines = form.paymentTiming !== "onAcceptance" ? [] : form.payments && form.payments.length ? form.payments : (form.paymentAmount ?? 0) > 0 ? [{ method: form.paymentMethod ?? "Cash", amount: form.paymentAmount }] : [];
   const totals = computeOrderTotals(
@@ -73743,7 +73679,7 @@ async function captureWalkin(req, res, form, extra = {}) {
       data: {
         orderNo,
         kind: "walkin",
-        priceList: pl.priceList,
+        priceList: label,
         customerName: form.customerName?.trim() || WALK_IN_CLIENT,
         phone: form.phone?.trim() || null,
         staffId: cap.staffId,
@@ -74186,7 +74122,6 @@ async function artwork(u, perms) {
 async function discount(u) {
   const since = recentSince();
   const may = canGiveDiscount(u.role);
-  const linkPrefix = (await priceListsForRole(u.role)).includes("glm") ? "" : "/freelancer";
   const rows = await prisma.discountRequest.findMany({
     where: { OR: [...may ? [{ status: "Pending", requestedById: { not: u.id } }] : [], { requestedById: u.id, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
     orderBy: { id: "desc" },
@@ -74210,7 +74145,7 @@ async function discount(u) {
       decidedAt: r.decidedAt?.toISOString() ?? null,
       note: r.reason,
       // UV Pen Costing or UV Flatbed, with the job of the request filled in (and an approved discount ready to use)
-      link: `${linkPrefix}/orders/new/uv-film?tab=${r.product === "pens" ? "pens" : "flatbed"}&request=${r.id}`,
+      link: `/orders/new/uv-film?tab=${r.product === "pens" ? "pens" : "flatbed"}&request=${r.id}`,
       openLabel: r.status === "Approved" ? "Continue \u2014 capture the order" : "Open",
       openPrimary: r.status === "Approved",
       decide: { approve: `/dtf/discount-requests/${r.id}/approve`, reject: `/dtf/discount-requests/${r.id}/reject`, needsReason: true }
@@ -76584,6 +76519,97 @@ reportsRouter.get("/embroidery-profitability", async (req, res) => {
     byBand: [...bands.entries()].sort((x, y) => x[0] - y[0]).map(([from, v]) => ({ from, jobs: v.jobs, garments: v.garments, revenue: round(v.revenue), avgPerGarment: v.garments > 0 ? round(v.revenue / v.garments) : null }))
   });
 });
+reportsRouter.get("/sales-performance", async (req, res) => {
+  const range2 = parseRange2(req);
+  if (!range2) return res.status(400).json({ error: "from and to query params are required (YYYY-MM-DD)" });
+  await ensureBusinessHeadsOnce();
+  const round = (n) => Math.round(n * 100) / 100;
+  const people = await salesPersonIds();
+  const orders = await prisma.order.findMany({
+    where: { status: { not: "Quote" }, createdDate: { gte: range2.from, lte: range2.to } },
+    include: { ...headInclude, staff: { select: { id: true, name: true } } }
+  });
+  const paidBy = /* @__PURE__ */ new Map();
+  if (orders.length) {
+    for (const p of await prisma.payment.findMany({ where: { orderId: { in: orders.map((o) => o.id) } }, select: { orderId: true, amount: true } })) paidBy.set(p.orderId, (paidBy.get(p.orderId) ?? 0) + p.amount);
+  }
+  const blank = () => ({ orders: 0, gross: 0, net: 0, paid: 0, balance: 0, clients: /* @__PURE__ */ new Set() });
+  const totals = { glm: blank(), sales: blank() };
+  const byHead = /* @__PURE__ */ new Map();
+  const byMonth = /* @__PURE__ */ new Map();
+  const per = /* @__PURE__ */ new Map();
+  let legacy = { orders: 0, net: 0, paid: 0 };
+  const nameOf = /* @__PURE__ */ new Map();
+  for (const o of orders) {
+    const src = isSalesPersonOrder(o, people) ? "sales" : "glm";
+    const { grandTotal, lines } = headLines(o);
+    const net8 = grandTotal / (1 + VAT_RATE);
+    const paid = Math.min(paidBy.get(o.id) ?? 0, grandTotal);
+    const t = totals[src];
+    t.orders++;
+    t.gross += grandTotal;
+    t.net += net8;
+    t.paid += paid;
+    t.balance += Math.max(0, grandTotal - paid);
+    const key2 = clientKeyFor({ corporateClientId: o.corporateClientId, phone: o.phone, name: o.customerName });
+    if (key2) t.clients.add(key2);
+    const m = byMonth.get(o.createdDate.slice(0, 7)) ?? { glm: { orders: 0, net: 0 }, sales: { orders: 0, net: 0 } };
+    m[src].orders++;
+    m[src].net += net8;
+    byMonth.set(o.createdDate.slice(0, 7), m);
+    for (const l of lines) {
+      const h = byHead.get(l.head) ?? { glm: { orders: /* @__PURE__ */ new Set(), net: 0 }, sales: { orders: /* @__PURE__ */ new Set(), net: 0 } };
+      h[src].orders.add(o.id);
+      h[src].net += l.gross / (1 + VAT_RATE);
+      byHead.set(l.head, h);
+    }
+    if (src === "sales") {
+      if (o.freelanceAgentId != null) {
+        legacy = { orders: legacy.orders + 1, net: legacy.net + net8, paid: legacy.paid + paid };
+      } else {
+        const id = o.sourcedByStaffId ?? o.staffId;
+        if (!nameOf.has(id)) nameOf.set(id, id === o.staff.id ? o.staff.name : "");
+        const r = per.get(id) ?? { staffId: id, name: "", orders: 0, net: 0, paid: 0, clients: /* @__PURE__ */ new Set() };
+        r.orders++;
+        r.net += net8;
+        r.paid += paid;
+        if (key2) r.clients.add(key2);
+        per.set(id, r);
+      }
+    }
+  }
+  const users = per.size ? await prisma.user.findMany({ where: { id: { in: [...per.keys()] } }, select: { id: true, name: true } }) : [];
+  for (const u of users) nameOf.set(u.id, u.name);
+  const months = [.../* @__PURE__ */ new Set([range2.from.slice(0, 7), range2.to.slice(0, 7), ...byMonth.keys()])];
+  const payouts = per.size ? await prisma.commissionPayout.findMany({ where: { staffId: { in: [...per.keys()] }, period: { gte: range2.from.slice(0, 7), lte: range2.to.slice(0, 7) } } }) : [];
+  void months;
+  const paidOut = /* @__PURE__ */ new Map();
+  for (const p of payouts) paidOut.set(p.staffId, (paidOut.get(p.staffId) ?? 0) + p.amount);
+  const salesNet = totals.sales.net || 0;
+  const fin = (t) => ({ orders: t.orders, sales: round(t.net), salesWithVat: round(t.gross), paid: round(t.paid), balance: round(t.balance), avgOrder: t.orders > 0 ? round(t.net / t.orders) : null, clients: t.clients.size });
+  const allNet = totals.glm.net + totals.sales.net;
+  res.json({
+    from: range2.from,
+    to: range2.to,
+    glm: { ...fin(totals.glm), sharePct: allNet > 0 ? round(totals.glm.net / allNet * 100) : null },
+    sales: { ...fin(totals.sales), sharePct: allNet > 0 ? round(totals.sales.net / allNet * 100) : null },
+    heads: [...byHead.entries()].map(([head, v]) => ({ head, glm: { orders: v.glm.orders.size, sales: round(v.glm.net) }, sales: { orders: v.sales.orders.size, sales: round(v.sales.net) } })).sort((a2, b) => b.glm.sales + b.sales.sales - (a2.glm.sales + a2.sales.sales)),
+    months: [...byMonth.entries()].sort((a2, b) => a2[0].localeCompare(b[0])).map(([month, v]) => ({ month, glm: { orders: v.glm.orders, sales: round(v.glm.net) }, sales: { orders: v.sales.orders, sales: round(v.sales.net) } })),
+    people: [...per.values()].map((r) => ({
+      staffId: r.staffId,
+      name: nameOf.get(r.staffId) || r.name || `#${r.staffId}`,
+      orders: r.orders,
+      sales: round(r.net),
+      paid: round(r.paid),
+      avgOrder: r.orders > 0 ? round(r.net / r.orders) : null,
+      clients: r.clients.size,
+      sharePct: salesNet > 0 ? round(r.net / salesNet * 100) : null,
+      paidToThem: round(paidOut.get(r.staffId) ?? 0),
+      paidToThemPct: r.net > 0 && paidOut.has(r.staffId) ? round((paidOut.get(r.staffId) ?? 0) / r.net * 100) : null
+    })).sort((a2, b) => b.sales - a2.sales),
+    legacyFreelancers: { orders: legacy.orders, sales: round(legacy.net), paid: round(legacy.paid) }
+  });
+});
 var headInclude = { lineItems: { include: { service: { include: { businessHead: true } }, material: true } }, corporateClient: true, dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { id: true } } };
 function headLines(o) {
   const inputs = o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee }));
@@ -77461,8 +77487,6 @@ async function costedService(jobType) {
   return prisma.service.create({ data: { name: name2, item: name2, unit: "piece", price: 0, outsourced: true, soldViaDtfModule: true, businessHeadId: head?.id ?? null } });
 }
 var captureSchema = external_exports.object({
-  // The price list it is captured under (the menu it was keyed from): GLM Sales or Freelancer Sales.
-  priceList: external_exports.enum(["glm", "freelancer"]).optional(),
   customerName: external_exports.string().optional(),
   phone: external_exports.string().optional(),
   staffId: external_exports.number().int().nullable().optional(),
@@ -77483,7 +77507,6 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
   const service = await costedService(q.jobType);
   const total = r211(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
-    priceList: body.data.priceList,
     customerName: body.data.customerName?.trim() || q.clientName,
     phone: body.data.phone ?? q.phone,
     staffId: body.data.staffId ?? q.staffId,
@@ -78968,7 +78991,7 @@ embroideryRouter.post("/orders", mayQuote, async (req, res) => {
   for (const g of garments) {
     const m = await prisma.material.findUnique({ where: { id: g.materialId } });
     if (!m) return res.status(400).json({ error: "A garment on the order is not in the stock list any more" });
-    add({ itemType: "material", serviceId: null, materialId: m.id, qty: g.qty, unitPrice: priceOnList(m, form.priceList === "freelancer" ? "freelancer" : "glm", await priceListConfig()), discountPct: 0, discountAmt: 0 });
+    add({ itemType: "material", serviceId: null, materialId: m.id, qty: g.qty, unitPrice: m.price, discountPct: 0, discountAmt: 0 });
   }
   const walkin = { ...form, lineItems, orderDiscountPct: 0, orderDiscountAmt: 0 };
   return captureWalkin(req, res, walkin, {
@@ -79159,15 +79182,14 @@ var materialLineSchema = external_exports.object({
   qty: external_exports.number().positive(),
   unitPrice: external_exports.number().nonnegative().optional()
 });
-async function materialLineItems(tx, lines, list = "glm") {
-  const cfg = list === "freelancer" ? await priceListConfig(tx) : { discountPct: 0, roundTo: 0 };
+async function materialLineItems(tx, lines) {
   const items = [];
   for (const line of lines) {
     let unitPrice = line.unitPrice;
     if (unitPrice == null) {
       const material = await tx.material.findUnique({ where: { id: line.materialId } });
       if (!material) throw new Error("Material not found");
-      unitPrice = priceOnList(material, list, cfg);
+      unitPrice = material.price;
     }
     items.push({ itemType: "material", materialId: line.materialId, qty: line.qty, unitPrice, discountPct: 0, discountAmt: 0 });
   }
@@ -79180,7 +79202,7 @@ function resolvePaymentLines(d) {
 async function createDtfOrder(tx, opts) {
   const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
   if (!staffExists) throw new Error("Your session is out of date (the underlying user record no longer exists) \u2014 please log out and log back in, then try again.");
-  const materialItems = await materialLineItems(tx, opts.materialLines, opts.priceList ?? "glm");
+  const materialItems = await materialLineItems(tx, opts.materialLines);
   const lineItemInputs = [
     { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
     ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, materialId: null, qty: l.qty, unitPrice: l.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: l.heatPressFee ?? null })),
@@ -79272,7 +79294,6 @@ dtfRouter.get("/data", async (req, res) => {
   const perms = await permissionsForRole(req.user.role);
   const canManage = perms.canManageDtf;
   const product = productOf(req.query.product);
-  const list = asPriceList(req.query.priceList);
   const openOnly = !canManage || req.query.scope === "order";
   const [settings, rolls, sales, jobs] = await Promise.all([
     getSettings(product),
@@ -79281,28 +79302,19 @@ dtfRouter.get("/data", async (req, res) => {
     prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
   ]);
   const uvIds = await uvRollIds();
-  const onList = await dtfSettingsOnList(settings, product, list);
-  const manual = list === "freelancer" ? await dtfFreelancerOverrides(product) : null;
   res.json({
     product,
-    priceList: list,
     canManage,
-    // Freelancer list only: which rates were typed by hand (the others follow the GLM rate less the default percentage), and that percentage.
-    ...list === "freelancer" ? {
-      freelancerManual: Object.fromEntries(["stdPricePerM", "minPricePerM", "fixedChargePerMetre", "minPricePerPiece", "smallShareBelow", "smallSharePrice"].map((f) => [f, (manual?.[f] ?? null) != null])),
-      freelancerDiscountPct: (await priceListConfig()).discountPct,
-      glmSettings: { stdPricePerM: settings.stdPricePerM, minPricePerM: settings.minPricePerM, fixedChargePerMetre: settings.fixedChargePerMetre, minPricePerPiece: settings.minPricePerPiece, smallShareBelow: settings.smallShareBelow, smallSharePrice: settings.smallSharePrice }
-    } : {},
     settings: {
-      rollLengthM: onList.rollLengthM,
-      rollWidthCm: onList.rollWidthCm,
-      stdPricePerM: onList.stdPricePerM,
-      minPricePerM: onList.minPricePerM,
-      wastageTolerancePct: onList.wastageTolerancePct,
-      minPricePerPiece: onList.minPricePerPiece,
-      fixedChargePerMetre: onList.fixedChargePerMetre,
-      smallShareBelow: onList.smallShareBelow,
-      smallSharePrice: onList.smallSharePrice
+      rollLengthM: settings.rollLengthM,
+      rollWidthCm: settings.rollWidthCm,
+      stdPricePerM: settings.stdPricePerM,
+      minPricePerM: settings.minPricePerM,
+      wastageTolerancePct: settings.wastageTolerancePct,
+      minPricePerPiece: settings.minPricePerPiece,
+      fixedChargePerMetre: settings.fixedChargePerMetre,
+      smallShareBelow: settings.smallShareBelow,
+      smallSharePrice: settings.smallSharePrice
     },
     rolls: rolls.map((r) => ({
       id: r.id,
@@ -79376,8 +79388,6 @@ var penOrderSchema = external_exports.object({
   freelanceAgentId: external_exports.number().int().nullable().optional(),
   // The sales person the order is credited to, when the front office captures it for them (see frontOffice.ts).
   staffId: external_exports.number().int().nullable().optional(),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: external_exports.enum(["glm", "freelancer"]).optional(),
   // a discount on the unit price: given outright by Finance, the General Manager or an Admin, or taken from an approved request (see discount requests above)
   unitDiscount: unitDiscountSchema.nullable().default(null),
   discountRequestId: external_exports.number().int().nullable().default(null)
@@ -79653,27 +79663,7 @@ var settingsSchema6 = external_exports.object({
   smallShareBelow: external_exports.number().min(0).optional(),
   smallSharePrice: external_exports.number().min(0).optional()
 }).refine((s) => s.minPricePerM <= s.stdPricePerM, { message: "Minimum price cannot be above the standard price" }).refine((s) => !(s.minPricePerPiece > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < s.minPricePerPiece), { message: "The price used for a small share cannot be below the lowest price of an artwork" }).refine((s) => !((s.smallShareBelow ?? 0) > 0 && (s.smallSharePrice ?? 0) > 0 && (s.smallSharePrice ?? 0) < (s.smallShareBelow ?? 0)), { message: "The price used for a small share cannot be below the share it applies to" });
-var freelancerRatesSchema = external_exports.object({
-  stdPricePerM: external_exports.number().positive().nullable().optional(),
-  minPricePerM: external_exports.number().positive().nullable().optional(),
-  fixedChargePerMetre: external_exports.number().min(0).nullable().optional(),
-  minPricePerPiece: external_exports.number().min(0).nullable().optional(),
-  smallShareBelow: external_exports.number().min(0).nullable().optional(),
-  smallSharePrice: external_exports.number().min(0).nullable().optional()
-});
 dtfRouter.put("/settings", manageOnly, async (req, res) => {
-  if (req.query.priceList === "freelancer") {
-    const f = freelancerRatesSchema.safeParse(req.body);
-    if (!f.success) return res.status(400).json({ error: f.error.issues[0]?.message ?? "Invalid input" });
-    const product2 = productOf(req.query.product);
-    const id = dtfFreelancerId(product2);
-    const cur = await prisma.dtfFreelancerSetting.findUnique({ where: { id } });
-    const next = { ...cur ?? {}, ...f.data };
-    if ((next.stdPricePerM ?? 0) > 0 && (next.minPricePerM ?? 0) > (next.stdPricePerM ?? 0)) return res.status(400).json({ error: "Minimum price cannot be above the standard price" });
-    if ((next.minPricePerPiece ?? 0) > 0 && (next.smallSharePrice ?? 0) > 0 && (next.smallSharePrice ?? 0) < (next.minPricePerPiece ?? 0)) return res.status(400).json({ error: "The price used for a small share cannot be below the lowest price of an artwork" });
-    await prisma.dtfFreelancerSetting.upsert({ where: { id }, create: { id, ...f.data }, update: f.data });
-    return res.json(await dtfFreelancerOverrides(product2));
-  }
   const parsed = settingsSchema6.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const product = productOf(req.query.product);
@@ -79683,8 +79673,6 @@ dtfRouter.put("/settings", manageOnly, async (req, res) => {
 });
 var artworkRateSchema = external_exports.object({
   product: external_exports.enum(["dtf", "uv"]).optional(),
-  priceList: external_exports.enum(["glm", "freelancer"]).optional(),
-  // freelancer: the Freelancer Sales rate typed by hand
   pricePerMetre: external_exports.number({ required_error: "Enter the price per running metre", invalid_type_error: "Enter the price per running metre" }).positive("The price per running metre must be more than 0").max(1e6)
 });
 dtfRouter.put("/artwork-rate", manageOnly, async (req, res) => {
@@ -79693,25 +79681,17 @@ dtfRouter.put("/artwork-rate", manageOnly, async (req, res) => {
   const product = productOf(parsed.data.product ?? req.query.product);
   const before = await getSettings(product);
   const price = round2(parsed.data.pricePerMetre);
-  if (parsed.data.priceList === "freelancer") {
-    const id = dtfFreelancerId(product);
-    const previous = (await dtfSettingsOnList(before, product, "freelancer")).fixedChargePerMetre;
-    await prisma.dtfFreelancerSetting.upsert({ where: { id }, create: { id, fixedChargePerMetre: price }, update: { fixedChargePerMetre: price } });
-    return res.json({ product, priceList: "freelancer", pricePerMetre: price, previous });
-  }
   await prisma.dtfSetting.update({ where: { id: settingsId(product) }, data: { fixedChargePerMetre: price } });
-  res.json({ product, priceList: "glm", pricePerMetre: price, previous: before.fixedChargePerMetre });
+  res.json({ product, pricePerMetre: price, previous: before.fixedChargePerMetre });
 });
 dtfRouter.get("/artwork-rate/history", manageOnly, async (req, res) => {
   const product = productOf(req.query.product);
-  const list = asPriceList(req.query.priceList);
   const rows = await prisma.auditLog.findMany({ where: { action: "PUT /api/dtf/artwork-rate", status: { lt: 400 } }, orderBy: { id: "desc" }, take: 200 });
   const out = rows.map((r) => {
     const price = Number(/pricePerMetre=([0-9.]+)/.exec(r.detail)?.[1]);
     const prod = /product=(uv|dtf)/.exec(r.detail)?.[1] ?? "dtf";
-    const pl = /priceList=(freelancer|glm)/.exec(r.detail)?.[1] ?? "glm";
-    return { at: r.at.toISOString(), by: r.userName, pricePerMetre: price, product: prod, priceList: pl };
-  }).filter((r) => r.product === product && r.priceList === list && Number.isFinite(r.pricePerMetre)).slice(0, 15);
+    return { at: r.at.toISOString(), by: r.userName, pricePerMetre: price, product: prod };
+  }).filter((r) => r.product === product && Number.isFinite(r.pricePerMetre)).slice(0, 15);
   res.json(out);
 });
 var noteSchema = external_exports.string().trim().min(3, "Say why the roll is being terminated").max(300);
@@ -79834,8 +79814,6 @@ async function openRoll(rollId) {
 }
 var saleSchema = external_exports.object({
   rollId: external_exports.string().min(1),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: external_exports.enum(["glm", "freelancer"]).optional(),
   soldOn: dateStr2.optional(),
   client: external_exports.string().max(200).default(""),
   phone: external_exports.string().max(40).default(""),
@@ -79861,9 +79839,8 @@ dtfRouter.post("/sales", async (req, res) => {
   const product = productOf(found.roll.product);
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user, d.priceList, cap.staffId, { phone: d.phone, name: d.client });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
-  const settings = await dtfSettingsOnList(await getSettings(product), product, pl.priceList);
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
   const { lines: paymentLines, paid } = resolvePaymentLines(d);
   const c = saleCalc(settings, d.metres, d.pricePerM ?? null, paid);
   if (!c.valid) {
@@ -79882,7 +79859,7 @@ dtfRouter.post("/sales", async (req, res) => {
         staffId: cap.staffId,
         capturedById: cap.capturedById,
         capturedByName: cap.capturedByName,
-        priceList: pl.priceList,
+        priceList: label,
         serviceLine: { itemType: "per-metre", serviceId: service.id, qty: d.metres, unitPrice: c.price },
         materialLines: d.materialLines,
         payments: paymentLines,
@@ -79939,8 +79916,6 @@ dtfRouter.delete("/sales/:id", requireRole("Admin"), async (req, res) => {
 });
 var jobSchema = external_exports.object({
   rollId: external_exports.string().min(1),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: external_exports.enum(["glm", "freelancer"]).optional(),
   jobOn: dateStr2.optional(),
   client: external_exports.string().max(200).default(""),
   phone: external_exports.string().max(40).default(""),
@@ -79973,9 +79948,8 @@ dtfRouter.post("/jobs", async (req, res) => {
   const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user, d.priceList, cap.staffId, { phone: d.phone, name: d.client });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
-  const settings = await dtfSettingsOnList(await getSettings(product), product, pl.priceList);
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
   const sys = runningMetreCalc(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   const smallShare = usesSmallSharePrice(d.runningMetres, d.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   const lowest = lowestArtworkPrice(settings.minPricePerPiece, sys.finalPerPiece);
@@ -79996,7 +79970,7 @@ dtfRouter.post("/jobs", async (req, res) => {
       const service = await dtfService(tx, "artwork", product);
       const order2 = await createDtfOrder(tx, {
         product,
-        priceList: pl.priceList,
+        priceList: label,
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
         staffId: cap.staffId,
@@ -80057,8 +80031,6 @@ dtfRouter.post("/jobs", async (req, res) => {
 });
 var sheetSchema = external_exports.object({
   rollId: external_exports.string().min(1),
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales).
-  priceList: external_exports.enum(["glm", "freelancer"]).optional(),
   jobOn: dateStr2.optional(),
   /** The client for rows that name none. */
   client: external_exports.string().max(200).default(""),
@@ -80092,17 +80064,12 @@ dtfRouter.post("/sheets", async (req, res) => {
   const heatPressFee = product === "uv" ? null : d.heatPressFee ?? null;
   const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user, d.priceList, cap.staffId, { phone: d.phone, name: d.client });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
-  const settings = await dtfSettingsOnList(await getSettings(product), product, pl.priceList);
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
   const calc = sheetCalc(d.rows, d.runningMetres, settings.fixedChargePerMetre, settings.minPricePerPiece, d.client, d.phone, d.pieces, settings.smallSharePrice, settings.smallShareBelow);
   const sheetSmallShare = calc.pieces > 0 && d.runningMetres > 0 && usesSmallSharePrice(d.runningMetres, d.pieces ?? calc.pieces, settings.fixedChargePerMetre, settings.smallShareBelow, settings.smallSharePrice);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? "The sheet cannot be priced" });
   for (const c of calc.clients) {
-    if (pl.priceList === "glm" && d.priceList === "glm") {
-      const owned = await ownedClientProblem({ phone: c.phone, name: c.client });
-      if (owned) return res.status(400).json({ error: owned });
-    }
     const claim = await claimProblem(req.user, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
     if (claim) return res.status(400).json({ error: claim });
   }
@@ -80122,7 +80089,7 @@ dtfRouter.post("/sheets", async (req, res) => {
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
           product,
-          priceList: pl.priceList,
+          priceList: label,
           customerName: c.client.trim() || WALK_IN_CLIENT,
           phone: c.phone.trim(),
           staffId: cap.staffId,
@@ -82007,6 +81974,8 @@ commissionRouter.get("/contractors", manage, async (_req, res) => {
         whtRate: p?.whtRate ?? null,
         effectiveWhtRate: p?.whtRate ?? cfg.freelanceWhtRate,
         minWageFloor: p?.minWageFloor ?? false,
+        // Captures their own orders (and the front office may capture for them too); switched off, only the front office captures for them (Master Data → Staff & Users has the same switch).
+        capturesOwn: !u.orderTakingOff,
         note: p?.note ?? "",
         missing
       };
@@ -82024,6 +81993,7 @@ var contractorSchema = external_exports.object({
   whtRate: external_exports.number().min(0).max(100).nullable().optional(),
   // null = the standard rate; 0 = exempt
   minWageFloor: external_exports.boolean().optional(),
+  capturesOwn: external_exports.boolean().optional(),
   note: external_exports.string().trim().max(300).optional()
 });
 commissionRouter.put("/contractors/:staffId", manage, async (req, res) => {
@@ -82032,12 +82002,13 @@ commissionRouter.put("/contractors/:staffId", manage, async (req, res) => {
   const staffId = Number(req.params.staffId);
   const user = (await salesPersonRows()).find((u) => u.id === staffId);
   if (!user) return res.status(404).json({ error: "That is not a sales person" });
-  const { kraPin, nationalId, ...profile } = parsed.data;
+  const { kraPin, nationalId, capturesOwn, ...profile } = parsed.data;
   for (const k of ["phone", "mpesaNumber"]) {
     const v = profile[k];
     if (v && !payPhone({ [k]: v })) return res.status(400).json({ error: `${k === "phone" ? "The phone" : "The M-Pesa number"} must be a Kenyan mobile number (07\u2026 or 2547\u2026)` });
   }
   const userData = {};
+  if (capturesOwn !== void 0) userData.orderTakingOff = !capturesOwn;
   if (kraPin !== void 0) {
     const c = cleanKraPin(kraPin);
     if (c.error) return res.status(400).json({ error: c.error });

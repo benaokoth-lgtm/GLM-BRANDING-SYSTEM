@@ -561,8 +561,6 @@ async function costedService(jobType: string) {
 }
 
 const captureSchema = z.object({
-  // The price list it is captured under (the menu it was keyed from): GLM Sales or Freelancer Sales.
-  priceList: z.enum(['glm', 'freelancer']).optional(),
   customerName: z.string().optional(),
   phone: z.string().optional(),
   staffId: z.number().int().nullable().optional(),
@@ -585,7 +583,6 @@ costingRouter.post('/quotes/:id/capture', mayCost, async (req, res) => {
   const service = await costedService(q.jobType);
   const total = r2(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
-    priceList: body.data.priceList,
     customerName: body.data.customerName?.trim() || q.clientName,
     phone: body.data.phone ?? q.phone,
     staffId: body.data.staffId ?? q.staffId,

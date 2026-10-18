@@ -8,7 +8,7 @@ import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import type { CreditLine } from '../commission';
 import { resolveCapture } from '../frontOffice';
-import { resolvePriceList } from '../priceLists';
+import { isSalesPersonOrder, labelFor, salesPersonIds, salesPersonRoleNames } from '../orderSource';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
 import { buildOrderPdf, documentKind } from '../orderPdf';
@@ -97,7 +97,7 @@ export function serializeSummary(order: ListOrder) {
     orderNo: order.orderNo,
     kind: order.kind,
     channel: order.channel,
-    // The price list it was captured under: GLM Sales or Freelancer Sales.
+    // Whether the order was captured for a sales person ('freelancer') or for GLM ('glm'): the label it was given at capture.
     priceList: order.priceList,
     customerName: order.customerName,
     phone: order.phone,
@@ -278,7 +278,7 @@ export async function recordOrderPayments(
 
 // ── List ─────────────────────────────────────────────────────────────────
 ordersRouter.get('/', async (req, res) => {
-  const { staffId, status, channel, days } = req.query as { staffId?: string; status?: string; channel?: string; days?: string };
+  const { staffId, status, channel, days, source } = req.query as { staffId?: string; status?: string; channel?: string; days?: string; source?: string };
   const where: Record<string, unknown> = {};
   // days=N (All Orders): the orders raised in the last N days, plus everything still open however old — not yet completed, or handed over on credit with a balance — so the
   // screen's open-order figures stay complete while years of finished orders are left out. Without it the whole list is returned, as before.
@@ -303,8 +303,13 @@ ordersRouter.get('/', async (req, res) => {
     where.dtfArtworkJob = { isNot: null };
   } else if (channel && channel !== 'all') where.channel = channel;
 
+  // source=glm / sales: GLM's own sales, or the sales persons' — by who the order is credited to (the person it was allocated to, the one whose client it is, or an old freelance account)
+  const people = await salesPersonIds();
+  const peopleList = [...people];
+  if (source === 'sales') where.AND = [{ OR: [{ freelanceAgentId: { not: null } }, { sourcedByStaffId: { in: peopleList } }, { AND: [{ sourcedByStaffId: null }, { staffId: { in: peopleList } }] }] }];
+  else if (source === 'glm') where.AND = [{ freelanceAgentId: null }, { OR: [{ sourcedByStaffId: { notIn: peopleList } }, { AND: [{ sourcedByStaffId: null }, { staffId: { notIn: peopleList } }] }] }];
   const orders = await prisma.order.findMany({ where, include: orderListInclude, orderBy: { id: 'desc' } });
-  res.json(orders.map(serializeSummary));
+  res.json(orders.map((o) => ({ ...serializeSummary(o), source: isSalesPersonOrder(o, people) ? ('sales' as const) : ('glm' as const) })));
 });
 
 // ── Detail ───────────────────────────────────────────────────────────────
@@ -359,8 +364,6 @@ const lineItemSchema = z
   });
 
 export const walkinSchema = z.object({
-  // The price list it is captured under: the menu it was keyed from (GLM Sales or Freelancer Sales). Left out, it follows who the order is credited to.
-  priceList: z.enum(['glm', 'freelancer']).optional(),
   // Optional: a walk-in with no name is recorded as "Walk-in". Name and phone are only required to credit a client to a staff member.
   customerName: z.string().optional(),
   phone: z.string().optional(),
@@ -404,8 +407,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
   // Who the order is credited to (the sales person) and who keys it (the cashier): decided here, from the person's role and whether their order taking is on.
   const cap = await resolveCapture(req.user!, form.staffId, form.sourcedBy);
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
-  const pl = await resolvePriceList(req.user!, form.priceList, cap.staffId, { phone: form.phone, name: form.customerName });
-  if (!pl.ok) return res.status(400).json({ error: pl.error });
+  const label = await labelFor(cap.staffId);
   const costs = extra.keepCosts ? true : await canSeeCosts(req.user!.role);
 
   // Payments taken at capture: the new list form, or the older single amount + method.
@@ -439,7 +441,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
       data: {
         orderNo,
         kind: 'walkin',
-        priceList: pl.priceList,
+        priceList: label,
         customerName: form.customerName?.trim() || WALK_IN_CLIENT,
         phone: form.phone?.trim() || null,
         staffId: cap.staffId,

@@ -9,6 +9,8 @@ import type { AddressInfo } from 'node:net';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
+import { ACCT } from '@glm/shared';
+import { loadLedger, naturalBalance, sumByAccount } from '../src/accounting/ledger';
 
 let server: Server;
 let base = '';
@@ -43,6 +45,13 @@ function notice(over: Partial<Record<string, string>> = {}) {
 }
 const post = (body: unknown, path = notifyPath, type = 'application/json') =>
   fetch(`${base}${path}`, { method: 'POST', headers: { 'Content-Type': type }, body: typeof body === 'string' ? body : JSON.stringify(body) });
+
+// the balance of an account as the books stand now
+const bal = async (code: string) => {
+  const l = await loadLedger();
+  const a = l.byCode.get(code)!;
+  return naturalBalance(a.type, sumByAccount(l.postings, () => true).get(a.id));
+};
 
 describe('NCBA Paybill 880100', () => {
   before(async () => {
@@ -172,6 +181,8 @@ describe('NCBA Paybill 880100', () => {
     assert.match(over.body.error, /only has Ksh/);
     assert.equal(seen.initiated.length, sentBefore);
     // a part payment: the prompt goes through NCBA against the order …
+    const bankBefore = await bal(ACCT.bank);
+    const mpesaBefore = await bal(ACCT.mpesa);
     const push = await call('admin', 'POST', '/mpesa/stkpush', { phone: '0712345678', amount: 5000, accountReference: made.body.orderNo, orderId });
     assert.equal(push.status, 201, JSON.stringify(push.body));
     assert.match(push.body.checkoutRequestId, /^NCBA-TX\d+$/);
@@ -182,6 +193,9 @@ describe('NCBA Paybill 880100', () => {
     assert.deepEqual(detail.payments.map((x: any) => [x.method, x.amount, x.reference]), [['M-Pesa', 5000, 'RKH7ORDER01']]);
     assert.equal(detail.totals.balanceDue, 6600);
     assert.equal((await call('admin', 'GET', `/mpesa/status/${push.body.checkoutRequestId}`)).body.status, 'Success');
+    // NCBA settles into the bank account as it receives the money: the 5,000 is in Bank, not in M-Pesa
+    assert.equal(await bal(ACCT.bank), bankBefore + 5000);
+    assert.equal(await bal(ACCT.mpesa), mpesaBefore);
   });
 
   it('a payment with no prompt (someone paying 880100 themselves) lands as a Paybill receipt to be matched to an order', async () => {
@@ -191,6 +205,19 @@ describe('NCBA Paybill 880100', () => {
     assert.equal(tx.kind, 'C2B');
     assert.equal(tx.amount, 777);
     assert.equal(tx.accountReference, 'W-1020');
+  });
+
+  it('money NCBA receives is in the Bank account (a payment made straight to the Paybill), while a Safaricom statement receipt stays in M-Pesa', async () => {
+    const bankBefore = await bal(ACCT.bank);
+    const mpesaBefore = await bal(ACCT.mpesa);
+    const unalloc = await bal(ACCT.unallocatedMpesa);
+    await post(notice({ transId: 'RKH7BANK001', amount: '321.00', mobile: '254766666666', billRef: 'X-NOMATCH' }));
+    assert.equal(await bal(ACCT.bank), bankBefore + 321);
+    assert.equal(await bal(ACCT.mpesa), mpesaBefore);
+    assert.equal(await bal(ACCT.unallocatedMpesa), unalloc + 321); // still waiting to be matched to an order
+    await prisma.mpesaTransaction.create({ data: { checkoutRequestId: 'IMPORT-BANKTEST', merchantRequestId: '', kind: 'Import', status: 'Unmatched', phone: '254799000111', amount: 100, mpesaReceipt: 'IMPORT0001', receivedOn: new Date().toISOString().slice(0, 10), accountReference: 'Z', createdByName: 'test' } });
+    assert.equal(await bal(ACCT.mpesa), mpesaBefore + 100);
+    assert.equal(await bal(ACCT.bank), bankBefore + 321);
   });
 
   it('a phone NCBA reports as a SHA-256 hash is still matched to the prompt', async () => {

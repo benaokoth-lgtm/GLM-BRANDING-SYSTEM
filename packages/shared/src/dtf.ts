@@ -15,6 +15,8 @@ export interface DtfSettings {
   /** When an artwork's share of the film comes to less than this, its recommended price is smallSharePrice instead (0 = no such rule). DTF: under 30 → 40; UV DTF: under 40 → 40, a base price of 40. */
   smallShareBelow: number;
   smallSharePrice: number;
+  /** The film width artworks are laid out on, for the layout figures (Film layout), in cm; 0 = use the roll width. */
+  layoutWidthCm: number;
 }
 
 export const DEFAULT_DTF_SETTINGS: DtfSettings = {
@@ -27,6 +29,7 @@ export const DEFAULT_DTF_SETTINGS: DtfSettings = {
   fixedChargePerMetre: 3780, // 108 artworks on 2 m come to 70 each
   smallShareBelow: 30,
   smallSharePrice: 40,
+  layoutWidthCm: 58,
 };
 
 /**
@@ -58,6 +61,7 @@ export const UV_DTF_SETTINGS: DtfSettings = {
   fixedChargePerMetre: 4280, // 107 artworks on a metre come to 40 each
   smallShareBelow: 40, // the recommended price of an artwork is never below 40
   smallSharePrice: 40,
+  layoutWidthCm: 0, // the roll width
 };
 
 export interface DtfRoll {
@@ -110,6 +114,11 @@ export interface DtfArtworkJob {
   chargedTotal?: number | null;
   /** The jobs that came from one sheet (artworks of several sizes, perhaps several clients, on one length of film) share this. The recommended price is judged on the sheet as a whole, not on each client. */
   sheetId?: string | null;
+  /** A print priced by the sales person, row by row, with nothing recommended to judge it against: what was charged IS the price (no premium, no approval). */
+  pricedBySales?: boolean;
+  /** Layout (Film layout): the film width the artworks were laid out on (cm, 0 = not recorded) and the total area of the artworks measured (cm²). */
+  filmWidthCm?: number;
+  areaCm2?: number;
 }
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -211,6 +220,8 @@ export const lowestArtworkPrice = (minPricePerPiece: number, recommendedPerPiece
 
 /** The recommended price per piece the system works out for a job (before any extra the staff member charged). */
 export function systemJobCalc(j: DtfArtworkJob): JobCalc {
+  // priced by the sales person: nothing is recommended, so the price charged is the benchmark
+  if (j.pricedBySales && j.chargedTotal != null && j.chargedTotal > 0 && j.pieces > 0) return { finalPerPiece: r2(j.chargedTotal / j.pieces), jobTotal: r2(j.chargedTotal) };
   return jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob);
 }
 

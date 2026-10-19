@@ -246,7 +246,7 @@ async function deletion(u: Who, perms: Awaited<ReturnType<typeof permissionsForR
 async function requisition(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole>>): Promise<Part> {
   const since = recentSince();
   const rows = await prisma.stockRequisition.findMany({
-    where: { OR: [...(perms.canApproveStock && perms.canAccessStock ? [{ status: 'Pending', requestedByName: { not: u.name } }] : []), { requestedByName: u.name, OR: [{ status: 'Pending' }, { decidedAt: { gte: since } }] }] },
+    where: { OR: [...(perms.canApproveStock && perms.canAccessStock ? [u.role === 'Admin' ? { status: 'Pending' } : { status: 'Pending', requestedByName: { not: u.name } }] : []), { requestedByName: u.name, OR: [{ status: 'Pending' }, { decidedAt: { gte: since } }] }] },
     include: { lines: { include: { material: true } }, material: true },
     orderBy: { id: 'desc' },
     take: 100,
@@ -274,7 +274,8 @@ async function requisition(u: Who, perms: Awaited<ReturnType<typeof permissionsF
       decide: { approve: `/stock/requisitions/${r.id}/approve`, reject: `/stock/requisitions/${r.id}/reject`, needsReason: false },
     };
   };
-  return { waiting: rows.filter((r) => r.status === 'Pending' && r.requestedByName !== u.name).map(make), mine: rows.filter((r) => r.requestedByName === u.name).map(make) };
+  // the Admin may decide their own requisition (see decideRequisition in routes/stock.ts), so theirs wait for them too
+  return { waiting: rows.filter((r) => r.status === 'Pending' && (r.requestedByName !== u.name || (u.role === 'Admin' && perms.canApproveStock))).map(make), mine: rows.filter((r) => r.requestedByName === u.name && !(u.role === 'Admin' && perms.canApproveStock && r.status === 'Pending')).map(make) };
 }
 
 async function leave(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole>>): Promise<Part> {

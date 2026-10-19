@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, useLoad } from '../pages/accounting/shared';
+import NcbaActivity from './NcbaActivity';
 
 // Master Data → NCBA: Lipa na M-Pesa through NCBA Bank on Paybill 880100. NCBA sends the STK prompt to the customer's phone and tells us about every payment.
 // Nothing secret is shown again once saved: leave a field blank to keep what is saved. Switching NCBA on sends the "Send M-Pesa STK push" button through NCBA
@@ -25,17 +26,6 @@ interface Settings {
   activity: { lastAt: string | null; held: number; rejectedLastWeek: number };
 }
 
-interface Received {
-  id: number;
-  receivedAt: string;
-  transId: string;
-  amount: number;
-  billRef: string;
-  phone: string;
-  payerName: string;
-  outcome: string;
-  note: string;
-}
 
 function CopyLine({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
@@ -61,11 +51,8 @@ function CopyLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-const OUTCOME_TONE: Record<string, 'good' | 'neutral' | 'bad'> = { Matched: 'good', Received: 'good', Duplicate: 'neutral', Held: 'bad', Rejected: 'bad' };
-
 export default function NcbaSettingsPanel() {
   const { data, error, loading, reload } = useLoad<Settings>('/ncba/settings');
-  const log = useLoad<Received[]>('/ncba/notifications');
   const [form, setForm] = useState({ baseUrl: '', apiUsername: '', apiSecret: '', payBillNo: '880100', accountNo: '', publicBaseUrl: '' });
   // The credentials just made, shown once: the notification set (NCBA uses it to call us) and the STK push set (we use it to call NCBA).
   const [fresh, setFresh] = useState<{ push?: { pushUser: string; pushPassword: string; pushSecret: string }; stk?: { apiUsername: string; apiSecret: string } } | null>(null);
@@ -84,7 +71,6 @@ export default function NcbaSettingsPanel() {
     try {
       setMsg(await fn());
       reload();
-      log.reload();
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong');
     } finally {
@@ -126,12 +112,6 @@ export default function NcbaSettingsPanel() {
       if (!checkHash && !window.confirm("Stop checking the signature on NCBA's notifications?\n\nThey will still need your secret address and the username and password, but a payment is booked even if its signature does not match. Do this only if every real payment shows as Held because NCBA's signature layout differs from the guide — and switch it back on once that is sorted out.")) return 'Nothing changed';
       await api.put('/ncba/settings', { checkHash });
       return checkHash ? 'Signatures are checked again' : 'Signatures are no longer checked — the secret address, username and password still are';
-    });
-  const accept = (n: Received) =>
-    run(async () => {
-      if (!window.confirm(`Book ${fmtKsh(n.amount)} (${n.transId}) from ${n.payerName || 'an unknown payer'}? Do this only after checking the payment really arrived in the NCBA account.`)) return 'Nothing changed';
-      await api.post(`/ncba/notifications/${n.id}/accept`, {});
-      return `${n.transId} was booked`;
     });
 
   if (!data) return <Loading loading={loading} error={error} />;
@@ -271,48 +251,7 @@ export default function NcbaSettingsPanel() {
         </Card>
       </div>
 
-      <Card title="What NCBA has sent" hint="The last payments NCBA told us about, and what became of each.">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => log.reload()}>
-          Refresh
-        </button>
-        {!log.data ? (
-          <Loading loading={log.loading} error={log.error} />
-        ) : log.data.length === 0 ? (
-          <p className="note">Nothing yet. Once NCBA is told the address and credentials, every payment shows up here.</p>
-        ) : (
-          <table className="table" style={{ fontSize: 12 }}>
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Receipt</th>
-                <th style={{ textAlign: 'right' }}>Amount</th>
-                <th>Result</th>
-              </tr>
-            </thead>
-            <tbody>
-              {log.data.map((n) => (
-                <tr key={n.id}>
-                  <td className="text-muted">{fmtDate(n.receivedAt.slice(0, 10))}</td>
-                  <td title={`${n.payerName} ${n.billRef}`.trim()}>{n.transId || '—'}</td>
-                  <td style={{ textAlign: 'right' }}>{fmtKsh(n.amount)}</td>
-                  <td title={n.note}>
-                    <Tag tone={OUTCOME_TONE[n.outcome] ?? 'neutral'}>{n.outcome}</Tag>
-                    {n.outcome === 'Held' && (
-                      <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => accept(n)}>
-                        Accept
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <p className="note">
-          <b>Held</b> means the signature on the notification did not check out, so nothing was booked. Check the payment in your NCBA account; if it is real, Accept it.
-          <b> Rejected</b> means the username or password was not yours.
-        </p>
-      </Card>
+      <NcbaActivity onChanged={reload} />
     </div>
   );
 }

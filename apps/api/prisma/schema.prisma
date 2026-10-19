@@ -1174,6 +1174,8 @@ model DtfSetting {
   // The recommended price of an artwork whose share of the running metres comes to less than smallShareBelow (0 = no such rule).
   smallShareBelow     Float @default(30)
   smallSharePrice     Float @default(40)
+  // The film width the artworks are laid out on, for the layout figures (Film layout): 0 = the roll width. DTF starts at 58 cm.
+  layoutWidthCm       Float @default(0)
 }
 
 model DtfRoll {
@@ -1254,6 +1256,22 @@ model DtfArtworkJob {
   // as DtfFilmSale.orderId above.
   orderId          Int?     @unique
   order            Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  // A print priced by the sales person, row by row, with nothing recommended to judge it against: what was charged IS the price, so it earns no premium and never waits for approval.
+  pricedBySales    Boolean  @default(false)
+  // The film width the artworks were laid out on when it was recorded (cm; 0 = not recorded), and the sizes measured — see DtfArtworkItem.
+  filmWidthCm      Float    @default(0)
+  items            DtfArtworkItem[]
+}
+
+// One row of artworks of a print, as the sales person measured them after arranging the film: the size (cm), how many, and the price of each (the heat press included).
+model DtfArtworkItem {
+  id        Int            @id @default(autoincrement())
+  jobId     Int
+  job       DtfArtworkJob  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  widthCm   Float
+  heightCm  Float
+  qty       Int
+  unitPrice Float
 }
 
 // ── Staff sales commission ───────────────────────────────────────────────

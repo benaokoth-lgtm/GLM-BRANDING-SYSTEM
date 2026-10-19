@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../../api/client';
 import { Card, Loading, Notice, Tag, money, numStyle, useLoad } from './shared';
-import { MpesaSettlement } from './MpesaSettlement';
 
 interface Suggestion {
   orderId: number;
@@ -89,8 +88,6 @@ export function MpesaTab() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <Notice error={err || error} message={msg} />
-
-      <MpesaSettlement />
 
       <Card
         title="Upload an M-Pesa statement"

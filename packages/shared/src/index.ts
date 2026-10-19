@@ -19,6 +19,7 @@ export * from './costing';
 export * from './pens';
 export * from './flatbed';
 export * from './dtfSheet';
+export * from './dtfPrint';
 export * from './unitDiscount';
 export * from './printCosting';
 export * from './salesTypes';

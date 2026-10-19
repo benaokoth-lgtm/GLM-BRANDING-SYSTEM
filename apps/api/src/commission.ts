@@ -523,7 +523,7 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
   }
   if (sheetIds.size) {
     const sheetJobs = await prisma.dtfArtworkJob.findMany({ where: { sheetId: { in: [...sheetIds] } } });
-    const extras = jobExtras(sheetJobs.map((j) => ({ id: String(j.id), rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal, sheetId: j.sheetId })));
+    const extras = jobExtras(sheetJobs.map((j) => ({ id: String(j.id), rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal, sheetId: j.sheetId, pricedBySales: j.pricedBySales })));
     for (const j of sheetJobs) sheetExtras.set(j.id, extras.get(String(j.id)) ?? { excess: 0, short: 0 });
   }
 

@@ -2,7 +2,7 @@ import express, { Router } from 'express';
 import { z } from 'zod';
 import { timingSafeEqual } from 'crypto';
 import { prisma } from '../db';
-import { requireAuth, requireRole } from '../middleware/auth';
+import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { seal } from '../crypto';
 import { todayStr } from '@glm/shared';
 import { autoMatch, normaliseDate, storeReceipt } from '../accounting/mpesaMatching';
@@ -153,7 +153,7 @@ ncbaRouter.post('/credentials/generate-stk', requireAuth, requireRole('Admin'), 
 });
 
 // ── What NCBA has told us ───────────────────────────────────────────────────
-ncbaRouter.get('/notifications', requireAuth, requireRole('Admin'), async (_req, res) => {
+ncbaRouter.get('/notifications', requireAuth, requirePermission('canAccessAccounting', 'canManagePayments'), async (_req, res) => {
   const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: 'desc' }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });
   res.json(rows);
 });

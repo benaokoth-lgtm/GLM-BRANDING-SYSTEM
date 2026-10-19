@@ -106,11 +106,13 @@ stockRouter.post('/requisitions', async (req, res) => {
   });
 });
 
-async function decideRequisition(id: number, approve: boolean, deciderName: string, res: Response) {
+// The rule that nobody decides their own requisition has one exception: the Admin, who in a business with few people may have to raise a requisition, approve it, buy and receive the goods
+// themselves. What they do is still on the audit log under their own name.
+async function decideRequisition(id: number, approve: boolean, deciderName: string, res: Response, isAdmin = false) {
   const requisition = await prisma.stockRequisition.findUnique({ where: { id } });
   if (!requisition) return res.status(404).json({ error: 'Requisition not found' });
   if (requisition.status !== 'Pending') return res.status(400).json({ error: 'Requisition has already been decided' });
-  if (requisition.requestedByName === deciderName) {
+  if (requisition.requestedByName === deciderName && !isAdmin) {
     return res.status(400).json({ error: 'You cannot approve or reject your own requisition' });
   }
 
@@ -128,11 +130,11 @@ async function decideRequisition(id: number, approve: boolean, deciderName: stri
 
 // Approval requires a Finance role even though Supervisor can view/request.
 stockRouter.post('/requisitions/:id/approve', requirePermission('canApproveStock'), async (req, res) => {
-  await decideRequisition(Number(req.params.id), true, req.user!.name, res);
+  await decideRequisition(Number(req.params.id), true, req.user!.name, res, req.user!.role === 'Admin');
 });
 
 stockRouter.post('/requisitions/:id/reject', requirePermission('canApproveStock'), async (req, res) => {
-  await decideRequisition(Number(req.params.id), false, req.user!.name, res);
+  await decideRequisition(Number(req.params.id), false, req.user!.name, res, req.user!.role === 'Admin');
 });
 
 // ── Stock Take — physical count reconciliation ──────────────────────────
@@ -436,7 +438,7 @@ stockRouter.post('/purchases/:id/accept', receivers, async (req, res) => {
   const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) }, include: { lines: true } });
   if (!purchase) return res.status(404).json({ error: 'Purchase not found' });
   if (purchase.status !== 'Held') return res.status(400).json({ error: 'Purchase is not awaiting receipt' });
-  if (purchase.capturedByName === req.user!.name) {
+  if (purchase.capturedByName === req.user!.name && req.user!.role !== 'Admin') {
     return res.status(400).json({ error: 'You cannot receive a purchase you captured yourself' });
   }
   const given = new Map((parsed.data.lines ?? []).map((l) => [l.lineId, l.receivedQty]));
@@ -462,7 +464,7 @@ stockRouter.post('/purchases/:id/reject', receivers, async (req, res) => {
   const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
   if (!purchase) return res.status(404).json({ error: 'Purchase not found' });
   if (purchase.status !== 'Held') return res.status(400).json({ error: 'Purchase is not awaiting receipt' });
-  if (purchase.capturedByName === req.user!.name) {
+  if (purchase.capturedByName === req.user!.name && req.user!.role !== 'Admin') {
     return res.status(400).json({ error: 'You cannot reject a purchase you captured yourself' });
   }
   await prisma.purchase.update({ where: { id: purchase.id }, data: { status: 'Rejected', rejectReason: parsed.data.reason, acceptedByName: req.user!.name, acceptedAt: new Date() } });

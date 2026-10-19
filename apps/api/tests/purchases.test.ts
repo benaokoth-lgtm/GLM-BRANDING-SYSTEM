@@ -115,6 +115,31 @@ describe('purchases and reconciliation', () => {
     assert.equal((await call('keeper', 'POST', `/stock/purchases/${po1}/accept`, {})).status, 400); // already received
   });
 
+  it('the Admin, in a business with few people, may raise a requisition, approve it, buy and receive the goods themselves — nobody else may', async () => {
+    const mat = (await prisma.material.create({ data: { name: 'Admin-only buy (purch test)', price: 100 } })).id;
+    // someone else still cannot decide their own requisition or receive their own purchase (the rules above)
+    const mine = await call('boss', 'POST', '/stock/requisitions', { lines: [{ materialId: mat, qty: 5, estUnitCost: 50 }] });
+    assert.equal((await call('boss', 'POST', `/stock/requisitions/${mine.body.id}/approve`)).status, 400);
+    // the Admin raises one, approves it, buys against it and receives it into the store
+    const r = await call('admin', 'POST', '/stock/requisitions', { note: 'Admin buying', lines: [{ materialId: mat, qty: 10, estUnitCost: 50 }] });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    const ok = await call('admin', 'POST', `/stock/requisitions/${r.body.id}/approve`);
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal(ok.body.status, 'Approved');
+    const p = await call('admin', 'POST', '/stock/purchases', { mode: 'new', requisitionId: r.body.id, invoiceNumber: 'ADM-1', lines: [{ materialId: mat, qty: 10, unitCost: 55 }] });
+    assert.equal(p.status, 201, JSON.stringify(p.body));
+    const got = await call('admin', 'POST', `/stock/purchases/${p.body.id}/accept`, {});
+    assert.equal(got.status, 200, JSON.stringify(got.body));
+    assert.equal(await stock(mat), 10);
+    // and may reject their own too
+    const q = await call('admin', 'POST', '/stock/purchases', { mode: 'new', invoiceNumber: 'ADM-2', lines: [{ materialId: mat, qty: 1, unitCost: 55 }] });
+    assert.equal((await call('admin', 'POST', `/stock/purchases/${q.body.id}/reject`, { reason: 'wrong item' })).status, 200);
+    // a requisition the Admin raised waits for the Admin in the approvals inbox
+    const again = await call('admin', 'POST', '/stock/requisitions', { lines: [{ materialId: mat, qty: 2, estUnitCost: 50 }] });
+    const inbox = (await call('admin', 'GET', '/approvals')).body;
+    assert.ok(JSON.stringify(inbox.waiting ?? inbox).includes(`requisition:${again.body.id}`), 'the Admin’s own requisition is waiting for them');
+  });
+
   it('the reconciliation shows quantity, price and total variance per requisition and per line', async () => {
     const r = await call('boss', 'GET', '/stock/reconciliation');
     assert.equal(r.status, 200);

@@ -7,6 +7,7 @@ import type { OrderLabel } from '../orderSource';
 import { randomUUID } from 'node:crypto';
 import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
+import { artworkListCalc, artworkSizeLabel, layoutPrints, layoutSummary } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
@@ -32,7 +33,10 @@ const productOf = (v: unknown): DtfProduct => (v === 'uv' ? 'uv' : 'dtf');
 const settingsId = (product: DtfProduct) => (product === 'uv' ? 2 : 1);
 async function getSettings(product: DtfProduct = 'dtf') {
   if (product === 'uv') return prisma.dtfSetting.upsert({ where: { id: 2 }, update: {}, create: { id: 2, ...UV_DTF_SETTINGS } });
-  return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
+  const s = await prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
+  // the width artworks are laid out on starts at 58 cm for DTF (a database that pre-dates it has 0 = not set yet)
+  if (s.layoutWidthCm === 0) return prisma.dtfSetting.update({ where: { id: 1 }, data: { layoutWidthCm: DEFAULT_DTF_SETTINGS.layoutWidthCm } });
+  return s;
 }
 /** The ids of the UV DTF rolls (a roll belongs to a product; the DTF ones are everything else). */
 async function uvRollIds(): Promise<string[]> {
@@ -244,7 +248,7 @@ dtfRouter.get('/data', async (req, res) => {
     getSettings(product),
     prisma.dtfRoll.findMany({ where: { product, ...(openOnly ? { status: 'open' } : {}) }, orderBy: { id: 'asc' } }),
     prisma.dtfFilmSale.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, orderBy: [{ soldOn: 'desc' }, { id: 'desc' }] }),
-    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] }),
+    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, include: { items: { select: { widthCm: true, heightCm: true, qty: true } } }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] }),
   ]);
   const uvIds = await uvRollIds();
   res.json({
@@ -253,6 +257,7 @@ dtfRouter.get('/data', async (req, res) => {
     settings: {
       rollLengthM: settings.rollLengthM,
       rollWidthCm: settings.rollWidthCm,
+      layoutWidthCm: settings.layoutWidthCm,
       stdPricePerM: settings.stdPricePerM,
       minPricePerM: settings.minPricePerM,
       wastageTolerancePct: settings.wastageTolerancePct,
@@ -300,6 +305,10 @@ dtfRouter.get('/data', async (req, res) => {
       sheetId: j.sheetId,
       approvalStatus: j.approvalStatus,
       orderId: j.orderId,
+      pricedBySales: j.pricedBySales,
+      filmWidthCm: j.filmWidthCm,
+      areaCm2: Math.round(j.items.reduce((a, i) => a + i.widthCm * i.heightCm * i.qty, 0) * 100) / 100,
+      capturedByName: j.capturedByName,
     })),
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: 'Pending', ...(product === 'uv' ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } }) } }) : 0,
   });
@@ -657,6 +666,7 @@ const settingsSchema = z
   .object({
     rollLengthM: z.number().positive(),
     rollWidthCm: z.number().positive(),
+    layoutWidthCm: z.number().min(0).max(500).optional(),
     stdPricePerM: z.number().positive(),
     minPricePerM: z.number().positive(),
     wastageTolerancePct: z.number().min(0).max(100),
@@ -1215,6 +1225,152 @@ dtfRouter.post('/sheets', async (req, res) => {
   }
 });
 
+// ── Artwork prints: the artworks arranged on a length of film, measured and priced by the sales person ──────────────────
+// The sales person enters the length of film used and the rows — client, size (width × height, cm), how many, the price of ONE artwork with the heat press included. There is no recommended
+// price: those prices are the prices (see pricedBySales on the job: nothing to earn above, nothing to approve). Each client's rows become that client's own order, one line a size, with their own
+// payment; the film comes off the roll once, as the length entered, each order carrying its share by the AREA of its artworks. The sizes are kept (DtfArtworkItem) for the film layout figures.
+const printSchema = z.object({
+  rollId: z.string().min(1),
+  jobOn: dateStr.optional(),
+  /** The client for rows that name none. */
+  client: z.string().max(200).default(''),
+  phone: z.string().max(40).default(''),
+  runningMetres: z.number().positive('Enter the length of film used (m)'),
+  rows: z
+    .array(
+      z.object({
+        client: z.string().max(200).default(''),
+        phone: z.string().max(40).default(''),
+        widthCm: z.number().positive('Enter the width of the artwork'),
+        heightCm: z.number().positive('Enter the height of the artwork'),
+        qty: z.number().int('Enter a whole number of artworks').positive('Enter how many artworks'),
+        price: z.number().positive('Enter the price of one artwork'),
+      }),
+    )
+    .min(1, 'Add at least one row of artworks')
+    .max(80),
+  clientPayments: z.array(z.object({ key: z.string(), payments: z.array(paymentLineSchema).max(6) })).default([]),
+  sourcedBy: z.number().int().nullable().optional(),
+  staffId: z.number().int().nullable().optional(),
+});
+
+dtfRouter.post('/prints', async (req, res) => {
+  const parsed = printSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  const found = await openRoll(d.rollId);
+  if ('error' in found) return res.status(400).json({ error: found.error });
+  const product = productOf(found.roll.product);
+  const cap = await resolveCapture(req.user!, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
+  const filmWidth = settings.layoutWidthCm > 0 ? settings.layoutWidthCm : settings.rollWidthCm;
+  const calc = artworkListCalc(d.rows, d.runningMetres, filmWidth, d.client, d.phone);
+  if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The print cannot be recorded' });
+  for (const c of calc.clients) {
+    const claim = await claimProblem(req.user!, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
+    if (claim) return res.status(400).json({ error: claim });
+  }
+  const payFor = new Map(d.clientPayments.map((p) => [p.key, p.payments]));
+  for (const c of calc.clients) {
+    const paid = (payFor.get(c.key) ?? []).reduce((a, p) => a + p.amount, 0);
+    if (paid > c.amount + 0.005) return res.status(400).json({ error: `${c.client || 'Walk-in'}: the amount paid cannot exceed their order total of ${c.amount}` });
+  }
+  const sheetId = randomUUID();
+  try {
+    const made = await prisma.$transaction(async (tx) => {
+      const service = await dtfService(tx, 'artwork', product);
+      const out: Awaited<ReturnType<typeof createDtfOrder>>[] = [];
+      for (const c of calc.clients) {
+        // the price entered already includes the heat press: no separate fee on the line
+        const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: artworkSizeLabel(r.widthCm, r.heightCm), heatPressFee: null }));
+        const [first, ...rest] = lines;
+        const order = await createDtfOrder(tx, {
+          product,
+          priceList: label,
+          customerName: c.client.trim() || WALK_IN_CLIENT,
+          phone: c.phone.trim(),
+          staffId: cap.staffId,
+          capturedById: cap.capturedById,
+          capturedByName: cap.capturedByName,
+          serviceLine: { itemType: 'service', serviceId: service.id, ...first! },
+          moreServiceLines: rest,
+          materialLines: [],
+          payments: payFor.get(c.key) ?? [],
+          sourcedBy: d.sourcedBy,
+          freelanceAgentId: null,
+          serviceBase: first!.unitPrice, // sold at the price the sales person set: nothing above it to earn a premium on
+        });
+        await tx.dtfArtworkJob.create({
+          data: {
+            rollId: d.rollId,
+            jobOn: d.jobOn ?? todayStr(),
+            client: c.client.trim() || WALK_IN_CLIENT,
+            runningMetres: c.metres,
+            pieces: c.pieces,
+            fixedChargePerMetreAtJob: 0, // no recommended price: the price is what the sales person charged
+            minPricePerPieceAtJob: 0,
+            chargedPerPiece: null,
+            chargedTotal: c.amount,
+            pricedBySales: true,
+            filmWidthCm: filmWidth,
+            sheetId,
+            approvalStatus: 'Approved',
+            capturedByName: req.user!.name,
+            orderId: order.id,
+            items: { create: c.rows.map((r) => ({ widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, unitPrice: r.price })) },
+          },
+        });
+        out.push(order);
+      }
+      return out;
+    });
+    res.status(201).json({
+      sheetId,
+      enteredTotal: calc.enteredTotal,
+      film: { metres: calc.metres, widthCm: filmWidth, filmAreaCm2: calc.filmAreaCm2, artworkAreaCm2: calc.artworkAreaCm2, efficiencyPct: calc.efficiencyPct },
+      orders: made.map((m) => serializeDetail(m)),
+    });
+  } catch (err) {
+    res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the print') });
+  }
+});
+
+// DTF → Film layout, for information only: for each print with its sizes recorded, the film used (length × film width) against the total area of its artworks, and how much of the film they
+// fill; with the overall figure and each sales person's. Prints from before the sizes were recorded are left out (and counted).
+dtfRouter.get('/layout', manageOnly, async (req, res) => {
+  const product = productOf(req.query.product);
+  const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
+  const to = typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
+  const dateRange = from || to ? { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } : undefined;
+  const jobs = await prisma.dtfArtworkJob.findMany({
+    where: { roll: { product }, ...(dateRange ? { jobOn: dateRange } : {}) },
+    include: { items: { select: { widthCm: true, heightCm: true, qty: true } } },
+    orderBy: [{ jobOn: 'desc' }, { id: 'desc' }],
+  });
+  const layoutJobs = jobs.map((j) => ({
+    id: j.id,
+    sheetId: j.sheetId,
+    jobOn: j.jobOn,
+    rollId: j.rollId,
+    runningMetres: j.runningMetres,
+    filmWidthCm: j.filmWidthCm,
+    areaCm2: j.items.reduce((a, i) => a + i.widthCm * i.heightCm * i.qty, 0),
+    capturedByName: j.capturedByName,
+  }));
+  const prints = layoutPrints(layoutJobs);
+  const byName = new Map<string, typeof prints>();
+  for (const p of prints) byName.set(p.by || '—', [...(byName.get(p.by || '—') ?? []), p]);
+  res.json({
+    product,
+    summary: layoutSummary(prints),
+    byPerson: [...byName.entries()].map(([name, list]) => ({ name, ...layoutSummary(list) })).sort((a, b) => b.efficiencyPct - a.efficiencyPct),
+    prints: prints.slice(0, 200),
+    jobsWithoutSizes: layoutJobs.filter((j) => !(j.filmWidthCm > 0 && j.areaCm2 > 0)).length,
+  });
+});
+
 // A day at a time. For each date: the number of artwork jobs (or film sales), what was printed or sold, the average prices, and the money —
 // total, paid and balance, taken from the orders those jobs generated (so a payment taken later through the order counts). Each day lists the
 // individual orders behind it. Jobs waiting for a price approval are listed but kept out of the day's figures until they are approved.
@@ -1263,8 +1419,8 @@ dtfRouter.get('/daily', manageOnly, async (req, res) => {
   for (const j of jobs) byDay.set(j.jobOn, [...(byDay.get(j.jobOn) ?? []), j]);
   const days = [...byDay.entries()].map(([date, list]) => {
     const orders = list.map((j) => {
-      const calc = { id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal };
-      const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
+      const calc = { id: '', rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal, pricedBySales: j.pricedBySales };
+      const recommended = j.pricedBySales ? jobTotals(calc).finalPerPiece : jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
       const final = jobTotals(calc).finalPerPiece;
       const money = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
       return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money };

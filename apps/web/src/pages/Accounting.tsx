@@ -7,6 +7,7 @@ import { BalanceSheetTab, CashFlowTab, LedgerTab, ProfitLossTab, TrialBalanceTab
 import { PayablesTab, ReceivablesTab } from './accounting/AgingTabs';
 import { NotesTab } from './accounting/NotesTab';
 import { MpesaTab } from './accounting/MpesaTab';
+import NcbaActivity from '../components/NcbaActivity';
 import { DepreciationTab } from './accounting/DepreciationTab';
 import { ChartTab } from './accounting/ChartTab';
 import { JournalsTab } from './accounting/JournalsTab';
@@ -23,6 +24,7 @@ const TABS = [
   { id: 'payables', label: 'Payables' },
   { id: 'notes', label: 'Credit / Debit Notes' },
   { id: 'mpesa', label: 'M-Pesa Matching', alsoPayments: true },
+  { id: 'ncba', label: 'What NCBA Sent', alsoPayments: true },
   { id: 'depreciation', label: 'Depreciation' },
   { id: 'coa', label: 'Chart of Accounts' },
   { id: 'journals', label: 'Journals' },
@@ -89,6 +91,7 @@ export default function Accounting() {
       {tab === 'payables' && <PayablesTab />}
       {tab === 'notes' && <NotesTab range={range} />}
       {tab === 'mpesa' && <MpesaTab />}
+      {tab === 'ncba' && <NcbaActivity />}
       {tab === 'depreciation' && <DepreciationTab range={range} />}
       {tab === 'coa' && <ChartTab />}
       {tab === 'journals' && <JournalsTab />}

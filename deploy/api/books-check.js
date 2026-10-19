@@ -665,6 +665,7 @@ async function pettyCashTopUpPostings(book) {
 }
 async function orderPostings(book, ctx) {
   const merchandise = idOf(ctx, ACCT.merchandiseIncome);
+  const ncbaReceipts = await ncbaReceiptCodes();
   const orders = await prisma.order.findMany({
     include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true }
   });
@@ -703,6 +704,8 @@ async function orderPostings(book, ctx) {
       const label = `Payment (${p.method}${p.reference ? ` ${p.reference}` : ""}) \u2014 ${memo}`;
       if (received) {
         book.dr(p.date, ACCT.unallocatedMpesa, p.amount, "Payment", o.orderNo, label);
+      } else if (p.method === "M-Pesa" && p.mpesaTransaction && viaNcba(p.mpesaTransaction, ncbaReceipts)) {
+        book.dr(p.date, ACCT.bank, p.amount, "Payment", o.orderNo, label);
       } else {
         book.dr(p.date, methodAccountCode(p.method), p.amount, "Payment", o.orderNo, label);
       }
@@ -710,12 +713,19 @@ async function orderPostings(book, ctx) {
     }
   }
 }
+async function ncbaReceiptCodes() {
+  return new Set((await prisma.ncbaNotification.findMany({ select: { transId: true } })).map((n) => n.transId.toUpperCase()));
+}
+function viaNcba(t, ncbaReceipts) {
+  return t.checkoutRequestId.startsWith("NCBA-") || !!t.mpesaReceipt && ncbaReceipts.has(t.mpesaReceipt.toUpperCase());
+}
 async function mpesaPostings(book) {
+  const ncbaReceipts = await ncbaReceiptCodes();
   for (const t of await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: { in: ["Unmatched", "Applied"] } } })) {
     const date = t.receivedOn || t.createdAt.toISOString().slice(0, 10);
     const ref = t.mpesaReceipt || `MPESA-${t.id}`;
     const memo = `M-Pesa receipt ${t.mpesaReceipt || ""} \u2014 ${t.payerName || t.phone}`.trim();
-    book.dr(date, ACCT.mpesa, t.amount, "M-Pesa receipt", ref, memo);
+    book.dr(date, viaNcba(t, ncbaReceipts) ? ACCT.bank : ACCT.mpesa, t.amount, "M-Pesa receipt", ref, memo);
     book.cr(date, ACCT.unallocatedMpesa, t.amount, "M-Pesa receipt", ref, memo);
   }
 }

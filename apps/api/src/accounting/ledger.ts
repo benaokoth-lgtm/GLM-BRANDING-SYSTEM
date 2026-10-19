@@ -197,6 +197,7 @@ async function pettyCashTopUpPostings(book: Book) {
 // A deposit taken against a quote that has not been invoiced yet is held as a customer deposit instead.
 async function orderPostings(book: Book, ctx: Ctx) {
   const merchandise = idOf(ctx, ACCT.merchandiseIncome);
+  const ncbaReceipts = await ncbaReceiptCodes();
   const orders = await prisma.order.findMany({
     include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true },
   });
@@ -243,6 +244,9 @@ async function orderPostings(book: Book, ctx: Ctx) {
       const label = `Payment (${p.method}${p.reference ? ` ${p.reference}` : ''}) — ${memo}`;
       if (received) {
         book.dr(p.date, ACCT.unallocatedMpesa, p.amount, 'Payment', o.orderNo, label);
+      } else if (p.method === 'M-Pesa' && p.mpesaTransaction && viaNcba(p.mpesaTransaction, ncbaReceipts)) {
+        // an STK push through NCBA: NCBA settles into the bank account as it receives the money, so it is in the Bank account at once
+        book.dr(p.date, ACCT.bank, p.amount, 'Payment', o.orderNo, label);
       } else {
         book.dr(p.date, methodAccountCode(p.method), p.amount, 'Payment', o.orderNo, label);
       }
@@ -251,15 +255,26 @@ async function orderPostings(book: Book, ctx: Ctx) {
   }
 }
 
+// Money that came through NCBA's Paybill is settled into the bank account as NCBA receives it, so it is booked to Bank, not to M-Pesa. It is recognised by how it came: an STK push raised through NCBA
+// (its reference starts NCBA-) or a payment NCBA sent us a notification for (its receipt code is on the list of what NCBA has sent).
+async function ncbaReceiptCodes(): Promise<Set<string>> {
+  return new Set((await prisma.ncbaNotification.findMany({ select: { transId: true } })).map((n) => n.transId.toUpperCase()));
+}
+function viaNcba(t: { checkoutRequestId: string; mpesaReceipt: string | null }, ncbaReceipts: Set<string>): boolean {
+  return t.checkoutRequestId.startsWith('NCBA-') || (!!t.mpesaReceipt && ncbaReceipts.has(t.mpesaReceipt.toUpperCase()));
+}
+
 // M-Pesa money that arrived through Paybill/Till or a statement upload is booked the day it was received: money in
 // M-Pesa, and a suspense liability until it is matched to an order. Matching creates a Payment (above) that moves it
 // out of suspense into receivables. STK pushes are not booked here — they create their Payment directly.
 async function mpesaPostings(book: Book) {
+  const ncbaReceipts = await ncbaReceiptCodes();
   for (const t of await prisma.mpesaTransaction.findMany({ where: { kind: { in: ['C2B', 'Import'] }, status: { in: ['Unmatched', 'Applied'] } } })) {
     const date = t.receivedOn || t.createdAt.toISOString().slice(0, 10);
     const ref = t.mpesaReceipt || `MPESA-${t.id}`;
     const memo = `M-Pesa receipt ${t.mpesaReceipt || ''} — ${t.payerName || t.phone}`.trim();
-    book.dr(date, ACCT.mpesa, t.amount, 'M-Pesa receipt', ref, memo);
+    // a payment NCBA told us about reached the NCBA Paybill, which settles into the bank account as it receives the money: it is in the Bank account, not M-Pesa
+    book.dr(date, viaNcba(t, ncbaReceipts) ? ACCT.bank : ACCT.mpesa, t.amount, 'M-Pesa receipt', ref, memo);
     book.cr(date, ACCT.unallocatedMpesa, t.amount, 'M-Pesa receipt', ref, memo);
   }
 }

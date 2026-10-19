@@ -26440,7 +26440,7 @@ var require_bcrypt = __commonJS({
           } else
             throw err;
         }
-        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r212 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r212, real_salt = salt.substring(offset + 3, offset + 25);
+        var r1 = parseInt(salt.substring(offset, offset + 1), 10) * 10, r213 = parseInt(salt.substring(offset + 1, offset + 2), 10), rounds = r1 + r213, real_salt = salt.substring(offset + 3, offset + 25);
         s += minor >= "a" ? "\0" : "";
         var passwordb = stringToBytes(s), saltb = base64_decode(real_salt, BCRYPT_SALT_LEN);
         function finish(bytes) {
@@ -28966,10 +28966,10 @@ var require_intersects = __commonJS({
   "node_modules/jsonwebtoken/node_modules/semver/ranges/intersects.js"(exports2, module2) {
     "use strict";
     var Range = require_range2();
-    var intersects = (r1, r212, options) => {
+    var intersects = (r1, r213, options) => {
       r1 = new Range(r1, options);
-      r212 = new Range(r212, options);
-      return r1.intersects(r212, options);
+      r213 = new Range(r213, options);
+      return r1.intersects(r213, options);
     };
     module2.exports = intersects;
   }
@@ -65490,7 +65490,8 @@ var DEFAULT_DTF_SETTINGS = {
   fixedChargePerMetre: 3780,
   // 108 artworks on 2 m come to 70 each
   smallShareBelow: 30,
-  smallSharePrice: 40
+  smallSharePrice: 40,
+  layoutWidthCm: 58
 };
 var DTF_SERVICE_NAMES = {
   dtf: { film: "DTF Sheet (per metre)", artwork: "DTF Printing" },
@@ -65507,7 +65508,9 @@ var UV_DTF_SETTINGS = {
   // 107 artworks on a metre come to 40 each
   smallShareBelow: 40,
   // the recommended price of an artwork is never below 40
-  smallSharePrice: 40
+  smallSharePrice: 40,
+  layoutWidthCm: 0
+  // the roll width
 };
 var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var div = (a2, b) => b > 0 ? a2 / b : 0;
@@ -65542,6 +65545,7 @@ function chargeToSnapshot(runningMetres, calc, chargePerMetre, usedSmallShare) {
 }
 var lowestArtworkPrice = (minPricePerPiece, recommendedPerPiece) => Math.min(minPricePerPiece, recommendedPerPiece);
 function systemJobCalc(j) {
+  if (j.pricedBySales && j.chargedTotal != null && j.chargedTotal > 0 && j.pieces > 0) return { finalPerPiece: r2(j.chargedTotal / j.pieces), jobTotal: r2(j.chargedTotal) };
   return jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob);
 }
 function jobTotals(j) {
@@ -66752,6 +66756,113 @@ function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultC
 }
 var r2to = (n) => Math.round((n + Number.EPSILON) * 1e3) / 1e3;
 
+// packages/shared/src/dtfPrint.ts
+var r29 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r3 = (n) => Math.round((n + Number.EPSILON) * 1e3) / 1e3;
+var artworkSizeLabel = (widthCm, heightCm) => `${trim(widthCm)} \xD7 ${trim(heightCm)} cm`;
+var trim = (n) => String(r29(n));
+function artworkClientKey(client, phone) {
+  const digits = phone.replace(/\D/g, "");
+  return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
+}
+var artworkRowTotal = (r) => r29((Number.isFinite(r.qty) ? r.qty : 0) * (Number.isFinite(r.price) ? r.price : 0));
+var artworkRowArea = (r) => r.widthCm > 0 && r.heightCm > 0 && r.qty > 0 ? r.widthCm * r.heightCm * r.qty : 0;
+var MAX_SIDE_CM = 1e3;
+function artworkListCalc(rows, metres, filmWidthCm, defaultClient = "", defaultPhone = "") {
+  const problems = [];
+  const warnings = [];
+  const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.widthCm > 0 || r.heightCm > 0 || r.client.trim());
+  if (!(metres > 0)) problems.push("Enter the length of film used (m)");
+  if (live.length === 0) problems.push("Add at least one row of artworks");
+  live.forEach((r, i) => {
+    const n = i + 1;
+    if (!(r.widthCm > 0) || !(r.heightCm > 0)) problems.push(`Row ${n}: enter the width and height of the artwork (cm)`);
+    else if (r.widthCm > MAX_SIDE_CM || r.heightCm > MAX_SIDE_CM) problems.push(`Row ${n}: a side of ${MAX_SIDE_CM} cm or more cannot be right`);
+    else if (filmWidthCm > 0 && Math.min(r.widthCm, r.heightCm) > filmWidthCm + 1e-3) problems.push(`Row ${n}: ${artworkSizeLabel(r.widthCm, r.heightCm)} does not fit the ${trim(filmWidthCm)} cm film`);
+    if (!Number.isInteger(r.qty) || r.qty < 1) problems.push(`Row ${n}: enter how many artworks`);
+    if (!(r.price > 0)) problems.push(`Row ${n}: enter the price of one artwork`);
+  });
+  const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0 && r.widthCm > 0 && r.heightCm > 0);
+  const pieces = valid.reduce((a2, r) => a2 + r.qty, 0);
+  const artworkAreaCm2 = valid.reduce((a2, r) => a2 + artworkRowArea(r), 0);
+  const enteredTotal = r29(valid.reduce((a2, r) => a2 + artworkRowTotal(r), 0));
+  const groups = /* @__PURE__ */ new Map();
+  for (const r of valid) {
+    const client = r.client.trim() || defaultClient.trim();
+    const phone = r.client.trim() ? r.phone.trim() : r.phone.trim() || defaultPhone.trim();
+    const key3 = artworkClientKey(client, phone);
+    const g = groups.get(key3) ?? { key: key3, client, phone, rows: [], pieces: 0, areaCm2: 0, metres: 0, amount: 0 };
+    g.rows.push(r);
+    g.pieces += r.qty;
+    g.areaCm2 += artworkRowArea(r);
+    g.amount = r29(g.amount + artworkRowTotal(r));
+    if (!g.phone && phone) g.phone = phone;
+    groups.set(key3, g);
+  }
+  const clients = [...groups.values()];
+  let left = metres > 0 ? metres : 0;
+  clients.forEach((g, i) => {
+    g.metres = i === clients.length - 1 ? r3(left) : r3(artworkAreaCm2 > 0 && metres > 0 ? metres * g.areaCm2 / artworkAreaCm2 : 0);
+    left = r3(left - g.metres);
+  });
+  const filmAreaCm2 = metres > 0 && filmWidthCm > 0 ? metres * 100 * filmWidthCm : 0;
+  if (filmAreaCm2 > 0 && artworkAreaCm2 > filmAreaCm2 + 0.5) warnings.push(`The artworks add up to ${r29(artworkAreaCm2 / 1e4)} m\xB2, which is more than the ${r29(filmAreaCm2 / 1e4)} m\xB2 of film used \u2014 check the sizes and the length.`);
+  return {
+    ok: problems.length === 0,
+    problems,
+    warnings,
+    pieces,
+    metres: metres > 0 ? metres : 0,
+    filmWidthCm,
+    filmAreaCm2,
+    artworkAreaCm2,
+    unfilledCm2: filmAreaCm2 > 0 ? filmAreaCm2 - artworkAreaCm2 : 0,
+    efficiencyPct: filmAreaCm2 > 0 ? r29(artworkAreaCm2 / filmAreaCm2 * 100) : 0,
+    enteredTotal,
+    clients
+  };
+}
+function layoutPrints(jobs) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const j of jobs) {
+    if (!((j.filmWidthCm ?? 0) > 0 && (j.areaCm2 ?? 0) > 0)) continue;
+    const key3 = j.sheetId ? `s:${j.sheetId}` : `j:${j.id}`;
+    groups.set(key3, [...groups.get(key3) ?? [], j]);
+  }
+  const out = [];
+  for (const [key3, list] of groups) {
+    const filmAreaCm2 = list.reduce((a2, j) => a2 + j.runningMetres * 100 * (j.filmWidthCm ?? 0), 0);
+    const artworkAreaCm2 = list.reduce((a2, j) => a2 + (j.areaCm2 ?? 0), 0);
+    const first = list[0];
+    out.push({
+      key: key3,
+      date: first.jobOn,
+      rollId: first.rollId,
+      by: first.capturedByName ?? "",
+      clients: list.length,
+      metres: r3(list.reduce((a2, j) => a2 + j.runningMetres, 0)),
+      filmAreaCm2,
+      artworkAreaCm2,
+      unfilledCm2: filmAreaCm2 - artworkAreaCm2,
+      efficiencyPct: filmAreaCm2 > 0 ? r29(artworkAreaCm2 / filmAreaCm2 * 100) : 0,
+      suspicious: artworkAreaCm2 > filmAreaCm2 + 0.5
+    });
+  }
+  return out.sort((a2, b) => a2.date < b.date ? 1 : a2.date > b.date ? -1 : 0);
+}
+function layoutSummary(prints) {
+  const filmAreaCm2 = prints.reduce((a2, p) => a2 + p.filmAreaCm2, 0);
+  const artworkAreaCm2 = prints.reduce((a2, p) => a2 + p.artworkAreaCm2, 0);
+  return {
+    prints: prints.length,
+    metres: r3(prints.reduce((a2, p) => a2 + p.metres, 0)),
+    filmAreaCm2,
+    artworkAreaCm2,
+    unfilledCm2: filmAreaCm2 - artworkAreaCm2,
+    efficiencyPct: filmAreaCm2 > 0 ? r29(artworkAreaCm2 / filmAreaCm2 * 100) : 0
+  };
+}
+
 // packages/shared/src/printCosting.ts
 var PRINT_PRODUCTS = ["eulogy", "profile", "brochure"];
 var PRINT_PRODUCT_LABEL = { eulogy: "Eulogy", profile: "Company profile", brochure: "Brochure" };
@@ -67329,7 +67440,7 @@ async function buildStatements(period, only) {
   }
   if (sheetIds.size) {
     const sheetJobs = await prisma.dtfArtworkJob.findMany({ where: { sheetId: { in: [...sheetIds] } } });
-    const extras = jobExtras(sheetJobs.map((j) => ({ id: String(j.id), rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal, sheetId: j.sheetId })));
+    const extras = jobExtras(sheetJobs.map((j) => ({ id: String(j.id), rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal, sheetId: j.sheetId, pricedBySales: j.pricedBySales })));
     for (const j of sheetJobs) sheetExtras.set(j.id, extras.get(String(j.id)) ?? { excess: 0, short: 0 });
   }
   const flows = /* @__PURE__ */ new Map();
@@ -71792,8 +71903,8 @@ function custom(check, _params = {}, fatal) {
     return ZodAny.create().superRefine((data, ctx) => {
       const r = check(data);
       if (r instanceof Promise) {
-        return r.then((r3) => {
-          if (!r3) {
+        return r.then((r4) => {
+          if (!r4) {
             const params = cleanParams(_params, data);
             const _fatal = params.fatal ?? fatal ?? true;
             ctx.addIssue({ code: "custom", ...params, fatal: _fatal });
@@ -73242,6 +73353,7 @@ async function pettyCashTopUpPostings(book) {
 }
 async function orderPostings(book, ctx) {
   const merchandise = idOf(ctx, ACCT.merchandiseIncome);
+  const ncbaReceipts = await ncbaReceiptCodes();
   const orders = await prisma.order.findMany({
     include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true }
   });
@@ -73280,6 +73392,8 @@ async function orderPostings(book, ctx) {
       const label = `Payment (${p.method}${p.reference ? ` ${p.reference}` : ""}) \u2014 ${memo}`;
       if (received) {
         book.dr(p.date, ACCT.unallocatedMpesa, p.amount, "Payment", o.orderNo, label);
+      } else if (p.method === "M-Pesa" && p.mpesaTransaction && viaNcba(p.mpesaTransaction, ncbaReceipts)) {
+        book.dr(p.date, ACCT.bank, p.amount, "Payment", o.orderNo, label);
       } else {
         book.dr(p.date, methodAccountCode(p.method), p.amount, "Payment", o.orderNo, label);
       }
@@ -73287,12 +73401,19 @@ async function orderPostings(book, ctx) {
     }
   }
 }
+async function ncbaReceiptCodes() {
+  return new Set((await prisma.ncbaNotification.findMany({ select: { transId: true } })).map((n) => n.transId.toUpperCase()));
+}
+function viaNcba(t, ncbaReceipts) {
+  return t.checkoutRequestId.startsWith("NCBA-") || !!t.mpesaReceipt && ncbaReceipts.has(t.mpesaReceipt.toUpperCase());
+}
 async function mpesaPostings(book) {
+  const ncbaReceipts = await ncbaReceiptCodes();
   for (const t of await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: { in: ["Unmatched", "Applied"] } } })) {
     const date = t.receivedOn || t.createdAt.toISOString().slice(0, 10);
     const ref = t.mpesaReceipt || `MPESA-${t.id}`;
     const memo = `M-Pesa receipt ${t.mpesaReceipt || ""} \u2014 ${t.payerName || t.phone}`.trim();
-    book.dr(date, ACCT.mpesa, t.amount, "M-Pesa receipt", ref, memo);
+    book.dr(date, viaNcba(t, ncbaReceipts) ? ACCT.bank : ACCT.mpesa, t.amount, "M-Pesa receipt", ref, memo);
     book.cr(date, ACCT.unallocatedMpesa, t.amount, "M-Pesa receipt", ref, memo);
   }
 }
@@ -74067,8 +74188,8 @@ var ORIGINS = [
   { origin: "hr", label: "People (HR)" }
 ];
 var originFields = (o) => ({ origin: o, originLabel: ORIGINS.find((x) => x.origin === o).label, originOrder: ORIGINS.findIndex((x) => x.origin === o) });
-var r29 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-var ksh = (n) => "Ksh " + r29(n).toLocaleString("en-KE", { maximumFractionDigits: 2 });
+var r210 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var ksh = (n) => "Ksh " + r210(n).toLocaleString("en-KE", { maximumFractionDigits: 2 });
 var RECENT_DAYS = 14;
 var recentSince = () => new Date(Date.now() - RECENT_DAYS * 864e5);
 var decided = (s) => s !== "Pending";
@@ -74081,8 +74202,8 @@ async function costing(u, perms) {
     take: 100
   });
   const make = (q) => {
-    const agreed = q.agreedPrice != null ? r29(q.agreedPrice * (1 + VAT_RATE)) : null;
-    const lowest = r29(q.cost * (1 + q.floorMarginPct / 100) * (1 + VAT_RATE));
+    const agreed = q.agreedPrice != null ? r210(q.agreedPrice * (1 + VAT_RATE)) : null;
+    const lowest = r210(q.cost * (1 + q.floorMarginPct / 100) * (1 + VAT_RATE));
     return {
       key: `costing:${q.id}`,
       source: "costing",
@@ -74188,7 +74309,7 @@ async function amend(u, perms) {
     ...originFields("finance"),
     title: `${a2.expense.category} on ${a2.expense.date}`,
     detail: `${ksh(a2.expense.amount)} \u2192 ${ksh(a2.proposedAmount)}${a2.proposedCategory !== a2.expense.category ? `, category ${a2.expense.category} \u2192 ${a2.proposedCategory}` : ""}${a2.proposedDate !== a2.expense.date ? `, date \u2192 ${a2.proposedDate}` : ""}. Reason: ${a2.reason}`,
-    amount: r29(a2.proposedAmount - a2.expense.amount),
+    amount: r210(a2.proposedAmount - a2.expense.amount),
     requestedByName: a2.requestedByName,
     requestedAt: a2.requestedAt.toISOString(),
     status: a2.status,
@@ -74234,7 +74355,7 @@ async function deletion(u, perms) {
 async function requisition(u, perms) {
   const since = recentSince();
   const rows = await prisma.stockRequisition.findMany({
-    where: { OR: [...perms.canApproveStock && perms.canAccessStock ? [{ status: "Pending", requestedByName: { not: u.name } }] : [], { requestedByName: u.name, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
+    where: { OR: [...perms.canApproveStock && perms.canAccessStock ? [u.role === "Admin" ? { status: "Pending" } : { status: "Pending", requestedByName: { not: u.name } }] : [], { requestedByName: u.name, OR: [{ status: "Pending" }, { decidedAt: { gte: since } }] }] },
     include: { lines: { include: { material: true } }, material: true },
     orderBy: { id: "desc" },
     take: 100
@@ -74249,7 +74370,7 @@ async function requisition(u, perms) {
       ...originFields("stock"),
       title: r.ref ?? `Requisition #${r.id}`,
       detail: `${lines.slice(0, 4).join(", ")}${lines.length > 4 ? ` and ${lines.length - 4} more` : ""}${r.note ? `. ${r.note}` : ""}`,
-      amount: est > 0 ? r29(est) : null,
+      amount: est > 0 ? r210(est) : null,
       requestedByName: r.requestedByName,
       requestedAt: r.requestedAt.toISOString(),
       status: r.status,
@@ -74262,7 +74383,7 @@ async function requisition(u, perms) {
       decide: { approve: `/stock/requisitions/${r.id}/approve`, reject: `/stock/requisitions/${r.id}/reject`, needsReason: false }
     };
   };
-  return { waiting: rows.filter((r) => r.status === "Pending" && r.requestedByName !== u.name).map(make), mine: rows.filter((r) => r.requestedByName === u.name).map(make) };
+  return { waiting: rows.filter((r) => r.status === "Pending" && (r.requestedByName !== u.name || u.role === "Admin" && perms.canApproveStock)).map(make), mine: rows.filter((r) => r.requestedByName === u.name && !(u.role === "Admin" && perms.canApproveStock && r.status === "Pending")).map(make) };
 }
 async function leave(u, perms) {
   const since = recentSince();
@@ -75911,11 +76032,11 @@ stockRouter.post("/requisitions", async (req, res) => {
     lines: requisition2.lines.map((l) => ({ id: l.id, materialId: l.materialId, materialName: l.material.name, qty: l.qty, estUnitCost: l.estUnitCost }))
   });
 });
-async function decideRequisition(id, approve, deciderName, res) {
+async function decideRequisition(id, approve, deciderName, res, isAdmin = false) {
   const requisition2 = await prisma.stockRequisition.findUnique({ where: { id } });
   if (!requisition2) return res.status(404).json({ error: "Requisition not found" });
   if (requisition2.status !== "Pending") return res.status(400).json({ error: "Requisition has already been decided" });
-  if (requisition2.requestedByName === deciderName) {
+  if (requisition2.requestedByName === deciderName && !isAdmin) {
     return res.status(400).json({ error: "You cannot approve or reject your own requisition" });
   }
   const updated = await prisma.stockRequisition.update({
@@ -75925,10 +76046,10 @@ async function decideRequisition(id, approve, deciderName, res) {
   res.json(updated);
 }
 stockRouter.post("/requisitions/:id/approve", requirePermission("canApproveStock"), async (req, res) => {
-  await decideRequisition(Number(req.params.id), true, req.user.name, res);
+  await decideRequisition(Number(req.params.id), true, req.user.name, res, req.user.role === "Admin");
 });
 stockRouter.post("/requisitions/:id/reject", requirePermission("canApproveStock"), async (req, res) => {
-  await decideRequisition(Number(req.params.id), false, req.user.name, res);
+  await decideRequisition(Number(req.params.id), false, req.user.name, res, req.user.role === "Admin");
 });
 stockRouter.get("/takes", async (_req, res) => {
   const takes = await prisma.stockTake.findMany({ include: { material: true }, orderBy: { countedAt: "desc" }, take: 200 });
@@ -76185,7 +76306,7 @@ stockRouter.post("/purchases/:id/accept", receivers, async (req, res) => {
   const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) }, include: { lines: true } });
   if (!purchase) return res.status(404).json({ error: "Purchase not found" });
   if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting receipt" });
-  if (purchase.capturedByName === req.user.name) {
+  if (purchase.capturedByName === req.user.name && req.user.role !== "Admin") {
     return res.status(400).json({ error: "You cannot receive a purchase you captured yourself" });
   }
   const given = new Map((parsed.data.lines ?? []).map((l) => [l.lineId, l.receivedQty]));
@@ -76207,7 +76328,7 @@ stockRouter.post("/purchases/:id/reject", receivers, async (req, res) => {
   const purchase = await prisma.purchase.findUnique({ where: { id: Number(req.params.id) } });
   if (!purchase) return res.status(404).json({ error: "Purchase not found" });
   if (purchase.status !== "Held") return res.status(400).json({ error: "Purchase is not awaiting receipt" });
-  if (purchase.capturedByName === req.user.name) {
+  if (purchase.capturedByName === req.user.name && req.user.role !== "Admin") {
     return res.status(400).json({ error: "You cannot reject a purchase you captured yourself" });
   }
   await prisma.purchase.update({ where: { id: purchase.id }, data: { status: "Rejected", rejectReason: parsed.data.reason, acceptedByName: req.user.name, acceptedAt: /* @__PURE__ */ new Date() } });
@@ -76819,10 +76940,10 @@ reportsRouter.get("/business-head-detail", async (req, res) => {
 var import_express8 = __toESM(require_express2());
 
 // apps/api/src/costingDocument.ts
-var r210 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r211 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function quotedTotal(q) {
   const agreed = q.agreedPrice != null && (q.approval === "" || q.approval === "Approved");
-  return r210((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
+  return r211((agreed ? q.agreedPrice : q.price) * (1 + VAT_RATE));
 }
 function quoteDocument(q) {
   const total = quotedTotal(q);
@@ -77249,7 +77370,7 @@ costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
   const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
   const o = { ...parsed.data, mode: sees ? parsed.data.mode : "tier" };
   if (o.paper >= s.papers.length || o.cover >= s.papers.length) return res.status(400).json({ error: "That paper is not on the list" });
-  const unit = (job) => r211(printCalc({ ...o, ...job }, s).unitTotal);
+  const unit = (job) => r212(printCalc({ ...o, ...job }, s).unitTotal);
   res.json({
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
@@ -77324,11 +77445,11 @@ costingRouter.put("/print/settings", admin, async (req, res) => {
   await prisma.printCostSetting.upsert({ where: { id: 1 }, update: { data }, create: { id: 1, data } });
   res.json(next);
 });
-var r211 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+var r212 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function viewOf(q, sees) {
-  const vat = r211(q.price * VAT_RATE);
+  const vat = r212(q.price * VAT_RATE);
   const floor2 = costingFloor(q.cost, q.floorMarginPct);
-  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r211(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
+  const agreed = q.agreedPrice != null ? costingAgreement(q.cost, r212(q.agreedPrice * (1 + VAT_RATE)), q.floorMarginPct) : null;
   return {
     id: q.id,
     quoteNo: q.quoteNo,
@@ -77349,7 +77470,7 @@ function viewOf(q, sees) {
     cost: q.cost,
     price: q.price,
     vat,
-    total: r211(q.price + vat),
+    total: r212(q.price + vat),
     // the lowest the price may be agreed at without approval (a price, not a margin)
     lowestPrice: floor2.price,
     lowestTotal: floor2.total,
@@ -77360,7 +77481,7 @@ function viewOf(q, sees) {
     lostReason: q.lostReason,
     orderId: q.orderId,
     orderNo: q.orderNo,
-    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r211(q.price - q.cost) } : {}
+    ...sees ? { marginPct: q.marginPct, floorMarginPct: q.floorMarginPct, profit: r212(q.price - q.cost) } : {}
   };
 }
 async function seesAllQuotes(user) {
@@ -77529,7 +77650,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
   if (q.approval === "Pending") return res.status(400).json({ error: "The agreed price is under the floor and is waiting for a manager\u2019s approval" });
   if (q.approval === "Rejected") return res.status(400).json({ error: "The agreed price was not approved \u2014 agree another price" });
   const service = await costedService(q.jobType);
-  const total = r211(q.agreedPrice * (1 + VAT_RATE));
+  const total = r212(q.agreedPrice * (1 + VAT_RATE));
   const form = walkinSchema.safeParse({
     customerName: body.data.customerName?.trim() || q.clientName,
     phone: body.data.phone ?? q.phone,
@@ -77540,7 +77661,7 @@ costingRouter.post("/quotes/:id/capture", mayCost, async (req, res) => {
     paymentTiming: body.data.paymentTiming,
     payments: body.data.paymentTiming === "onAcceptance" ? body.data.payments : void 0,
     // one line for the whole job at the price agreed (VAT included), with what the job costs us (VAT included, as a supplier bills it) kept on it for Finance
-    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r211(q.cost * (1 + VAT_RATE)) }]
+    lineItems: [{ itemType: "service", serviceId: service.id, qty: 1, unitPrice: total, description: q.summary, supplierCost: r212(q.cost * (1 + VAT_RATE)) }]
   });
   if (!form.success) return res.status(400).json({ error: form.error.issues[0]?.message ?? "Invalid input" });
   const quoteId = q.id;
@@ -78410,12 +78531,12 @@ var stkPushSchema = external_exports.object({
 });
 mpesaRouter.post("/stkpush", requireAuth, async (req, res) => {
   const ncba = await loadNcbaConfig();
-  const viaNcba = ncba.enabled;
-  if (viaNcba && !ncbaReady(ncba)) return res.status(501).json({ error: "NCBA isn't fully set up \u2014 an Admin can finish it under Master Data \u2192 NCBA" });
+  const viaNcba2 = ncba.enabled;
+  if (viaNcba2 && !ncbaReady(ncba)) return res.status(501).json({ error: "NCBA isn't fully set up \u2014 an Admin can finish it under Master Data \u2192 NCBA" });
   const cfg = await loadMpesaConfig();
-  if (!viaNcba && !isReady(cfg)) return res.status(501).json({ error: NOT_SET_UP });
-  const urls = viaNcba ? null : callbackUrls(cfg);
-  if (!viaNcba && !urls) return res.status(501).json({ error: "M-Pesa needs this installation\u2019s public web address \u2014 an Admin can add it under Master Data \u2192 M-Pesa" });
+  if (!viaNcba2 && !isReady(cfg)) return res.status(501).json({ error: NOT_SET_UP });
+  const urls = viaNcba2 ? null : callbackUrls(cfg);
+  if (!viaNcba2 && !urls) return res.status(501).json({ error: "M-Pesa needs this installation\u2019s public web address \u2014 an Admin can add it under Master Data \u2192 M-Pesa" });
   const parsed = stkPushSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   if (parsed.data.orderId) {
@@ -78431,7 +78552,7 @@ mpesaRouter.post("/stkpush", requireAuth, async (req, res) => {
   const phone = normalizePhone(parsed.data.phone);
   if (!phone) return res.status(400).json({ error: "Enter a valid Kenyan phone number (e.g. 07xx xxx xxx)" });
   if (await prisma.mpesaTransaction.count({ where: { phone, kind: "STK", createdAt: { gt: new Date(Date.now() - 10 * 6e4) } } }) >= 3) return res.status(429).json({ error: "That number has already been sent several prompts in the last few minutes. Ask the customer to check their phone, or wait a little." });
-  if (viaNcba) {
+  if (viaNcba2) {
     try {
       const sent = await ncbaInitiate(ncba, { phone, amount: parsed.data.amount });
       const id = `NCBA-${sent.transactionId}`;
@@ -78722,7 +78843,7 @@ ncbaRouter.post("/credentials/generate-stk", requireAuth, requireRole("Admin"), 
   resetNcbaToken();
   res.json({ ...creds, settings: await full() });
 });
-ncbaRouter.get("/notifications", requireAuth, requireRole("Admin"), async (_req, res) => {
+ncbaRouter.get("/notifications", requireAuth, requirePermission("canAccessAccounting", "canManagePayments"), async (_req, res) => {
   const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: "desc" }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });
   res.json(rows);
 });
@@ -79190,7 +79311,9 @@ var productOf = (v) => v === "uv" ? "uv" : "dtf";
 var settingsId = (product) => product === "uv" ? 2 : 1;
 async function getSettings(product = "dtf") {
   if (product === "uv") return prisma.dtfSetting.upsert({ where: { id: 2 }, update: {}, create: { id: 2, ...UV_DTF_SETTINGS } });
-  return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
+  const s = await prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
+  if (s.layoutWidthCm === 0) return prisma.dtfSetting.update({ where: { id: 1 }, data: { layoutWidthCm: DEFAULT_DTF_SETTINGS.layoutWidthCm } });
+  return s;
 }
 async function uvRollIds() {
   return (await prisma.dtfRoll.findMany({ where: { product: "uv" }, select: { id: true } })).map((r) => r.id);
@@ -79323,7 +79446,7 @@ dtfRouter.get("/data", async (req, res) => {
     getSettings(product),
     prisma.dtfRoll.findMany({ where: { product, ...openOnly ? { status: "open" } : {} }, orderBy: { id: "asc" } }),
     prisma.dtfFilmSale.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] }),
-    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
+    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, include: { items: { select: { widthCm: true, heightCm: true, qty: true } } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
   ]);
   const uvIds = await uvRollIds();
   res.json({
@@ -79332,6 +79455,7 @@ dtfRouter.get("/data", async (req, res) => {
     settings: {
       rollLengthM: settings.rollLengthM,
       rollWidthCm: settings.rollWidthCm,
+      layoutWidthCm: settings.layoutWidthCm,
       stdPricePerM: settings.stdPricePerM,
       minPricePerM: settings.minPricePerM,
       wastageTolerancePct: settings.wastageTolerancePct,
@@ -79378,7 +79502,11 @@ dtfRouter.get("/data", async (req, res) => {
       chargedTotal: j.chargedTotal,
       sheetId: j.sheetId,
       approvalStatus: j.approvalStatus,
-      orderId: j.orderId
+      orderId: j.orderId,
+      pricedBySales: j.pricedBySales,
+      filmWidthCm: j.filmWidthCm,
+      areaCm2: Math.round(j.items.reduce((a2, i) => a2 + i.widthCm * i.heightCm * i.qty, 0) * 100) / 100,
+      capturedByName: j.capturedByName
     })),
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending", ...product === "uv" ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } } } }) : 0
   });
@@ -79679,6 +79807,7 @@ async function spendDiscountRequest(tx, id, orderNo) {
 var settingsSchema6 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
   rollWidthCm: external_exports.number().positive(),
+  layoutWidthCm: external_exports.number().min(0).max(500).optional(),
   stdPricePerM: external_exports.number().positive(),
   minPricePerM: external_exports.number().positive(),
   wastageTolerancePct: external_exports.number().min(0).max(100),
@@ -80162,6 +80291,141 @@ dtfRouter.post("/sheets", async (req, res) => {
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the sheet") });
   }
 });
+var printSchema = external_exports.object({
+  rollId: external_exports.string().min(1),
+  jobOn: dateStr2.optional(),
+  /** The client for rows that name none. */
+  client: external_exports.string().max(200).default(""),
+  phone: external_exports.string().max(40).default(""),
+  runningMetres: external_exports.number().positive("Enter the length of film used (m)"),
+  rows: external_exports.array(
+    external_exports.object({
+      client: external_exports.string().max(200).default(""),
+      phone: external_exports.string().max(40).default(""),
+      widthCm: external_exports.number().positive("Enter the width of the artwork"),
+      heightCm: external_exports.number().positive("Enter the height of the artwork"),
+      qty: external_exports.number().int("Enter a whole number of artworks").positive("Enter how many artworks"),
+      price: external_exports.number().positive("Enter the price of one artwork")
+    })
+  ).min(1, "Add at least one row of artworks").max(80),
+  clientPayments: external_exports.array(external_exports.object({ key: external_exports.string(), payments: external_exports.array(paymentLineSchema).max(6) })).default([]),
+  sourcedBy: external_exports.number().int().nullable().optional(),
+  staffId: external_exports.number().int().nullable().optional()
+});
+dtfRouter.post("/prints", async (req, res) => {
+  const parsed = printSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const found = await openRoll(d.rollId);
+  if ("error" in found) return res.status(400).json({ error: found.error });
+  const product = productOf(found.roll.product);
+  const cap = await resolveCapture(req.user, d.staffId, d.sourcedBy);
+  if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
+  const label = await labelFor(cap.staffId);
+  const settings = await getSettings(product);
+  const filmWidth = settings.layoutWidthCm > 0 ? settings.layoutWidthCm : settings.rollWidthCm;
+  const calc = artworkListCalc(d.rows, d.runningMetres, filmWidth, d.client, d.phone);
+  if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? "The print cannot be recorded" });
+  for (const c of calc.clients) {
+    const claim = await claimProblem(req.user, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
+    if (claim) return res.status(400).json({ error: claim });
+  }
+  const payFor = new Map(d.clientPayments.map((p) => [p.key, p.payments]));
+  for (const c of calc.clients) {
+    const paid = (payFor.get(c.key) ?? []).reduce((a2, p) => a2 + p.amount, 0);
+    if (paid > c.amount + 5e-3) return res.status(400).json({ error: `${c.client || "Walk-in"}: the amount paid cannot exceed their order total of ${c.amount}` });
+  }
+  const sheetId = (0, import_node_crypto12.randomUUID)();
+  try {
+    const made = await prisma.$transaction(async (tx) => {
+      const service = await dtfService(tx, "artwork", product);
+      const out = [];
+      for (const c of calc.clients) {
+        const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: artworkSizeLabel(r.widthCm, r.heightCm), heatPressFee: null }));
+        const [first, ...rest] = lines;
+        const order = await createDtfOrder(tx, {
+          product,
+          priceList: label,
+          customerName: c.client.trim() || WALK_IN_CLIENT,
+          phone: c.phone.trim(),
+          staffId: cap.staffId,
+          capturedById: cap.capturedById,
+          capturedByName: cap.capturedByName,
+          serviceLine: { itemType: "service", serviceId: service.id, ...first },
+          moreServiceLines: rest,
+          materialLines: [],
+          payments: payFor.get(c.key) ?? [],
+          sourcedBy: d.sourcedBy,
+          freelanceAgentId: null,
+          serviceBase: first.unitPrice
+          // sold at the price the sales person set: nothing above it to earn a premium on
+        });
+        await tx.dtfArtworkJob.create({
+          data: {
+            rollId: d.rollId,
+            jobOn: d.jobOn ?? todayStr(),
+            client: c.client.trim() || WALK_IN_CLIENT,
+            runningMetres: c.metres,
+            pieces: c.pieces,
+            fixedChargePerMetreAtJob: 0,
+            // no recommended price: the price is what the sales person charged
+            minPricePerPieceAtJob: 0,
+            chargedPerPiece: null,
+            chargedTotal: c.amount,
+            pricedBySales: true,
+            filmWidthCm: filmWidth,
+            sheetId,
+            approvalStatus: "Approved",
+            capturedByName: req.user.name,
+            orderId: order.id,
+            items: { create: c.rows.map((r) => ({ widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, unitPrice: r.price })) }
+          }
+        });
+        out.push(order);
+      }
+      return out;
+    });
+    res.status(201).json({
+      sheetId,
+      enteredTotal: calc.enteredTotal,
+      film: { metres: calc.metres, widthCm: filmWidth, filmAreaCm2: calc.filmAreaCm2, artworkAreaCm2: calc.artworkAreaCm2, efficiencyPct: calc.efficiencyPct },
+      orders: made.map((m) => serializeDetail(m))
+    });
+  } catch (err) {
+    res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the print") });
+  }
+});
+dtfRouter.get("/layout", manageOnly, async (req, res) => {
+  const product = productOf(req.query.product);
+  const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
+  const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
+  const dateRange2 = from || to ? { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } : void 0;
+  const jobs = await prisma.dtfArtworkJob.findMany({
+    where: { roll: { product }, ...dateRange2 ? { jobOn: dateRange2 } : {} },
+    include: { items: { select: { widthCm: true, heightCm: true, qty: true } } },
+    orderBy: [{ jobOn: "desc" }, { id: "desc" }]
+  });
+  const layoutJobs = jobs.map((j) => ({
+    id: j.id,
+    sheetId: j.sheetId,
+    jobOn: j.jobOn,
+    rollId: j.rollId,
+    runningMetres: j.runningMetres,
+    filmWidthCm: j.filmWidthCm,
+    areaCm2: j.items.reduce((a2, i) => a2 + i.widthCm * i.heightCm * i.qty, 0),
+    capturedByName: j.capturedByName
+  }));
+  const prints = layoutPrints(layoutJobs);
+  const byName = /* @__PURE__ */ new Map();
+  for (const p of prints) byName.set(p.by || "\u2014", [...byName.get(p.by || "\u2014") ?? [], p]);
+  res.json({
+    product,
+    summary: layoutSummary(prints),
+    byPerson: [...byName.entries()].map(([name2, list]) => ({ name: name2, ...layoutSummary(list) })).sort((a2, b) => b.efficiencyPct - a2.efficiencyPct),
+    prints: prints.slice(0, 200),
+    jobsWithoutSizes: layoutJobs.filter((j) => !(j.filmWidthCm > 0 && j.areaCm2 > 0)).length
+  });
+});
 var orderMoney = (o) => {
   const t = computeOrderTotals(
     { lineItems: o.lineItems.map((li) => ({ itemType: li.itemType, serviceId: li.serviceId, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee })), orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt },
@@ -80204,8 +80468,8 @@ dtfRouter.get("/daily", manageOnly, async (req, res) => {
   for (const j of jobs) byDay.set(j.jobOn, [...byDay.get(j.jobOn) ?? [], j]);
   const days = [...byDay.entries()].map(([date, list]) => {
     const orders = list.map((j) => {
-      const calc = { id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal };
-      const recommended = jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
+      const calc = { id: "", rollId: j.rollId, jobOn: j.jobOn, client: j.client, runningMetres: j.runningMetres, pieces: j.pieces, fixedChargePerMetreAtJob: j.fixedChargePerMetreAtJob, minPricePerPieceAtJob: j.minPricePerPieceAtJob, chargedPerPiece: j.chargedPerPiece, chargedTotal: j.chargedTotal, pricedBySales: j.pricedBySales };
+      const recommended = j.pricedBySales ? jobTotals(calc).finalPerPiece : jobCalc(j.runningMetres, j.pieces, j.fixedChargePerMetreAtJob, j.minPricePerPieceAtJob).finalPerPiece;
       const final = jobTotals(calc).finalPerPiece;
       const money5 = j.order ? orderMoney(j.order) : { total: round2(final * j.pieces), paid: 0, balance: round2(final * j.pieces) };
       return { jobId: j.id, orderId: j.orderId, orderNo: j.order?.orderNo ?? null, client: j.client || WALK_IN_CLIENT, rollId: j.rollId, pieces: j.pieces, runningMetres: j.runningMetres, recommendedPerPiece: recommended, finalPerPiece: final, approval: j.approvalStatus, capturedByName: j.capturedByName, ...money5 };
@@ -81051,65 +81315,6 @@ accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => 
   if (!tx || tx.status !== "Unmatched") return res.status(400).json({ error: "Only an unmatched payment can be dismissed" });
   await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Dismissed", dismissedNote: note.slice(0, 200), appliedByName: req.user.name, appliedAt: /* @__PURE__ */ new Date() } });
   res.json({ ok: true });
-});
-var SETTLE = "MpesaSettlement";
-accountingRouter.get("/mpesa/settlements", ...accountingOnly, async (_req, res) => {
-  const ledger = await loadLedger();
-  const mp = ledger.byCode.get(ACCT.mpesa);
-  const mine = mp ? ledger.postings.filter((p) => p.accountId === mp.id) : [];
-  const balance = round2(mine.reduce((a2, p) => a2 + p.debit - p.credit, 0));
-  const days = /* @__PURE__ */ new Map();
-  for (const p of mine) {
-    const d = days.get(p.date) ?? { date: p.date, received: 0, settled: 0 };
-    d.received = round2(d.received + p.debit);
-    if (p.source === SETTLE) d.settled = round2(d.settled + p.credit);
-    days.set(p.date, d);
-  }
-  const entries = await prisma.journalEntry.findMany({ where: { source: SETTLE }, include: { lines: { include: { account: true } } }, orderBy: [{ date: "desc" }, { id: "desc" }], take: 60 });
-  res.json({
-    balance,
-    days: [...days.values()].sort((a2, b) => a2.date < b.date ? 1 : -1).slice(0, 14),
-    settlements: entries.map((e) => ({
-      id: e.id,
-      ref: e.ref,
-      date: e.date,
-      memo: e.memo,
-      createdByName: e.createdByName,
-      amount: round2(e.lines.filter((l) => l.account.code === ACCT.bank).reduce((a2, l) => a2 + l.debit, 0)),
-      charges: round2(e.lines.filter((l) => l.account.code !== ACCT.bank && l.account.code !== ACCT.mpesa).reduce((a2, l) => a2 + l.debit, 0))
-    }))
-  });
-});
-var settleSchema = external_exports.object({
-  date: dateStr3,
-  amount: external_exports.number().positive("Enter the amount that reached the bank"),
-  charges: external_exports.number().min(0).default(0),
-  reference: external_exports.string().trim().max(60).default(""),
-  note: external_exports.string().trim().max(120).default("")
-});
-accountingRouter.post("/mpesa/settlements", ...accountingOnly, async (req, res) => {
-  const parsed = settleSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
-  const d = parsed.data;
-  if (d.date > todayStr()) return res.status(400).json({ error: "A settlement cannot be dated in the future" });
-  const total = round2(d.amount + d.charges);
-  const accounts = await prisma.account.findMany({ where: { code: { in: [ACCT.bank, ACCT.mpesa, "5200"] } } });
-  const acct = (code) => accounts.find((a2) => a2.code === code);
-  if (!acct(ACCT.bank) || !acct(ACCT.mpesa) || d.charges > 0 && !acct("5200")) return res.status(400).json({ error: "The Bank, M-Pesa or Bank Charges account is missing from the chart of accounts" });
-  const ledger = await loadLedger();
-  const mp = ledger.byCode.get(ACCT.mpesa);
-  const balance = round2((mp ? ledger.postings.filter((p) => p.accountId === mp.id) : []).reduce((a2, p) => a2 + p.debit - p.credit, 0));
-  if (total > balance + 5e-3) return res.status(400).json({ error: `Only Ksh ${balance.toLocaleString("en-KE")} is in the M-Pesa account, so Ksh ${total.toLocaleString("en-KE")} cannot be settled out of it. Check the amount, or that the day's payments have been recorded.` });
-  const prefix = `STL-${d.date.replace(/-/g, "")}-`;
-  const same4 = await prisma.journalEntry.count({ where: { ref: { startsWith: prefix } } });
-  const memo = ["M-Pesa settled to bank", d.reference ? `ref ${d.reference}` : "", d.note].filter(Boolean).join(" \u2014 ");
-  const lines = [
-    { accountId: acct(ACCT.bank).id, debit: round2(d.amount), credit: 0, memo },
-    ...d.charges > 0 ? [{ accountId: acct("5200").id, debit: round2(d.charges), credit: 0, memo: "Settlement charges" }] : [],
-    { accountId: acct(ACCT.mpesa).id, debit: 0, credit: total, memo }
-  ];
-  const entry = await prisma.journalEntry.create({ data: { ref: prefix + String(same4 + 1).padStart(2, "0"), date: d.date, memo, source: SETTLE, createdByName: req.user.name, lines: { create: lines } } });
-  res.status(201).json({ id: entry.id, ref: entry.ref });
 });
 
 // apps/api/src/routes/production.ts

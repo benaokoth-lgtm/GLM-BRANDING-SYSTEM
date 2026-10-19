@@ -230,6 +230,7 @@ const printJobSchema = z.object({
   coverSep: z.boolean().default(false),
   lam: z.boolean().default(false),
   fold: z.boolean().default(true),
+  booklet: z.enum(['A4', 'A5']).default('A4'),
   size: z.enum(['A4', 'B5']).default('A4'),
   sides: z.union([z.literal(1), z.literal(2)]).default(2),
   qty: z.number().int().min(1, 'Enter at least 1').max(1_000_000),
@@ -258,18 +259,20 @@ costingRouter.post('/print/quote', mayCost, async (req, res) => {
 
 // the price list: the VAT-inclusive price of one copy (booklets) or piece (brochures) at the usual quantities, for the paper and finishing chosen
 costingRouter.post('/print/pricelist', mayCost, async (req, res) => {
-  const parsed = printJobSchema.omit({ qty: true, product: true, pages: true, size: true, sides: true }).safeParse(req.body);
+  const parsed = printJobSchema.omit({ qty: true, product: true, pages: true, size: true, sides: true, booklet: true }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const [sees, s] = await Promise.all([canSeeCosts(req.user!.role), printSettings()]);
   const o = { ...parsed.data, mode: sees ? parsed.data.mode : ('tier' as const) };
   if (o.paper >= s.papers.length || o.cover >= s.papers.length) return res.status(400).json({ error: 'That paper is not on the list' });
-  const unit = (job: Pick<PrintJob, 'product' | 'pages' | 'size' | 'sides' | 'qty'>) => r2(printCalc({ ...o, ...job }, s).unitTotal);
+  const unit = (job: Pick<PrintJob, 'product' | 'pages' | 'size' | 'sides' | 'qty' | 'booklet'>) => r2(printCalc({ ...o, ...job }, s).unitTotal);
   res.json({
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
-    booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: 'eulogy', pages, size: 'A4', sides: 2, qty })) })),
+    booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: 'eulogy', pages, size: 'A4', sides: 2, qty, booklet: 'A4' })) })),
+    // the A5 booklet: the same pages on A4 sheets, costed from the A3 sheet rate
+    bookletsA5: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: 'eulogy', pages, size: 'A4', sides: 2, qty, booklet: 'A5' })) })),
     brochures: (['A4', 'B5'] as const).flatMap((size) =>
-      ([1, 2] as const).map((sides) => ({ name: size + (sides === 1 ? ' single side' : ' double side'), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: 'brochure', pages: 8, size, sides, qty })) })),
+      ([1, 2] as const).map((sides) => ({ name: size + (sides === 1 ? ' single side' : ' double side'), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: 'brochure', pages: 8, size, sides, qty, booklet: 'A4' })) })),
     ),
   });
 });
@@ -324,7 +327,7 @@ costingRouter.post('/print/quotes', mayCost, async (req, res) => {
 const money = z.number().min(0).max(100_000_000);
 const printSettingsSchema = z.object({
   papers: z.array(z.object({ name: z.string().trim().min(1).max(60), one: money, two: money })).min(1).max(40),
-  fees: z.object({ staple: money, trim: money, fold: money, lam: money, designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: z.number().min(0).max(100) }),
+  fees: z.object({ staple: money, trim: money, fold: money, lam: money, cut: money.default(0), designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: z.number().min(0).max(100) }),
   tiers: z.array(z.object({ min: z.number().int(), pct: z.number().min(0).max(1000) })).min(1).max(12),
   floorMarginPct: z.number().min(0).max(1000),
 });

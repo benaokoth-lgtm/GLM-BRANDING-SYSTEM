@@ -37,6 +37,7 @@ interface PriceList {
   bookletQtys: number[];
   brochureQtys: number[];
   booklets: { pages: number; sheets: number; cells: number[] }[];
+  bookletsA5: { pages: number; sheets: number; cells: number[] }[];
   brochures: { name: string; ups: number; cells: number[] }[];
 }
 type View = 'calc' | 'list' | 'rates';
@@ -50,7 +51,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
   const [config, setConfig] = useState<Config | null>(null);
   const [loadError, setLoadError] = useState('');
   const [view, setView] = useState<View>('calc');
-  const [job, setJob] = useState<{ product: PrintProduct; pages: number; paper: number; cover: number; coverSep: boolean; lam: boolean; fold: boolean; size: PrintSize; sides: 1 | 2; qty: string; mode: 'tier' | 'flat' }>({
+  const [job, setJob] = useState<{ product: PrintProduct; pages: number; paper: number; cover: number; coverSep: boolean; lam: boolean; fold: boolean; booklet: 'A4' | 'A5'; size: PrintSize; sides: 1 | 2; qty: string; mode: 'tier' | 'flat' }>({
     product: 'eulogy',
     pages: 8,
     paper: 0,
@@ -58,6 +59,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
     coverSep: false,
     lam: false,
     fold: true,
+    booklet: 'A4',
     size: 'A4',
     sides: 2,
     qty: '100',
@@ -82,7 +84,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
   const sees = !!config?.canSeeCosts;
   const brochure = job.product === 'brochure';
   const qtyNum = Math.max(1, parseInt(job.qty, 10) || 1);
-  const body: PrintJob = { product: job.product, pages: job.pages, paper: job.paper, cover: job.cover, coverSep: job.coverSep, lam: job.lam, fold: job.fold, size: job.size, sides: job.sides, qty: qtyNum, mode: job.mode };
+  const body: PrintJob = { product: job.product, pages: job.pages, paper: job.paper, cover: job.cover, coverSep: job.coverSep, lam: job.lam, fold: job.fold, booklet: job.product === 'eulogy' ? job.booklet : 'A4', size: job.size, sides: job.sides, qty: qtyNum, mode: job.mode };
   const key = JSON.stringify(body);
 
   // the quote follows what is chosen (a moment after the last key)
@@ -187,8 +189,18 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
 
             {!brochure ? (
               <>
+                {job.product === 'eulogy' && (
+                  <div>
+                    <div style={label}>Booklet size</div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                      {chip('A4 booklet — A3 sheets folded', job.booklet === 'A4', () => set({ booklet: 'A4' }))}
+                      {chip('A5 booklet — A4 sheets folded', job.booklet === 'A5', () => set({ booklet: 'A5' }))}
+                    </div>
+                    {job.booklet === 'A5' && <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Costed from the A3 sheet rate: two A4 sheets are cut from each A3 sheet.</p>}
+                  </div>
+                )}
                 <div>
-                  <div style={label}>Pages — {job.pages / 4} × A3 per copy</div>
+                  <div style={label}>Pages — {job.pages / 4} × {job.product === 'eulogy' && job.booklet === 'A5' ? 'A4' : 'A3'} per copy</div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{PRINT_PAGE_OPTIONS.map((p) => chip(String(p), job.pages === p, () => set({ pages: p })))}</div>
                 </div>
                 <div>
@@ -349,7 +361,7 @@ function PriceListView({
       {list && (
         <>
           <div>
-            <div className="card-kicker">Eulogies &amp; company profiles</div>
+            <div className="card-kicker">Eulogies &amp; company profiles — A4 booklets</div>
             <p className="note" style={{ marginTop: 0 }}>Price per copy, VAT inclusive, KES. Design, proofing and delivery are spread across the run.</p>
             <div style={{ overflowX: 'auto' }}>
               <table className="table" style={{ minWidth: 640 }}>
@@ -364,6 +376,34 @@ function PriceListView({
                 </thead>
                 <tbody>
                   {list.booklets.map((r) => (
+                    <tr key={r.pages}>
+                      <td><b>{r.pages}</b></td>
+                      <td>{r.sheets}</td>
+                      {r.cells.map((c, i) => (
+                        <td key={i} style={numStyle}>{f2(c)}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div className="card-kicker">Eulogies — A5 booklets</div>
+            <p className="note" style={{ marginTop: 0 }}>The same pages on A4 sheets folded to A5, costed from the A3 sheet rate (two A4 sheets from each). Price per copy, VAT inclusive, KES.</p>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="table" style={{ minWidth: 640 }}>
+                <thead>
+                  <tr>
+                    <th>Pages</th>
+                    <th>A4 sheets</th>
+                    {list.bookletQtys.map((q) => (
+                      <th key={q} style={{ textAlign: 'right' }}>{q} copies</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.bookletsA5.map((r) => (
                     <tr key={r.pages}>
                       <td><b>{r.pages}</b></td>
                       <td>{r.sheets}</td>

@@ -66767,7 +66767,7 @@ var DEFAULT_PRINT_SETTINGS = {
     { name: "200gsm gloss", one: 55, two: 92 },
     { name: "250gsm matt cover", one: 70, two: 115 }
   ],
-  fees: { staple: 8, trim: 6, fold: 10, lam: 60, designEu: 3e3, designPr: 3e3, designBr: 1500, proof: 300, deliver: 500, waste: 5 },
+  fees: { staple: 8, trim: 6, fold: 10, lam: 60, cut: 0, designEu: 3e3, designPr: 3e3, designBr: 1500, proof: 300, deliver: 500, waste: 5 },
   tiers: [
     { min: 1, pct: 50 },
     { min: 100, pct: 35 },
@@ -66785,6 +66785,7 @@ var PRINT_FEE_LABELS = [
   { key: "trim", label: "Trimming", unit: "KES / set" },
   { key: "fold", label: "Folding / creasing", unit: "KES / set" },
   { key: "lam", label: "Lamination", unit: "KES / A3 sheet" },
+  { key: "cut", label: "Cutting A3 into A4 (A5 booklets)", unit: "KES / A3 sheet" },
   { key: "waste", label: "Brochure wastage", unit: "% of sheets" }
 ];
 function printSettingsProblem(s) {
@@ -66833,6 +66834,24 @@ function printCalc(job, s) {
     add("A3 printing", total2 * rate2, `${total2} sheets \xD7 ${rate2} (${base3} + ${total2 - base3} waste)`);
     if (job.lam) add("Lamination", total2 * f.lam, `${total2} sheets`);
     add("Design/layout", f.designBr, "per job");
+  } else if (job.booklet === "A5") {
+    const n = Math.max(1, Math.round(job.pages / 4));
+    const insideA4 = (job.coverSep ? n - 1 : n) * qty;
+    const coverA4 = job.coverSep ? qty : 0;
+    const a3Inside = Math.ceil(insideA4 / 2);
+    const a3Cover = Math.ceil(coverA4 / 2);
+    sheets = a3Inside + a3Cover;
+    if (insideA4 > 0) add("Inside sheets", a3Inside * paper.two, `${insideA4} A4 sheets = ${a3Inside} A3 \xD7 ${paper.two}`);
+    if (job.coverSep) {
+      const cover = s.papers[job.cover] ?? paper;
+      add("Cover sheet", a3Cover * cover.two, `${cover.name}: ${coverA4} A4 covers = ${a3Cover} A3 \xD7 ${cover.two}`);
+    }
+    if (job.lam) add("Cover lamination", f.lam * Math.ceil(qty / 2), `${qty} A4 covers = ${Math.ceil(qty / 2)} A3 sheets`);
+    if (f.cut > 0) add("Cutting A3 into A4", f.cut * sheets, `${sheets} A3 sheets`);
+    if (n > 1) add("Stapling", f.staple * qty, `${qty} sets`);
+    add("Trimming", f.trim * qty, `${qty} sets`);
+    if (job.fold) add("Folding / creasing", f.fold * qty, `${qty} sets`);
+    add("Design/layout", job.product === "eulogy" ? f.designEu : f.designPr, "per job");
   } else {
     const n = Math.max(1, Math.round(job.pages / 4));
     sheets = n * qty;
@@ -66864,7 +66883,7 @@ function printSpec(job, s) {
   const n = Math.max(1, Math.round(job.pages / 4));
   const cover = job.coverSep ? ` with a ${(s.papers[job.cover] ?? paper).name} cover${job.lam ? ", laminated" : ""}` : job.lam ? ", laminated cover" : "";
   const finish = [n > 1 ? "stapled" : null, "trimmed", job.fold ? "folded" : null].filter(Boolean);
-  return `${PRINT_PRODUCT_LABEL[job.product]}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(", ") + " and " + finish[finish.length - 1] : finish[0]}`;
+  return `${PRINT_PRODUCT_LABEL[job.product]}${job.booklet === "A5" ? " (A5 booklet)" : ""}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(", ") + " and " + finish[finish.length - 1] : finish[0]}`;
 }
 
 // packages/shared/src/salesTypes.ts
@@ -77200,6 +77219,7 @@ var printJobSchema = external_exports.object({
   coverSep: external_exports.boolean().default(false),
   lam: external_exports.boolean().default(false),
   fold: external_exports.boolean().default(true),
+  booklet: external_exports.enum(["A4", "A5"]).default("A4"),
   size: external_exports.enum(["A4", "B5"]).default("A4"),
   sides: external_exports.union([external_exports.literal(1), external_exports.literal(2)]).default(2),
   qty: external_exports.number().int().min(1, "Enter at least 1").max(1e6),
@@ -77223,7 +77243,7 @@ costingRouter.post("/print/quote", mayCost, async (req, res) => {
   res.json(printView(job, s, sees));
 });
 costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
-  const parsed = printJobSchema.omit({ qty: true, product: true, pages: true, size: true, sides: true }).safeParse(req.body);
+  const parsed = printJobSchema.omit({ qty: true, product: true, pages: true, size: true, sides: true, booklet: true }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const [sees, s] = await Promise.all([canSeeCosts(req.user.role), printSettings()]);
   const o = { ...parsed.data, mode: sees ? parsed.data.mode : "tier" };
@@ -77232,9 +77252,11 @@ costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
   res.json({
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
-    booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: "eulogy", pages, size: "A4", sides: 2, qty })) })),
+    booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: "eulogy", pages, size: "A4", sides: 2, qty, booklet: "A4" })) })),
+    // the A5 booklet: the same pages on A4 sheets, costed from the A3 sheet rate
+    bookletsA5: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: "eulogy", pages, size: "A4", sides: 2, qty, booklet: "A5" })) })),
     brochures: ["A4", "B5"].flatMap(
-      (size) => [1, 2].map((sides) => ({ name: size + (sides === 1 ? " single side" : " double side"), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: "brochure", pages: 8, size, sides, qty })) }))
+      (size) => [1, 2].map((sides) => ({ name: size + (sides === 1 ? " single side" : " double side"), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: "brochure", pages: 8, size, sides, qty, booklet: "A4" })) }))
     )
   });
 });
@@ -77284,7 +77306,7 @@ costingRouter.post("/print/quotes", mayCost, async (req, res) => {
 var money = external_exports.number().min(0).max(1e8);
 var printSettingsSchema = external_exports.object({
   papers: external_exports.array(external_exports.object({ name: external_exports.string().trim().min(1).max(60), one: money, two: money })).min(1).max(40),
-  fees: external_exports.object({ staple: money, trim: money, fold: money, lam: money, designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: external_exports.number().min(0).max(100) }),
+  fees: external_exports.object({ staple: money, trim: money, fold: money, lam: money, cut: money.default(0), designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: external_exports.number().min(0).max(100) }),
   tiers: external_exports.array(external_exports.object({ min: external_exports.number().int(), pct: external_exports.number().min(0).max(1e3) })).min(1).max(12),
   floorMarginPct: external_exports.number().min(0).max(1e3)
 });

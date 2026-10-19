@@ -13,6 +13,9 @@ export type PrintProduct = (typeof PRINT_PRODUCTS)[number];
 export const PRINT_PRODUCT_LABEL: Record<PrintProduct, string> = { eulogy: 'Eulogy', profile: 'Company profile', brochure: 'Brochure' };
 export const PRINT_PAGE_OPTIONS = [4, 8, 12, 16, 20, 24, 28, 32] as const;
 export type PrintSize = 'A4' | 'B5';
+/** Eulogy / company-profile booklets: an A4 booklet is folded from A3 sheets (4 pages to a sheet); an A5 booklet is folded from A4 sheets, two of which are cut from one A3 sheet. */
+export const PRINT_BOOKLETS = ['A4', 'A5'] as const;
+export type PrintBooklet = (typeof PRINT_BOOKLETS)[number];
 /** How many of a size come out of one A3 sheet. */
 export const PRINT_UPS: Record<PrintSize, number> = { A4: 2, B5: 4 };
 /** The quantities the price list shows. */
@@ -35,6 +38,8 @@ export interface PrintFees {
   fold: number;
   /** Lamination, per A3 sheet. */
   lam: number;
+  /** A5 booklets: cutting each A3 sheet into two A4 sheets, per A3 sheet (0 = included in the printer's rate). */
+  cut: number;
   /** Design / layout, a flat fee for the job. */
   designEu: number;
   designPr: number;
@@ -68,7 +73,7 @@ export const DEFAULT_PRINT_SETTINGS: PrintSettings = {
     { name: '200gsm gloss', one: 55, two: 92 },
     { name: '250gsm matt cover', one: 70, two: 115 },
   ],
-  fees: { staple: 8, trim: 6, fold: 10, lam: 60, designEu: 3000, designPr: 3000, designBr: 1500, proof: 300, deliver: 500, waste: 5 },
+  fees: { staple: 8, trim: 6, fold: 10, lam: 60, cut: 0, designEu: 3000, designPr: 3000, designBr: 1500, proof: 300, deliver: 500, waste: 5 },
   tiers: [
     { min: 1, pct: 50 },
     { min: 100, pct: 35 },
@@ -87,6 +92,7 @@ export const PRINT_FEE_LABELS: { key: keyof PrintFees; label: string; unit: stri
   { key: 'trim', label: 'Trimming', unit: 'KES / set' },
   { key: 'fold', label: 'Folding / creasing', unit: 'KES / set' },
   { key: 'lam', label: 'Lamination', unit: 'KES / A3 sheet' },
+  { key: 'cut', label: 'Cutting A3 into A4 (A5 booklets)', unit: 'KES / A3 sheet' },
   { key: 'waste', label: 'Brochure wastage', unit: '% of sheets' },
 ];
 
@@ -131,6 +137,8 @@ export interface PrintJob {
   lam: boolean;
   /** Booklets: folding / creasing. */
   fold: boolean;
+  /** Eulogies and company profiles: 'A4' (A3 sheets folded — the usual) or 'A5' (A4 sheets folded, two cut from each A3 sheet). Left out = A4, as every earlier quote. */
+  booklet?: PrintBooklet;
   /** Brochures. */
   size: PrintSize;
   sides: 1 | 2;
@@ -186,6 +194,25 @@ export function printCalc(job: PrintJob, s: PrintSettings): PrintResult {
     add('A3 printing', total * rate, `${total} sheets × ${rate} (${base} + ${total - base} waste)`);
     if (job.lam) add('Lamination', total * f.lam, `${total} sheets`);
     add('Design/layout', f.designBr, 'per job');
+  } else if (job.booklet === 'A5') {
+    // An A5 booklet is folded A4 sheets, and the printer's rate is per A3 sheet: two A4 sheets are cut from each (an odd number leaves half an A3 sheet unused)
+    const n = Math.max(1, Math.round(job.pages / 4)); // A4 sheets in a booklet
+    const insideA4 = (job.coverSep ? n - 1 : n) * qty;
+    const coverA4 = job.coverSep ? qty : 0;
+    const a3Inside = Math.ceil(insideA4 / 2);
+    const a3Cover = Math.ceil(coverA4 / 2);
+    sheets = a3Inside + a3Cover;
+    if (insideA4 > 0) add('Inside sheets', a3Inside * paper.two, `${insideA4} A4 sheets = ${a3Inside} A3 × ${paper.two}`);
+    if (job.coverSep) {
+      const cover = s.papers[job.cover] ?? paper;
+      add('Cover sheet', a3Cover * cover.two, `${cover.name}: ${coverA4} A4 covers = ${a3Cover} A3 × ${cover.two}`);
+    }
+    if (job.lam) add('Cover lamination', f.lam * Math.ceil(qty / 2), `${qty} A4 covers = ${Math.ceil(qty / 2)} A3 sheets`);
+    if (f.cut > 0) add('Cutting A3 into A4', f.cut * sheets, `${sheets} A3 sheets`);
+    if (n > 1) add('Stapling', f.staple * qty, `${qty} sets`);
+    add('Trimming', f.trim * qty, `${qty} sets`);
+    if (job.fold) add('Folding / creasing', f.fold * qty, `${qty} sets`);
+    add('Design/layout', job.product === 'eulogy' ? f.designEu : f.designPr, 'per job');
   } else {
     const n = Math.max(1, Math.round(job.pages / 4));
     sheets = n * qty;
@@ -220,5 +247,5 @@ export function printSpec(job: PrintJob, s: PrintSettings): string {
   const n = Math.max(1, Math.round(job.pages / 4));
   const cover = job.coverSep ? ` with a ${(s.papers[job.cover] ?? paper).name} cover${job.lam ? ', laminated' : ''}` : job.lam ? ', laminated cover' : '';
   const finish = [n > 1 ? 'stapled' : null, 'trimmed', job.fold ? 'folded' : null].filter(Boolean);
-  return `${PRINT_PRODUCT_LABEL[job.product]}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(', ') + ' and ' + finish[finish.length - 1] : finish[0]}`;
+  return `${PRINT_PRODUCT_LABEL[job.product]}${job.booklet === 'A5' ? ' (A5 booklet)' : ''}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(', ') + ' and ' + finish[finish.length - 1] : finish[0]}`;
 }

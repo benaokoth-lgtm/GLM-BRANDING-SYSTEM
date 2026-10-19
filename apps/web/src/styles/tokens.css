@@ -359,10 +359,17 @@ textarea.input { min-height: 90px; resize: vertical; }
   width: min(440px, 100%); display: flex; flex-direction: column; gap: var(--space-3);
   padding: var(--space-4); border-radius: 0;
   background: var(--color-surface); box-shadow: var(--shadow-lg);
+  /* a tall dialog (payment rows, an STK push…) scrolls inside the screen instead of running off the bottom */
+  max-height: calc(100vh - 2 * var(--space-4)); max-height: calc(100dvh - 2 * var(--space-4)); overflow-y: auto;
 }
 .dialog-title { font-family: var(--font-heading); font-weight: var(--font-heading-weight); font-size: 20px; }
 .dialog-body { font-size: 14px; }
-.dialog-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2); }
+.dialog-actions {
+  display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-2);
+  /* the buttons stay in view at the bottom of a dialog that scrolls */
+  position: sticky; bottom: calc(-1 * var(--space-4)); margin-bottom: calc(-1 * var(--space-4)); padding: var(--space-2) 0 var(--space-4);
+  background: var(--color-surface);
+}
 
 /* — print (P&L "Print / PDF") — */
 .print-only { display: none; }

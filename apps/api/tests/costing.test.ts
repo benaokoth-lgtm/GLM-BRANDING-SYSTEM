@@ -110,6 +110,18 @@ describe('job costing', () => {
     assert.ok(!(await quote('finance', { jobType: 'cards', qty: 500, finish: 'plain' })).body.lines.some((l: any) => l.name === 'Lamination film'));
   });
 
+  it('a rate can be moved between the Materials and Services lists: it is only where it is listed, the cost does not change', async () => {
+    const made = await call('admin', 'POST', '/costing/rates', { kind: 'service', name: 'Perspex (move test)', basis: 'sqm', cost: 100, jobTypes: ['indoor'], defaultOn: true });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const id = made.body.id;
+    const before = (await quote('finance', { jobType: 'indoor', qty: 1, widthM: 1, heightM: 2 })).body.cost;
+    const moved = await call('admin', 'PUT', `/costing/rates/${id}`, { kind: 'material', name: 'Perspex (move test)', basis: 'sqm', cost: 100, jobTypes: ['indoor'], onlyFor: '', defaultOn: true });
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+    assert.equal((await rateNamed('Perspex (move test)')).kind, 'material');
+    assert.equal((await quote('finance', { jobType: 'indoor', qty: 1, widthM: 1, heightM: 2 })).body.cost, before);
+    assert.equal((await call('admin', 'DELETE', `/costing/rates/${id}`)).status, 204);
+  });
+
   it('an Admin adds, changes and retires materials and services, and the costing follows', async () => {
     assert.equal((await call('seller', 'POST', '/costing/rates', { kind: 'service', name: 'Eyelets', basis: 'unit', cost: 50, jobTypes: ['outdoor'] })).status, 403);
     assert.equal((await call('seller', 'GET', '/costing/rates')).status, 403);

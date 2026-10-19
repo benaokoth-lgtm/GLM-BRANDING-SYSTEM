@@ -159,6 +159,9 @@ function RateList({ kind, rates, onChanged }: { kind: CostingKind; rates: Costin
     if (await run(() => api.put(`/costing/rates/${id}`, body(draft)))) setEditing(null);
   };
   const noun = kind === 'material' ? 'material' : 'service';
+  const other: CostingKind = kind === 'material' ? 'service' : 'material';
+  // Which list a rate sits in is only how it is shown: moving it changes no cost
+  const move = (r: CostingRateRow) => run(() => api.put(`/costing/rates/${r.id}`, { kind: other, name: r.name, jobTypes: r.jobTypes, basis: r.basis, cost: r.cost, defaultOn: r.defaultOn, onlyFor: r.onlyFor, active: r.active }));
 
   return (
     <Card
@@ -194,6 +197,9 @@ function RateList({ kind, rates, onChanged }: { kind: CostingKind; rates: Costin
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => { setErr(''); setDraft(draftOf(r)); setEditing(editing === r.id ? null : r.id); }}>
                       {editing === r.id ? 'Close' : 'Edit'}
+                    </button>{' '}
+                    <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => move(r)} title={`Show it under ${other === 'material' ? 'Materials' : 'Services'} instead — nothing about its cost changes`}>
+                      Move to {other === 'material' ? 'Materials' : 'Services'}
                     </button>{' '}
                     <button
                       type="button"

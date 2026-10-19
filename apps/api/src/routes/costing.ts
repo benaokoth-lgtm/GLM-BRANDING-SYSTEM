@@ -323,7 +323,7 @@ costingRouter.post('/print/quotes', mayCost, async (req, res) => {
 // the rates (Admin)
 const money = z.number().min(0).max(100_000_000);
 const printSettingsSchema = z.object({
-  papers: z.array(z.object({ name: z.string().trim().min(1).max(60), one: money, two: money })).min(1).max(20),
+  papers: z.array(z.object({ name: z.string().trim().min(1).max(60), one: money, two: money })).min(1).max(40),
   fees: z.object({ staple: money, trim: money, fold: money, lam: money, designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: z.number().min(0).max(100) }),
   tiers: z.array(z.object({ min: z.number().int(), pct: z.number().min(0).max(1000) })).min(1).max(12),
   floorMarginPct: z.number().min(0).max(1000),

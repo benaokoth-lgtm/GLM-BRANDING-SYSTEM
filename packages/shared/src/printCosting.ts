@@ -95,6 +95,7 @@ export function printSettingsProblem(s: PrintSettings): string | null {
   if (s.papers.length < 1) return 'There must be at least one paper';
   for (const p of s.papers) {
     if (!p.name.trim()) return 'Every paper needs a name';
+    if (s.papers.filter((x) => x.name.trim().toLowerCase() === p.name.trim().toLowerCase()).length > 1) return `${p.name.trim()} is on the list twice`;
     if (!(p.one >= 0) || !(p.two >= 0)) return `${p.name}: the sheet rates cannot be negative`;
   }
   for (const { key, label } of PRINT_FEE_LABELS) if (!(s.fees[key] >= 0)) return `${label} cannot be negative`;

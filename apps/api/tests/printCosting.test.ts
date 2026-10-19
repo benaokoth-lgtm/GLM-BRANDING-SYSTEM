@@ -139,6 +139,19 @@ describe('Job Costing: Brochures & Eulogies', () => {
     assert.equal((await call('seller', 'POST', '/costing/print/quote', { ...eulogy })).body.cost, 18200);
   });
 
+  it('more papers can be added: they come last, are costed like the others, and cannot repeat a name', async () => {
+    const more = { ...S, papers: [...S.papers, { name: '300gsm art card', one: 90, two: 150 }, { name: '115gsm gloss', one: 30, two: 50 }] };
+    assert.equal((await call('admin', 'PUT', '/costing/print/settings', more)).status, 200);
+    assert.deepEqual((await call('seller', 'GET', '/costing/print/config')).body.papers.slice(-2), ['300gsm art card', '115gsm gloss']);
+    // the new paper is picked by its place on the list; the older ones keep theirs
+    const q = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, paper: S.papers.length });
+    assert.equal(q.status, 200, JSON.stringify(q.body));
+    assert.equal(q.body.lines[0].amount, 30000); // 2 sheets × 150 (two sides) × 100
+    assert.equal((await call('seller', 'POST', '/costing/print/quote', { ...eulogy })).body.cost, 18200); // paper 0 is unchanged
+    assert.equal((await call('admin', 'PUT', '/costing/print/settings', { ...S, papers: [...S.papers, { name: '130GSM gloss', one: 1, two: 1 }] })).status, 400); // the same name twice
+    assert.equal((await call('admin', 'PUT', '/costing/print/settings', S)).status, 200);
+  });
+
   it('a print costing saved as a quote is agreed, approved under the floor, and captured as an order', async () => {
     const save = (who: string, extra: object = {}) => call(who, 'POST', '/costing/print/quotes', { ...eulogy, clientName: 'Hope Chapel', phone: '0712 000 000', ...extra });
     assert.equal((await call('nobody', 'POST', '/costing/print/quotes', { ...eulogy, clientName: 'X Y' })).status, 403);

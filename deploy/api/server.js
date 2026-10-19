@@ -66791,6 +66791,7 @@ function printSettingsProblem(s) {
   if (s.papers.length < 1) return "There must be at least one paper";
   for (const p of s.papers) {
     if (!p.name.trim()) return "Every paper needs a name";
+    if (s.papers.filter((x) => x.name.trim().toLowerCase() === p.name.trim().toLowerCase()).length > 1) return `${p.name.trim()} is on the list twice`;
     if (!(p.one >= 0) || !(p.two >= 0)) return `${p.name}: the sheet rates cannot be negative`;
   }
   for (const { key: key3, label } of PRINT_FEE_LABELS) if (!(s.fees[key3] >= 0)) return `${label} cannot be negative`;
@@ -77282,7 +77283,7 @@ costingRouter.post("/print/quotes", mayCost, async (req, res) => {
 });
 var money = external_exports.number().min(0).max(1e8);
 var printSettingsSchema = external_exports.object({
-  papers: external_exports.array(external_exports.object({ name: external_exports.string().trim().min(1).max(60), one: money, two: money })).min(1).max(20),
+  papers: external_exports.array(external_exports.object({ name: external_exports.string().trim().min(1).max(60), one: money, two: money })).min(1).max(40),
   fees: external_exports.object({ staple: money, trim: money, fold: money, lam: money, designEu: money, designPr: money, designBr: money, proof: money, deliver: money, waste: external_exports.number().min(0).max(100) }),
   tiers: external_exports.array(external_exports.object({ min: external_exports.number().int(), pct: external_exports.number().min(0).max(1e3) })).min(1).max(12),
   floorMarginPct: external_exports.number().min(0).max(1e3)

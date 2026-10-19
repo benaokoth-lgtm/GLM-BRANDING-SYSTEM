@@ -73,8 +73,8 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
       .get<Config>('/costing/print/config')
       .then((c) => {
         setConfig(c);
-        // the second-to-last paper is not assumed: a separate cover starts on the last (heaviest) paper on the list
-        setJob((j) => ({ ...j, cover: Math.max(0, c.papers.length - 1) }));
+        // a separate cover starts on the heaviest paper on the list
+        setJob((j) => ({ ...j, cover: (() => { const o = shownOrder(c.papers); return o[o.length - 1]?.i ?? 0; })() }));
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : 'Could not load the costing'));
   }, []);
@@ -193,7 +193,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
                 </div>
                 <div>
                   <div style={label}>Inside paper</div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{papers.map((p, i) => chip(p, job.paper === i, () => set({ paper: i })))}</div>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{shownOrder(papers).map(({ name: p, i }) => chip(p, job.paper === i, () => set({ paper: i })))}</div>
                 </div>
                 <div>
                   {check('Separate cover paper', job.coverSep, () => set({ coverSep: !job.coverSep }))}
@@ -203,7 +203,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
                 {job.coverSep && (
                   <div>
                     <div style={label}>Cover paper (replaces one sheet)</div>
-                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{papers.map((p, i) => chip(p, job.cover === i, () => set({ cover: i })))}</div>
+                    <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{shownOrder(papers).map(({ name: p, i }) => chip(p, job.cover === i, () => set({ cover: i })))}</div>
                   </div>
                 )}
               </>
@@ -222,7 +222,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
                 </div>
                 <div>
                   <div style={label}>Paper</div>
-                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{papers.map((p, i) => chip(p, job.paper === i, () => set({ paper: i })))}</div>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{shownOrder(papers).map(({ name: p, i }) => chip(p, job.paper === i, () => set({ paper: i })))}</div>
                 </div>
                 <div>{check('Laminate sheets', job.lam, () => set({ lam: !job.lam }))}</div>
               </>
@@ -342,7 +342,7 @@ function PriceListView({
     <div style={{ display: 'grid', gap: 'var(--space-4)' }}>
       <div>
         <div style={label}>Paper</div>
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{papers.map((p, i) => chip(p, job.paper === i, () => set({ paper: i })))}</div>
+        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{shownOrder(papers).map(({ name: p, i }) => chip(p, job.paper === i, () => set({ paper: i })))}</div>
         <p className="note" style={{ marginBottom: 0 }}>Booklets use the cover, lamination and folding choices made on the Calculator{job.coverSep ? ` (separate cover: ${papers[job.cover]})` : ''}{job.lam ? ', laminated' : ''}.</p>
       </div>
       {error && <p className="note" style={{ color: 'var(--color-error)' }}>{error}</p>}
@@ -410,12 +410,21 @@ function PriceListView({
   );
 }
 
+// The papers are kept in the order they were added and a saved quote remembers its paper by position, so a paper is only ever added at the end. They are SHOWN lightest first (by the gsm in the name),
+// anything without a gsm last.
+const gsmOf = (name: string): number => {
+  const m = /(\d{2,4})\s*gsm/i.exec(name);
+  return m ? Number(m[1]) : Number.POSITIVE_INFINITY;
+};
+const shownOrder = (names: string[]) => names.map((name, i) => ({ name, i })).sort((a, b) => gsmOf(a.name) - gsmOf(b.name) || a.i - b.i);
+
 // Admin: the printer's rates
 function PrintRates() {
   const [s, setS] = useState<PrintSettings | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [np, setNp] = useState({ name: '', one: '', two: '' });
   useEffect(() => {
     api
       .get<PrintSettings>('/costing/print/settings')
@@ -466,15 +475,40 @@ function PrintRates() {
               </tr>
             </thead>
             <tbody>
-              {s.papers.map((p, i) => (
+              {shownOrder(s.papers.map((x) => x.name)).map(({ i }) => {
+                const p = s.papers[i]!;
+                return (
                 <tr key={i}>
-                  <td>{p.name}</td>
+                  <td>
+                    <input className="input" style={{ width: 170 }} aria-label={`Paper ${i + 1} name`} defaultValue={p.name} key={p.name} onBlur={(e) => edit({ ...s, papers: s.papers.map((x, j) => (j === i ? { ...x, name: e.target.value.trim() || x.name } : x)) })} />
+                  </td>
                   <td style={numStyle}>{input(p.one, (v) => edit({ ...s, papers: s.papers.map((x, j) => (j === i ? { ...x, one: v } : x)) }), 80)}</td>
                   <td style={numStyle}>{input(p.two, (v) => edit({ ...s, papers: s.papers.map((x, j) => (j === i ? { ...x, two: v } : x)) }), 80)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+          <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'end', flexWrap: 'wrap' }}>
+            <div className="field" style={{ margin: 0 }}>
+              <label>Add a paper</label>
+              <input className="input" style={{ width: 170 }} placeholder="e.g. 300gsm art card" aria-label="New paper name" value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} />
+            </div>
+            <input className="input" style={{ width: 80, textAlign: 'right' }} inputMode="decimal" placeholder="1 side" aria-label="New paper, 1 side" value={np.one} onChange={(e) => setNp({ ...np, one: e.target.value })} />
+            <input className="input" style={{ width: 80, textAlign: 'right' }} inputMode="decimal" placeholder="2 sides" aria-label="New paper, 2 sides" value={np.two} onChange={(e) => setNp({ ...np, two: e.target.value })} />
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={!np.name.trim() || np.one.trim() === '' || np.two.trim() === ''}
+              onClick={() => {
+                edit({ ...s, papers: [...s.papers, { name: np.name.trim(), one: num(np.one), two: num(np.two) }] });
+                setNp({ name: '', one: '', two: '' });
+              }}
+            >
+              + Add
+            </button>
+          </div>
+          <p className="note" style={{ marginBottom: 0 }}>Put the gsm in the name (e.g. “300gsm art card”) and the papers are listed lightest first. A paper can be added and renamed but not removed, because saved quotes keep theirs. Press <b>Save the rates</b> to keep the change.</p>
         </div>
         <div>
           <div className="card-kicker">Services &amp; fees</div>

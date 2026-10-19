@@ -899,6 +899,7 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
   <tr><td>Service Price List</td><td>Services, units, prices, descriptions, sizes, heads, pressing fee and area pricing; Excel download and upload. The list is shown in two parts: the ordinary services, then <b>Artwork-priced services</b> (priced by the size of one artwork). Ticking or unticking <i>Artwork pricing</i> on a line moves it between the lists.</td></tr>
   <tr><td>Business Heads</td><td>The lines of business that sales and costs are reported under.</td></tr>
   <tr><td>Stock Price List</td><td>Stocked items, sizes, prices, reorder levels, usual business head; Excel download and upload.</td></tr>
+  <tr><td>eTIMS Codes</td><td>The KRA item class code, unit and item type every business head, service and stock item is sold under (preparation for KRA eTIMS — see below).</td></tr>
   <tr><td>Discount Rules</td><td>The discount ceiling above which supervisor approval is required.</td></tr>
   <tr><td>Company Info</td><td>Company and system names, logo, addresses, phones, web and social, tax details, the commission switch.</td></tr>
   <tr><td>M-Pesa</td><td>Daraja connection (Paybill/Till, keys, sandbox/production); register payment addresses.</td></tr>
@@ -910,6 +911,17 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
   <tr><td>Security</td><td>Protections status, Admin sign-in code, audit log.</td></tr>
 </table>
 
+
+<h3 id="s16-etims">eTIMS Codes — getting every item ready for KRA eTIMS (Admin)</h3>
+<p>This is <b>phase 1 of the KRA eTIMS connection: the mapping only</b>. Nothing is sent to KRA yet. <span class="path">Master Data → eTIMS Codes</span> records, for everything we sell, the details KRA asks for when an item is registered, so that the invoices can be submitted later without anyone having to fill them in. <b>Every sale is VAT type B (16%)</b>, so there is no tax choice to make.</p>
+<ul>
+  <li><b>What is held.</b> The <b>item class code</b> (KRA’s classification code — it is UNSPSC-based and may run to 10 digits), the <b>quantity unit</b> code (piece, metre, square metre…), an optional <b>packaging unit</b>, the <b>item type</b> (<i>service</i>, <i>finished product</i> or <i>raw material</i>) and, for imported goods only, the <b>HS code</b>. The HS code is not what KRA uses to classify an item; it is kept for imports.</li>
+  <li><b>The head decides, a line can differ.</b> A line with no code of its own uses its <b>business head’s</b> — so most of the work is the <b>Business head defaults</b> table (a handful of rows), and only the odd line needs its own code. This also covers sizes: each size of a service is its own price-list line, and all inherit.</li>
+  <li><b>Job costing.</b> A costed job is one order line against a <i>Costed job</i> service for its job type (business cards, brochures and the like under Printing &amp; Publications, signage under Large Format Printing). It therefore takes the code of its head, whatever the price quoted.</li>
+  <li><b>Proposed, then confirmed.</b> <b>Use the proposed list</b> fills in what is empty, and never overwrites anything already there. The proposals are <b>drafts, not KRA’s list</b>: a code is proposed only where there is some evidence for it (digital printing for the UV, large-format and printing heads; textile printing for DTF), and every other line shows <b>the words to search for</b> in the item-class search of the eTIMS portal. Check each code in the portal, then <b>Confirm</b> (one head, or all proposed). A line you save by hand is confirmed at once. The status of every line is <i>Needs a code</i>, <i>Proposed</i> or <i>Confirmed</i>, and the filters above the list show each group.</li>
+  <li><b>Excel.</b> <b>Download Excel</b> gives every head, service and stock item with the columns to fill in; give it to your accountant, then <b>Upload Excel</b>. The upload is checked first and nothing is saved until every row is usable. A row marked <i>Confirmed</i> in the Status column is confirmed; any other is kept as proposed. Leave <i>Kind</i> and <i>Id</i> alone; blank code columns put a line back on its head’s code.</li>
+  <li><b>What comes next.</b> Later phases will submit invoices (once the job is <b>complete and every shilling is received</b>), send credit notes, report stock and handle supplier invoices. Until then nothing here changes how orders, receipts or VAT work today.</li>
+</ul>
 
 <figure class="shot"><img src="img/41-staff-users.jpg" class="c" style="--ar:1288/800" alt="Master Data → Staff & Users: add a person, reset a PIN, edit, switch off or delete. Names are kept in three parts."><figcaption>Master Data → Staff & Users: add a person, reset a PIN, edit, switch off or delete. Names are kept in three parts.</figcaption></figure>
 

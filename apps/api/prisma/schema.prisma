@@ -1774,3 +1774,24 @@ model OneToOneNote {
 
   @@index([staffId])
 }
+
+// KRA eTIMS details for something we sell — phase 1 is the mapping only: nothing is sent to KRA. `kind` is 'head' (the default for a whole business
+// head), 'service' or 'material' (`refId` is its id). A line with no code of its own uses its business head's. Every sale is VAT type B (16%).
+model EtimsItem {
+  id              Int       @id @default(autoincrement())
+  kind            String
+  refId           Int
+  // KRA's item classification code (UNSPSC-based, 8–10 digits), its quantity and packaging unit codes, the kind of item ('service' | 'finished' | 'raw') and the HS code (imports only)
+  clsCd           String    @default("")
+  qtyUnit         String    @default("")
+  pkgUnit         String    @default("")
+  itemType        String    @default("")
+  hsCode          String    @default("")
+  // 'proposed' (suggested by us, or loaded from a sheet not yet signed off) | 'confirmed' (someone has checked it against the KRA portal)
+  status          String    @default("proposed")
+  confirmedByName String    @default("")
+  confirmedAt     DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([kind, refId])
+}

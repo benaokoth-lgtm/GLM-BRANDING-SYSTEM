@@ -16,8 +16,9 @@ import StaffEditDialog from '../components/StaffEditDialog';
 import BackupPanel from '../components/BackupPanel';
 import SecurityPanel from '../components/SecurityPanel';
 import PriceListExcel from '../components/PriceListExcel';
+import EtimsMapping from '../components/EtimsMapping';
 
-type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'discount' | 'company' | 'mpesa' | 'ncba' | 'embroidery' | 'email' | 'whatsapp' | 'backup' | 'security';
+type MasterTab = 'staff' | 'roles' | 'services' | 'heads' | 'materials' | 'discount' | 'company' | 'mpesa' | 'ncba' | 'embroidery' | 'email' | 'whatsapp' | 'backup' | 'security' | 'etims';
 
 const TABS: [MasterTab, string][] = [
   ['staff', 'Staff & Users'],
@@ -25,6 +26,7 @@ const TABS: [MasterTab, string][] = [
   ['services', 'Service Price List'],
   ['heads', 'Business Heads'],
   ['materials', 'Stock Price List'],
+  ['etims', 'eTIMS Codes'],
   ['discount', 'Discount Rules'],
   ['company', 'Company Info'],
   ['mpesa', 'M-Pesa'],
@@ -1310,6 +1312,8 @@ export default function MasterData() {
           <p className="note">Applies to both walk-in and corporate line/order discounts. Staff can still submit above this — it only raises the approval flag.</p>
         </>
       )}
+
+      {tab === 'etims' && <EtimsMapping />}
 
       {tab === 'mpesa' && <MpesaSettingsPanel />}
       {tab === 'ncba' && <NcbaSettingsPanel />}

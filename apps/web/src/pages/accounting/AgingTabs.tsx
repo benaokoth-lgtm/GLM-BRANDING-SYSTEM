@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { fmtDate } from '@glm/shared';
 import { api } from '../../api/client';
+import { StkCollectDialog, StkRowButton, useMayCollect } from '../../components/StkCollect';
 import { AsOfBar, Card, Loading, Tag, money, numStyle, printPage, useLoad, ymd } from './shared';
 
 interface Bucket {
@@ -50,6 +51,9 @@ export function ReceivablesTab() {
   // who is responsible for collecting: the sales person the sale is credited to, unless Accounting hands the balance to someone else
   const [who, setWho] = useState<number | 'all'>('all');
   const [changing, setChanging] = useState<number | null>(null);
+  // an M-Pesa prompt to the customer for what they owe on an invoice
+  const mayCollect = useMayCollect();
+  const [stkId, setStkId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState('');
   async function hand(orderId: number, staffId: number | null) {
@@ -108,12 +112,13 @@ export function ReceivablesTab() {
                   <th style={numStyle}>Owing</th>
                   <th>Responsible for collection</th>
                   <th>Age</th>
+                  {mayCollect && <th className="no-print"></th>}
                 </tr>
               </thead>
               <tbody>
                 {data.rows.length === 0 && (
                   <tr>
-                    <td colSpan={10} className="text-muted">
+                    <td colSpan={11} className="text-muted">
                       Nobody owes anything.
                     </td>
                   </tr>
@@ -154,6 +159,7 @@ export function ReceivablesTab() {
                     <td>
                       <Tag tone={bucketTone(r.bucket)}>{r.bucket}</Tag>
                     </td>
+                    {mayCollect && <td className="no-print">{r.outstanding > 0.005 && <StkRowButton onOpen={() => setStkId(r.orderId)} />}</td>}
                   </tr>
                 ))}
               </tbody>
@@ -162,6 +168,16 @@ export function ReceivablesTab() {
             {Math.abs(data.overpaidCredits) > 0.004 && <p className="note">Customers have also been credited or overpaid {money(-data.overpaidCredits)} in total — shown under Customer Deposits &amp; Credits on the balance sheet.</p>}
           </Card>
         </>
+      )}
+      {stkId && (
+        <StkCollectDialog
+          orderId={stkId}
+          onClose={() => setStkId(null)}
+          onPaid={() => {
+            setStkId(null);
+            reload();
+          }}
+        />
       )}
     </div>
   );

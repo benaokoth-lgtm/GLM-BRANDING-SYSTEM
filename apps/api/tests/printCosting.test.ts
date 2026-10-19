@@ -139,33 +139,35 @@ describe('Job Costing: Brochures & Eulogies', () => {
     assert.equal((await call('seller', 'POST', '/costing/print/quote', { ...eulogy })).body.cost, 18200);
   });
 
-  it('an A5 eulogy booklet is costed from the A3 sheet rate: two A4 sheets from each A3, half the paper, the same finishing', async () => {
+  it('an B5 eulogy booklet is costed from the A3 sheet rate: two A4 sheets from each A3, half the paper, the same finishing', async () => {
     // 8 pages = 2 A4 sheets a copy: 200 A4 sheets = 100 A3 × 60 = 6,000, then stapling 800, trimming 600, folding 1,000, design 3,000, proofing 300, delivery 500
-    const q = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'A5' });
+    const q = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'B5' });
     assert.equal(q.status, 200, JSON.stringify(q.body));
     assert.equal(q.body.cost, 12200);
     assert.equal(q.body.sheets, 100); // A3 sheets
     assert.equal(q.body.total, 19105.2); // cost 12,200 + 35% + VAT
-    assert.equal(q.body.spec, 'Eulogy (A5 booklet), 8 pages / 130gsm gloss, stapled, trimmed and folded');
+    assert.equal(q.body.spec, 'Eulogy (B5 booklet), 8 pages / 130gsm gloss, stapled, trimmed and folded');
     // the A4 booklet is as it was, and a request that says nothing is an A4 booklet (every earlier quote)
     assert.equal((await call('seller', 'POST', '/costing/print/quote', { ...eulogy })).body.cost, 18200);
     assert.equal((await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'A4' })).body.cost, 18200);
+    // the name it briefly had, A5, is still understood as B5
+    assert.equal((await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'A5' })).body.cost, 12200);
     // an odd number of A4 sheets leaves half an A3 sheet: 5 copies of 4 pages = 5 A4 sheets = 3 A3
-    const odd = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, pages: 4, qty: 5, booklet: 'A5' });
+    const odd = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, pages: 4, qty: 5, booklet: 'B5' });
     assert.deepEqual([odd.body.sheets, odd.body.lines[0].amount], [3, 180]);
     // a separate cover is an A4 sheet too (2 from an A3): 100 covers on 250gsm = 50 A3 × 115, and 100 inside A4 sheets = 50 A3 × 60
-    const cov = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'A5', coverSep: true, cover: 4 });
+    const cov = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'B5', coverSep: true, cover: 4 });
     assert.deepEqual(cov.body.lines.slice(0, 2).map((l: any) => l.amount), [3000, 5750]);
     // cutting the A3 sheets is its own fee, nothing until it is set
     assert.ok(!q.body.lines.some((l: any) => /Cutting/.test(l.label)));
     assert.equal((await call('admin', 'PUT', '/costing/print/settings', { ...S, fees: { ...S.fees, cut: 2 } })).status, 200);
-    const cut = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'A5' });
+    const cut = await call('seller', 'POST', '/costing/print/quote', { ...eulogy, booklet: 'B5' });
     assert.equal(cut.body.lines.find((l: any) => /Cutting/.test(l.label)).amount, 200); // 100 A3 sheets × 2
     assert.equal(cut.body.cost, 12400);
     assert.equal((await call('admin', 'PUT', '/costing/print/settings', S)).status, 200);
-    // the price list shows both: the A5 booklet's 8 pages at 100 copies
+    // the price list shows both: the B5 booklet's 8 pages at 100 copies
     const list = (await call('seller', 'POST', '/costing/print/pricelist', {})).body;
-    assert.equal(list.bookletsA5.find((b: any) => b.pages === 8).cells[2], 191.05);
+    assert.equal(list.bookletsB5.find((b: any) => b.pages === 8).cells[2], 191.05);
     assert.equal(list.booklets.find((b: any) => b.pages === 8).cells[2], 285.01);
   });
 

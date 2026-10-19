@@ -159,6 +159,31 @@ describe('NCBA Paybill 880100', () => {
     assert.equal((await prisma.ncbaNotification.findMany({ where: { transId: 'RKH7KICX13' }, orderBy: { id: 'asc' } })).map((n) => n.outcome).join(), 'Matched,Duplicate');
   });
 
+  it('a prompt raised against an order (the STK push button) records the payment on that order when NCBA confirms it, and cannot ask for more than is owed', async () => {
+    const svc = await prisma.service.create({ data: { name: 'NCBA stk test service', item: 'NCBA stk test service', unit: 'piece', price: 11600 } });
+    const made = await call('admin', 'POST', '/orders/walkin', { paymentTiming: 'onCompletion', lineItems: [{ itemType: 'service', serviceId: svc.id, qty: 1, unitPrice: 11600 }] });
+    assert.equal(made.status, 201, JSON.stringify(made.body));
+    const orderId = made.body.id;
+    assert.equal(made.body.totals.balanceDue, 11600);
+    // more than the balance is refused before any prompt goes out
+    const sentBefore = seen.initiated.length;
+    const over = await call('admin', 'POST', '/mpesa/stkpush', { phone: '0712345678', amount: 12000, accountReference: made.body.orderNo, orderId });
+    assert.equal(over.status, 400);
+    assert.match(over.body.error, /only has Ksh/);
+    assert.equal(seen.initiated.length, sentBefore);
+    // a part payment: the prompt goes through NCBA against the order …
+    const push = await call('admin', 'POST', '/mpesa/stkpush', { phone: '0712345678', amount: 5000, accountReference: made.body.orderNo, orderId });
+    assert.equal(push.status, 201, JSON.stringify(push.body));
+    assert.match(push.body.checkoutRequestId, /^NCBA-TX\d+$/);
+    assert.equal((await call('admin', 'GET', `/orders/${orderId}`)).body.payments.length, 0); // nothing yet
+    // … and when the customer has paid and NCBA notifies, the payment is on the order by itself
+    await post(notice({ transId: 'RKH7ORDER01', amount: '5000.00', mobile: '254712345678' }));
+    const detail = (await call('admin', 'GET', `/orders/${orderId}`)).body;
+    assert.deepEqual(detail.payments.map((x: any) => [x.method, x.amount, x.reference]), [['M-Pesa', 5000, 'RKH7ORDER01']]);
+    assert.equal(detail.totals.balanceDue, 6600);
+    assert.equal((await call('admin', 'GET', `/mpesa/status/${push.body.checkoutRequestId}`)).body.status, 'Success');
+  });
+
   it('a payment with no prompt (someone paying 880100 themselves) lands as a Paybill receipt to be matched to an order', async () => {
     const r = await (await post(notice({ transId: 'RKH7NOPUSH', amount: '777.00', mobile: '254799999999', billRef: 'W-1020' }))).json();
     assert.equal((r as any).ResultCode, '0');

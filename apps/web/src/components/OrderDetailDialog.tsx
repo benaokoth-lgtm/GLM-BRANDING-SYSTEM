@@ -8,6 +8,7 @@ import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from 
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
 import OrderAllocation from './OrderAllocation';
+import { StkCollectPanel } from './StkCollect';
 import { useAuth } from '../state/AuthContext';
 import type { PaymentRow } from './SplitPayments';
 
@@ -455,7 +456,20 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
           {detail.totals.balanceDue > 0 && detail.canTakePayment !== false && (
             <div style={{ marginTop: 'var(--space-3)' }}>
               <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
-                Record payment — split across methods if needed
+                Ask the customer to pay by M-Pesa now
+              </div>
+              <StkCollectPanel
+                orderId={detail.id}
+                orderNo={detail.orderNo}
+                balanceDue={detail.totals.balanceDue}
+                phone={detail.phone || detail.corporateClient?.phone || ''}
+                onPaid={() => {
+                  load();
+                  onChanged();
+                }}
+              />
+              <div className="card-kicker" style={{ margin: 'var(--space-4) 0 var(--space-2)' }}>
+                Or record a payment — split across methods if needed
               </div>
               <SplitPayments
                 rows={paymentRows}

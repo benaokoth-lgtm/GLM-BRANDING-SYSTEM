@@ -6,6 +6,7 @@ import { HeadRow, groupByHead } from '../components/HeadGroups';
 import { localDay, useListSearch } from '../components/useListSearch';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
+import { StkCollectDialog, StkRowButton, useMayCollect } from '../components/StkCollect';
 import { Card, DateRangeBar, Loading, Notice, Tag, money, numStyle, useLoad, useRange } from './accounting/shared';
 import type { Range } from './accounting/shared';
 
@@ -105,6 +106,8 @@ function Jobs({ queue, outCount, onOutsourced }: { queue: ReturnType<typeof useL
   const [pick, setPick] = useState<Record<number, string>>({}); // orderId → staff chosen
   const [supplierPick, setSupplierPick] = useState<Record<number, string>>({}); // orderId → supplier typed
   const [supplierOpen, setSupplierOpen] = useState<number | null>(null);
+  const mayCollect = useMayCollect();
+  const [stkId, setStkId] = useState<number | null>(null);
   const [finishing, setFinishing] = useState<number | null>(null);
   const [units, setUnits] = useState('');
   const [note, setNote] = useState('');
@@ -163,6 +166,16 @@ function Jobs({ queue, outCount, onOutsourced }: { queue: ReturnType<typeof useL
   return (
     <>
       <Notice error={err || error} message={msg} />
+      {stkId && (
+        <StkCollectDialog
+          orderId={stkId}
+          onClose={() => setStkId(null)}
+          onPaid={() => {
+            setStkId(null);
+            reload();
+          }}
+        />
+      )}
 
       {data.manager && outCount > 0 && (
         <p className="note" style={{ margin: 0 }}>
@@ -220,7 +233,14 @@ function Jobs({ queue, outCount, onOutsourced }: { queue: ReturnType<typeof useL
                     {itemsText(o.items)}
                   </td>
                   <td style={numStyle}>{o.units}</td>
-                  <td>{o.balanceDue > 0 ? <Tag tone="bad">owes {fmtKsh(o.balanceDue)}</Tag> : <Tag tone="good">paid</Tag>}</td>
+                  <td>
+                    {o.balanceDue > 0 ? <Tag tone="bad">owes {fmtKsh(o.balanceDue)}</Tag> : <Tag tone="good">paid</Tag>}
+                    {mayCollect && o.balanceDue > 0.005 && (
+                      <div style={{ marginTop: 4 }}>
+                        <StkRowButton onOpen={() => setStkId(o.orderId)} />
+                      </div>
+                    )}
+                  </td>
                   <td>
                     {(o.outsourced || supplierOpen === o.orderId) && (
                       <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
@@ -383,6 +403,8 @@ function OutsourcedTab({ queue, seeCosts }: { queue: ReturnType<typeof useLoad<Q
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const mayCollect = useMayCollect();
+  const [stkId, setStkId] = useState<number | null>(null);
   const waiting = (data?.waiting ?? []).filter((o) => o.outsourced);
   const atSupplier = (data?.tasks ?? []).filter((t) => t.assigneeId == null);
   const waitingS = useListSearch(waiting, (o) => o.orderNo, (o) => o.createdDate, { id: 'out-wait', dateLabel: 'Order date' });
@@ -407,6 +429,16 @@ function OutsourcedTab({ queue, seeCosts }: { queue: ReturnType<typeof useLoad<Q
   return (
     <>
       <Notice error={err || error} message={msg} />
+      {stkId && (
+        <StkCollectDialog
+          orderId={stkId}
+          onClose={() => setStkId(null)}
+          onPaid={() => {
+            setStkId(null);
+            reload();
+          }}
+        />
+      )}
       {data.manager && (
         <Card title={`Waiting to go to a supplier (${waiting.length})`} hint="Contracted-out orders. Say which supplier, and send it; it then shows below as out with that supplier. (Or make it in-house instead.)">
           {waitingS.searchBar}
@@ -448,7 +480,14 @@ function OutsourcedTab({ queue, seeCosts }: { queue: ReturnType<typeof useLoad<Q
                     {itemsText(o.items)}
                   </td>
                   <td style={numStyle}>{o.units}</td>
-                  <td>{o.balanceDue > 0 ? <Tag tone="bad">owes {fmtKsh(o.balanceDue)}</Tag> : <Tag tone="good">paid</Tag>}</td>
+                  <td>
+                    {o.balanceDue > 0 ? <Tag tone="bad">owes {fmtKsh(o.balanceDue)}</Tag> : <Tag tone="good">paid</Tag>}
+                    {mayCollect && o.balanceDue > 0.005 && (
+                      <div style={{ marginTop: 4 }}>
+                        <StkRowButton onOpen={() => setStkId(o.orderId)} />
+                      </div>
+                    )}
+                  </td>
                   <td>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-2)' }}>
                       <input className="input" style={{ minWidth: 150 }} placeholder="Supplier" value={supplierPick[o.orderId] ?? o.supplierHint} onChange={(e) => setSupplierPick((x) => ({ ...x, [o.orderId]: e.target.value }))} />

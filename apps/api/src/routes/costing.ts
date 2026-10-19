@@ -230,7 +230,11 @@ const printJobSchema = z.object({
   coverSep: z.boolean().default(false),
   lam: z.boolean().default(false),
   fold: z.boolean().default(true),
-  booklet: z.enum(['A4', 'A5']).default('A4'),
+  // 'A5' was this booklet's name for a short while: still accepted, and meant as B5
+  booklet: z
+    .enum(['A4', 'B5', 'A5'])
+    .default('A4')
+    .transform((b) => (b === 'A5' ? ('B5' as const) : b)),
   size: z.enum(['A4', 'B5']).default('A4'),
   sides: z.union([z.literal(1), z.literal(2)]).default(2),
   qty: z.number().int().min(1, 'Enter at least 1').max(1_000_000),
@@ -269,8 +273,8 @@ costingRouter.post('/print/pricelist', mayCost, async (req, res) => {
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
     booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: 'eulogy', pages, size: 'A4', sides: 2, qty, booklet: 'A4' })) })),
-    // the A5 booklet: the same pages on A4 sheets, costed from the A3 sheet rate
-    bookletsA5: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: 'eulogy', pages, size: 'A4', sides: 2, qty, booklet: 'A5' })) })),
+    // the B5 booklet: the same pages on A4 sheets (four B5 pages to a sheet), costed from the A3 sheet rate
+    bookletsB5: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: 'eulogy', pages, size: 'A4', sides: 2, qty, booklet: 'B5' })) })),
     brochures: (['A4', 'B5'] as const).flatMap((size) =>
       ([1, 2] as const).map((sides) => ({ name: size + (sides === 1 ? ' single side' : ' double side'), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: 'brochure', pages: 8, size, sides, qty, booklet: 'A4' })) })),
     ),

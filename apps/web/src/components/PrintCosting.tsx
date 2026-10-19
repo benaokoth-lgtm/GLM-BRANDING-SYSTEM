@@ -37,7 +37,7 @@ interface PriceList {
   bookletQtys: number[];
   brochureQtys: number[];
   booklets: { pages: number; sheets: number; cells: number[] }[];
-  bookletsA5: { pages: number; sheets: number; cells: number[] }[];
+  bookletsB5: { pages: number; sheets: number; cells: number[] }[];
   brochures: { name: string; ups: number; cells: number[] }[];
 }
 type View = 'calc' | 'list' | 'rates';
@@ -51,7 +51,7 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
   const [config, setConfig] = useState<Config | null>(null);
   const [loadError, setLoadError] = useState('');
   const [view, setView] = useState<View>('calc');
-  const [job, setJob] = useState<{ product: PrintProduct; pages: number; paper: number; cover: number; coverSep: boolean; lam: boolean; fold: boolean; booklet: 'A4' | 'A5'; size: PrintSize; sides: 1 | 2; qty: string; mode: 'tier' | 'flat' }>({
+  const [job, setJob] = useState<{ product: PrintProduct; pages: number; paper: number; cover: number; coverSep: boolean; lam: boolean; fold: boolean; booklet: 'A4' | 'B5'; size: PrintSize; sides: 1 | 2; qty: string; mode: 'tier' | 'flat' }>({
     product: 'eulogy',
     pages: 8,
     paper: 0,
@@ -194,13 +194,13 @@ export default function PrintCosting({ onSaved }: { onSaved?: (quoteId: number) 
                     <div style={label}>Booklet size</div>
                     <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
                       {chip('A4 booklet — A3 sheets folded', job.booklet === 'A4', () => set({ booklet: 'A4' }))}
-                      {chip('A5 booklet — A4 sheets folded', job.booklet === 'A5', () => set({ booklet: 'A5' }))}
+                      {chip('B5 booklet — A4 sheets folded', job.booklet === 'B5', () => set({ booklet: 'B5' }))}
                     </div>
-                    {job.booklet === 'A5' && <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Costed from the A3 sheet rate: two A4 sheets are cut from each A3 sheet.</p>}
+                    {job.booklet === 'B5' && <p className="note" style={{ margin: 'var(--space-1) 0 0' }}>Four B5 pages to an A4 sheet printed both sides (eight to an A3 sheet). Costed from the A3 sheet rate: two A4 sheets are cut from each A3 sheet.</p>}
                   </div>
                 )}
                 <div>
-                  <div style={label}>Pages — {job.pages / 4} × {job.product === 'eulogy' && job.booklet === 'A5' ? 'A4' : 'A3'} per copy</div>
+                  <div style={label}>Pages — {job.pages / 4} × {job.product === 'eulogy' && job.booklet === 'B5' ? 'A4' : 'A3'} per copy</div>
                   <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>{PRINT_PAGE_OPTIONS.map((p) => chip(String(p), job.pages === p, () => set({ pages: p })))}</div>
                 </div>
                 <div>
@@ -389,8 +389,8 @@ function PriceListView({
             </div>
           </div>
           <div>
-            <div className="card-kicker">Eulogies — A5 booklets</div>
-            <p className="note" style={{ marginTop: 0 }}>The same pages on A4 sheets folded to A5, costed from the A3 sheet rate (two A4 sheets from each). Price per copy, VAT inclusive, KES.</p>
+            <div className="card-kicker">Eulogies — B5 booklets</div>
+            <p className="note" style={{ marginTop: 0 }}>The same pages on B5 pages, four to an A4 sheet printed both sides, costed from the A3 sheet rate (two A4 sheets from each). Price per copy, VAT inclusive, KES.</p>
             <div style={{ overflowX: 'auto' }}>
               <table className="table" style={{ minWidth: 640 }}>
                 <thead>
@@ -403,7 +403,7 @@ function PriceListView({
                   </tr>
                 </thead>
                 <tbody>
-                  {list.bookletsA5.map((r) => (
+                  {list.bookletsB5.map((r) => (
                     <tr key={r.pages}>
                       <td><b>{r.pages}</b></td>
                       <td>{r.sheets}</td>

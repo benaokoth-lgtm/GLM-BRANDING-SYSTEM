@@ -6,6 +6,7 @@ import type { OrderSummary, StaffUser } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
 import { useAuth } from '../state/AuthContext';
 import OrderDetailDialog from '../components/OrderDetailDialog';
+import { StkCollectDialog, StkRowButton, useMayCollect } from '../components/StkCollect';
 import { useSubTab } from '../state/SubNavContext';
 
 // One Orders screen for everybody. Someone who may see every order (Admin, managers) gets the whole list with the summary figures and a staff
@@ -26,6 +27,9 @@ export default function Orders() {
   // a link from the approvals inbox (?order=12) opens that order
   const [params, setParams] = useSearchParams();
   const [detailId, setDetailId] = useState<number | null>(() => Number(params.get('order')) || null);
+  // "STK push" on a row that still owes: an M-Pesa prompt to the customer for the balance
+  const mayCollect = useMayCollect();
+  const [stkId, setStkId] = useState<number | null>(null);
   // The summary figure (All Orders) that is opened into the orders behind it.
   const [openKpi, setOpenKpi] = useState<'total' | 'production' | 'pending' | 'overdue' | null>(null);
   // Everything together by default (the Status column tells an order, an invoice and a quotation apart); Invoices and Quotations narrow it.
@@ -369,6 +373,7 @@ export default function Orders() {
             <th>Total</th>
             <th>Balance</th>
             <th>Payment</th>
+            {mayCollect && <th></th>}
           </tr>
         </thead>
         <tbody>
@@ -396,6 +401,7 @@ export default function Orders() {
                 <td>
                   <span className={overdueClass}>{overdueTag}</span>
                 </td>
+                {mayCollect && <td>{row.totals.balanceDue > 0.005 && <StkRowButton onOpen={() => setStkId(row.id)} />}</td>}
               </tr>
             );
           })}
@@ -438,6 +444,17 @@ export default function Orders() {
             </div>
           )}
         </div>
+      )}
+
+      {stkId && (
+        <StkCollectDialog
+          orderId={stkId}
+          onClose={() => setStkId(null)}
+          onPaid={() => {
+            setStkId(null);
+            load();
+          }}
+        />
       )}
 
       {detailId && (

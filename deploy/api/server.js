@@ -66785,7 +66785,7 @@ var PRINT_FEE_LABELS = [
   { key: "trim", label: "Trimming", unit: "KES / set" },
   { key: "fold", label: "Folding / creasing", unit: "KES / set" },
   { key: "lam", label: "Lamination", unit: "KES / A3 sheet" },
-  { key: "cut", label: "Cutting A3 into A4 (A5 booklets)", unit: "KES / A3 sheet" },
+  { key: "cut", label: "Cutting A3 into A4 (B5 booklets)", unit: "KES / A3 sheet" },
   { key: "waste", label: "Brochure wastage", unit: "% of sheets" }
 ];
 function printSettingsProblem(s) {
@@ -66834,7 +66834,7 @@ function printCalc(job, s) {
     add("A3 printing", total2 * rate2, `${total2} sheets \xD7 ${rate2} (${base3} + ${total2 - base3} waste)`);
     if (job.lam) add("Lamination", total2 * f.lam, `${total2} sheets`);
     add("Design/layout", f.designBr, "per job");
-  } else if (job.booklet === "A5") {
+  } else if (job.booklet === "B5") {
     const n = Math.max(1, Math.round(job.pages / 4));
     const insideA4 = (job.coverSep ? n - 1 : n) * qty;
     const coverA4 = job.coverSep ? qty : 0;
@@ -66883,7 +66883,7 @@ function printSpec(job, s) {
   const n = Math.max(1, Math.round(job.pages / 4));
   const cover = job.coverSep ? ` with a ${(s.papers[job.cover] ?? paper).name} cover${job.lam ? ", laminated" : ""}` : job.lam ? ", laminated cover" : "";
   const finish = [n > 1 ? "stapled" : null, "trimmed", job.fold ? "folded" : null].filter(Boolean);
-  return `${PRINT_PRODUCT_LABEL[job.product]}${job.booklet === "A5" ? " (A5 booklet)" : ""}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(", ") + " and " + finish[finish.length - 1] : finish[0]}`;
+  return `${PRINT_PRODUCT_LABEL[job.product]}${job.booklet === "B5" ? " (B5 booklet)" : ""}, ${job.pages} pages / ${paper.name}${cover}, ${finish.slice(0, -1).length ? finish.slice(0, -1).join(", ") + " and " + finish[finish.length - 1] : finish[0]}`;
 }
 
 // packages/shared/src/salesTypes.ts
@@ -77219,7 +77219,8 @@ var printJobSchema = external_exports.object({
   coverSep: external_exports.boolean().default(false),
   lam: external_exports.boolean().default(false),
   fold: external_exports.boolean().default(true),
-  booklet: external_exports.enum(["A4", "A5"]).default("A4"),
+  // 'A5' was this booklet's name for a short while: still accepted, and meant as B5
+  booklet: external_exports.enum(["A4", "B5", "A5"]).default("A4").transform((b) => b === "A5" ? "B5" : b),
   size: external_exports.enum(["A4", "B5"]).default("A4"),
   sides: external_exports.union([external_exports.literal(1), external_exports.literal(2)]).default(2),
   qty: external_exports.number().int().min(1, "Enter at least 1").max(1e6),
@@ -77253,8 +77254,8 @@ costingRouter.post("/print/pricelist", mayCost, async (req, res) => {
     bookletQtys: PRINT_BOOKLET_QTYS,
     brochureQtys: PRINT_BROCHURE_QTYS,
     booklets: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: "eulogy", pages, size: "A4", sides: 2, qty, booklet: "A4" })) })),
-    // the A5 booklet: the same pages on A4 sheets, costed from the A3 sheet rate
-    bookletsA5: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: "eulogy", pages, size: "A4", sides: 2, qty, booklet: "A5" })) })),
+    // the B5 booklet: the same pages on A4 sheets (four B5 pages to a sheet), costed from the A3 sheet rate
+    bookletsB5: PRINT_PAGE_OPTIONS.map((pages) => ({ pages, sheets: pages / 4, cells: PRINT_BOOKLET_QTYS.map((qty) => unit({ product: "eulogy", pages, size: "A4", sides: 2, qty, booklet: "B5" })) })),
     brochures: ["A4", "B5"].flatMap(
       (size) => [1, 2].map((sides) => ({ name: size + (sides === 1 ? " single side" : " double side"), ups: PRINT_UPS[size], cells: PRINT_BROCHURE_QTYS.map((qty) => unit({ product: "brochure", pages: 8, size, sides, qty, booklet: "A4" })) }))
     )

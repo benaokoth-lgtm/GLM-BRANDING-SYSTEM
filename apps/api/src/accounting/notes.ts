@@ -131,7 +131,8 @@ export async function issueCreditNote(input: CreditNoteInput) {
 
   const note = await prisma.$transaction(async (tx) => {
     // Material lines that came back can go back on the shelf.
-    if (input.restock) {
+    // (only for an order whose stock was taken when it was recorded: an earlier one never left the shelf in the system, so there is nothing to put back)
+    if (input.restock && order.stockTaken) {
       for (const p of picked.filter((x) => x.material)) {
         const li = await tx.orderLineItem.findUnique({ where: { id: p.lineId } });
         if (li?.materialId) await tx.material.update({ where: { id: li.materialId }, data: { stockQty: { increment: p.qty } } });

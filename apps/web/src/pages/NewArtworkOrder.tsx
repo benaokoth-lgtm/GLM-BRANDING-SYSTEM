@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DTF_PRODUCT_LABEL, fmtNum, todayStr } from '@glm/shared';
 import type { DtfProduct } from '@glm/shared';
 import { api } from '../api/client';
+import { useCatalog } from '../hooks/useCatalog';
 import { ArtworkListDialog, ArtworkListPanel, newRow } from '../components/dtf/ArtworkList';
 import type { UiRow } from '../components/dtf/ArtworkList';
 import type { DtfData } from '../components/dtf/shared';
@@ -15,6 +16,7 @@ const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Numb
 export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProduct }) {
   const label = DTF_PRODUCT_LABEL[product];
   const navigate = useNavigate();
+  const { materials } = useCatalog();
   const [data, setData] = useState<DtfData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [f, setF] = useState({ roll: '', client: '', run: '' });
@@ -45,7 +47,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const hasRows = rows.some((r) => num(r.qty) > 0);
 
   return (
-    <div className="card blueprint" style={{ maxWidth: 820 }}>
+    <div className="card blueprint" style={{ maxWidth: 1060 }}>
       <i className="corner tl"></i>
       <i className="corner tr"></i>
       <i className="corner bl"></i>
@@ -84,7 +86,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         </div>
       </div>
 
-      <ArtworkListPanel rows={rows} onChange={setRows} run={run} filmWidthCm={filmWidthCm} defaultClient={f.client} />
+      <ArtworkListPanel product={product} materials={materials} rows={rows} onChange={setRows} run={run} filmWidthCm={filmWidthCm} defaultClient={f.client} />
 
       {open.length === 0 && <p className="note" style={{ marginTop: 'var(--space-3)' }}>No open {label} film roll — ask a manager to install one under DTF → {label} → Rolls before capturing an order.</p>}
       {overRoll && (
@@ -103,7 +105,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         </button>
       </div>
 
-      {showDialog && <ArtworkListDialog rollId={rollId} jobOn={todayStr()} run={run} filmWidthCm={filmWidthCm} rows={rows} defaultClient={f.client} onClose={() => setShowDialog(false)} onDone={() => navigate('/orders/all')} />}
+      {showDialog && <ArtworkListDialog product={product} materials={materials} rollId={rollId} jobOn={todayStr()} run={run} filmWidthCm={filmWidthCm} rows={rows} defaultClient={f.client} onClose={() => setShowDialog(false)} onDone={() => navigate('/orders/all')} />}
     </div>
   );
 }

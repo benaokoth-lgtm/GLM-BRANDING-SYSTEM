@@ -578,6 +578,8 @@ model Order {
   // order popup — see routes/dtf.ts). Lets "My Orders" filter the two apart
   // without joining to DtfFilmSale/DtfArtworkJob.
   channel           String   @default("general")
+  // The stock items on its lines have left the shelf (see orderStock.ts): done once when the order is recorded (a quotation, when it becomes an invoice); false for orders from before this existed.
+  stockTaken        Boolean  @default(false)
   // The price list it was captured under — the menu it was keyed from: 'glm' (GLM Sales) or 'freelancer' (Freelancer Sales). Every order before the two lists existed is 'glm'.
   priceList         String   @default("glm")
   customerName      String?

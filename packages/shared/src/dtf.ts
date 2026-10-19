@@ -42,9 +42,9 @@ export const DTF_PRODUCT_LABEL: Record<DtfProduct, string> = { dtf: 'DTF', uv: '
 export const isDtfProduct = (v: unknown): v is DtfProduct => v === 'dtf' || v === 'uv';
 
 /** The price-list services a film sale and an artwork job are recorded against, for each product. */
-export const DTF_SERVICE_NAMES: Record<DtfProduct, { film: string; artwork: string }> = {
-  dtf: { film: 'DTF Sheet (per metre)', artwork: 'DTF Printing' },
-  uv: { film: 'UV DTF Sheet (per metre)', artwork: 'UV DTF Printing' },
+export const DTF_SERVICE_NAMES: Record<DtfProduct, { film: string; artwork: string; press: string }> = {
+  dtf: { film: 'DTF Sheet (per metre)', artwork: 'DTF Printing', press: 'DTF Heat Press' },
+  uv: { film: 'UV DTF Sheet (per metre)', artwork: 'UV DTF Printing', press: 'UV DTF Heat Press' }, // (UV DTF is applied cold: never used)
 };
 
 /**

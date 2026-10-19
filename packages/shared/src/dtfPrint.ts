@@ -15,8 +15,13 @@ export interface ArtworkRow {
   widthCm: number;
   heightCm: number;
   qty: number;
-  /** Ksh for ONE artwork of this row, the heat press included. */
+  /** Ksh for ONE artwork of this row: the print only — the heat press and any garment are separate (below). */
   price: number;
+  /** DTF: the heat press, Ksh for ONE artwork of this row (every artwork is pressed). UV DTF stickers are applied cold: 0. */
+  press: number;
+  /** DTF: the stock item (a cap, a polo shirt…) the artworks are pressed on when WE supply it — one for each artwork of the row — and its list price each; null = the client brought their own. */
+  garmentId: number | null;
+  garmentPrice: number;
 }
 
 /** "5 × 5 cm", "10.5 × 8 cm". */
@@ -33,7 +38,11 @@ export interface ArtworkClient {
   areaCm2: number;
   /** The metres of film this client's order carries: a share of the length by the AREA of their artworks (they add up to the length entered). */
   metres: number;
+  /** What the client pays for all their rows, and how it splits: the artworks (print), the heat press and the garments we supplied. */
   amount: number;
+  artworkAmount: number;
+  pressAmount: number;
+  garmentAmount: number;
 }
 
 export interface ArtworkListCalc {
@@ -60,15 +69,18 @@ export function artworkClientKey(client: string, phone: string): string {
   return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, ' ')}`;
 }
 
-export const artworkRowTotal = (r: Pick<ArtworkRow, 'qty' | 'price'>): number => r2((Number.isFinite(r.qty) ? r.qty : 0) * (Number.isFinite(r.price) ? r.price : 0));
+const fin = (n: number) => (Number.isFinite(n) ? n : 0);
+/** What one row comes to: how many × (the print + the heat press + the garment when we supply it). */
+export const artworkRowTotal = (r: Pick<ArtworkRow, 'qty' | 'price' | 'press' | 'garmentId' | 'garmentPrice'>): number => r2(fin(r.qty) * (fin(r.price) + fin(r.press) + (r.garmentId ? fin(r.garmentPrice) : 0)));
 export const artworkRowArea = (r: Pick<ArtworkRow, 'widthCm' | 'heightCm' | 'qty'>): number => (r.widthCm > 0 && r.heightCm > 0 && r.qty > 0 ? r.widthCm * r.heightCm * r.qty : 0);
 
 const MAX_SIDE_CM = 1000;
 
-export function artworkListCalc(rows: ArtworkRow[], metres: number, filmWidthCm: number, defaultClient = '', defaultPhone = ''): ArtworkListCalc {
+/** `withPress`: DTF (true) — every artwork is heat pressed, so each row needs the heat press price, and may carry a garment from stock; UV DTF (false) is applied cold: neither. */
+export function artworkListCalc(rows: ArtworkRow[], metres: number, filmWidthCm: number, defaultClient = '', defaultPhone = '', withPress = true): ArtworkListCalc {
   const problems: string[] = [];
   const warnings: string[] = [];
-  const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.widthCm > 0 || r.heightCm > 0 || r.client.trim());
+  const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.press > 0 || r.widthCm > 0 || r.heightCm > 0 || r.client.trim());
   if (!(metres > 0)) problems.push('Enter the length of film used (m)');
   if (live.length === 0) problems.push('Add at least one row of artworks');
   live.forEach((r, i) => {
@@ -78,6 +90,8 @@ export function artworkListCalc(rows: ArtworkRow[], metres: number, filmWidthCm:
     else if (filmWidthCm > 0 && Math.min(r.widthCm, r.heightCm) > filmWidthCm + 0.001) problems.push(`Row ${n}: ${artworkSizeLabel(r.widthCm, r.heightCm)} does not fit the ${trim(filmWidthCm)} cm film`);
     if (!Number.isInteger(r.qty) || r.qty < 1) problems.push(`Row ${n}: enter how many artworks`);
     if (!(r.price > 0)) problems.push(`Row ${n}: enter the price of one artwork`);
+    if (withPress && !(r.press > 0)) problems.push(`Row ${n}: enter the heat press price (every artwork is pressed)`);
+    if (!withPress && (r.press > 0 || r.garmentId)) problems.push(`Row ${n}: a UV DTF sticker is applied cold — no heat press or garment`);
   });
   const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0 && r.widthCm > 0 && r.heightCm > 0);
   const pieces = valid.reduce((a, r) => a + r.qty, 0);
@@ -89,11 +103,14 @@ export function artworkListCalc(rows: ArtworkRow[], metres: number, filmWidthCm:
     const client = r.client.trim() || defaultClient.trim();
     const phone = r.client.trim() ? r.phone.trim() : r.phone.trim() || defaultPhone.trim();
     const key = artworkClientKey(client, phone);
-    const g = groups.get(key) ?? { key, client, phone, rows: [], pieces: 0, areaCm2: 0, metres: 0, amount: 0 };
+    const g = groups.get(key) ?? { key, client, phone, rows: [], pieces: 0, areaCm2: 0, metres: 0, amount: 0, artworkAmount: 0, pressAmount: 0, garmentAmount: 0 };
     g.rows.push(r);
     g.pieces += r.qty;
     g.areaCm2 += artworkRowArea(r);
     g.amount = r2(g.amount + artworkRowTotal(r));
+    g.artworkAmount = r2(g.artworkAmount + r.qty * r.price);
+    g.pressAmount = r2(g.pressAmount + r.qty * (withPress ? r.press : 0));
+    g.garmentAmount = r2(g.garmentAmount + (r.garmentId ? r.qty * r.garmentPrice : 0));
     if (!g.phone && phone) g.phone = phone;
     groups.set(key, g);
   }

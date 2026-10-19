@@ -7,6 +7,7 @@ import { canSeeCosts, costFieldsFor, ensureCostAccessOnce } from '../costs';
 import { ensureChartOnce } from '../accounting/chart';
 import { claimProblem, resolveSourcing } from '../commission';
 import type { CreditLine } from '../commission';
+import { takeOrderStock } from '../orderStock';
 import { resolveCapture } from '../frontOffice';
 import { isSalesPersonOrder, labelFor, salesPersonIds, salesPersonRoleNames } from '../orderSource';
 import { WALK_IN_CLIENT } from '@glm/shared';
@@ -203,6 +204,7 @@ async function convertQuoteToInvoice(
   const days = order.corporateClient?.creditDays ?? 30;
   const dueDate = addDays(todayStr(), days);
   await tx.order.update({ where: { id: order.id }, data: { status: 'Invoice', dueDate } });
+  await takeOrderStock(tx, order.id); // the client has accepted: the stock leaves the shelf now
 }
 
 // ── Payments ──────────────────────────────────────────────────────────────
@@ -459,6 +461,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
       },
       include: orderInclude,
     });
+    await takeOrderStock(tx, created.id);
     await extra.after?.(tx, created);
     if (paymentLines.length || extra.after) {
       if (paymentLines.length) await recordOrderPayments(tx, { id: created.id, kind: 'walkin', status, corporateClient: null }, paymentLines, cap.capturedById); // the money is the cashier's
@@ -560,6 +563,7 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
       },
       include: orderInclude,
     });
+    await takeOrderStock(tx, created.id);
 
     return created;
   });

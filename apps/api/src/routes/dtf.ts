@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { notifyApprovers } from '../approvals';
 import { labelFor } from '../orderSource';
+import { returnOrderStock, takeOrderStock } from '../orderStock';
 import type { OrderLabel } from '../orderSource';
 import { randomUUID } from 'node:crypto';
 import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
@@ -118,6 +119,8 @@ async function createDtfOrder(
     freelanceAgentId?: number | null;
     // What one unit of the main line must reach to count as sold at base price (film's floor, an artwork job's recommended price)
     serviceBase?: number;
+    /** The order's lines exactly as listed — the artwork, the heat press and the garment of each row in turn — used INSTEAD of serviceLine / moreServiceLines / materialLines (serviceLine is still the first line, for sourcing). */
+    orderedLines?: { itemType: 'service' | 'material'; serviceId?: number; materialId?: number; qty: number; unitPrice: number; description?: string }[];
   },
 ) {
   // The order's staffId comes straight from the caller's JWT — if the dev
@@ -130,7 +133,9 @@ async function createDtfOrder(
   if (!staffExists) throw new Error('Your session is out of date (the underlying user record no longer exists) — please log out and log back in, then try again.');
 
   const materialItems = await materialLineItems(tx, opts.materialLines);
-  const lineItemInputs: LineItemInput[] = [
+  const lineItemInputs: LineItemInput[] = opts.orderedLines
+    ? opts.orderedLines.map((l) => ({ itemType: l.itemType, serviceId: l.serviceId ?? null, materialId: l.materialId ?? null, qty: l.qty, unitPrice: l.unitPrice, discountPct: 0, discountAmt: 0 }))
+    : [
     { itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
     ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType as LineItemInput['itemType'], serviceId: opts.serviceLine.serviceId, materialId: null, qty: l.qty, unitPrice: l.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: l.heatPressFee ?? null })),
     ...materialItems.map((li) => ({ itemType: li.itemType as LineItemInput['itemType'], serviceId: null, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: 0, discountAmt: 0 })),
@@ -170,7 +175,9 @@ async function createDtfOrder(
       dueDate,
       stage: 'Order Received',
       lineItems: {
-        create: [
+        create: opts.orderedLines
+          ? opts.orderedLines.map((l) => ({ itemType: l.itemType, serviceId: l.serviceId ?? null, materialId: l.materialId ?? null, qty: l.qty, unitPrice: l.unitPrice, description: l.description ?? '' }))
+          : [
           { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null, description: opts.serviceLine.description ?? '' },
           ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: l.qty, unitPrice: l.unitPrice, heatPressFee: l.heatPressFee ?? null, description: l.description ?? '' })),
           ...materialItems,
@@ -179,6 +186,7 @@ async function createDtfOrder(
     },
     include: orderInclude,
   });
+  await takeOrderStock(tx, order.id); // any stock item on the order leaves the shelf
   if (opts.payments.length) {
     await recordOrderPayments(tx, { id: order.id, kind: 'walkin', status, corporateClient: null }, opts.payments, opts.capturedById); // the money is the cashier's
     return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
@@ -191,14 +199,15 @@ async function createDtfOrder(
  * The price-list service a DTF film sale ("DTF Sheet (per metre)") or artwork job ("DTF Printing") is recorded against. Found by its name, or — if it was renamed in
  * Master Data — as the DTF service of that kind; and created when the price list has none (a database that was never seeded), so a sale never stops for a missing row.
  */
-async function dtfService(tx: Prisma.TransactionClient, kind: 'film' | 'artwork', product: DtfProduct = 'dtf') {
+async function dtfService(tx: Prisma.TransactionClient, kind: 'film' | 'artwork' | 'press', product: DtfProduct = 'dtf') {
   const uv = product === 'uv';
   const name = DTF_SERVICE_NAMES[product][kind];
-  const unit = kind === 'film' ? 'metre' : uv ? 'piece' : 'sqm';
+  const unit = kind === 'film' ? 'metre' : kind === 'press' || uv ? 'piece' : 'sqm';
   // found by its name or, if it was renamed in Master Data, as this product's DTF service of that kind (UV services are told apart by "UV DTF" in the name)
+  // (the heat press is found by its own name only: other DTF-module services are also sold by the piece)
   const found =
     (await tx.service.findFirst({ where: { name } })) ??
-    (await tx.service.findFirst({ where: { soldViaDtfModule: true, unit, ...(uv ? { name: { contains: 'UV DTF' } } : { NOT: { name: { contains: 'UV DTF' } } }) }, orderBy: { id: 'asc' } }));
+    (kind === 'press' ? null : await tx.service.findFirst({ where: { soldViaDtfModule: true, unit, ...(uv ? { name: { contains: 'UV DTF' } } : { NOT: { name: { contains: 'UV DTF' } } }) }, orderBy: { id: 'asc' } }));
   if (found) {
     // taken off the price list, or no longer marked as a DTF service: put right, since the DTF screens depend on it
     if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
@@ -214,7 +223,7 @@ async function dtfService(tx: Prisma.TransactionClient, kind: 'film' | 'artwork'
       name,
       item: name,
       unit,
-      price: kind === 'film' ? settings.stdPricePerM : uv ? settings.minPricePerPiece : DTF_PRINT_DEFAULT_RATE_PER_SQM,
+      price: kind === 'film' ? settings.stdPricePerM : kind === 'press' ? 0 : uv ? settings.minPricePerPiece : DTF_PRINT_DEFAULT_RATE_PER_SQM, // (the heat press is priced on each row, so its list price is a placeholder)
       soldViaDtfModule: true,
       chargesPressingFee: kind === 'artwork' && !uv, // a UV DTF sticker is applied cold: no heat press fee
       businessHeadId: head?.id ?? null,
@@ -1244,7 +1253,12 @@ const printSchema = z.object({
         widthCm: z.number().positive('Enter the width of the artwork'),
         heightCm: z.number().positive('Enter the height of the artwork'),
         qty: z.number().int('Enter a whole number of artworks').positive('Enter how many artworks'),
+        /** Ksh for ONE artwork: the print only. */
         price: z.number().positive('Enter the price of one artwork'),
+        /** DTF: the heat press, Ksh for ONE artwork (every artwork is pressed); UV DTF is applied cold, so none. */
+        press: z.number().min(0).default(0),
+        /** DTF: the stock item the artworks are pressed on when WE supply it (one for each artwork); blank = the client brought their own. Its price is the stock price list's, never the screen's. */
+        garmentMaterialId: z.number().int().positive().nullable().optional(),
       }),
     )
     .min(1, 'Add at least one row of artworks')
@@ -1266,7 +1280,13 @@ dtfRouter.post('/prints', async (req, res) => {
   const label = await labelFor(cap.staffId);
   const settings = await getSettings(product);
   const filmWidth = settings.layoutWidthCm > 0 ? settings.layoutWidthCm : settings.rollWidthCm;
-  const calc = artworkListCalc(d.rows, d.runningMetres, filmWidth, d.client, d.phone);
+  const withPress = product === 'dtf'; // UV DTF stickers are applied cold: no heat press, no garment
+  const garmentIds = [...new Set(d.rows.map((r) => r.garmentMaterialId).filter((x): x is number => !!x))];
+  const garments = garmentIds.length ? await prisma.material.findMany({ where: { id: { in: garmentIds } } }) : [];
+  if (garments.length !== garmentIds.length) return res.status(400).json({ error: 'A stock item you chose is no longer on the stock price list' });
+  const garmentOf = new Map(garments.map((g) => [g.id, g]));
+  const priced = d.rows.map((r) => ({ client: r.client, phone: r.phone, widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, price: r.price, press: withPress ? r.press : 0, garmentId: r.garmentMaterialId ?? null, garmentPrice: r.garmentMaterialId ? (garmentOf.get(r.garmentMaterialId)?.price ?? 0) : 0 }));
+  const calc = artworkListCalc(priced, d.runningMetres, filmWidth, d.client, d.phone, withPress);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The print cannot be recorded' });
   for (const c of calc.clients) {
     const claim = await claimProblem(req.user!, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
@@ -1281,9 +1301,20 @@ dtfRouter.post('/prints', async (req, res) => {
   try {
     const made = await prisma.$transaction(async (tx) => {
       const service = await dtfService(tx, 'artwork', product);
+      const pressService = withPress ? await dtfService(tx, 'press', product) : null;
       const out: Awaited<ReturnType<typeof createDtfOrder>>[] = [];
       for (const c of calc.clients) {
-        // the price entered already includes the heat press: no separate fee on the line
+        // each row in turn: the artwork (the print), the heat press, and the garment when WE supply it — so the print and the press are separate lines with their own prices
+        const ordered: NonNullable<Parameters<typeof createDtfOrder>[1]['orderedLines']> = [];
+        for (const r of c.rows) {
+          const size = artworkSizeLabel(r.widthCm, r.heightCm);
+          ordered.push({ itemType: 'service', serviceId: service.id, qty: r.qty, unitPrice: r.price, description: size });
+          if (pressService) {
+            const g = r.garmentId ? garmentOf.get(r.garmentId) : null;
+            ordered.push({ itemType: 'service', serviceId: pressService.id, qty: r.qty, unitPrice: r.press, description: g ? `${size} on our ${g.name}` : `${size} on the client’s own garment` });
+            if (g) ordered.push({ itemType: 'material', materialId: g.id, qty: r.qty, unitPrice: r.garmentPrice, description: size });
+          }
+        }
         const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: artworkSizeLabel(r.widthCm, r.heightCm), heatPressFee: null }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
@@ -1297,6 +1328,7 @@ dtfRouter.post('/prints', async (req, res) => {
           serviceLine: { itemType: 'service', serviceId: service.id, ...first! },
           moreServiceLines: rest,
           materialLines: [],
+          orderedLines: ordered,
           payments: payFor.get(c.key) ?? [],
           sourcedBy: d.sourcedBy,
           freelanceAgentId: null,
@@ -1312,7 +1344,7 @@ dtfRouter.post('/prints', async (req, res) => {
             fixedChargePerMetreAtJob: 0, // no recommended price: the price is what the sales person charged
             minPricePerPieceAtJob: 0,
             chargedPerPiece: null,
-            chargedTotal: c.amount,
+            chargedTotal: c.artworkAmount, // the film's own revenue is the artworks (the print) only: the heat press and any garment are other lines of the order
             pricedBySales: true,
             filmWidthCm: filmWidth,
             sheetId,
@@ -1500,6 +1532,7 @@ dtfRouter.post('/approvals/:id/reject', manageOnly, async (req, res) => {
   if (a.requestedById === req.user!.id) return res.status(400).json({ error: 'You cannot reject a price you captured yourself' });
   await prisma.$transaction(async (tx) => {
     if (a.orderId) {
+      await returnOrderStock(tx, a.orderId);
       await tx.dtfArtworkJob.deleteMany({ where: { orderId: a.orderId } });
       await tx.embroideryJob.deleteMany({ where: { orderId: a.orderId } });
       await tx.orderLineItem.deleteMany({ where: { orderId: a.orderId } });

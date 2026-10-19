@@ -96,6 +96,7 @@ describe('accounting module', () => {
 
   it('credit note: itemised, restocks, reduces income and VAT, and refunds what was already paid', async () => {
     const o = await newOrder('T-3', [[1, 1000], [2, 500]]); // 2000
+    await prisma.order.update({ where: { id: o.id }, data: { stockTaken: true } }); // (its stock left the shelf when it was recorded, so a return puts it back)
     await prisma.$transaction((tx) => recordOrderPayments(tx, o, [{ method: 'Cash', amount: 2000 }], staffId, '2031-03-03'));
     const capLine = (await prisma.orderLineItem.findMany({ where: { orderId: o.id } })).find((l) => l.materialId)!;
     const before = await prisma.material.findUniqueOrThrow({ where: { id: cap } });

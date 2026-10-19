@@ -65494,8 +65494,9 @@ var DEFAULT_DTF_SETTINGS = {
   layoutWidthCm: 58
 };
 var DTF_SERVICE_NAMES = {
-  dtf: { film: "DTF Sheet (per metre)", artwork: "DTF Printing" },
-  uv: { film: "UV DTF Sheet (per metre)", artwork: "UV DTF Printing" }
+  dtf: { film: "DTF Sheet (per metre)", artwork: "DTF Printing", press: "DTF Heat Press" },
+  uv: { film: "UV DTF Sheet (per metre)", artwork: "UV DTF Printing", press: "UV DTF Heat Press" }
+  // (UV DTF is applied cold: never used)
 };
 var UV_DTF_SETTINGS = {
   rollLengthM: 50,
@@ -66765,13 +66766,14 @@ function artworkClientKey(client, phone) {
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
-var artworkRowTotal = (r) => r29((Number.isFinite(r.qty) ? r.qty : 0) * (Number.isFinite(r.price) ? r.price : 0));
+var fin = (n) => Number.isFinite(n) ? n : 0;
+var artworkRowTotal = (r) => r29(fin(r.qty) * (fin(r.price) + fin(r.press) + (r.garmentId ? fin(r.garmentPrice) : 0)));
 var artworkRowArea = (r) => r.widthCm > 0 && r.heightCm > 0 && r.qty > 0 ? r.widthCm * r.heightCm * r.qty : 0;
 var MAX_SIDE_CM = 1e3;
-function artworkListCalc(rows, metres, filmWidthCm, defaultClient = "", defaultPhone = "") {
+function artworkListCalc(rows, metres, filmWidthCm, defaultClient = "", defaultPhone = "", withPress = true) {
   const problems = [];
   const warnings = [];
-  const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.widthCm > 0 || r.heightCm > 0 || r.client.trim());
+  const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.press > 0 || r.widthCm > 0 || r.heightCm > 0 || r.client.trim());
   if (!(metres > 0)) problems.push("Enter the length of film used (m)");
   if (live.length === 0) problems.push("Add at least one row of artworks");
   live.forEach((r, i) => {
@@ -66781,6 +66783,8 @@ function artworkListCalc(rows, metres, filmWidthCm, defaultClient = "", defaultP
     else if (filmWidthCm > 0 && Math.min(r.widthCm, r.heightCm) > filmWidthCm + 1e-3) problems.push(`Row ${n}: ${artworkSizeLabel(r.widthCm, r.heightCm)} does not fit the ${trim(filmWidthCm)} cm film`);
     if (!Number.isInteger(r.qty) || r.qty < 1) problems.push(`Row ${n}: enter how many artworks`);
     if (!(r.price > 0)) problems.push(`Row ${n}: enter the price of one artwork`);
+    if (withPress && !(r.press > 0)) problems.push(`Row ${n}: enter the heat press price (every artwork is pressed)`);
+    if (!withPress && (r.press > 0 || r.garmentId)) problems.push(`Row ${n}: a UV DTF sticker is applied cold \u2014 no heat press or garment`);
   });
   const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0 && r.widthCm > 0 && r.heightCm > 0);
   const pieces = valid.reduce((a2, r) => a2 + r.qty, 0);
@@ -66791,11 +66795,14 @@ function artworkListCalc(rows, metres, filmWidthCm, defaultClient = "", defaultP
     const client = r.client.trim() || defaultClient.trim();
     const phone = r.client.trim() ? r.phone.trim() : r.phone.trim() || defaultPhone.trim();
     const key3 = artworkClientKey(client, phone);
-    const g = groups.get(key3) ?? { key: key3, client, phone, rows: [], pieces: 0, areaCm2: 0, metres: 0, amount: 0 };
+    const g = groups.get(key3) ?? { key: key3, client, phone, rows: [], pieces: 0, areaCm2: 0, metres: 0, amount: 0, artworkAmount: 0, pressAmount: 0, garmentAmount: 0 };
     g.rows.push(r);
     g.pieces += r.qty;
     g.areaCm2 += artworkRowArea(r);
     g.amount = r29(g.amount + artworkRowTotal(r));
+    g.artworkAmount = r29(g.artworkAmount + r.qty * r.price);
+    g.pressAmount = r29(g.pressAmount + r.qty * (withPress ? r.press : 0));
+    g.garmentAmount = r29(g.garmentAmount + (r.garmentId ? r.qty * r.garmentPrice : 0));
     if (!g.phone && phone) g.phone = phone;
     groups.set(key3, g);
   }
@@ -72943,6 +72950,24 @@ async function validateAccountChoice(requested, type) {
   return acc.id;
 }
 
+// apps/api/src/orderStock.ts
+async function takeOrderStock(tx, orderId) {
+  const order = await tx.order.findUnique({ where: { id: orderId }, include: { lineItems: { select: { materialId: true, qty: true } } } });
+  if (!order || order.stockTaken || order.status === "Quote") return;
+  for (const li of order.lineItems) {
+    if (li.materialId && li.qty > 0) await tx.material.update({ where: { id: li.materialId }, data: { stockQty: { decrement: li.qty } } });
+  }
+  await tx.order.update({ where: { id: orderId }, data: { stockTaken: true } });
+}
+async function returnOrderStock(tx, orderId) {
+  const order = await tx.order.findUnique({ where: { id: orderId }, include: { lineItems: { select: { materialId: true, qty: true } } } });
+  if (!order || !order.stockTaken) return;
+  for (const li of order.lineItems) {
+    if (li.materialId && li.qty > 0) await tx.material.update({ where: { id: li.materialId }, data: { stockQty: { increment: li.qty } } });
+  }
+  await tx.order.update({ where: { id: orderId }, data: { stockTaken: false } });
+}
+
 // apps/api/src/orderSource.ts
 async function salesPersonRoleNames() {
   return (await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } })).map((r) => r.name);
@@ -73653,6 +73678,7 @@ async function convertQuoteToInvoice(tx, order) {
   const days = order.corporateClient?.creditDays ?? 30;
   const dueDate = addDays(todayStr(), days);
   await tx.order.update({ where: { id: order.id }, data: { status: "Invoice", dueDate } });
+  await takeOrderStock(tx, order.id);
 }
 var paymentLineSchema = external_exports.object({
   method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]),
@@ -73838,6 +73864,7 @@ async function captureWalkin(req, res, form, extra = {}) {
       },
       include: orderInclude
     });
+    await takeOrderStock(tx, created.id);
     await extra.after?.(tx, created);
     if (paymentLines.length || extra.after) {
       if (paymentLines.length) await recordOrderPayments(tx, { id: created.id, kind: "walkin", status, corporateClient: null }, paymentLines, cap.capturedById);
@@ -73921,6 +73948,7 @@ ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req,
       },
       include: orderInclude
     });
+    await takeOrderStock(tx, created.id);
     return created;
   });
   res.status(201).json(serializeDetail(order));
@@ -76727,13 +76755,13 @@ reportsRouter.get("/sales-performance", async (req, res) => {
   const paidOut = /* @__PURE__ */ new Map();
   for (const p of payouts) paidOut.set(p.staffId, (paidOut.get(p.staffId) ?? 0) + p.amount);
   const salesNet = totals.sales.net || 0;
-  const fin = (t) => ({ orders: t.orders, sales: round(t.net), salesWithVat: round(t.gross), paid: round(t.paid), balance: round(t.balance), avgOrder: t.orders > 0 ? round(t.net / t.orders) : null, clients: t.clients.size });
+  const fin2 = (t) => ({ orders: t.orders, sales: round(t.net), salesWithVat: round(t.gross), paid: round(t.paid), balance: round(t.balance), avgOrder: t.orders > 0 ? round(t.net / t.orders) : null, clients: t.clients.size });
   const allNet = totals.glm.net + totals.sales.net;
   res.json({
     from: range2.from,
     to: range2.to,
-    glm: { ...fin(totals.glm), sharePct: allNet > 0 ? round(totals.glm.net / allNet * 100) : null },
-    sales: { ...fin(totals.sales), sharePct: allNet > 0 ? round(totals.sales.net / allNet * 100) : null },
+    glm: { ...fin2(totals.glm), sharePct: allNet > 0 ? round(totals.glm.net / allNet * 100) : null },
+    sales: { ...fin2(totals.sales), sharePct: allNet > 0 ? round(totals.sales.net / allNet * 100) : null },
     heads: [...byHead.entries()].map(([head, v]) => ({ head, glm: { orders: v.glm.orders.size, sales: round(v.glm.net) }, sales: { orders: v.sales.orders.size, sales: round(v.sales.net) } })).sort((a2, b) => b.glm.sales + b.sales.sales - (a2.glm.sales + a2.sales.sales)),
     months: [...byMonth.entries()].sort((a2, b) => a2[0].localeCompare(b[0])).map(([month, v]) => ({ month, glm: { orders: v.glm.orders, sales: round(v.glm.net) }, sales: { orders: v.sales.orders, sales: round(v.sales.net) } })),
     people: [...per.values()].map((r) => ({
@@ -79350,7 +79378,7 @@ async function createDtfOrder(tx, opts) {
   const staffExists = await tx.user.findUnique({ where: { id: opts.staffId } });
   if (!staffExists) throw new Error("Your session is out of date (the underlying user record no longer exists) \u2014 please log out and log back in, then try again.");
   const materialItems = await materialLineItems(tx, opts.materialLines);
-  const lineItemInputs = [
+  const lineItemInputs = opts.orderedLines ? opts.orderedLines.map((l) => ({ itemType: l.itemType, serviceId: l.serviceId ?? null, materialId: l.materialId ?? null, qty: l.qty, unitPrice: l.unitPrice, discountPct: 0, discountAmt: 0 })) : [
     { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, materialId: null, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: opts.serviceLine.heatPressFee ?? null },
     ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, materialId: null, qty: l.qty, unitPrice: l.unitPrice, discountPct: 0, discountAmt: 0, heatPressFee: l.heatPressFee ?? null })),
     ...materialItems.map((li) => ({ itemType: li.itemType, serviceId: null, materialId: li.materialId, qty: li.qty, unitPrice: li.unitPrice, discountPct: 0, discountAmt: 0 }))
@@ -79388,7 +79416,7 @@ async function createDtfOrder(tx, opts) {
       dueDate,
       stage: "Order Received",
       lineItems: {
-        create: [
+        create: opts.orderedLines ? opts.orderedLines.map((l) => ({ itemType: l.itemType, serviceId: l.serviceId ?? null, materialId: l.materialId ?? null, qty: l.qty, unitPrice: l.unitPrice, description: l.description ?? "" })) : [
           { itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: opts.serviceLine.qty, unitPrice: opts.serviceLine.unitPrice, heatPressFee: opts.serviceLine.heatPressFee ?? null, description: opts.serviceLine.description ?? "" },
           ...(opts.moreServiceLines ?? []).map((l) => ({ itemType: opts.serviceLine.itemType, serviceId: opts.serviceLine.serviceId, qty: l.qty, unitPrice: l.unitPrice, heatPressFee: l.heatPressFee ?? null, description: l.description ?? "" })),
           ...materialItems
@@ -79397,6 +79425,7 @@ async function createDtfOrder(tx, opts) {
     },
     include: orderInclude
   });
+  await takeOrderStock(tx, order.id);
   if (opts.payments.length) {
     await recordOrderPayments(tx, { id: order.id, kind: "walkin", status, corporateClient: null }, opts.payments, opts.capturedById);
     return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
@@ -79406,8 +79435,8 @@ async function createDtfOrder(tx, opts) {
 async function dtfService(tx, kind, product = "dtf") {
   const uv = product === "uv";
   const name2 = DTF_SERVICE_NAMES[product][kind];
-  const unit = kind === "film" ? "metre" : uv ? "piece" : "sqm";
-  const found = await tx.service.findFirst({ where: { name: name2 } }) ?? await tx.service.findFirst({ where: { soldViaDtfModule: true, unit, ...uv ? { name: { contains: "UV DTF" } } : { NOT: { name: { contains: "UV DTF" } } } }, orderBy: { id: "asc" } });
+  const unit = kind === "film" ? "metre" : kind === "press" || uv ? "piece" : "sqm";
+  const found = await tx.service.findFirst({ where: { name: name2 } }) ?? (kind === "press" ? null : await tx.service.findFirst({ where: { soldViaDtfModule: true, unit, ...uv ? { name: { contains: "UV DTF" } } : { NOT: { name: { contains: "UV DTF" } } } }, orderBy: { id: "asc" } }));
   if (found) {
     if (found.retired || !found.soldViaDtfModule) return tx.service.update({ where: { id: found.id }, data: { retired: false, soldViaDtfModule: true } });
     return found;
@@ -79420,7 +79449,8 @@ async function dtfService(tx, kind, product = "dtf") {
       name: name2,
       item: name2,
       unit,
-      price: kind === "film" ? settings.stdPricePerM : uv ? settings.minPricePerPiece : DTF_PRINT_DEFAULT_RATE_PER_SQM,
+      price: kind === "film" ? settings.stdPricePerM : kind === "press" ? 0 : uv ? settings.minPricePerPiece : DTF_PRINT_DEFAULT_RATE_PER_SQM,
+      // (the heat press is priced on each row, so its list price is a placeholder)
       soldViaDtfModule: true,
       chargesPressingFee: kind === "artwork" && !uv,
       // a UV DTF sticker is applied cold: no heat press fee
@@ -80305,7 +80335,12 @@ var printSchema = external_exports.object({
       widthCm: external_exports.number().positive("Enter the width of the artwork"),
       heightCm: external_exports.number().positive("Enter the height of the artwork"),
       qty: external_exports.number().int("Enter a whole number of artworks").positive("Enter how many artworks"),
-      price: external_exports.number().positive("Enter the price of one artwork")
+      /** Ksh for ONE artwork: the print only. */
+      price: external_exports.number().positive("Enter the price of one artwork"),
+      /** DTF: the heat press, Ksh for ONE artwork (every artwork is pressed); UV DTF is applied cold, so none. */
+      press: external_exports.number().min(0).default(0),
+      /** DTF: the stock item the artworks are pressed on when WE supply it (one for each artwork); blank = the client brought their own. Its price is the stock price list's, never the screen's. */
+      garmentMaterialId: external_exports.number().int().positive().nullable().optional()
     })
   ).min(1, "Add at least one row of artworks").max(80),
   clientPayments: external_exports.array(external_exports.object({ key: external_exports.string(), payments: external_exports.array(paymentLineSchema).max(6) })).default([]),
@@ -80324,7 +80359,13 @@ dtfRouter.post("/prints", async (req, res) => {
   const label = await labelFor(cap.staffId);
   const settings = await getSettings(product);
   const filmWidth = settings.layoutWidthCm > 0 ? settings.layoutWidthCm : settings.rollWidthCm;
-  const calc = artworkListCalc(d.rows, d.runningMetres, filmWidth, d.client, d.phone);
+  const withPress = product === "dtf";
+  const garmentIds = [...new Set(d.rows.map((r) => r.garmentMaterialId).filter((x) => !!x))];
+  const garments = garmentIds.length ? await prisma.material.findMany({ where: { id: { in: garmentIds } } }) : [];
+  if (garments.length !== garmentIds.length) return res.status(400).json({ error: "A stock item you chose is no longer on the stock price list" });
+  const garmentOf = new Map(garments.map((g) => [g.id, g]));
+  const priced = d.rows.map((r) => ({ client: r.client, phone: r.phone, widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, price: r.price, press: withPress ? r.press : 0, garmentId: r.garmentMaterialId ?? null, garmentPrice: r.garmentMaterialId ? garmentOf.get(r.garmentMaterialId)?.price ?? 0 : 0 }));
+  const calc = artworkListCalc(priced, d.runningMetres, filmWidth, d.client, d.phone, withPress);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? "The print cannot be recorded" });
   for (const c of calc.clients) {
     const claim = await claimProblem(req.user, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
@@ -80339,8 +80380,19 @@ dtfRouter.post("/prints", async (req, res) => {
   try {
     const made = await prisma.$transaction(async (tx) => {
       const service = await dtfService(tx, "artwork", product);
+      const pressService = withPress ? await dtfService(tx, "press", product) : null;
       const out = [];
       for (const c of calc.clients) {
+        const ordered = [];
+        for (const r of c.rows) {
+          const size = artworkSizeLabel(r.widthCm, r.heightCm);
+          ordered.push({ itemType: "service", serviceId: service.id, qty: r.qty, unitPrice: r.price, description: size });
+          if (pressService) {
+            const g = r.garmentId ? garmentOf.get(r.garmentId) : null;
+            ordered.push({ itemType: "service", serviceId: pressService.id, qty: r.qty, unitPrice: r.press, description: g ? `${size} on our ${g.name}` : `${size} on the client\u2019s own garment` });
+            if (g) ordered.push({ itemType: "material", materialId: g.id, qty: r.qty, unitPrice: r.garmentPrice, description: size });
+          }
+        }
         const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: artworkSizeLabel(r.widthCm, r.heightCm), heatPressFee: null }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
@@ -80354,6 +80406,7 @@ dtfRouter.post("/prints", async (req, res) => {
           serviceLine: { itemType: "service", serviceId: service.id, ...first },
           moreServiceLines: rest,
           materialLines: [],
+          orderedLines: ordered,
           payments: payFor.get(c.key) ?? [],
           sourcedBy: d.sourcedBy,
           freelanceAgentId: null,
@@ -80371,7 +80424,8 @@ dtfRouter.post("/prints", async (req, res) => {
             // no recommended price: the price is what the sales person charged
             minPricePerPieceAtJob: 0,
             chargedPerPiece: null,
-            chargedTotal: c.amount,
+            chargedTotal: c.artworkAmount,
+            // the film's own revenue is the artworks (the print) only: the heat press and any garment are other lines of the order
             pricedBySales: true,
             filmWidthCm: filmWidth,
             sheetId,
@@ -80539,6 +80593,7 @@ dtfRouter.post("/approvals/:id/reject", manageOnly, async (req, res) => {
   if (a2.requestedById === req.user.id) return res.status(400).json({ error: "You cannot reject a price you captured yourself" });
   await prisma.$transaction(async (tx) => {
     if (a2.orderId) {
+      await returnOrderStock(tx, a2.orderId);
       await tx.dtfArtworkJob.deleteMany({ where: { orderId: a2.orderId } });
       await tx.embroideryJob.deleteMany({ where: { orderId: a2.orderId } });
       await tx.orderLineItem.deleteMany({ where: { orderId: a2.orderId } });
@@ -80806,7 +80861,7 @@ async function issueCreditNote(input) {
     refundMethod = input.refund.method;
   }
   const note = await prisma.$transaction(async (tx) => {
-    if (input.restock) {
+    if (input.restock && order.stockTaken) {
       for (const p of picked.filter((x) => x.material)) {
         const li = await tx.orderLineItem.findUnique({ where: { id: p.lineId } });
         if (li?.materialId) await tx.material.update({ where: { id: li.materialId }, data: { stockQty: { increment: p.qty } } });

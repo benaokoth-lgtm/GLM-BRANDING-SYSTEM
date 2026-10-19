@@ -8,7 +8,7 @@ import type { OrderLabel } from '../orderSource';
 import { randomUUID } from 'node:crypto';
 import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canDiscountFlatbed, flatbedUnitDiscountProblem, DEFAULT_FLATBED_SETTINGS, UV_FLATBED_SERVICE, flatbedDescription, flatbedQuote, flatbedSettingsProblem, sortedFlatbedBands, sortedFlatbedDiscounts, DEFAULT_PEN_TIERS, DTF_PRINT_DEFAULT_RATE_PER_SQM, UV_PEN_SERVICE, penQuote, DTF_SERVICE_NAMES, penTiersProblem, sortedPenTiers, UV_DTF_HEAD, UV_DTF_SETTINGS, computeOrderTotals, DEFAULT_DTF_SETTINGS, jobCalc, jobTotals, lowestArtworkPrice, runningMetreCalc, usesSmallSharePrice, chargeToSnapshot, nextRollId, round2, saleCalc, todayStr } from '@glm/shared';
 import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
-import { artworkListCalc, artworkSizeLabel, layoutPrints, layoutSummary } from '@glm/shared';
+import { artworkListCalc } from '@glm/shared';
 import { prisma } from '../db';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
@@ -34,10 +34,7 @@ const productOf = (v: unknown): DtfProduct => (v === 'uv' ? 'uv' : 'dtf');
 const settingsId = (product: DtfProduct) => (product === 'uv' ? 2 : 1);
 async function getSettings(product: DtfProduct = 'dtf') {
   if (product === 'uv') return prisma.dtfSetting.upsert({ where: { id: 2 }, update: {}, create: { id: 2, ...UV_DTF_SETTINGS } });
-  const s = await prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
-  // the width artworks are laid out on starts at 58 cm for DTF (a database that pre-dates it has 0 = not set yet)
-  if (s.layoutWidthCm === 0) return prisma.dtfSetting.update({ where: { id: 1 }, data: { layoutWidthCm: DEFAULT_DTF_SETTINGS.layoutWidthCm } });
-  return s;
+  return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
 }
 /** The ids of the UV DTF rolls (a roll belongs to a product; the DTF ones are everything else). */
 async function uvRollIds(): Promise<string[]> {
@@ -257,7 +254,7 @@ dtfRouter.get('/data', async (req, res) => {
     getSettings(product),
     prisma.dtfRoll.findMany({ where: { product, ...(openOnly ? { status: 'open' } : {}) }, orderBy: { id: 'asc' } }),
     prisma.dtfFilmSale.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, orderBy: [{ soldOn: 'desc' }, { id: 'desc' }] }),
-    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, include: { items: { select: { widthCm: true, heightCm: true, qty: true } } }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] }),
+    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...(openOnly ? { status: 'open' } : {}) } }, orderBy: [{ jobOn: 'desc' }, { id: 'desc' }] }),
   ]);
   const uvIds = await uvRollIds();
   res.json({
@@ -266,7 +263,6 @@ dtfRouter.get('/data', async (req, res) => {
     settings: {
       rollLengthM: settings.rollLengthM,
       rollWidthCm: settings.rollWidthCm,
-      layoutWidthCm: settings.layoutWidthCm,
       stdPricePerM: settings.stdPricePerM,
       minPricePerM: settings.minPricePerM,
       wastageTolerancePct: settings.wastageTolerancePct,
@@ -315,9 +311,6 @@ dtfRouter.get('/data', async (req, res) => {
       approvalStatus: j.approvalStatus,
       orderId: j.orderId,
       pricedBySales: j.pricedBySales,
-      filmWidthCm: j.filmWidthCm,
-      areaCm2: Math.round(j.items.reduce((a, i) => a + i.widthCm * i.heightCm * i.qty, 0) * 100) / 100,
-      capturedByName: j.capturedByName,
     })),
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: 'Pending', ...(product === 'uv' ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } }) } }) : 0,
   });
@@ -675,7 +668,6 @@ const settingsSchema = z
   .object({
     rollLengthM: z.number().positive(),
     rollWidthCm: z.number().positive(),
-    layoutWidthCm: z.number().min(0).max(500).optional(),
     stdPricePerM: z.number().positive(),
     minPricePerM: z.number().positive(),
     wastageTolerancePct: z.number().min(0).max(100),
@@ -1235,9 +1227,9 @@ dtfRouter.post('/sheets', async (req, res) => {
 });
 
 // ── Artwork prints: the artworks arranged on a length of film, measured and priced by the sales person ──────────────────
-// The sales person enters the length of film used and the rows — client, size (width × height, cm), how many, the price of ONE artwork with the heat press included. There is no recommended
+// The sales person enters the length of film used (the only film figure tracked) and the rows — client, an optional description, how many, the price of ONE artwork (the print only), and for DTF the heat press and the garment. There is no recommended
 // price: those prices are the prices (see pricedBySales on the job: nothing to earn above, nothing to approve). Each client's rows become that client's own order, one line a size, with their own
-// payment; the film comes off the roll once, as the length entered, each order carrying its share by the AREA of its artworks. The sizes are kept (DtfArtworkItem) for the film layout figures.
+// payment; the film comes off the roll once, as the length entered, each order carrying its share by its number of artworks.
 const printSchema = z.object({
   rollId: z.string().min(1),
   jobOn: dateStr.optional(),
@@ -1250,8 +1242,8 @@ const printSchema = z.object({
       z.object({
         client: z.string().max(200).default(''),
         phone: z.string().max(40).default(''),
-        widthCm: z.number().positive('Enter the width of the artwork'),
-        heightCm: z.number().positive('Enter the height of the artwork'),
+        /** What the artworks are ("left chest"): optional, for the order line. */
+        label: z.string().trim().max(80).default(''),
         qty: z.number().int('Enter a whole number of artworks').positive('Enter how many artworks'),
         /** Ksh for ONE artwork: the print only. */
         price: z.number().positive('Enter the price of one artwork'),
@@ -1279,14 +1271,13 @@ dtfRouter.post('/prints', async (req, res) => {
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const label = await labelFor(cap.staffId);
   const settings = await getSettings(product);
-  const filmWidth = settings.layoutWidthCm > 0 ? settings.layoutWidthCm : settings.rollWidthCm;
   const withPress = product === 'dtf'; // UV DTF stickers are applied cold: no heat press, no garment
   const garmentIds = [...new Set(d.rows.map((r) => r.garmentMaterialId).filter((x): x is number => !!x))];
   const garments = garmentIds.length ? await prisma.material.findMany({ where: { id: { in: garmentIds } } }) : [];
   if (garments.length !== garmentIds.length) return res.status(400).json({ error: 'A stock item you chose is no longer on the stock price list' });
   const garmentOf = new Map(garments.map((g) => [g.id, g]));
-  const priced = d.rows.map((r) => ({ client: r.client, phone: r.phone, widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, price: r.price, press: withPress ? r.press : 0, garmentId: r.garmentMaterialId ?? null, garmentPrice: r.garmentMaterialId ? (garmentOf.get(r.garmentMaterialId)?.price ?? 0) : 0 }));
-  const calc = artworkListCalc(priced, d.runningMetres, filmWidth, d.client, d.phone, withPress);
+  const priced = d.rows.map((r) => ({ client: r.client, phone: r.phone, label: r.label, qty: r.qty, price: r.price, press: withPress ? r.press : 0, garmentId: r.garmentMaterialId ?? null, garmentPrice: r.garmentMaterialId ? (garmentOf.get(r.garmentMaterialId)?.price ?? 0) : 0 }));
+  const calc = artworkListCalc(priced, d.runningMetres, d.client, d.phone, withPress);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? 'The print cannot be recorded' });
   for (const c of calc.clients) {
     const claim = await claimProblem(req.user!, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
@@ -1307,15 +1298,15 @@ dtfRouter.post('/prints', async (req, res) => {
         // each row in turn: the artwork (the print), the heat press, and the garment when WE supply it — so the print and the press are separate lines with their own prices
         const ordered: NonNullable<Parameters<typeof createDtfOrder>[1]['orderedLines']> = [];
         for (const r of c.rows) {
-          const size = artworkSizeLabel(r.widthCm, r.heightCm);
-          ordered.push({ itemType: 'service', serviceId: service.id, qty: r.qty, unitPrice: r.price, description: size });
+          const what = r.label.trim();
+          ordered.push({ itemType: 'service', serviceId: service.id, qty: r.qty, unitPrice: r.price, description: what });
           if (pressService) {
             const g = r.garmentId ? garmentOf.get(r.garmentId) : null;
-            ordered.push({ itemType: 'service', serviceId: pressService.id, qty: r.qty, unitPrice: r.press, description: g ? `${size} on our ${g.name}` : `${size} on the client’s own garment` });
-            if (g) ordered.push({ itemType: 'material', materialId: g.id, qty: r.qty, unitPrice: r.garmentPrice, description: size });
+            ordered.push({ itemType: 'service', serviceId: pressService.id, qty: r.qty, unitPrice: r.press, description: [what, g ? `on our ${g.name}` : 'on the client’s own garment'].filter(Boolean).join(' ') });
+            if (g) ordered.push({ itemType: 'material', materialId: g.id, qty: r.qty, unitPrice: r.garmentPrice, description: what });
           }
         }
-        const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: artworkSizeLabel(r.widthCm, r.heightCm), heatPressFee: null }));
+        const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: r.label.trim(), heatPressFee: null }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
           product,
@@ -1346,12 +1337,10 @@ dtfRouter.post('/prints', async (req, res) => {
             chargedPerPiece: null,
             chargedTotal: c.artworkAmount, // the film's own revenue is the artworks (the print) only: the heat press and any garment are other lines of the order
             pricedBySales: true,
-            filmWidthCm: filmWidth,
             sheetId,
             approvalStatus: 'Approved',
             capturedByName: req.user!.name,
             orderId: order.id,
-            items: { create: c.rows.map((r) => ({ widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, unitPrice: r.price })) },
           },
         });
         out.push(order);
@@ -1361,46 +1350,12 @@ dtfRouter.post('/prints', async (req, res) => {
     res.status(201).json({
       sheetId,
       enteredTotal: calc.enteredTotal,
-      film: { metres: calc.metres, widthCm: filmWidth, filmAreaCm2: calc.filmAreaCm2, artworkAreaCm2: calc.artworkAreaCm2, efficiencyPct: calc.efficiencyPct },
+      film: { metres: calc.metres },
       orders: made.map((m) => serializeDetail(m)),
     });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the print') });
   }
-});
-
-// DTF → Film layout, for information only: for each print with its sizes recorded, the film used (length × film width) against the total area of its artworks, and how much of the film they
-// fill; with the overall figure and each sales person's. Prints from before the sizes were recorded are left out (and counted).
-dtfRouter.get('/layout', manageOnly, async (req, res) => {
-  const product = productOf(req.query.product);
-  const from = typeof req.query.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
-  const to = typeof req.query.to === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
-  const dateRange = from || to ? { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } : undefined;
-  const jobs = await prisma.dtfArtworkJob.findMany({
-    where: { roll: { product }, ...(dateRange ? { jobOn: dateRange } : {}) },
-    include: { items: { select: { widthCm: true, heightCm: true, qty: true } } },
-    orderBy: [{ jobOn: 'desc' }, { id: 'desc' }],
-  });
-  const layoutJobs = jobs.map((j) => ({
-    id: j.id,
-    sheetId: j.sheetId,
-    jobOn: j.jobOn,
-    rollId: j.rollId,
-    runningMetres: j.runningMetres,
-    filmWidthCm: j.filmWidthCm,
-    areaCm2: j.items.reduce((a, i) => a + i.widthCm * i.heightCm * i.qty, 0),
-    capturedByName: j.capturedByName,
-  }));
-  const prints = layoutPrints(layoutJobs);
-  const byName = new Map<string, typeof prints>();
-  for (const p of prints) byName.set(p.by || '—', [...(byName.get(p.by || '—') ?? []), p]);
-  res.json({
-    product,
-    summary: layoutSummary(prints),
-    byPerson: [...byName.entries()].map(([name, list]) => ({ name, ...layoutSummary(list) })).sort((a, b) => b.efficiencyPct - a.efficiencyPct),
-    prints: prints.slice(0, 200),
-    jobsWithoutSizes: layoutJobs.filter((j) => !(j.filmWidthCm > 0 && j.areaCm2 > 0)).length,
-  });
 });
 
 // A day at a time. For each date: the number of artwork jobs (or film sales), what was printed or sold, the average prices, and the money —

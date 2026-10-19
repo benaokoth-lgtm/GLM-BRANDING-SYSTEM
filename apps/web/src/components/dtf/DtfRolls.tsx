@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { cm2ToM2, fmtDate, fmtKsh, fmtNum, layoutPrints, layoutSummary, summariseRoll, todayStr } from '@glm/shared';
+import { fmtDate, fmtKsh, fmtNum, summariseRoll, todayStr } from '@glm/shared';
 import { api } from '../../api/client';
 import { Card, Corners, Field, Spec, num } from './shared';
 import type { DtfTabProps } from './shared';
@@ -32,11 +32,6 @@ function previewPart(d: Draft, full: number) {
 
 export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
   const { settings } = data;
-  // information only: the artworks' area against the film used, for the prints on this roll that have their sizes recorded
-  const layoutOf = (rollId: string) => {
-    const l = layoutSummary(layoutPrints(data.jobs.filter((j) => j.rollId === rollId).map((j) => ({ id: j.id, sheetId: j.sheetId, jobOn: j.jobOn, rollId: j.rollId, runningMetres: j.runningMetres, filmWidthCm: j.filmWidthCm, areaCm2: j.areaCm2 }))));
-    return l.prints === 0 ? '—' : `${fmtNum(l.efficiencyPct, 1)}% · ${fmtNum(cm2ToM2(l.artworkAreaCm2), 1)} of ${fmtNum(cm2ToM2(l.filmAreaCm2), 1)} m²`;
-  };
   const uv = data.product === 'uv';
   // A UV DTF roll is two films — A (printing) and B (laminating) — so its two costs are those; a DTF roll's are the film and the ink/powder.
   const costA = uv ? 'Film A (printing)' : 'Film';
@@ -150,8 +145,6 @@ export default function DtfRolls({ data, reload, setError }: DtfTabProps) {
                 <Spec label="Discounts given" value={r.discountGiven > 0 ? fmtKsh(r.discountGiven) : '—'} />
                 <Spec label="Profit lost to discounts" value={r.profitLostPct == null || r.discountGiven === 0 ? '—' : `${fmtNum(r.profitLostPct, 1)}%`} />
                 <Spec label="Pending approval" value={r.pendingJobs ? `${r.pendingJobs} job${r.pendingJobs === 1 ? '' : 's'}` : '—'} />
-                {/* the artworks' area against the film used (information only — see Film layout) */}
-                <Spec label="Film they fill (info)" value={layoutOf(r.roll.id)} />
               </div>
 
               <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', marginTop: 'var(--space-4)', flexWrap: 'wrap' }}>

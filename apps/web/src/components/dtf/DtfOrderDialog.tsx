@@ -230,7 +230,7 @@ export default function DtfOrderDialog({ product, mode, postUrl, basePayload, qt
                 Deposit / pay later
               </button>
             </div>
-            {!needsApproval && <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={clientName || 'DTF order'} />}
+            {!needsApproval && <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} onPhoneChange={setPhone} accountReference={clientName || 'DTF order'} />}
             {payProblem && <p className="note" style={{ color: 'var(--color-error)' }}>{payProblem}</p>}
           </div>
 

@@ -44,6 +44,7 @@ export default function SplitPayments({
   onChange,
   total,
   phone,
+  onPhoneChange,
   accountReference,
 }: {
   rows: PaymentRow[];
@@ -51,11 +52,20 @@ export default function SplitPayments({
   /** What is due — the order total, or the balance still owing. */
   total: number;
   phone?: string;
+  /** When the screen can change the customer's phone, an M-Pesa part shows the number right here (so a push is never blocked by a number typed elsewhere or not at all). */
+  onPhoneChange?: (phone: string) => void;
   accountReference?: string;
 }) {
   const paying = paymentsTotal(rows);
   const remaining = Math.max(0, total - paying);
   const set = (key: number, patch: Partial<PaymentRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  // "Pay by M-Pesa STK push": makes the M-Pesa part for what is still due (an empty row is used, or one is added), so the push button is right there
+  function startStk() {
+    const rest = String(Math.round(remaining * 100) / 100);
+    const empty = rows.find((r) => num(r.amount) === 0 && !r.confirmed);
+    if (empty) onChange(rows.map((r) => (r.key === empty.key ? { ...r, method: 'M-Pesa' as PaymentMethod, amount: rest, reference: '', confirmed: false } : r)));
+    else onChange([...rows, newPaymentRow('M-Pesa', rest)]);
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -98,6 +108,12 @@ export default function SplitPayments({
 
           {r.method === 'M-Pesa' && num(r.amount) > 0 && (
             <div style={{ gridColumn: '1 / -1' }}>
+              {onPhoneChange && !r.confirmed && (
+                <div className="field" style={{ maxWidth: 240, marginBottom: 'var(--space-2)' }}>
+                  <label>Customer’s M-Pesa number</label>
+                  <input className="input" inputMode="tel" placeholder="07xx xxx xxx" value={phone ?? ''} onChange={(e) => onPhoneChange(e.target.value)} aria-label="Customer’s M-Pesa number" />
+                </div>
+              )}
               {r.confirmed ? (
                 <span className="tag tag-accent">M-Pesa payment confirmed{r.reference ? ` (${r.reference})` : ''}</span>
               ) : (
@@ -127,6 +143,9 @@ export default function SplitPayments({
         ) : (
           <span />
         )}
+        <button type="button" className="btn btn-secondary btn-sm" disabled={remaining <= 0.01} onClick={startStk} title="Ask the customer to pay what is due by M-Pesa: a prompt goes to their phone">
+          📲 Pay by M-Pesa STK push
+        </button>
         <span style={{ fontSize: 13 }}>
           Paying now <strong>{fmtKsh(paying)}</strong> · {total - paying > 0.01 ? <>balance after this <strong>{fmtKsh(remaining)}</strong></> : 'settled in full'}
         </span>

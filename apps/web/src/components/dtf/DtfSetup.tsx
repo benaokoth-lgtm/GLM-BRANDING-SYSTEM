@@ -7,7 +7,6 @@ import type { DtfTabProps } from './shared';
 const FIELDS: [string, string][] = [
   ['rollLengthM', 'Roll length (m)'],
   ['rollWidthCm', 'Roll width (cm)'],
-  ['layoutWidthCm', 'Film width for layout (cm) — the width artworks are arranged on (0 = the roll width)'],
   ['stdPricePerM', 'Standard price / m (film sales — staff may charge more)'],
   ['minPricePerM', 'Minimum price / m (film sales — the base commission is paid above)'],
   ['wastageTolerancePct', 'Wastage tolerance (%)'],
@@ -19,7 +18,7 @@ const FIELDS: [string, string][] = [
 
 // wastageTolerancePct can legitimately be 0 (no tolerance), and so can the lowest price of an artwork (none) — everything else
 // must be a real positive number.
-const ALLOW_ZERO = new Set(['wastageTolerancePct', 'minPricePerPiece', 'smallShareBelow', 'smallSharePrice', 'layoutWidthCm']);
+const ALLOW_ZERO = new Set(['wastageTolerancePct', 'minPricePerPiece', 'smallShareBelow', 'smallSharePrice']);
 
 export default function DtfSetup({ data, reload, setError }: DtfTabProps) {
   const [f, setF] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(data.settings).map(([k, v]) => [k, String(v)])));

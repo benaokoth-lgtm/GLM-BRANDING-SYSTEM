@@ -10,10 +10,9 @@ import DtfJobs from '../components/dtf/DtfJobs';
 import DtfSetup from '../components/dtf/DtfSetup';
 import ArtworkRate from '../components/dtf/ArtworkRate';
 import DtfApprovals from '../components/dtf/DtfApprovals';
-import DtfLayout from '../components/dtf/DtfLayout';
 import type { DtfData } from '../components/dtf/shared';
 
-type Tab = 'dashboard' | 'rolls' | 'layout' | 'sales' | 'jobs' | 'approvals' | 'rate' | 'setup';
+type Tab = 'dashboard' | 'rolls' | 'sales' | 'jobs' | 'approvals' | 'rate' | 'setup';
 
 // Recording a new sale/job now happens on its own page next to New Walk-in
 // Order (see pages/NewFilmOrder.tsx / NewArtworkOrder.tsx) — this page is
@@ -23,7 +22,6 @@ type Tab = 'dashboard' | 'rolls' | 'layout' | 'sales' | 'jobs' | 'approvals' | '
 const MANAGER_TABS: [Tab, string][] = [
   ['dashboard', 'Dashboard'],
   ['rolls', 'Rolls'],
-  ['layout', 'Film layout'],
   ['sales', 'Film Sales'],
   ['jobs', 'Artwork Jobs'],
   ['approvals', 'Price Approvals'],
@@ -107,7 +105,6 @@ export default function Dtf() {
 
       {active === 'dashboard' && <DtfDashboard data={data} go={setTab} />}
       {active === 'rolls' && <DtfRolls {...props} />}
-      {active === 'layout' && <DtfLayout {...props} />}
       {active === 'sales' && <DtfSales {...props} />}
       {active === 'jobs' && <DtfJobs {...props} />}
       {active === 'approvals' && <DtfApprovals {...props} />}

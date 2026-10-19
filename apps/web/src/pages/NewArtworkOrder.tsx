@@ -10,7 +10,7 @@ import type { DtfData } from '../components/dtf/shared';
 
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
 
-// DTF / UV DTF artwork order. The sales person arranges the artworks on the film, measures the length of film used and each size of artwork, and lists them — client, size, how many, the price
+// DTF / UV DTF artwork order. The sales person arranges the artworks on the film, enters the length of film used, and lists them — client, an optional description, how many, the price
 // of one artwork with the heat press included (components/dtf/ArtworkList.tsx). There is no recommended price: the prices entered are the prices. The film comes off the roll once, as the
 // length entered; the sizes are kept for DTF → Film layout.
 export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProduct }) {
@@ -37,8 +37,6 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
   const rollId = f.roll && open.some((r) => r.id === f.roll) ? f.roll : (open[0]?.id ?? '');
   const roll = open.find((r) => r.id === rollId);
   const run = num(f.run);
-  // the width the artworks are arranged on (the roll width unless a usable width is set in Setup)
-  const filmWidthCm = settings.layoutWidthCm > 0 ? settings.layoutWidthCm : settings.rollWidthCm;
   const used =
     data.sales.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.metres, 0) +
     data.jobs.filter((x) => x.rollId === rollId).reduce((a, x) => a + x.runningMetres, 0);
@@ -77,7 +75,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
           <label>Length of film used (m)</label>
           <input className="input" inputMode="decimal" value={f.run} onChange={(e) => setF({ ...f, run: e.target.value.replace(/[^\d.]/g, '') })} aria-label="Length of film used in metres" />
           <p className="note" style={{ marginTop: 'var(--space-1)', marginBottom: 0 }}>
-            Measure it once the artworks are arranged on the {fmtNum(filmWidthCm)} cm film. It comes off the roll.
+            Measure it once the artworks are arranged on the film. It comes off the roll — film is tracked by the length used.
           </p>
         </div>
         <div className="field" style={{ margin: 0 }}>
@@ -86,7 +84,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         </div>
       </div>
 
-      <ArtworkListPanel product={product} materials={materials} rows={rows} onChange={setRows} run={run} filmWidthCm={filmWidthCm} defaultClient={f.client} />
+      <ArtworkListPanel product={product} materials={materials} rows={rows} onChange={setRows} run={run} defaultClient={f.client} />
 
       {open.length === 0 && <p className="note" style={{ marginTop: 'var(--space-3)' }}>No open {label} film roll — ask a manager to install one under DTF → {label} → Rolls before capturing an order.</p>}
       {overRoll && (
@@ -105,7 +103,7 @@ export default function NewArtworkOrder({ product = 'dtf' }: { product?: DtfProd
         </button>
       </div>
 
-      {showDialog && <ArtworkListDialog product={product} materials={materials} rollId={rollId} jobOn={todayStr()} run={run} filmWidthCm={filmWidthCm} rows={rows} defaultClient={f.client} onClose={() => setShowDialog(false)} onDone={() => navigate('/orders/all')} />}
+      {showDialog && <ArtworkListDialog product={product} materials={materials} rollId={rollId} jobOn={todayStr()} run={run} rows={rows} defaultClient={f.client} onClose={() => setShowDialog(false)} onDone={() => navigate('/orders/all')} />}
     </div>
   );
 }

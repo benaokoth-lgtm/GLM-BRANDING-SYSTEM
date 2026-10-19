@@ -371,7 +371,7 @@ function CaptureDialog({ quote: q, total, onClose, onDone }: { quote: QuoteView;
         </div>
         {timing === 'onAcceptance' && (
           <div>
-            <SplitPayments rows={rows} onChange={setRows} total={total} phone={phone} accountReference={name || q.quoteNo} />
+            <SplitPayments rows={rows} onChange={setRows} total={total} phone={phone} onPhoneChange={setPhone} accountReference={name || q.quoteNo} />
             {payProblem && <p className="note" style={{ color: 'var(--color-error)' }}>{payProblem}</p>}
           </div>
         )}

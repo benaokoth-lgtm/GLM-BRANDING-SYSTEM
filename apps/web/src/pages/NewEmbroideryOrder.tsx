@@ -486,7 +486,7 @@ export default function NewEmbroideryOrder() {
           <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
             Payment now — split across cash, M-Pesa, bank or card if the customer likes
           </div>
-          <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} accountReference={customerName || 'Embroidery order'} />
+          <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={grandTotal} phone={phone} onPhoneChange={setPhone} accountReference={customerName || 'Embroidery order'} />
           {payProblem && (
             <p className="note" style={{ color: 'var(--color-error)', marginTop: 'var(--space-2)' }}>
               {payProblem}

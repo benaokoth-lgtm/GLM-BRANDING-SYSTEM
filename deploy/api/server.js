@@ -65490,8 +65490,7 @@ var DEFAULT_DTF_SETTINGS = {
   fixedChargePerMetre: 3780,
   // 108 artworks on 2 m come to 70 each
   smallShareBelow: 30,
-  smallSharePrice: 40,
-  layoutWidthCm: 58
+  smallSharePrice: 40
 };
 var DTF_SERVICE_NAMES = {
   dtf: { film: "DTF Sheet (per metre)", artwork: "DTF Printing", press: "DTF Heat Press" },
@@ -65509,9 +65508,7 @@ var UV_DTF_SETTINGS = {
   // 107 artworks on a metre come to 40 each
   smallShareBelow: 40,
   // the recommended price of an artwork is never below 40
-  smallSharePrice: 40,
-  layoutWidthCm: 0
-  // the roll width
+  smallSharePrice: 40
 };
 var r2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var div = (a2, b) => b > 0 ? a2 / b : 0;
@@ -66760,45 +66757,35 @@ var r2to = (n) => Math.round((n + Number.EPSILON) * 1e3) / 1e3;
 // packages/shared/src/dtfPrint.ts
 var r29 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var r3 = (n) => Math.round((n + Number.EPSILON) * 1e3) / 1e3;
-var artworkSizeLabel = (widthCm, heightCm) => `${trim(widthCm)} \xD7 ${trim(heightCm)} cm`;
-var trim = (n) => String(r29(n));
 function artworkClientKey(client, phone) {
   const digits = phone.replace(/\D/g, "");
   return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 var fin = (n) => Number.isFinite(n) ? n : 0;
 var artworkRowTotal = (r) => r29(fin(r.qty) * (fin(r.price) + fin(r.press) + (r.garmentId ? fin(r.garmentPrice) : 0)));
-var artworkRowArea = (r) => r.widthCm > 0 && r.heightCm > 0 && r.qty > 0 ? r.widthCm * r.heightCm * r.qty : 0;
-var MAX_SIDE_CM = 1e3;
-function artworkListCalc(rows, metres, filmWidthCm, defaultClient = "", defaultPhone = "", withPress = true) {
+function artworkListCalc(rows, metres, defaultClient = "", defaultPhone = "", withPress = true) {
   const problems = [];
-  const warnings = [];
-  const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.press > 0 || r.widthCm > 0 || r.heightCm > 0 || r.client.trim());
+  const live = rows.filter((r) => r.qty > 0 || r.price > 0 || r.press > 0 || r.label.trim() || r.client.trim());
   if (!(metres > 0)) problems.push("Enter the length of film used (m)");
   if (live.length === 0) problems.push("Add at least one row of artworks");
   live.forEach((r, i) => {
     const n = i + 1;
-    if (!(r.widthCm > 0) || !(r.heightCm > 0)) problems.push(`Row ${n}: enter the width and height of the artwork (cm)`);
-    else if (r.widthCm > MAX_SIDE_CM || r.heightCm > MAX_SIDE_CM) problems.push(`Row ${n}: a side of ${MAX_SIDE_CM} cm or more cannot be right`);
-    else if (filmWidthCm > 0 && Math.min(r.widthCm, r.heightCm) > filmWidthCm + 1e-3) problems.push(`Row ${n}: ${artworkSizeLabel(r.widthCm, r.heightCm)} does not fit the ${trim(filmWidthCm)} cm film`);
     if (!Number.isInteger(r.qty) || r.qty < 1) problems.push(`Row ${n}: enter how many artworks`);
     if (!(r.price > 0)) problems.push(`Row ${n}: enter the price of one artwork`);
     if (withPress && !(r.press > 0)) problems.push(`Row ${n}: enter the heat press price (every artwork is pressed)`);
     if (!withPress && (r.press > 0 || r.garmentId)) problems.push(`Row ${n}: a UV DTF sticker is applied cold \u2014 no heat press or garment`);
   });
-  const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0 && r.widthCm > 0 && r.heightCm > 0);
+  const valid = live.filter((r) => Number.isInteger(r.qty) && r.qty > 0);
   const pieces = valid.reduce((a2, r) => a2 + r.qty, 0);
-  const artworkAreaCm2 = valid.reduce((a2, r) => a2 + artworkRowArea(r), 0);
   const enteredTotal = r29(valid.reduce((a2, r) => a2 + artworkRowTotal(r), 0));
   const groups = /* @__PURE__ */ new Map();
   for (const r of valid) {
     const client = r.client.trim() || defaultClient.trim();
     const phone = r.client.trim() ? r.phone.trim() : r.phone.trim() || defaultPhone.trim();
     const key3 = artworkClientKey(client, phone);
-    const g = groups.get(key3) ?? { key: key3, client, phone, rows: [], pieces: 0, areaCm2: 0, metres: 0, amount: 0, artworkAmount: 0, pressAmount: 0, garmentAmount: 0 };
+    const g = groups.get(key3) ?? { key: key3, client, phone, rows: [], pieces: 0, metres: 0, amount: 0, artworkAmount: 0, pressAmount: 0, garmentAmount: 0 };
     g.rows.push(r);
     g.pieces += r.qty;
-    g.areaCm2 += artworkRowArea(r);
     g.amount = r29(g.amount + artworkRowTotal(r));
     g.artworkAmount = r29(g.artworkAmount + r.qty * r.price);
     g.pressAmount = r29(g.pressAmount + r.qty * (withPress ? r.press : 0));
@@ -66809,65 +66796,10 @@ function artworkListCalc(rows, metres, filmWidthCm, defaultClient = "", defaultP
   const clients = [...groups.values()];
   let left = metres > 0 ? metres : 0;
   clients.forEach((g, i) => {
-    g.metres = i === clients.length - 1 ? r3(left) : r3(artworkAreaCm2 > 0 && metres > 0 ? metres * g.areaCm2 / artworkAreaCm2 : 0);
+    g.metres = i === clients.length - 1 ? r3(left) : r3(pieces > 0 && metres > 0 ? metres * g.pieces / pieces : 0);
     left = r3(left - g.metres);
   });
-  const filmAreaCm2 = metres > 0 && filmWidthCm > 0 ? metres * 100 * filmWidthCm : 0;
-  if (filmAreaCm2 > 0 && artworkAreaCm2 > filmAreaCm2 + 0.5) warnings.push(`The artworks add up to ${r29(artworkAreaCm2 / 1e4)} m\xB2, which is more than the ${r29(filmAreaCm2 / 1e4)} m\xB2 of film used \u2014 check the sizes and the length.`);
-  return {
-    ok: problems.length === 0,
-    problems,
-    warnings,
-    pieces,
-    metres: metres > 0 ? metres : 0,
-    filmWidthCm,
-    filmAreaCm2,
-    artworkAreaCm2,
-    unfilledCm2: filmAreaCm2 > 0 ? filmAreaCm2 - artworkAreaCm2 : 0,
-    efficiencyPct: filmAreaCm2 > 0 ? r29(artworkAreaCm2 / filmAreaCm2 * 100) : 0,
-    enteredTotal,
-    clients
-  };
-}
-function layoutPrints(jobs) {
-  const groups = /* @__PURE__ */ new Map();
-  for (const j of jobs) {
-    if (!((j.filmWidthCm ?? 0) > 0 && (j.areaCm2 ?? 0) > 0)) continue;
-    const key3 = j.sheetId ? `s:${j.sheetId}` : `j:${j.id}`;
-    groups.set(key3, [...groups.get(key3) ?? [], j]);
-  }
-  const out = [];
-  for (const [key3, list] of groups) {
-    const filmAreaCm2 = list.reduce((a2, j) => a2 + j.runningMetres * 100 * (j.filmWidthCm ?? 0), 0);
-    const artworkAreaCm2 = list.reduce((a2, j) => a2 + (j.areaCm2 ?? 0), 0);
-    const first = list[0];
-    out.push({
-      key: key3,
-      date: first.jobOn,
-      rollId: first.rollId,
-      by: first.capturedByName ?? "",
-      clients: list.length,
-      metres: r3(list.reduce((a2, j) => a2 + j.runningMetres, 0)),
-      filmAreaCm2,
-      artworkAreaCm2,
-      unfilledCm2: filmAreaCm2 - artworkAreaCm2,
-      efficiencyPct: filmAreaCm2 > 0 ? r29(artworkAreaCm2 / filmAreaCm2 * 100) : 0,
-      suspicious: artworkAreaCm2 > filmAreaCm2 + 0.5
-    });
-  }
-  return out.sort((a2, b) => a2.date < b.date ? 1 : a2.date > b.date ? -1 : 0);
-}
-function layoutSummary(prints) {
-  const filmAreaCm2 = prints.reduce((a2, p) => a2 + p.filmAreaCm2, 0);
-  const artworkAreaCm2 = prints.reduce((a2, p) => a2 + p.artworkAreaCm2, 0);
-  return {
-    prints: prints.length,
-    metres: r3(prints.reduce((a2, p) => a2 + p.metres, 0)),
-    filmAreaCm2,
-    artworkAreaCm2,
-    unfilledCm2: filmAreaCm2 - artworkAreaCm2,
-    efficiencyPct: filmAreaCm2 > 0 ? r29(artworkAreaCm2 / filmAreaCm2 * 100) : 0
-  };
+  return { ok: problems.length === 0, problems, pieces, metres: metres > 0 ? metres : 0, enteredTotal, clients };
 }
 
 // packages/shared/src/printCosting.ts
@@ -79339,9 +79271,7 @@ var productOf = (v) => v === "uv" ? "uv" : "dtf";
 var settingsId = (product) => product === "uv" ? 2 : 1;
 async function getSettings(product = "dtf") {
   if (product === "uv") return prisma.dtfSetting.upsert({ where: { id: 2 }, update: {}, create: { id: 2, ...UV_DTF_SETTINGS } });
-  const s = await prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
-  if (s.layoutWidthCm === 0) return prisma.dtfSetting.update({ where: { id: 1 }, data: { layoutWidthCm: DEFAULT_DTF_SETTINGS.layoutWidthCm } });
-  return s;
+  return prisma.dtfSetting.upsert({ where: { id: 1 }, update: {}, create: { id: 1, ...DEFAULT_DTF_SETTINGS } });
 }
 async function uvRollIds() {
   return (await prisma.dtfRoll.findMany({ where: { product: "uv" }, select: { id: true } })).map((r) => r.id);
@@ -79476,7 +79406,7 @@ dtfRouter.get("/data", async (req, res) => {
     getSettings(product),
     prisma.dtfRoll.findMany({ where: { product, ...openOnly ? { status: "open" } : {} }, orderBy: { id: "asc" } }),
     prisma.dtfFilmSale.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, orderBy: [{ soldOn: "desc" }, { id: "desc" }] }),
-    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, include: { items: { select: { widthCm: true, heightCm: true, qty: true } } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
+    prisma.dtfArtworkJob.findMany({ where: { roll: { product, ...openOnly ? { status: "open" } : {} } }, orderBy: [{ jobOn: "desc" }, { id: "desc" }] })
   ]);
   const uvIds = await uvRollIds();
   res.json({
@@ -79485,7 +79415,6 @@ dtfRouter.get("/data", async (req, res) => {
     settings: {
       rollLengthM: settings.rollLengthM,
       rollWidthCm: settings.rollWidthCm,
-      layoutWidthCm: settings.layoutWidthCm,
       stdPricePerM: settings.stdPricePerM,
       minPricePerM: settings.minPricePerM,
       wastageTolerancePct: settings.wastageTolerancePct,
@@ -79533,10 +79462,7 @@ dtfRouter.get("/data", async (req, res) => {
       sheetId: j.sheetId,
       approvalStatus: j.approvalStatus,
       orderId: j.orderId,
-      pricedBySales: j.pricedBySales,
-      filmWidthCm: j.filmWidthCm,
-      areaCm2: Math.round(j.items.reduce((a2, i) => a2 + i.widthCm * i.heightCm * i.qty, 0) * 100) / 100,
-      capturedByName: j.capturedByName
+      pricedBySales: j.pricedBySales
     })),
     pendingApprovals: canManage ? await prisma.priceApproval.count({ where: { status: "Pending", ...product === "uv" ? { rollId: { in: uvIds } } : { NOT: { rollId: { in: uvIds } } } } }) : 0
   });
@@ -79837,7 +79763,6 @@ async function spendDiscountRequest(tx, id, orderNo) {
 var settingsSchema6 = external_exports.object({
   rollLengthM: external_exports.number().positive(),
   rollWidthCm: external_exports.number().positive(),
-  layoutWidthCm: external_exports.number().min(0).max(500).optional(),
   stdPricePerM: external_exports.number().positive(),
   minPricePerM: external_exports.number().positive(),
   wastageTolerancePct: external_exports.number().min(0).max(100),
@@ -80332,8 +80257,8 @@ var printSchema = external_exports.object({
     external_exports.object({
       client: external_exports.string().max(200).default(""),
       phone: external_exports.string().max(40).default(""),
-      widthCm: external_exports.number().positive("Enter the width of the artwork"),
-      heightCm: external_exports.number().positive("Enter the height of the artwork"),
+      /** What the artworks are ("left chest"): optional, for the order line. */
+      label: external_exports.string().trim().max(80).default(""),
       qty: external_exports.number().int("Enter a whole number of artworks").positive("Enter how many artworks"),
       /** Ksh for ONE artwork: the print only. */
       price: external_exports.number().positive("Enter the price of one artwork"),
@@ -80358,14 +80283,13 @@ dtfRouter.post("/prints", async (req, res) => {
   if (!cap.ok) return res.status(cap.status).json({ error: cap.error });
   const label = await labelFor(cap.staffId);
   const settings = await getSettings(product);
-  const filmWidth = settings.layoutWidthCm > 0 ? settings.layoutWidthCm : settings.rollWidthCm;
   const withPress = product === "dtf";
   const garmentIds = [...new Set(d.rows.map((r) => r.garmentMaterialId).filter((x) => !!x))];
   const garments = garmentIds.length ? await prisma.material.findMany({ where: { id: { in: garmentIds } } }) : [];
   if (garments.length !== garmentIds.length) return res.status(400).json({ error: "A stock item you chose is no longer on the stock price list" });
   const garmentOf = new Map(garments.map((g) => [g.id, g]));
-  const priced = d.rows.map((r) => ({ client: r.client, phone: r.phone, widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, price: r.price, press: withPress ? r.press : 0, garmentId: r.garmentMaterialId ?? null, garmentPrice: r.garmentMaterialId ? garmentOf.get(r.garmentMaterialId)?.price ?? 0 : 0 }));
-  const calc = artworkListCalc(priced, d.runningMetres, filmWidth, d.client, d.phone, withPress);
+  const priced = d.rows.map((r) => ({ client: r.client, phone: r.phone, label: r.label, qty: r.qty, price: r.price, press: withPress ? r.press : 0, garmentId: r.garmentMaterialId ?? null, garmentPrice: r.garmentMaterialId ? garmentOf.get(r.garmentMaterialId)?.price ?? 0 : 0 }));
+  const calc = artworkListCalc(priced, d.runningMetres, d.client, d.phone, withPress);
   if (!calc.ok) return res.status(400).json({ error: calc.problems[0] ?? "The print cannot be recorded" });
   for (const c of calc.clients) {
     const claim = await claimProblem(req.user, { phone: c.phone, name: c.client, sourcedBy: d.sourcedBy });
@@ -80385,15 +80309,15 @@ dtfRouter.post("/prints", async (req, res) => {
       for (const c of calc.clients) {
         const ordered = [];
         for (const r of c.rows) {
-          const size = artworkSizeLabel(r.widthCm, r.heightCm);
-          ordered.push({ itemType: "service", serviceId: service.id, qty: r.qty, unitPrice: r.price, description: size });
+          const what = r.label.trim();
+          ordered.push({ itemType: "service", serviceId: service.id, qty: r.qty, unitPrice: r.price, description: what });
           if (pressService) {
             const g = r.garmentId ? garmentOf.get(r.garmentId) : null;
-            ordered.push({ itemType: "service", serviceId: pressService.id, qty: r.qty, unitPrice: r.press, description: g ? `${size} on our ${g.name}` : `${size} on the client\u2019s own garment` });
-            if (g) ordered.push({ itemType: "material", materialId: g.id, qty: r.qty, unitPrice: r.garmentPrice, description: size });
+            ordered.push({ itemType: "service", serviceId: pressService.id, qty: r.qty, unitPrice: r.press, description: [what, g ? `on our ${g.name}` : "on the client\u2019s own garment"].filter(Boolean).join(" ") });
+            if (g) ordered.push({ itemType: "material", materialId: g.id, qty: r.qty, unitPrice: r.garmentPrice, description: what });
           }
         }
-        const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: artworkSizeLabel(r.widthCm, r.heightCm), heatPressFee: null }));
+        const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: r.label.trim(), heatPressFee: null }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
           product,
@@ -80427,12 +80351,10 @@ dtfRouter.post("/prints", async (req, res) => {
             chargedTotal: c.artworkAmount,
             // the film's own revenue is the artworks (the print) only: the heat press and any garment are other lines of the order
             pricedBySales: true,
-            filmWidthCm: filmWidth,
             sheetId,
             approvalStatus: "Approved",
             capturedByName: req.user.name,
-            orderId: order.id,
-            items: { create: c.rows.map((r) => ({ widthCm: r.widthCm, heightCm: r.heightCm, qty: r.qty, unitPrice: r.price })) }
+            orderId: order.id
           }
         });
         out.push(order);
@@ -80442,43 +80364,12 @@ dtfRouter.post("/prints", async (req, res) => {
     res.status(201).json({
       sheetId,
       enteredTotal: calc.enteredTotal,
-      film: { metres: calc.metres, widthCm: filmWidth, filmAreaCm2: calc.filmAreaCm2, artworkAreaCm2: calc.artworkAreaCm2, efficiencyPct: calc.efficiencyPct },
+      film: { metres: calc.metres },
       orders: made.map((m) => serializeDetail(m))
     });
   } catch (err) {
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the print") });
   }
-});
-dtfRouter.get("/layout", manageOnly, async (req, res) => {
-  const product = productOf(req.query.product);
-  const from = typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from) ? req.query.from : null;
-  const to = typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to) ? req.query.to : null;
-  const dateRange2 = from || to ? { ...from ? { gte: from } : {}, ...to ? { lte: to } : {} } : void 0;
-  const jobs = await prisma.dtfArtworkJob.findMany({
-    where: { roll: { product }, ...dateRange2 ? { jobOn: dateRange2 } : {} },
-    include: { items: { select: { widthCm: true, heightCm: true, qty: true } } },
-    orderBy: [{ jobOn: "desc" }, { id: "desc" }]
-  });
-  const layoutJobs = jobs.map((j) => ({
-    id: j.id,
-    sheetId: j.sheetId,
-    jobOn: j.jobOn,
-    rollId: j.rollId,
-    runningMetres: j.runningMetres,
-    filmWidthCm: j.filmWidthCm,
-    areaCm2: j.items.reduce((a2, i) => a2 + i.widthCm * i.heightCm * i.qty, 0),
-    capturedByName: j.capturedByName
-  }));
-  const prints = layoutPrints(layoutJobs);
-  const byName = /* @__PURE__ */ new Map();
-  for (const p of prints) byName.set(p.by || "\u2014", [...byName.get(p.by || "\u2014") ?? [], p]);
-  res.json({
-    product,
-    summary: layoutSummary(prints),
-    byPerson: [...byName.entries()].map(([name2, list]) => ({ name: name2, ...layoutSummary(list) })).sort((a2, b) => b.efficiencyPct - a2.efficiencyPct),
-    prints: prints.slice(0, 200),
-    jobsWithoutSizes: layoutJobs.filter((j) => !(j.filmWidthCm > 0 && j.areaCm2 > 0)).length
-  });
 });
 var orderMoney = (o) => {
   const t = computeOrderTotals(

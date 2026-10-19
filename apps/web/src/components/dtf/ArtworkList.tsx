@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { artworkClientKey, artworkListCalc, artworkRowTotal, artworkSizeLabel, cm2ToM2, fmtKsh, fmtNum } from '@glm/shared';
+import { artworkClientKey, artworkListCalc, artworkRowTotal, fmtKsh, fmtNum } from '@glm/shared';
 import type { ArtworkRow, DtfProduct } from '@glm/shared';
 import { api } from '../../api/client';
 import { useAuth } from '../../state/AuthContext';
@@ -12,15 +12,15 @@ import { Corners, Field } from './shared';
 
 // DTF: every artwork is heat pressed, so each row also carries the heat press price (typed for now) and where the garment comes from — the client's own (nothing charged, nothing taken from stock) or ours
 // (a stock item from the stock price list, one for each artwork, at the list price, which the sales person cannot change; it leaves the shelf with the order). UV DTF stickers are applied cold: neither.
-// The DTF / UV DTF artwork order as a list. The sales person arranges the artworks on the film, measures the length of film used and each size (width × height, cm), and lists the rows:
-// client, size, how many, the price of ONE artwork (the heat press included). The total of a row is worked out. There is no recommended price — these prices are the prices. Rows with the
-// same client make that client's order. The film is drawn from the roll once, as the length entered; the sizes are kept so DTF → Film layout can show how much of the film the artworks fill.
+// The DTF / UV DTF artwork order as a list. The sales person arranges the artworks on the film, enters the length of film used (the only film figure tracked), and lists the rows: client, an optional
+// description, how many, the price of ONE artwork. The total of a row is worked out. There is no recommended price — these prices are the prices. Rows with the same client make that client's order.
+// The film is drawn from the roll once, as the length entered.
 
 export interface UiRow {
   key: number;
   client: string;
-  width: string;
-  height: string;
+  /** What the artworks are ("left chest"): optional, shown on the order line. */
+  label: string;
   qty: string;
   /** The print, Ksh for one artwork. */
   price: string;
@@ -30,7 +30,7 @@ export interface UiRow {
   garment: string;
 }
 let nextRowKey = 1;
-export const newRow = (): UiRow => ({ key: nextRowKey++, client: '', width: '', height: '', qty: '', price: '', press: '', garment: '' });
+export const newRow = (): UiRow => ({ key: nextRowKey++, client: '', label: '', qty: '', price: '', press: '', garment: '' });
 
 const num = (s: string) => (s.trim() !== '' && Number.isFinite(Number(s)) ? Number(s) : 0);
 const right = { textAlign: 'right' } as const;
@@ -38,7 +38,7 @@ const right = { textAlign: 'right' } as const;
 export const toRows = (rows: UiRow[], materials: CatalogMaterial[], withPress: boolean): ArtworkRow[] =>
   rows.map((r) => {
     const g = withPress && r.garment ? materials.find((m) => String(m.id) === r.garment) : undefined;
-    return { client: r.client, phone: '', widthCm: num(r.width), heightCm: num(r.height), qty: Math.round(num(r.qty)), price: num(r.price), press: withPress ? num(r.press) : 0, garmentId: g ? g.id : null, garmentPrice: g ? g.price : 0 };
+    return { client: r.client, phone: '', label: r.label, qty: Math.round(num(r.qty)), price: num(r.price), press: withPress ? num(r.press) : 0, garmentId: g ? g.id : null, garmentPrice: g ? g.price : 0 };
   });
 
 interface PanelProps {
@@ -49,26 +49,24 @@ interface PanelProps {
   onChange: (rows: UiRow[]) => void;
   /** The length of film used, in metres. */
   run: number;
-  filmWidthCm: number;
   defaultClient: string;
 }
 
 /** The rows of the print and what they come to. */
-export function ArtworkListPanel({ product, materials, rows, onChange, run, filmWidthCm, defaultClient }: PanelProps) {
+export function ArtworkListPanel({ product, materials, rows, onChange, run, defaultClient }: PanelProps) {
   const withPress = product === 'dtf';
-  const calc = artworkListCalc(toRows(rows, materials, withPress), run, filmWidthCm, defaultClient || 'Walk-in', '', withPress);
+  const calc = artworkListCalc(toRows(rows, materials, withPress), run, defaultClient || 'Walk-in', '', withPress);
   const set = (key: number, patch: Partial<UiRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  const grid = withPress ? '1.1fr 0.55fr 0.55fr 0.55fr 0.7fr 0.7fr 1.5fr 0.8fr auto' : '1.2fr 0.6fr 0.6fr 0.6fr 0.8fr 0.9fr auto';
+  const grid = withPress ? '1.1fr 1.1fr 0.6fr 0.75fr 0.75fr 1.5fr 0.8fr auto' : '1.2fr 1.2fr 0.7fr 0.9fr 0.9fr auto';
   return (
     <div style={{ marginTop: 'var(--space-3)', display: 'grid', gap: 'var(--space-2)' }}>
       <div className="note" style={{ margin: 0 }}>
-        List the artworks on this length: the client, the size you measured (width × height in cm), how many, and the price of <b>one</b> artwork — <b>the print only</b>{withPress ? <>; the <b>heat press</b> is priced on its own, and so is the garment when we supply it</> : null}. Name a client on a row to give them their own order.
-        Rows of the same client go on one order. Every artwork in a row is taken to be the same size and price{withPress ? ', and gets one heat press and one garment' : ''}.
+        List the artworks on this length: the client, what they are (optional), how many, and the price of <b>one</b> artwork — <b>the print only</b>{withPress ? <>; the <b>heat press</b> is priced on its own, and so is the garment when we supply it</> : null}. Name a client on a row to give them their own order.
+        Rows of the same client go on one order. Every artwork in a row is taken to be the same and priced alike{withPress ? ', and gets one heat press and one garment' : ''}.
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, fontSize: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         <span>Client</span>
-        <span>Width cm</span>
-        <span>Height cm</span>
+        <span>What (optional)</span>
         <span>How many</span>
         <span>{withPress ? 'Artwork each' : 'Price each'}</span>
         {withPress && <span>Heat press each</span>}
@@ -82,8 +80,7 @@ export function ArtworkListPanel({ product, materials, rows, onChange, run, film
         return (
           <div key={r.key} style={{ display: 'grid', gridTemplateColumns: grid, gap: 6, alignItems: 'center' }}>
             <input className="input" value={r.client} onChange={(e) => set(r.key, { client: e.target.value })} placeholder={defaultClient || 'Walk-in'} aria-label={`Row ${i + 1} client`} />
-            <input className="input" inputMode="decimal" value={r.width} onChange={(e) => set(r.key, { width: e.target.value.replace(/[^\d.]/g, '') })} placeholder="0" aria-label={`Row ${i + 1} width cm`} />
-            <input className="input" inputMode="decimal" value={r.height} onChange={(e) => set(r.key, { height: e.target.value.replace(/[^\d.]/g, '') })} placeholder="0" aria-label={`Row ${i + 1} height cm`} />
+            <input className="input" value={r.label} onChange={(e) => set(r.key, { label: e.target.value })} placeholder="e.g. left chest" maxLength={80} aria-label={`Row ${i + 1} what`} />
             <input className="input" inputMode="numeric" value={r.qty} onChange={(e) => set(r.key, { qty: e.target.value.replace(/[^\d]/g, '') })} placeholder="0" aria-label={`Row ${i + 1} how many`} />
             <input className="input" inputMode="decimal" value={r.price} onChange={(e) => set(r.key, { price: e.target.value.replace(/[^\d.]/g, '') })} placeholder="Ksh" aria-label={`Row ${i + 1} price each`} />
             {withPress && <input className="input" inputMode="decimal" value={r.press} onChange={(e) => set(r.key, { press: e.target.value.replace(/[^\d.]/g, '') })} placeholder="Ksh" aria-label={`Row ${i + 1} heat press each`} />}
@@ -117,9 +114,7 @@ export function ArtworkListPanel({ product, materials, rows, onChange, run, film
         {(
           [
             ['Artworks', `${fmtNum(calc.clients.length)} ${calc.clients.length === 1 ? 'client' : 'clients'}`, fmtNum(calc.pieces)],
-            ['Film used', `${fmtNum(run, 2)} m × ${fmtNum(filmWidthCm)} cm`, calc.filmAreaCm2 > 0 ? `${fmtNum(cm2ToM2(calc.filmAreaCm2), 2)} m²` : '—'],
-            ['Artworks’ area', 'the sizes × how many', calc.artworkAreaCm2 > 0 ? `${fmtNum(cm2ToM2(calc.artworkAreaCm2), 2)} m²` : '—'],
-            ['Film they fill', 'for information only', calc.filmAreaCm2 > 0 && calc.artworkAreaCm2 > 0 ? `${fmtNum(calc.efficiencyPct, 1)}%` : '—'],
+            ['Film used', 'comes off the roll', `${fmtNum(run, 2)} m`],
             ...(withPress
               ? ([
                   ['Artworks (the print)', 'what the artworks come to', fmtKsh(calc.clients.reduce((a, c) => a + c.artworkAmount, 0))],
@@ -138,11 +133,6 @@ export function ArtworkListPanel({ product, materials, rows, onChange, run, film
         ))}
       </div>
       {calc.problems.map((p) => (
-        <p key={p} className="note" style={{ margin: 0, color: 'var(--color-error)' }}>
-          {p}
-        </p>
-      ))}
-      {calc.warnings.map((p) => (
         <p key={p} className="note" style={{ margin: 0, color: 'var(--color-error)' }}>
           {p}
         </p>
@@ -167,7 +157,6 @@ interface DialogProps {
   rollId: string;
   jobOn: string;
   run: number;
-  filmWidthCm: number;
   rows: UiRow[];
   defaultClient: string;
   onClose: () => void;
@@ -175,7 +164,7 @@ interface DialogProps {
 }
 
 /** Completes the print: who it is credited to, each client's phone and what they pay now. Recording makes one order for each client and offers each one's receipt. */
-export function ArtworkListDialog({ product, materials, rollId, jobOn, run, filmWidthCm, rows, defaultClient, onClose, onDone }: DialogProps) {
+export function ArtworkListDialog({ product, materials, rollId, jobOn, run, rows, defaultClient, onClose, onDone }: DialogProps) {
   const withPress = product === 'dtf';
   const { user } = useAuth();
   const forOthers = user?.role === 'Admin' || !!user?.permissions.canCaptureForOthers;
@@ -192,13 +181,13 @@ export function ArtworkListDialog({ product, materials, rollId, jobOn, run, film
   const [company, setCompany] = useState<CompanySettings | null>(null);
 
   // clients are told apart by name here; once a phone is typed it tells them apart on the server
-  const base = artworkListCalc(toRows(rows, materials, withPress), run, filmWidthCm, defaultClient, '', withPress);
+  const base = artworkListCalc(toRows(rows, materials, withPress), run, defaultClient, '', withPress);
   const nameKey = (client: string) => artworkClientKey(client, '');
   const withPhones = toRows(rows, materials, withPress).map((r) => {
     const c = r.client.trim() || defaultClient.trim();
     return { ...r, phone: phones[nameKey(c)] ?? '' };
   });
-  const calc = artworkListCalc(withPhones, run, filmWidthCm, defaultClient, '', withPress);
+  const calc = artworkListCalc(withPhones, run, defaultClient, '', withPress);
   useEffect(() => {
     api.get<CompanySettings>('/master-data/settings').then(setCompany).catch(() => undefined);
   }, []);
@@ -217,7 +206,7 @@ export function ArtworkListDialog({ product, materials, rollId, jobOn, run, film
         client: defaultClient,
         runningMetres: run,
         // only the rows that have something in them: a spare, empty row is not sent
-        rows: withPhones.filter((x) => x.qty > 0 || x.price > 0 || x.press > 0 || x.widthCm > 0 || x.heightCm > 0 || x.client.trim()).map((x) => ({ client: x.client, phone: x.phone, widthCm: x.widthCm, heightCm: x.heightCm, qty: x.qty, price: x.price, press: x.press, garmentMaterialId: x.garmentId })),
+        rows: withPhones.filter((x) => x.qty > 0 || x.price > 0 || x.press > 0 || x.label.trim() || x.client.trim()).map((x) => ({ client: x.client, phone: x.phone, label: x.label, qty: x.qty, price: x.price, press: x.press, garmentMaterialId: x.garmentId })),
         clientPayments,
         ...(forOthers && salesPersonId ? { staffId: salesPersonId } : {}),
       });
@@ -295,7 +284,7 @@ export function ArtworkListDialog({ product, materials, rollId, jobOn, run, film
                       <span>{fmtNum(c.pieces)} artworks · <b>{fmtKsh(c.amount)}</b> · {fmtNum(c.metres, 3)} m of film</span>
                     </div>
                     <div className="text-muted" style={{ fontSize: 12 }}>
-                      {c.rows.map((r) => `${r.qty} × ${artworkSizeLabel(r.widthCm, r.heightCm)} @ ${fmtKsh(r.price)}${withPress ? ` + press ${fmtKsh(r.press)}${r.garmentId ? ` + ${materials.find((m) => m.id === r.garmentId)?.name ?? 'garment'} ${fmtKsh(r.garmentPrice)}` : ' · client’s own garment'}` : ''}`).join(' · ')}
+                      {c.rows.map((r) => `${r.qty} × ${r.label.trim() || 'artwork'} @ ${fmtKsh(r.price)}${withPress ? ` + press ${fmtKsh(r.press)}${r.garmentId ? ` + ${materials.find((m) => m.id === r.garmentId)?.name ?? 'garment'} ${fmtKsh(r.garmentPrice)}` : ' · client’s own garment'}` : ''}`).join(' · ')}
                     </div>
                     {withPress && <div className="text-muted" style={{ fontSize: 12 }}>Artworks {fmtKsh(c.artworkAmount)} · heat press {fmtKsh(c.pressAmount)}{c.garmentAmount > 0 ? ` · garments ${fmtKsh(c.garmentAmount)}` : ''}</div>}
                     <input className="input" placeholder="Phone (optional)" value={phones[c.key] ?? ''} onChange={(e) => setPhones({ ...phones, [c.key]: e.target.value })} aria-label={`Phone of ${c.client || 'Walk-in'}`} />
@@ -307,7 +296,7 @@ export function ArtworkListDialog({ product, materials, rollId, jobOn, run, film
                         Pay later
                       </button>
                     </div>
-                    <SplitPayments rows={rowsFor(c.key)} onChange={(r) => setPay({ ...pay, [c.key]: r })} total={c.amount} phone={phones[c.key] ?? ''} accountReference={c.client || 'DTF print'} />
+                    <SplitPayments rows={rowsFor(c.key)} onChange={(r) => setPay({ ...pay, [c.key]: r })} total={c.amount} phone={phones[c.key] ?? ''} onPhoneChange={(p) => setPhones({ ...phones, [c.key]: p })} accountReference={c.client || 'DTF print'} />
                   </div>
                 ))}
                 {problem && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{problem}</p>}

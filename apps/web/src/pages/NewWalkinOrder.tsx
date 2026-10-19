@@ -182,7 +182,7 @@ export default function NewWalkinOrder() {
           <div className="card-kicker" style={{ marginBottom: 'var(--space-2)' }}>
             Payment now — split across cash, M-Pesa, bank or card if the customer likes
           </div>
-          <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={totals.grandTotal} phone={phone} accountReference={customerName || 'Walk-in order'} />
+          <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={totals.grandTotal} phone={phone} onPhoneChange={setPhone} accountReference={customerName || 'Walk-in order'} />
           {payProblem && (
             <p className="note" style={{ color: 'var(--color-error)', marginTop: 'var(--space-2)' }}>
               {payProblem}

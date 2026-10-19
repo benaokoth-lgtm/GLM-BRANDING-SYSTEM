@@ -405,6 +405,7 @@ const SOURCE_LABEL: Record<string, string> = {
   Drawings: 'Owner drawings',
   Manual: 'Manual journals',
   BankDeposit: 'Bank deposits',
+  MpesaSettlement: 'M-Pesa settled to the bank',
   TaxPayment: 'Tax paid (VAT, PAYE…)',
 };
 

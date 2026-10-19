@@ -511,6 +511,15 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
 <p><span class="path">Accounting → M-Pesa Matching</span> matches M-Pesa statement lines to orders. Upload the Safaricom statement and the system pairs payments by receipt code, phone number and amount, leaving the exceptions for you. Matching works even if you do not use the live integration.</p>
 
 
+<h3>M-Pesa settled to the bank (daily)</h3>
+<p>Everything the Paybill collects — STK pushes and payments made straight to it — is booked to the <b>M-Pesa</b> account. NCBA settles it into the bank account <b>every day</b>, so each day's settlement is recorded at the top of <span class="path">Accounting → M-Pesa Matching</span>, in the card <b>Settled to the bank</b> (people who keep the books):</p>
+<ol class="steps">
+  <li>Look at the bank statement for the settlement. Enter the <b>date it reached the bank</b>, the <b>amount received</b>, any <b>charges</b> NCBA took off it, and the bank reference (optional). <b>Use the whole balance</b> fills in everything still in M-Pesa.</li>
+  <li>Press <b>Record settlement</b>. The money moves from M-Pesa to Bank, the charges go to Bank Charges, and the M-Pesa balance falls back to what has not been settled yet. The system refuses more than is in M-Pesa.</li>
+  <li>The card shows <b>in M-Pesa, not yet settled</b>, a <b>day by day</b> table (what came into M-Pesa each day and what was settled that day) and the <b>recent settlements</b>. A wrong entry is reversed by an Admin (<i>Reverse</i>), which puts the money back.</li>
+</ol>
+<p>In the cash flow a settlement is an internal transfer (only the charges count as spending), and the entry also shows in Accounting → Journals.</p>
+
 <figure class="shot"><img src="img/28-mpesa-matching.jpg" alt="Accounting → M-Pesa Matching: upload the Safaricom statement and the system pairs payments to orders; the exceptions are left for you."><figcaption>Accounting → M-Pesa Matching: upload the Safaricom statement and the system pairs payments to orders; the exceptions are left for you.</figcaption></figure>
 <h3>Receipts and documents</h3>
 <ul>

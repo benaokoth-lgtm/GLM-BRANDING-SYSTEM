@@ -80785,7 +80785,7 @@ async function setLink(req, res, kind) {
 accountingRouter.put("/links/expense-head/:id", ...accountingOnly, (req, res) => setLink(req, res, "expenseHead"));
 accountingRouter.put("/links/service/:id", ...accountingOnly, (req, res) => setLink(req, res, "service"));
 accountingRouter.put("/links/material/:id", ...accountingOnly, (req, res) => setLink(req, res, "material"));
-var JOURNAL_SOURCES = ["Manual", "Opening", "Capital", "Drawings", "BankDeposit", "TaxPayment"];
+var JOURNAL_SOURCES = ["Manual", "Opening", "Capital", "Drawings", "BankDeposit", "TaxPayment", "MpesaSettlement"];
 accountingRouter.get("/journals", ...accountingOnly, async (req, res) => {
   const r = range(req);
   const entries = await prisma.journalEntry.findMany({
@@ -81051,6 +81051,65 @@ accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => 
   if (!tx || tx.status !== "Unmatched") return res.status(400).json({ error: "Only an unmatched payment can be dismissed" });
   await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Dismissed", dismissedNote: note.slice(0, 200), appliedByName: req.user.name, appliedAt: /* @__PURE__ */ new Date() } });
   res.json({ ok: true });
+});
+var SETTLE = "MpesaSettlement";
+accountingRouter.get("/mpesa/settlements", ...accountingOnly, async (_req, res) => {
+  const ledger = await loadLedger();
+  const mp = ledger.byCode.get(ACCT.mpesa);
+  const mine = mp ? ledger.postings.filter((p) => p.accountId === mp.id) : [];
+  const balance = round2(mine.reduce((a2, p) => a2 + p.debit - p.credit, 0));
+  const days = /* @__PURE__ */ new Map();
+  for (const p of mine) {
+    const d = days.get(p.date) ?? { date: p.date, received: 0, settled: 0 };
+    d.received = round2(d.received + p.debit);
+    if (p.source === SETTLE) d.settled = round2(d.settled + p.credit);
+    days.set(p.date, d);
+  }
+  const entries = await prisma.journalEntry.findMany({ where: { source: SETTLE }, include: { lines: { include: { account: true } } }, orderBy: [{ date: "desc" }, { id: "desc" }], take: 60 });
+  res.json({
+    balance,
+    days: [...days.values()].sort((a2, b) => a2.date < b.date ? 1 : -1).slice(0, 14),
+    settlements: entries.map((e) => ({
+      id: e.id,
+      ref: e.ref,
+      date: e.date,
+      memo: e.memo,
+      createdByName: e.createdByName,
+      amount: round2(e.lines.filter((l) => l.account.code === ACCT.bank).reduce((a2, l) => a2 + l.debit, 0)),
+      charges: round2(e.lines.filter((l) => l.account.code !== ACCT.bank && l.account.code !== ACCT.mpesa).reduce((a2, l) => a2 + l.debit, 0))
+    }))
+  });
+});
+var settleSchema = external_exports.object({
+  date: dateStr3,
+  amount: external_exports.number().positive("Enter the amount that reached the bank"),
+  charges: external_exports.number().min(0).default(0),
+  reference: external_exports.string().trim().max(60).default(""),
+  note: external_exports.string().trim().max(120).default("")
+});
+accountingRouter.post("/mpesa/settlements", ...accountingOnly, async (req, res) => {
+  const parsed = settleSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  if (d.date > todayStr()) return res.status(400).json({ error: "A settlement cannot be dated in the future" });
+  const total = round2(d.amount + d.charges);
+  const accounts = await prisma.account.findMany({ where: { code: { in: [ACCT.bank, ACCT.mpesa, "5200"] } } });
+  const acct = (code) => accounts.find((a2) => a2.code === code);
+  if (!acct(ACCT.bank) || !acct(ACCT.mpesa) || d.charges > 0 && !acct("5200")) return res.status(400).json({ error: "The Bank, M-Pesa or Bank Charges account is missing from the chart of accounts" });
+  const ledger = await loadLedger();
+  const mp = ledger.byCode.get(ACCT.mpesa);
+  const balance = round2((mp ? ledger.postings.filter((p) => p.accountId === mp.id) : []).reduce((a2, p) => a2 + p.debit - p.credit, 0));
+  if (total > balance + 5e-3) return res.status(400).json({ error: `Only Ksh ${balance.toLocaleString("en-KE")} is in the M-Pesa account, so Ksh ${total.toLocaleString("en-KE")} cannot be settled out of it. Check the amount, or that the day's payments have been recorded.` });
+  const prefix = `STL-${d.date.replace(/-/g, "")}-`;
+  const same4 = await prisma.journalEntry.count({ where: { ref: { startsWith: prefix } } });
+  const memo = ["M-Pesa settled to bank", d.reference ? `ref ${d.reference}` : "", d.note].filter(Boolean).join(" \u2014 ");
+  const lines = [
+    { accountId: acct(ACCT.bank).id, debit: round2(d.amount), credit: 0, memo },
+    ...d.charges > 0 ? [{ accountId: acct("5200").id, debit: round2(d.charges), credit: 0, memo: "Settlement charges" }] : [],
+    { accountId: acct(ACCT.mpesa).id, debit: 0, credit: total, memo }
+  ];
+  const entry = await prisma.journalEntry.create({ data: { ref: prefix + String(same4 + 1).padStart(2, "0"), date: d.date, memo, source: SETTLE, createdByName: req.user.name, lines: { create: lines } } });
+  res.status(201).json({ id: entry.id, ref: entry.ref });
 });
 
 // apps/api/src/routes/production.ts

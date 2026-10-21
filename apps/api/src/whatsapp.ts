@@ -101,11 +101,11 @@ export async function checkConnection(cfg: WhatsappConfig): Promise<{ displayPho
 }
 
 /** Uploads the PDF to WhatsApp and returns the media id to attach to a message. */
-async function uploadPdf(cfg: WhatsappConfig, pdf: Buffer, filename: string): Promise<string> {
+async function uploadPdf(cfg: WhatsappConfig, pdf: Buffer, filename: string, mime = 'application/pdf'): Promise<string> {
   const form = new FormData();
   form.append('messaging_product', 'whatsapp');
-  form.append('type', 'application/pdf');
-  form.append('file', new Blob([new Uint8Array(pdf)], { type: 'application/pdf' }), filename);
+  form.append('type', mime);
+  form.append('file', new Blob([new Uint8Array(pdf)], { type: mime }), filename);
   const r = await graph(cfg, `${cfg.phoneNumberId}/media`, { method: 'POST', body: form });
   if (!r?.id) throw new WhatsappError('WhatsApp did not accept the PDF upload.');
   return String(r.id);
@@ -145,4 +145,32 @@ export async function sendInvoiceDocument(cfg: WhatsappConfig, m: InvoiceMessage
   const id = r?.messages?.[0]?.id;
   if (!id) throw new WhatsappError('WhatsApp did not confirm the message.');
   return { messageId: String(id), mode: cfg.templateName ? 'template' : 'document' };
+}
+
+export interface FileMessage {
+  to: string;
+  data: Buffer;
+  filename: string;
+  mime: string;
+  /** The five template values (see TEMPLATE_BODY); used when the file is a PDF and a template is set. */
+  params: [string, string, string, string, string];
+  /** The line shown with the file when no template is used. */
+  caption: string;
+}
+
+/**
+ * Sends any file picked with the paperclip. A PDF goes through the approved template (so it reaches a customer who has not written to us); a picture goes as a picture and any other
+ * file as a document, both as plain messages — WhatsApp accepts those only within 24 hours of the customer writing to us (a template's document header takes PDFs).
+ */
+export async function sendFileMessage(cfg: WhatsappConfig, m: FileMessage): Promise<{ messageId: string; mode: 'template' | 'document' | 'image' }> {
+  if (m.mime === 'application/pdf') return sendInvoiceDocument(cfg, { to: m.to, pdf: m.data, filename: m.filename, params: m.params, caption: m.caption });
+  const mediaId = await uploadPdf(cfg, m.data, m.filename, m.mime);
+  const isImage = m.mime.startsWith('image/');
+  const payload = isImage
+    ? { messaging_product: 'whatsapp', to: m.to, type: 'image', image: { id: mediaId, caption: m.caption.slice(0, 1000) } }
+    : { messaging_product: 'whatsapp', to: m.to, type: 'document', document: { id: mediaId, filename: m.filename, caption: m.caption.slice(0, 1000) } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError('WhatsApp did not confirm the message.');
+  return { messageId: String(id), mode: isImage ? 'image' : 'document' };
 }

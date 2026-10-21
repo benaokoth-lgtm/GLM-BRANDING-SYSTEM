@@ -919,7 +919,8 @@ model WhatsappMessage {
   costingQuoteId Int? // …or the Job Costing quote's quotation
   toNumber    String
   status      String // Sent | Failed
-  mode        String   @default("") // template | document
+  mode        String   @default("") // template | document | image
+  fileName    String   @default("") // the file sent with the paperclip (blank = the order's own document)
   waMessageId String?
   error       String   @default("")
   sentByName  String

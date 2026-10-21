@@ -45,6 +45,8 @@ if (process.env.TRUST_PROXY) app.set('trust proxy', /^\d+$/.test(process.env.TRU
 app.use(cors({ origin: allowedOrigins }));
 // Raised from Express's 100kb default so a small company logo (sent as a base64
 // data URL from Master Data) fits in the request body.
+// A file picked with the paperclip on the WhatsApp screens travels as base64 (up to 10 MB of file), so that one route is allowed a bigger body; it must come before the general parser.
+app.use('/api/whatsapp/send-file', express.json({ limit: '15mb' }));
 app.use(express.json({ limit: '5mb' }));
 
 // Headers on every API response: no sniffing, no framing, nothing remembered by caches or sent on as a referrer, and the API may never be

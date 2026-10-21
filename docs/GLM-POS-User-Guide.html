@@ -519,6 +519,28 @@ The system is seeded with demonstration users. Add your own Admin, then delete t
   <li>On any opened order, <b>Email order receipt</b>, <b>WhatsApp order receipt</b> and <b>Print receipt (2 copies)</b> send or print the document; email and WhatsApp carry it as a <b>PDF</b>.</li>
 </ul>
 
+<h3 id="s6-wa">Sending a document on WhatsApp, step by step</h3>
+<p><b>Staff — an order, invoice, quotation, receipt or saved costing quote</b></p>
+<ol class="steps">
+  <li>Open the order (<span class="path">All Orders</span>) or the saved quote (<span class="path">Job Costing → Saved quotes</span>) and press <b>💬 WhatsApp …</b> at the bottom. The panel opens with the customer’s number from the client record; correct it if needed (<i>0797 785 033</i>).</li>
+  <li>Press <b>Send to the customer now</b> (shown once an Admin has connected WhatsApp, below). The system makes the PDF, sends it to that number and records who sent it, to which number and whether WhatsApp took it (<i>WhatsApp history</i> on the order). If it fails the reason is written in plain words.</li>
+  <li>No connection yet, or you want to use your own WhatsApp: <b>Share the PDF from this device</b> (phone, tablet, recent Chrome/Edge — choose WhatsApp, then the customer) or <b>Save the PDF and open the chat</b> (desktop browsers: attach the saved file with WhatsApp’s paperclip). <b>Message only</b> sends the figures as text.</li>
+</ol>
+<p><b>Staff — any other file, with the paperclip</b></p>
+<ol class="steps">
+  <li>In the same panel press <b>📎 Attach a file</b>, or open <span class="path">WhatsApp</span> in the menu (<b>Send a document on WhatsApp</b>) for a file that has no order.</li>
+  <li>Type the customer’s number (and name, if you like), choose the file — a <b>PDF</b>, a <b>picture</b> (JPG, PNG, WebP), a <b>Word</b> or <b>Excel</b> file or a text file — add a message if you want, and press <b>Send the file now</b>. The list below shows what was sent.</li>
+  <li><b>What reaches whom:</b> a PDF reaches any customer (it goes through the approved template). A picture or Word/Excel file is delivered only if the customer wrote to us in the last 24 hours (WhatsApp’s rule for messages that are not templates); otherwise the screen says so. Files up to 10 MB, pictures up to 5 MB.</li>
+</ol>
+<p><b>Admin — one-time connection (Master Data → WhatsApp)</b></p>
+<ol class="steps">
+  <li>In Meta: create and verify a <b>Meta Business portfolio</b>; add an app with the <b>WhatsApp</b> product; add a phone number that is not already on WhatsApp and a payment method (Meta bills per template message).</li>
+  <li>Create a <b>System User</b> and a <b>permanent access token</b> with <i>whatsapp_business_messaging</i> and <i>whatsapp_business_management</i>.</li>
+  <li>In WhatsApp Manager create a <b>Utility</b> message template with a <b>Document</b> header, using the body wording shown on the <span class="path">Master Data → WhatsApp</span> screen exactly. Wait until Meta shows it as <b>Approved</b>.</li>
+  <li>In the system enter the <b>Phone number ID</b>, the <b>Business Account ID</b>, the <b>access token</b> and the <b>template name</b> and language; press <b>Save and test the connection</b> (it must show your company’s number), then tick <b>Switch on</b>.</li>
+</ol>
+<p class="note">A business can start a WhatsApp conversation only with an approved template, and customers must have agreed to receive messages. Common errors: <i>token expired</i> (make a new token), <i>template not approved</i> (wait for Meta), <i>number still in test mode</i> (add the recipient in Meta or go live), <i>24-hour rule</i> (the customer has not written to us).</p>
+
 <!-- 7 ------------------------------------------------------------------>
 <h2 id="s7"><span class="n">7</span>Production and quality control</h2>
 

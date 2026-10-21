@@ -204,4 +204,45 @@ describe('sending an invoice straight to a customer on WhatsApp', () => {
     assert.equal((await call(staffOwn, 'POST', '/whatsapp/send', { orderId: invoiceId, to: '12345' })).status, 400);
     assert.equal((await call(null, 'POST', '/whatsapp/send', { orderId: invoiceId })).status, 401);
   });
+
+  it('a file picked with the paperclip goes to any number: a PDF through the template, a picture or other file as a plain message; with checks on type, size, number and order', async () => {
+    const b64 = (s: string) => Buffer.from(s).toString('base64');
+    // a PDF: upload, then the approved template with the file as its header and the file name in the body
+    let before = seen.length;
+    const pdf = await call(staffOwn, 'POST', '/whatsapp/send-file', { to: '0712 345 678', filename: 'Artwork proof.pdf', mime: 'application/pdf', data: b64('%PDF-1.4 test'), customer: 'Wanjiru' });
+    assert.equal(pdf.status, 200, JSON.stringify(pdf.body));
+    assert.deepEqual([pdf.body.to, pdf.body.mode, pdf.body.attachment], ['254712345678', 'template', 'Artwork proof.pdf']);
+    const tpl = JSON.parse(seen.slice(before)[1]!.body.toString());
+    assert.equal(tpl.template.components[0].parameters[0].document.id, 'MEDIA-1');
+    assert.equal(tpl.template.components[1].parameters[2].text, 'Artwork proof.pdf');
+    // a picture: sent as an image with the message as its caption
+    before = seen.length;
+    const img = await call(staffOwn, 'POST', '/whatsapp/send-file', { to: '0712345678', filename: 'proof.png', mime: 'image/png', data: b64('PNGDATA'), message: 'Please approve this proof' });
+    assert.equal(img.status, 200);
+    assert.equal(img.body.mode, 'image');
+    const sent = JSON.parse(seen.slice(before)[1]!.body.toString());
+    assert.deepEqual([sent.type, sent.image.id, sent.image.caption], ['image', 'MEDIA-1', 'Please approve this proof']);
+    // a Word file: a plain document message
+    const doc = await call(staffOwn, 'POST', '/whatsapp/send-file', { to: '0712345678', filename: 'terms.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', data: b64('DOCX') });
+    assert.equal(doc.body.mode, 'document');
+    // it is logged with the file name, for the sender and for an Admin
+    const recent = (await call(staffOwn, 'GET', '/whatsapp/recent')).body;
+    assert.deepEqual(recent.slice(0, 3).map((r: any) => [r.fileName, r.status]), [['terms.docx', 'Sent'], ['proof.png', 'Sent'], ['Artwork proof.pdf', 'Sent']]);
+    assert.ok((await call(admin, 'GET', '/whatsapp/recent')).body.length >= 3);
+    // checks
+    const bad = (body: Record<string, unknown>) => call(staffOwn, 'POST', '/whatsapp/send-file', { to: '0712345678', filename: 'a.pdf', mime: 'application/pdf', data: b64('x'), ...body });
+    assert.match((await bad({ mime: 'application/x-msdownload', filename: 'a.exe' })).body.error, /cannot be sent/);
+    assert.match((await bad({ to: '123' })).body.error, /WhatsApp number/);
+    assert.equal((await bad({ data: '' })).status, 400);
+    assert.match((await bad({ data: Buffer.alloc(10 * 1024 * 1024 + 1).toString('base64') })).body.error, /10 MB/);
+    assert.match((await bad({ mime: 'image/jpeg', filename: 'a.jpg', data: Buffer.alloc(5 * 1024 * 1024 + 1).toString('base64') })).body.error, /5 MB/);
+    // with an order: only someone who may open it; and a failure from WhatsApp is explained and logged
+    assert.equal((await call(staff, 'POST', '/whatsapp/send-file', { to: '0712345678', filename: 'a.pdf', mime: 'application/pdf', data: b64('x'), orderId: invoiceId })).status, 403);
+    nextMessage = { status: 400, body: { error: { message: 'Re-engagement message', code: 131047 } } };
+    const late = await call(staffOwn, 'POST', '/whatsapp/send-file', { to: '0712345678', filename: 'p.png', mime: 'image/png', data: b64('x'), orderId: invoiceId });
+    assert.equal(late.status, 502);
+    assert.match(late.body.error, /24 hours/);
+    assert.equal((await call(staffOwn, 'GET', `/whatsapp/log?orderId=${invoiceId}`)).body[0].fileName, 'p.png');
+    assert.equal((await call(null, 'POST', '/whatsapp/send-file', {})).status, 401);
+  });
 });

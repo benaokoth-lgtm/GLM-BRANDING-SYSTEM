@@ -4,6 +4,7 @@ import type { OrderStage } from '@glm/shared';
 import { api, fetchFile } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printCorporateDocument, printOrderDocument } from '../utils/printInvoice';
+import WhatsappFileSend from './WhatsappFileSend';
 import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
@@ -548,6 +549,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                   Message only
                 </button>
                 {waNote && <span className="tag tag-accent">{waNote}</span>}
+                {waReady && <WhatsappFileSend to={waTo} customer={detail.corporateClient?.name || detail.customerName || undefined} orderId={detail.id} onError={setError} onSent={() => api.get<typeof waLog>('/whatsapp/log?orderId=' + detail.id).then(setWaLog).catch(() => undefined)} />}
                 {waLog.length > 0 && (
                   <span className="note" style={{ margin: 0, flexBasis: '100%' }}>
                     WhatsApp history: {waLog.slice(0, 3).map((l) => `${l.status === 'Sent' ? 'sent' : 'failed'} to +${l.to} by ${l.sentByName} (${new Date(l.at).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' })})`).join(' · ')}

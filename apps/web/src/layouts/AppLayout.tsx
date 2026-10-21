@@ -33,6 +33,8 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   if (screens.length) tabs.push([screens[0]!.path, 'New Order']);
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
+  // Send a document: any file to any WhatsApp number, for whoever takes orders or payments.
+  if (isAdmin || p.canCaptureOrders || p.canManagePayments || p.canCaptureForOthers) tabs.push(['/whatsapp', 'WhatsApp']);
   // Commission on sales: sales persons (roles marked "can be assigned orders") see their own; people who manage it see the whole team. Only while an Admin has
   // switched the scheme on (Master Data → Company Info).
   // The staff Client Register (each sales person's clients, picked on the order screens) is a part of Commission, so the front office, who capture for others, see Commission for that.
@@ -82,6 +84,7 @@ const GROUP_OF: Record<string, Group> = {
   '/costing': 'sales',
   '/orders/all': 'sales',
   '/commission': 'sales',
+  '/whatsapp': 'sales',
   '/production': 'operations',
   '/quality': 'operations',
   '/stock': 'operations',
@@ -106,6 +109,7 @@ const ICON_OF: Record<string, string> = {
   '/costing': 'costing',
   '/orders/all': 'orders',
   '/commission': 'commission',
+  '/whatsapp': 'order',
   '/production': 'production',
   '/quality': 'quality',
   '/stock': 'stock',

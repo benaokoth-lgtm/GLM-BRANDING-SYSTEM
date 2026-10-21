@@ -6,6 +6,7 @@ import RequireRole from './components/RequireRole';
 import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
 const Privacy = lazy(() => import('./pages/Privacy'));
+const WhatsappSend = lazy(() => import('./pages/WhatsappSend'));
 const NewWalkinOrder = lazy(() => import('./pages/NewWalkinOrder'));
 const NewFilmOrder = lazy(() => import('./pages/NewFilmOrder'));
 const NewArtworkOrder = lazy(() => import('./pages/NewArtworkOrder'));
@@ -112,6 +113,14 @@ export default function App() {
         {/* The Profit & Loss now lives in Accounting; an old bookmark lands there. */}
         <Route path="/pnl" element={<Navigate to="/accounting?tab=pl" replace />} />
         <Route path="/approvals" element={<Approvals />} />
+        <Route
+          path="/whatsapp"
+          element={
+            <RequirePermission keys={['canCaptureOrders', 'canManagePayments', 'canCaptureForOthers']}>
+              <WhatsappSend />
+            </RequirePermission>
+          }
+        />
         {/* The Client Register is a part of Commission now; an old link or bookmark lands there. */}
         <Route path="/client-register" element={<Navigate to="/commission?tab=register" replace />} />
         <Route

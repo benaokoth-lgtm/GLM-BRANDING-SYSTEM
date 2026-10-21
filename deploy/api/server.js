@@ -83559,11 +83559,11 @@ async function checkConnection(cfg) {
   const r = await graph(cfg, `${cfg.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`);
   return { displayPhoneNumber: r.display_phone_number ?? "", verifiedName: r.verified_name ?? "", quality: r.quality_rating ?? "" };
 }
-async function uploadPdf(cfg, pdf, filename) {
+async function uploadPdf(cfg, pdf, filename, mime = "application/pdf") {
   const form = new FormData();
   form.append("messaging_product", "whatsapp");
-  form.append("type", "application/pdf");
-  form.append("file", new Blob([new Uint8Array(pdf)], { type: "application/pdf" }), filename);
+  form.append("type", mime);
+  form.append("file", new Blob([new Uint8Array(pdf)], { type: mime }), filename);
   const r = await graph(cfg, `${cfg.phoneNumberId}/media`, { method: "POST", body: form });
   if (!r?.id) throw new WhatsappError("WhatsApp did not accept the PDF upload.");
   return String(r.id);
@@ -83588,6 +83588,16 @@ async function sendInvoiceDocument(cfg, m) {
   const id = r?.messages?.[0]?.id;
   if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
   return { messageId: String(id), mode: cfg.templateName ? "template" : "document" };
+}
+async function sendFileMessage(cfg, m) {
+  if (m.mime === "application/pdf") return sendInvoiceDocument(cfg, { to: m.to, pdf: m.data, filename: m.filename, params: m.params, caption: m.caption });
+  const mediaId = await uploadPdf(cfg, m.data, m.filename, m.mime);
+  const isImage = m.mime.startsWith("image/");
+  const payload = isImage ? { messaging_product: "whatsapp", to: m.to, type: "image", image: { id: mediaId, caption: m.caption.slice(0, 1e3) } } : { messaging_product: "whatsapp", to: m.to, type: "document", document: { id: mediaId, filename: m.filename, caption: m.caption.slice(0, 1e3) } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return { messageId: String(id), mode: isImage ? "image" : "document" };
 }
 
 // apps/api/src/routes/whatsapp.ts
@@ -83725,7 +83735,68 @@ whatsappRouter.get("/log", async (req, res) => {
     where = { orderId };
   }
   const rows = await prisma.whatsappMessage.findMany({ where, orderBy: { id: "desc" }, take: 10 });
-  res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
+  res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, fileName: r.fileName, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
+});
+var FILE_TYPES = {
+  "application/pdf": "pdf",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "text/plain": "txt"
+};
+var MAX_FILE = 10 * 1024 * 1024;
+var MAX_IMAGE = 5 * 1024 * 1024;
+var sendFileSchema = external_exports.object({
+  to: external_exports.string().trim().min(1, "Enter the customer's WhatsApp number, like 0797 785 033").max(40),
+  filename: external_exports.string().trim().min(1).max(120),
+  mime: external_exports.string().trim().max(120),
+  data: external_exports.string().min(1, "Attach a file first"),
+  customer: external_exports.string().trim().max(80).optional(),
+  message: external_exports.string().trim().max(600).optional(),
+  orderId: external_exports.number().int().positive().optional()
+});
+whatsappRouter.post("/send-file", sendLimiter2, async (req, res) => {
+  const cfg = await loadWhatsappConfig();
+  if (!cfg) return res.status(501).json({ error: "WhatsApp isn't set up yet \u2014 an Admin can set it up under Master Data \u2192 WhatsApp" });
+  const parsed = sendFileSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const ext = FILE_TYPES[d.mime];
+  if (!ext) return res.status(400).json({ error: "That kind of file cannot be sent on WhatsApp from here. Use a PDF, a picture (JPG, PNG, WebP), a Word or Excel file, or a text file." });
+  const to = whatsappNumber(d.to);
+  if (!to) return res.status(400).json({ error: "Enter the customer's WhatsApp number, like 0797 785 033" });
+  const data = Buffer.from(d.data, "base64");
+  if (data.length === 0) return res.status(400).json({ error: "The file is empty" });
+  if (data.length > MAX_FILE) return res.status(400).json({ error: "That file is over 10 MB. Send a smaller one (compress the PDF or the picture)." });
+  if (d.mime.startsWith("image/") && data.length > MAX_IMAGE) return res.status(400).json({ error: "WhatsApp accepts pictures up to 5 MB. Send a smaller picture, or send it as a PDF." });
+  if (d.orderId) {
+    const order = await prisma.order.findUnique({ where: { id: d.orderId }, select: { staffId: true } });
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  }
+  const company = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  const base3 = d.filename.replace(/[^A-Za-z0-9._ -]+/g, "-").replace(/\.[A-Za-z0-9]{1,5}$/, "") || "document";
+  const filename = `${base3}.${ext}`;
+  const note = d.message || `From ${company.companyName}.`;
+  const log2 = (status, extra) => prisma.whatsappMessage.create({ data: { orderId: d.orderId ?? null, toNumber: to, status, mode: extra.mode ?? "", fileName: filename, waMessageId: extra.waMessageId ?? null, error: extra.error ?? "", sentByName: req.user.name } });
+  try {
+    const sent = await sendFileMessage(cfg, { to, data, filename, mime: d.mime, params: [d.customer || "customer", "document", filename, "not applicable", note], caption: note });
+    await log2("Sent", { waMessageId: sent.messageId, mode: sent.mode });
+    res.json({ ok: true, to, messageId: sent.messageId, mode: sent.mode, attachment: filename });
+  } catch (e) {
+    const message = e instanceof WhatsappError ? e.message : "Could not send the file";
+    if (!(e instanceof WhatsappError)) console.error("WhatsApp file send failed", e);
+    await log2("Failed", { error: message });
+    res.status(502).json({ error: message });
+  }
+});
+whatsappRouter.get("/recent", async (req, res) => {
+  const rows = await prisma.whatsappMessage.findMany({ where: req.user.role === "Admin" ? {} : { sentByName: req.user.name }, orderBy: { id: "desc" }, take: 15 });
+  res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, fileName: r.fileName, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
 });
 
 // apps/api/src/routes/etims.ts
@@ -84576,6 +84647,7 @@ var app = (0, import_express29.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
+app.use("/api/whatsapp/send-file", import_express29.default.json({ limit: "15mb" }));
 app.use(import_express29.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");

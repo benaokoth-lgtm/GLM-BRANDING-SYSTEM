@@ -11,7 +11,7 @@ import { canAccessOrder, orderInclude, serializeDetail } from './orders';
 import { buildOrderPdf, documentKind } from '../orderPdf';
 import { quoteDocument } from '../costingDocument';
 import { quoteForUser } from './costing';
-import { TEMPLATE_BODY, WhatsappError, checkConnection, loadWhatsappConfig, sendInvoiceDocument } from '../whatsapp';
+import { TEMPLATE_BODY, WhatsappError, checkConnection, loadWhatsappConfig, sendFileMessage, sendInvoiceDocument } from '../whatsapp';
 
 export const whatsappRouter = Router();
 whatsappRouter.use(requireAuth);
@@ -172,5 +172,75 @@ whatsappRouter.get('/log', async (req, res) => {
     where = { orderId };
   }
   const rows = await prisma.whatsappMessage.findMany({ where, orderBy: { id: 'desc' }, take: 10 });
-  res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
+  res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, fileName: r.fileName, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
+});
+
+// ── A file picked with the paperclip ────────────────────────────────────────
+// Any file (a PDF, a picture of the artwork, a Word or Excel file) to any number, with or without an order: the browser sends it as base64 and the server uploads it to WhatsApp and sends it.
+const FILE_TYPES: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'application/msword': 'doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+  'text/plain': 'txt',
+};
+const MAX_FILE = 10 * 1024 * 1024;
+const MAX_IMAGE = 5 * 1024 * 1024; // WhatsApp refuses a picture over 5 MB
+
+const sendFileSchema = z.object({
+  to: z.string().trim().min(1, "Enter the customer's WhatsApp number, like 0797 785 033").max(40),
+  filename: z.string().trim().min(1).max(120),
+  mime: z.string().trim().max(120),
+  data: z.string().min(1, 'Attach a file first'),
+  customer: z.string().trim().max(80).optional(),
+  message: z.string().trim().max(600).optional(),
+  orderId: z.number().int().positive().optional(),
+});
+
+whatsappRouter.post('/send-file', sendLimiter, async (req, res) => {
+  const cfg = await loadWhatsappConfig();
+  if (!cfg) return res.status(501).json({ error: "WhatsApp isn't set up yet — an Admin can set it up under Master Data → WhatsApp" });
+  const parsed = sendFileSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
+  const d = parsed.data;
+  const ext = FILE_TYPES[d.mime];
+  if (!ext) return res.status(400).json({ error: 'That kind of file cannot be sent on WhatsApp from here. Use a PDF, a picture (JPG, PNG, WebP), a Word or Excel file, or a text file.' });
+  const to = whatsappNumber(d.to);
+  if (!to) return res.status(400).json({ error: "Enter the customer's WhatsApp number, like 0797 785 033" });
+  const data = Buffer.from(d.data, 'base64');
+  if (data.length === 0) return res.status(400).json({ error: 'The file is empty' });
+  if (data.length > MAX_FILE) return res.status(400).json({ error: 'That file is over 10 MB. Send a smaller one (compress the PDF or the picture).' });
+  if (d.mime.startsWith('image/') && data.length > MAX_IMAGE) return res.status(400).json({ error: 'WhatsApp accepts pictures up to 5 MB. Send a smaller picture, or send it as a PDF.' });
+  if (d.orderId) {
+    const order = await prisma.order.findUnique({ where: { id: d.orderId }, select: { staffId: true } });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
+  }
+
+  const company = await prisma.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  const base = d.filename.replace(/[^A-Za-z0-9._ -]+/g, '-').replace(/\.[A-Za-z0-9]{1,5}$/, '') || 'document';
+  const filename = `${base}.${ext}`;
+  const note = d.message || `From ${company.companyName}.`;
+  const log = (status: 'Sent' | 'Failed', extra: { waMessageId?: string; error?: string; mode?: string }) =>
+    prisma.whatsappMessage.create({ data: { orderId: d.orderId ?? null, toNumber: to, status, mode: extra.mode ?? '', fileName: filename, waMessageId: extra.waMessageId ?? null, error: extra.error ?? '', sentByName: req.user!.name } });
+  try {
+    const sent = await sendFileMessage(cfg, { to, data, filename, mime: d.mime, params: [d.customer || 'customer', 'document', filename, 'not applicable', note], caption: note });
+    await log('Sent', { waMessageId: sent.messageId, mode: sent.mode });
+    res.json({ ok: true, to, messageId: sent.messageId, mode: sent.mode, attachment: filename });
+  } catch (e) {
+    const message = e instanceof WhatsappError ? e.message : 'Could not send the file';
+    if (!(e instanceof WhatsappError)) console.error('WhatsApp file send failed', e);
+    await log('Failed', { error: message });
+    res.status(502).json({ error: message });
+  }
+});
+
+/** The latest WhatsApp messages: your own, or everyone's for an Admin (the standalone Send a document screen). */
+whatsappRouter.get('/recent', async (req, res) => {
+  const rows = await prisma.whatsappMessage.findMany({ where: req.user!.role === 'Admin' ? {} : { sentByName: req.user!.name }, orderBy: { id: 'desc' }, take: 15 });
+  res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, fileName: r.fileName, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
 });

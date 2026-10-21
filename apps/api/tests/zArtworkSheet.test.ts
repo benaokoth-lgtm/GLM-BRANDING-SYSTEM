@@ -29,7 +29,7 @@ const sheet = (extra: Record<string, unknown>) => call('printer', 'POST', '/dtf/
 // DTF defaults: 3,780 a running metre, 30 lowest price. 3 m over 140 artworks: 11,340 ÷ 140 = 81 each, 11,340 in all.
 describe('artwork sheets', () => {
   before(async () => {
-    await prisma.role.create({ data: { name: 'Printer (sheet test)', canAccessDtf: true, canCaptureOrders: true } });
+    await prisma.role.create({ data: { name: 'Printer (sheet test)', canAccessDtf: true, canCaptureOrders: true, canBeAssignedOrders: true } });
     const u = await prisma.user.create({ data: { name: 'printer (sheet test)', role: 'Printer (sheet test)', pinHash: 'x' } });
     ids.printer = u.id;
     tokens.printer = signToken({ id: u.id, name: u.name, role: 'Printer (sheet test)' });

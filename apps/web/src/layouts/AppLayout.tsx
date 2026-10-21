@@ -33,10 +33,10 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   if (screens.length) tabs.push([screens[0]!.path, 'New Order']);
   if (isAdmin || p.canViewAllOrders) tabs.push(['/orders/all', 'All Orders']);
   else if (p.canCaptureOrders) tabs.push(['/orders/all', 'Orders']);
-  // Commission on sales: everyone who captures orders sees their own; people who manage it see the whole team. Only while an Admin has
+  // Commission on sales: sales persons (roles marked "can be assigned orders") see their own; people who manage it see the whole team. Only while an Admin has
   // switched the scheme on (Master Data → Company Info).
   // The staff Client Register (each sales person's clients, picked on the order screens) is a part of Commission, so the front office, who capture for others, see Commission for that.
-  if (commissionOn && (isAdmin || p.canCaptureOrders || p.canManageCommission || p.canCaptureForOthers)) tabs.push(['/commission', 'Commission']);
+  if (commissionOn && (isAdmin || p.canBeAssignedOrders || p.canManageCommission || p.canCaptureForOthers)) tabs.push(['/commission', 'Commission']);
   // Once captured, orders are managed in Production and then inspected in Quality Control.
   if (isAdmin || p.canAccessProduction || p.canManageProduction) tabs.push(['/production', 'Production']);
   if (isAdmin || p.canAccessQuality) tabs.push(['/quality', 'Quality Control']);

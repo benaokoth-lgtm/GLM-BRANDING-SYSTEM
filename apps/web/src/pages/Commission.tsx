@@ -1352,9 +1352,9 @@ function RatesTab() {
 export default function Commission() {
   const { user } = useAuth();
   const manager = user?.role === 'Admin' || !!user?.permissions.canManageCommission;
-  // Everyone who captures orders sees their own commission; the front office, who capture for others, only need the Client Register.
+  // Sales persons (roles marked "can be assigned orders") see their own commission — capturing orders alone does not make someone one; the front office, who capture for others, only need the Client Register.
   const p = user?.permissions;
-  const canMine = user?.role === 'Admin' || !!p?.canCaptureOrders || manager;
+  const canMine = manager || !!p?.canBeAssignedOrders;
   const canRegister = canMine || !!p?.canCaptureForOthers;
   // (a link from an order screen opens it straight on the Client Register: /commission?tab=register)
   const wantsRegister = new URLSearchParams(useLocation().search).get('tab') === 'register';

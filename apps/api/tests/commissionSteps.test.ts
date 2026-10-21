@@ -28,7 +28,7 @@ const mine = async (who: string) => (await call(who, 'GET', `/commission/my?peri
 
 describe('commission paid by pay bands', () => {
   before(async () => {
-    await prisma.role.create({ data: { name: 'Steps Counter', canCaptureOrders: true } });
+    await prisma.role.create({ data: { name: 'Steps Counter', canCaptureOrders: true, canBeAssignedOrders: true } });
     await prisma.role.create({ data: { name: 'Steps Boss', canCaptureOrders: true, canAccessFinance: true, canAccessAccounting: true, canManageCommission: true } });
     for (const [key, role] of [['zed', 'Steps Counter'], ['edge', 'Steps Counter'], ['low', 'Steps Counter'], ['boss', 'Steps Boss']] as const) {
       const u = await prisma.user.create({ data: { name: `${key} (steps test)`, role, pinHash: 'x' } });

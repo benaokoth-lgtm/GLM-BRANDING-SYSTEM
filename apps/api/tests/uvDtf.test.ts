@@ -26,7 +26,7 @@ const dtfData = async () => (await call('lead', 'GET', '/dtf/data')).body;
 describe('UV DTF film and artwork', () => {
   let roll = '';
   before(async () => {
-    await prisma.role.create({ data: { name: 'Printer (uv test)', canAccessDtf: true, canCaptureOrders: true } });
+    await prisma.role.create({ data: { name: 'Printer (uv test)', canAccessDtf: true, canCaptureOrders: true, canBeAssignedOrders: true } });
     await prisma.role.create({ data: { name: 'Lead (uv test)', canAccessDtf: true, canManageDtf: true, canCaptureOrders: true, canManageCommission: true } });
     for (const [key, role] of [['printer', 'Printer (uv test)'], ['lead', 'Lead (uv test)']] as const) {
       const u = await prisma.user.create({ data: { name: `${key} (uv test)`, role, pinHash: 'x' } });

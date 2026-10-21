@@ -24,7 +24,7 @@ const row = (st: any, type: string) => st.byType.find((r: any) => r.type === typ
 
 describe('commission by kind of sale', () => {
   before(async () => {
-    await prisma.role.create({ data: { name: 'ByType Counter', canCaptureOrders: true, canAccessDtf: true } });
+    await prisma.role.create({ data: { name: 'ByType Counter', canCaptureOrders: true, canBeAssignedOrders: true, canAccessDtf: true } });
     for (const key of ['cara', 'dan']) {
       const u = await prisma.user.create({ data: { name: `${key} (bytype test)`, role: 'ByType Counter', pinHash: 'x' } });
       ids[key] = u.id;

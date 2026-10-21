@@ -33,7 +33,7 @@ const entries = (staffId: number) => prisma.payrollEntry.findMany({ where: { sta
 
 describe('pay-band staff go into payroll automatically', () => {
   before(async () => {
-    await prisma.role.create({ data: { name: 'PayBand Counter', canCaptureOrders: true } });
+    await prisma.role.create({ data: { name: 'PayBand Counter', canCaptureOrders: true, canBeAssignedOrders: true } });
     await prisma.role.create({ data: { name: 'PayBand Boss', canCaptureOrders: true, canAccessFinance: true, canAccessAccounting: true, canManageCommission: true } });
     const old = new Date('2024-01-01T00:00:00Z');
     for (const [key, role, flag] of [['idle', 'PayBand Counter', true], ['low', 'PayBand Counter', true], ['high', 'PayBand Counter', true], ['plain', 'PayBand Counter', false], ['boss', 'PayBand Boss', false]] as const) {

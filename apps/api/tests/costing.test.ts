@@ -23,7 +23,7 @@ const rateNamed = async (name: string) => (await call('admin', 'GET', '/costing/
 
 describe('job costing', () => {
   before(async () => {
-    await prisma.role.create({ data: { name: 'Seller (costing test)', canCaptureOrders: true } });
+    await prisma.role.create({ data: { name: 'Seller (costing test)', canCaptureOrders: true, canBeAssignedOrders: true } });
     await prisma.role.create({ data: { name: 'Finance (costing test)', canCaptureOrders: true, canAccessFinance: true, canSeeCosts: true } });
     await prisma.role.create({ data: { name: 'Nobody (costing test)' } });
     await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true }, create: { id: 1, enabled: true } });

@@ -52,6 +52,7 @@ import type { Band, FreelanceSplit, GeneralMode, LineItemInput, PayStep, SalesTa
 import { prisma } from './db';
 import { permissionsForRole } from './permissions';
 import { canCaptureForOthers } from './frontOffice';
+import { salesPersonRoleNames } from './orderSource';
 
 // Staff sales commission — the database side. The rules themselves (bands, premiums, the 12-month window) are in
 // packages/shared/src/commission.ts; this file looks things up, credits orders to staff and builds each month's statement.
@@ -761,9 +762,14 @@ export async function buildStatements(period: string, only?: number): Promise<{ 
     }
   }
 
-  const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
+  const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true, role: true, paidOnBands: true } });
   const names = new Map(users.map((u) => [u.id, u.name]));
+  // Capturing orders does not make someone a sales person: only the roles marked "can be assigned orders" earn commission (or a person the Admin has put on the pay bands). A Finance
+  // officer or anyone else who keys an order in their own name makes a GLM sale, not a commission sale.
+  const salesRoles = new Set(await salesPersonRoleNames());
+  const earners = new Set(users.filter((u) => salesRoles.has(u.role) || u.paidOnBands).map((u) => u.id));
   const statements = [...people.values()]
+    .filter((s) => earners.has(s.staffId))
     .map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` }))
     .filter((s) => only === undefined || s.staffId === only)
     .sort((a, b) => b.total - a.total || a.staffName.localeCompare(b.staffName));

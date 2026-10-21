@@ -67150,6 +67150,25 @@ function ensureFrontOfficeOnce() {
   return seeding;
 }
 
+// apps/api/src/orderSource.ts
+async function salesPersonRoleNames() {
+  return (await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } })).map((r) => r.name);
+}
+async function salesPersonIds() {
+  const roles = await salesPersonRoleNames();
+  if (roles.length === 0) return /* @__PURE__ */ new Set();
+  return new Set((await prisma.user.findMany({ where: { role: { in: roles } }, select: { id: true } })).map((u) => u.id));
+}
+async function labelFor(staffId) {
+  const u = await prisma.user.findUnique({ where: { id: staffId }, select: { role: true } });
+  if (!u) return "glm";
+  const roles = await salesPersonRoleNames();
+  return roles.includes(u.role) ? "freelancer" : "glm";
+}
+function isSalesPersonOrder(o, people) {
+  return o.freelanceAgentId != null || people.has(o.sourcedByStaffId ?? o.staffId);
+}
+
 // apps/api/src/commission.ts
 async function canManageCommission(role) {
   return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
@@ -67583,9 +67602,11 @@ async function buildStatements(period, only) {
       for (const st of everyone) st.byType.find((r) => r.type === t).teamAvgSold = avg;
     }
   }
-  const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true } });
+  const users = await prisma.user.findMany({ where: { id: { in: [...people.keys()] } }, select: { id: true, name: true, role: true, paidOnBands: true } });
   const names = new Map(users.map((u) => [u.id, u.name]));
-  const statements = [...people.values()].map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` })).filter((s) => only === void 0 || s.staffId === only).sort((a2, b) => b.total - a2.total || a2.staffName.localeCompare(b.staffName));
+  const salesRoles = new Set(await salesPersonRoleNames());
+  const earners = new Set(users.filter((u) => salesRoles.has(u.role) || u.paidOnBands).map((u) => u.id));
+  const statements = [...people.values()].filter((s) => earners.has(s.staffId)).map((s) => ({ ...s, staffName: names.get(s.staffId) ?? `Staff #${s.staffId}` })).filter((s) => only === void 0 || s.staffId === only).sort((a2, b) => b.total - a2.total || a2.staffName.localeCompare(b.staffName));
   return { config, statements };
 }
 async function buildFreelanceStatements(weekStartDate, only) {
@@ -72898,25 +72919,6 @@ async function returnOrderStock(tx, orderId) {
     if (li.materialId && li.qty > 0) await tx.material.update({ where: { id: li.materialId }, data: { stockQty: { increment: li.qty } } });
   }
   await tx.order.update({ where: { id: orderId }, data: { stockTaken: false } });
-}
-
-// apps/api/src/orderSource.ts
-async function salesPersonRoleNames() {
-  return (await prisma.role.findMany({ where: { canBeAssignedOrders: true }, select: { name: true } })).map((r) => r.name);
-}
-async function salesPersonIds() {
-  const roles = await salesPersonRoleNames();
-  if (roles.length === 0) return /* @__PURE__ */ new Set();
-  return new Set((await prisma.user.findMany({ where: { role: { in: roles } }, select: { id: true } })).map((u) => u.id));
-}
-async function labelFor(staffId) {
-  const u = await prisma.user.findUnique({ where: { id: staffId }, select: { role: true } });
-  if (!u) return "glm";
-  const roles = await salesPersonRoleNames();
-  return roles.includes(u.role) ? "freelancer" : "glm";
-}
-function isSalesPersonOrder(o, people) {
-  return o.freelanceAgentId != null || people.has(o.sourcedByStaffId ?? o.staffId);
 }
 
 // apps/api/src/orderHeads.ts

@@ -22,6 +22,9 @@ generator client {
 
 model User {
   id               Int       @id @default(autoincrement())
+  // The till (cash drawer) this person takes cash at, for the daily cash-up (Day close). Blank = the main till.
+  tillId           Int?
+  till             Till?     @relation(fields: [tillId], references: [id])
   contractorProfile ContractorProfile?
   // The full name used everywhere (login screen, orders, reports) — always first + middle + surname joined.
   name             String
@@ -1815,4 +1818,54 @@ model EtimsItem {
   updatedAt       DateTime  @updatedAt
 
   @@unique([kind, refId])
+}
+
+// The daily cash-up (Finance → Day close): at the end of a day the cashier counts the cash in the drawer and compares it with what the system says came in; a manager approves.
+// Expected cash = the float carried from the last close + cash payments received that day − cash refunds that day. Nothing here moves money in the books: it is the check on the cash.
+model DayClose {
+  id             Int      @id @default(autoincrement())
+  date           String // 'YYYY-MM-DD'
+  tillId         Int      @default(0) // which till (cash drawer) this cash-up is for
+  openingFloat   Float    @default(0)
+  cashReceived   Float    @default(0)
+  cashRefunds    Float    @default(0)
+  expectedCash   Float    @default(0)
+  countedCash    Float    @default(0)
+  variance       Float    @default(0) // counted − expected (negative = short)
+  floatCarried   Float    @default(0) // left in the drawer for tomorrow
+  banked         Float    @default(0) // counted − float carried: taken to the bank
+  denominations  String   @default("") // JSON {"1000": 12, "500": 3, …} when the notes and coins were counted one by one
+  note           String   @default("")
+  methodsJson    String   @default("") // the day's receipts by method at the time of the close
+  outstanding    Float    @default(0) // what customers owed at the end of the day
+  status         String   @default("Submitted") // Submitted | Approved
+  submittedByName String  @default("")
+  submittedAt    DateTime @default(now())
+  approvedByName String?
+  approvedAt     DateTime?
+
+  @@unique([date, tillId])
+}
+
+// A cash drawer. Everyone takes cash at one till (the main till unless they are assigned another), and each till is counted and approved on its own at the close of the day.
+model Till {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isMain    Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  users     User[]
+}
+
+// Day close settings (one row): the evening WhatsApp summary — when it goes, to whom, and the approved template to use (none = a plain message, which WhatsApp delivers only inside 24 hours of the person writing to us).
+model DayCloseSettings {
+  id                Int       @id @default(1)
+  summaryEnabled    Boolean   @default(false)
+  summaryTime       String    @default("18:30") // HH:MM, Nairobi time
+  summaryNumbers    String    @default("") // one or more WhatsApp numbers, separated by commas or lines
+  summaryTemplate   String    @default("") // an approved Utility template with five text variables and no header
+  summaryLastDate   String    @default("") // the day the last summary was sent for
+  summaryAttempts   Int       @default(0) // tries so far for that day
+  summaryLastTryAt  DateTime?
+  summaryLastStatus String    @default("")
 }

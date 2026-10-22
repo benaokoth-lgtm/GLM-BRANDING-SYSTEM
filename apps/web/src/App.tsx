@@ -6,6 +6,7 @@ import RequireRole from './components/RequireRole';
 import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
 const Privacy = lazy(() => import('./pages/Privacy'));
+const DayClose = lazy(() => import('./pages/DayClose'));
 const WhatsappSend = lazy(() => import('./pages/WhatsappSend'));
 const NewWalkinOrder = lazy(() => import('./pages/NewWalkinOrder'));
 const NewFilmOrder = lazy(() => import('./pages/NewFilmOrder'));
@@ -113,6 +114,14 @@ export default function App() {
         {/* The Profit & Loss now lives in Accounting; an old bookmark lands there. */}
         <Route path="/pnl" element={<Navigate to="/accounting?tab=pl" replace />} />
         <Route path="/approvals" element={<Approvals />} />
+        <Route
+          path="/day-close"
+          element={
+            <RequirePermission keys={['canManagePayments', 'canAccessFinance']}>
+              <DayClose />
+            </RequirePermission>
+          }
+        />
         <Route
           path="/whatsapp"
           element={

@@ -45,6 +45,8 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
   if (!hasFinance && (isAdmin || p.canManagePayments)) tabs.push(['/payments', 'Payments']);
   // The petty cash desk: someone who logs petty cash without Finance access (the front office) gets just that, as its own entry (Finance has it as a tab).
   if (!hasFinance && p.canCapturePettyCash) tabs.push(['/petty-cash', 'Petty Cash']);
+  // The daily reconciliation: receipts by method, the cash-up, and what is still owed.
+  if (isAdmin || p.canManagePayments || p.canAccessFinance) tabs.push(['/day-close', 'Day close']);
   if (isAdmin) tabs.push(['/master-data', 'Master Data']);
   if (hasFinance) tabs.push(['/finance', 'Finance'], ['/compliance', 'Compliance']);
   // Accounting (books, statements, notes, M-Pesa matching). Someone who can manage payments but isn't in Accounting
@@ -63,6 +65,7 @@ function buildTabs(user: CurrentUser, commissionOn: boolean): [string, string][]
 import { useBranding } from '../hooks/useBranding';
 import { SubNavProvider, useSubNav } from '../state/SubNavContext';
 import { useFeatures } from '../hooks/useFeatures';
+import DayCloseReminder from '../components/DayCloseReminder';
 
 // The sidebar, in one column: the signed-in person at the top (their menu has Change PIN and Log out), the modules in labelled groups, and the everyday
 // utilities (colour scheme, collapse) at the bottom. Only the modules a person's role allows are listed, so a group with nothing in it does not appear.
@@ -94,6 +97,7 @@ const GROUP_OF: Record<string, Group> = {
   '/compliance': 'finance',
   '/accounting': 'finance',
   '/payments': 'finance',
+  '/day-close': 'finance',
   '/petty-cash': 'finance',
   '/reports': 'finance',
   '/master-data': 'admin',
@@ -119,6 +123,7 @@ const ICON_OF: Record<string, string> = {
   '/compliance': 'compliance',
   '/accounting': 'accounting',
   '/payments': 'payments',
+  '/day-close': 'payments',
   '/petty-cash': 'payments',
   '/reports': 'reports',
   '/master-data': 'masterdata',
@@ -277,6 +282,7 @@ function AppLayoutInner() {
           <strong style={{ fontFamily: 'var(--font-heading)' }}>{branding?.systemName ?? ''}</strong>
         </div>
         <main style={{ flex: 1, padding: 'var(--space-6)', display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', maxWidth: 1280, width: '100%', margin: '0 auto', boxSizing: 'border-box' }}>
+          <DayCloseReminder />
           {/* a module opens the first time it is used; the menu stays put while it loads */}
           <Suspense fallback={<p className="note">Loading…</p>}>
             <Outlet />

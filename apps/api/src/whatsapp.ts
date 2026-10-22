@@ -174,3 +174,21 @@ export async function sendFileMessage(cfg: WhatsappConfig, m: FileMessage): Prom
   if (!id) throw new WhatsappError('WhatsApp did not confirm the message.');
   return { messageId: String(id), mode: isImage ? 'image' : 'document' };
 }
+
+/** A plain text message. WhatsApp delivers it only to someone who wrote to us in the last 24 hours. */
+export async function sendTextMessage(cfg: WhatsappConfig, to: string, body: string): Promise<string> {
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body: body.slice(0, 3500), preview_url: false } }) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError('WhatsApp did not confirm the message.');
+  return String(id);
+}
+
+/** An approved template that has a text body only (no header) with the given variables: how a business starts a conversation with a text. */
+export async function sendTemplateText(cfg: WhatsappConfig, to: string, name: string, params: string[]): Promise<string> {
+  const clean = (s: string) => s.replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim().slice(0, 900) || '-';
+  const payload = { messaging_product: 'whatsapp', to, type: 'template', template: { name, language: { code: cfg.templateLanguage }, components: [{ type: 'body', parameters: params.map((t) => ({ type: 'text', text: clean(t) })) }] } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError('WhatsApp did not confirm the message.');
+  return String(id);
+}

@@ -14,6 +14,7 @@ import { ensureMaterialItemsOnce } from './materials';
 import { tidyCostingSummariesOnce } from './costingTidy';
 import { alignSystemHeadsOnce, clearContractedOutOnce, retireLegacyEmbroideryOnce } from './embroideryLegacy';
 import { startBackupScheduler } from './backup';
+import { startSummaryScheduler } from './daySummary';
 import { pruneAudit } from './audit';
 import { sealStoredSecrets } from './secrets';
 import { dataKeyConfigured } from './crypto';
@@ -26,6 +27,7 @@ app.listen(port, () => {
     .then(() => startDepreciationSchedule())
     .catch((e) => console.error('Accounting start-up failed', e));
   startBackupScheduler();
+  startSummaryScheduler();
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error('Sealing saved secrets failed', e));
   if (!dataKeyConfigured()) console.warn('DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data → Security.');

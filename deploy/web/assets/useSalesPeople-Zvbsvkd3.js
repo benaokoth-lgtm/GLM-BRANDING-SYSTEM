@@ -1,1 +1,0 @@
-import{r}from"./vendor-BNp2vZT3.js";import{a}from"./index-Brj5dgH7.js";function u(e){const[s,t]=r.useState([]);return r.useEffect(()=>{e&&a.get("/master-data/sales-people").then(t).catch(()=>t([]))},[e]),s}export{u};

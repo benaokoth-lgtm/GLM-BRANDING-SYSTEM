@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router30 = require_router();
+    var Router31 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router30({
+        this._router = new Router31({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router30 = require_router();
+    var Router31 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router30;
+    exports2.Router = Router31;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express29 = __toESM(require_express2());
+var import_express30 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -65283,8 +65283,8 @@ function isOverdue(kind, status, dueDate, balanceDue, today) {
   return status === "Invoice" && !!dueDate && dueDate < today && balanceDue > 0;
 }
 function addDays(dateStr7, days) {
-  const d = /* @__PURE__ */ new Date(dateStr7 + "T00:00:00");
-  d.setDate(d.getDate() + days);
+  const d = /* @__PURE__ */ new Date(dateStr7 + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 function todayStr() {
@@ -83599,6 +83599,20 @@ async function sendFileMessage(cfg, m) {
   if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
   return { messageId: String(id), mode: isImage ? "image" : "document" };
 }
+async function sendTextMessage(cfg, to, body) {
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: body.slice(0, 3500), preview_url: false } }) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return String(id);
+}
+async function sendTemplateText(cfg, to, name2, params) {
+  const clean3 = (s) => s.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 900) || "-";
+  const payload = { messaging_product: "whatsapp", to, type: "template", template: { name: name2, language: { code: cfg.templateLanguage }, components: [{ type: "body", parameters: params.map((t) => ({ type: "text", text: clean3(t) })) }] } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return String(id);
+}
 
 // apps/api/src/routes/whatsapp.ts
 var whatsappRouter = (0, import_express24.Router)();
@@ -83799,8 +83813,566 @@ whatsappRouter.get("/recent", async (req, res) => {
   res.json(rows.map((r) => ({ id: r.id, to: r.toNumber, status: r.status, mode: r.mode, fileName: r.fileName, error: r.error, sentByName: r.sentByName, at: r.createdAt.toISOString() })));
 });
 
-// apps/api/src/routes/etims.ts
+// apps/api/src/routes/dayClose.ts
 var import_express25 = __toESM(require_express2());
+
+// apps/api/src/dayClose.ts
+var AMBER_UP_TO = 200;
+var DENOMINATIONS = [1e3, 500, 200, 100, 50, 40, 20, 10, 5, 1];
+var METHODS = ["Cash", "M-Pesa", "Bank", "Card", "Cheque"];
+var round23 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+async function ensureTills() {
+  let tills = await prisma.till.findMany({ orderBy: [{ isMain: "desc" }, { name: "asc" }] });
+  if (!tills.some((t) => t.isMain)) {
+    const named = tills.find((t) => t.name === "Main till");
+    if (named) await prisma.till.update({ where: { id: named.id }, data: { isMain: true, active: true } });
+    else await prisma.till.create({ data: { name: "Main till", isMain: true } }).catch(() => void 0);
+    tills = await prisma.till.findMany({ orderBy: [{ isMain: "desc" }, { name: "asc" }] });
+  }
+  return tills;
+}
+async function tillResolver() {
+  const tills = await ensureTills();
+  const main = tills.find((t) => t.isMain);
+  const active = new Set(tills.filter((t) => t.active).map((t) => t.id));
+  const users = await prisma.user.findMany({ where: { tillId: { not: null } }, select: { id: true, name: true, tillId: true } });
+  const byId = new Map(users.map((u) => [u.id, u.tillId]));
+  const byName = new Map(users.map((u) => [u.name, u.tillId]));
+  const fix = (t) => t !== void 0 && active.has(t) ? t : main.id;
+  return {
+    tills,
+    main,
+    activeTills: tills.filter((t) => t.active),
+    ofUser: (id) => fix(id == null ? void 0 : byId.get(id)),
+    ofName: (name2) => fix(byName.get(name2))
+  };
+}
+async function outstandingAsAt(date) {
+  const orders = await prisma.order.findMany({
+    where: { status: { not: "Quote" }, createdDate: { lte: date }, OR: [{ status: "Invoice" }, { payments: { some: { date: { gt: date } } } }] },
+    include: orderListInclude
+  });
+  const rows = [];
+  for (const o of orders) {
+    const s = serializeSummary({ ...o, payments: o.payments.filter((p) => p.date <= date) });
+    if (s.totals.balanceDue < 0.01) continue;
+    const days = o.dueDate && o.dueDate < date ? Math.round((Date.parse(date) - Date.parse(o.dueDate)) / 864e5) : 0;
+    rows.push({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || "\u2014", createdDate: o.createdDate, dueDate: o.dueDate, balance: round23(s.totals.balanceDue), daysOverdue: days, staff: o.staff.name });
+  }
+  rows.sort((a2, b) => b.daysOverdue - a2.daysOverdue || b.balance - a2.balance);
+  return rows;
+}
+var BANDS = [
+  ["Not yet due", (d) => d <= 0],
+  ["1\u20137 days overdue", (d) => d >= 1 && d <= 7],
+  ["8\u201330 days", (d) => d >= 8 && d <= 30],
+  ["31\u201360 days", (d) => d >= 31 && d <= 60],
+  ["Over 60 days", (d) => d > 60]
+];
+async function ncbaTieOut(date) {
+  const from = /* @__PURE__ */ new Date(`${date}T00:00:00.000Z`);
+  const to = /* @__PURE__ */ new Date(`${addDays(date, 1)}T00:00:00.000Z`);
+  const [everSeen, notes, ignoredCount] = await Promise.all([
+    prisma.ncbaNotification.count(),
+    prisma.ncbaNotification.findMany({ where: { receivedAt: { gte: from, lt: to }, outcome: { in: ["Matched", "Received", "Held"] } }, orderBy: { id: "asc" } }),
+    prisma.ncbaNotification.count({ where: { receivedAt: { gte: from, lt: to }, outcome: { in: ["Duplicate", "Rejected"] } } })
+  ]);
+  const mpesaToday = await prisma.payment.findMany({
+    where: { date, method: "M-Pesa" },
+    include: { order: { select: { orderNo: true, customerName: true, corporateClient: { select: { name: true } } } }, mpesaTransaction: { select: { mpesaReceipt: true, checkoutRequestId: true } } }
+  });
+  const codesOf = (p) => [p.reference, p.mpesaTransaction?.mpesaReceipt].filter((c) => !!c).map((c) => c.toUpperCase());
+  const wanted = /* @__PURE__ */ new Set([...notes.map((n) => n.transId.toUpperCase()), ...mpesaToday.flatMap(codesOf)]);
+  const known = wanted.size ? await prisma.ncbaNotification.findMany({ where: { transId: { in: [...wanted] } }, select: { transId: true } }) : [];
+  const ncbaCodes = new Set(known.map((k) => k.transId.toUpperCase()));
+  const codeList = notes.map((n) => n.transId).filter(Boolean);
+  const carrying = codeList.length ? await prisma.payment.findMany({ where: { OR: [{ reference: { in: codeList } }, { mpesaTransaction: { mpesaReceipt: { in: codeList } } }] }, select: { reference: true, mpesaTransaction: { select: { mpesaReceipt: true } } } }) : [];
+  const onOrder = new Set(carrying.flatMap((p) => [p.reference, p.mpesaTransaction?.mpesaReceipt]).filter((c) => !!c).map((c) => c.toUpperCase()));
+  const sent = notes.reduce((a2, n) => a2 + n.amount, 0);
+  const notOnOrder = notes.filter((n) => !onOrder.has(n.transId.toUpperCase()));
+  const other = mpesaToday.filter((p) => !(p.mpesaTransaction?.checkoutRequestId ?? "").startsWith("NCBA-") && !codesOf(p).some((c) => ncbaCodes.has(c)));
+  return {
+    active: everSeen > 0,
+    sent: { count: notes.length, amount: round23(sent) },
+    onOrders: { count: notes.length - notOnOrder.length, amount: round23(sent - notOnOrder.reduce((a2, n) => a2 + n.amount, 0)) },
+    notOnOrder: { count: notOnOrder.length, amount: round23(notOnOrder.reduce((a2, n) => a2 + n.amount, 0)), receipts: notOnOrder.slice(0, 100).map((n) => ({ id: n.id, receipt: n.transId, amount: n.amount, phone: n.phone, payer: n.payerName, billRef: n.billRef, outcome: n.outcome })) },
+    otherMpesa: { count: other.length, amount: round23(other.reduce((a2, p) => a2 + p.amount, 0)), payments: other.slice(0, 100).map((p) => ({ id: p.id, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || "\u2014", amount: p.amount, reference: p.reference ?? p.mpesaTransaction?.mpesaReceipt ?? "" })) },
+    duplicatesOrRejected: ignoredCount,
+    // NCBA settles what it took into the bank account daily
+    expectedBankSettlement: round23(sent)
+  };
+}
+async function liveDay(date, tillId) {
+  const r = await tillResolver();
+  const [payments, refunds] = await Promise.all([
+    prisma.payment.findMany({ where: { date }, include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } }, staff: { select: { name: true } } }, orderBy: { id: "asc" } }),
+    prisma.adjustmentNote.findMany({ where: { type: "Credit", date, refundAmt: { gt: 0 } } })
+  ]);
+  const cashOf = /* @__PURE__ */ new Map();
+  for (const t of r.activeTills) cashOf.set(t.id, { received: 0, refunds: 0 });
+  for (const p of payments) if (p.method === "Cash") cashOf.get(r.ofUser(p.staffId)).received = round23(cashOf.get(r.ofUser(p.staffId)).received + p.amount);
+  for (const n of refunds) if ((n.refundMethod ?? "Cash") === "Cash") cashOf.get(r.ofName(n.createdByName)).refunds = round23(cashOf.get(r.ofName(n.createdByName)).refunds + n.refundAmt);
+  const floatOf = /* @__PURE__ */ new Map();
+  const closes = await prisma.dayClose.findMany({ where: { date } });
+  for (const t of r.activeTills) {
+    const prev = await prisma.dayClose.findFirst({ where: { tillId: t.id, date: { lt: date } }, orderBy: { date: "desc" } });
+    floatOf.set(t.id, prev?.floatCarried ?? 0);
+  }
+  const closeOf = new Map(closes.map((c) => [c.tillId, c]));
+  const tills = r.activeTills.map((t) => {
+    const c = cashOf.get(t.id);
+    const opening2 = floatOf.get(t.id);
+    const k = closeOf.get(t.id);
+    return { id: t.id, name: t.name, isMain: t.isMain, openingFloat: opening2, received: c.received, refunds: c.refunds, expected: round23(opening2 + c.received - c.refunds), close: k ? { status: k.status, counted: k.countedCash, variance: k.variance, banked: k.banked } : null };
+  });
+  const scope = tillId == null ? tills : tills.filter((t) => t.id === tillId);
+  const cash = {
+    openingFloat: round23(scope.reduce((a2, t) => a2 + t.openingFloat, 0)),
+    received: round23(scope.reduce((a2, t) => a2 + t.received, 0)),
+    refunds: round23(scope.reduce((a2, t) => a2 + t.refunds, 0)),
+    expected: round23(scope.reduce((a2, t) => a2 + t.expected, 0))
+  };
+  const mine = tillId == null ? payments : payments.filter((p) => r.ofUser(p.staffId) === tillId);
+  const byMethod = /* @__PURE__ */ new Map();
+  for (const m of METHODS) byMethod.set(m, { method: m, count: 0, amount: 0 });
+  const byPerson = /* @__PURE__ */ new Map();
+  for (const p of mine) {
+    const m = byMethod.get(p.method) ?? { method: p.method, count: 0, amount: 0 };
+    m.count++;
+    m.amount = round23(m.amount + p.amount);
+    byMethod.set(p.method, m);
+    const name2 = p.staff?.name ?? "Not recorded";
+    const row = byPerson.get(name2) ?? { person: name2, cash: 0, other: 0, count: 0 };
+    if (p.method === "Cash") row.cash = round23(row.cash + p.amount);
+    else row.other = round23(row.other + p.amount);
+    row.count++;
+    byPerson.set(name2, row);
+  }
+  const received = round23(mine.reduce((a2, p) => a2 + p.amount, 0));
+  const [closing, opening, raised, ncba] = await Promise.all([
+    outstandingAsAt(date),
+    outstandingAsAt(addDays(date, -1)),
+    prisma.order.findMany({ where: { status: { not: "Quote" }, createdDate: date }, include: orderListInclude }),
+    ncbaTieOut(date)
+  ]);
+  const sum = (rows) => round23(rows.reduce((a2, x) => a2 + x.balance, 0));
+  const raisedToday = round23(raised.reduce((a2, o) => a2 + serializeSummary({ ...o, payments: [] }).totals.grandTotal, 0));
+  const allReceived = round23(payments.reduce((a2, p) => a2 + p.amount, 0));
+  const closingTotal = sum(closing);
+  const openingTotal = sum(opening);
+  return {
+    date,
+    tillId,
+    tills,
+    allClosed: tills.every((t) => t.received + t.refunds === 0 || t.close),
+    byMethod: [...byMethod.values()],
+    received,
+    byPerson: [...byPerson.values()].sort((a2, b) => b.cash + b.other - (a2.cash + a2.other)),
+    payments: mine.slice(0, 500).map((p) => ({ id: p.id, orderId: p.orderId, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || "\u2014", method: p.method, amount: p.amount, reference: p.reference ?? "", by: p.staff?.name ?? "" })),
+    cash,
+    outstanding: {
+      opening: openingTotal,
+      raisedToday,
+      receivedToday: allReceived,
+      // credit notes, discounts given after the sale and anything else that changed what is owed
+      otherChanges: round23(closingTotal - (openingTotal + raisedToday - allReceived)),
+      closing: closingTotal,
+      bands: BANDS.map(([label, test]) => {
+        const rows = closing.filter((x) => test(x.daysOverdue));
+        return { label, count: rows.length, amount: sum(rows) };
+      }),
+      invoices: closing.slice(0, 200),
+      invoiceCount: closing.length
+    },
+    ncba
+  };
+}
+async function reminder() {
+  const today = todayStr();
+  const from = addDays(today, -7);
+  const r = await tillResolver();
+  const [payments, closes, submitted] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: from, lt: today }, method: "Cash" }, select: { date: true, amount: true, staffId: true } }),
+    prisma.dayClose.findMany({ where: { date: { gte: from, lt: today } }, select: { date: true, tillId: true } }),
+    prisma.dayClose.findMany({ where: { status: "Submitted", date: { lt: today } }, orderBy: { date: "desc" }, take: 20 })
+  ]);
+  const closed = new Set(closes.map((c) => `${c.date}|${c.tillId}`));
+  const cash = /* @__PURE__ */ new Map();
+  for (const p of payments) {
+    const tillId = r.ofUser(p.staffId);
+    const k = `${p.date}|${tillId}`;
+    const row = cash.get(k) ?? { date: p.date, tillId, cash: 0 };
+    row.cash = round23(row.cash + p.amount);
+    cash.set(k, row);
+  }
+  const nameOf = new Map(r.tills.map((t) => [t.id, t.name]));
+  return {
+    unclosed: [...cash.entries()].filter(([k, v]) => !closed.has(k) && v.cash > 0).map(([, v]) => ({ ...v, tillName: nameOf.get(v.tillId) ?? "Till" })).sort((a2, b) => b.date.localeCompare(a2.date)),
+    awaiting: submitted.map((c) => ({ date: c.date, tillId: c.tillId, tillName: nameOf.get(c.tillId) ?? "Till", submittedByName: c.submittedByName, variance: c.variance }))
+  };
+}
+var dayLabel = (d) => (/* @__PURE__ */ new Date(d + "T00:00:00")).toLocaleDateString("en-KE", { weekday: "short", day: "numeric", month: "short" });
+var shilling = (n) => fmtKsh(n);
+async function summaryFor(date) {
+  const day = await liveDay(date, null);
+  const rem = await reminder();
+  const cashReceived = day.byMethod.find((m) => m.method === "Cash")?.amount ?? 0;
+  const others = day.byMethod.filter((m) => m.method !== "Cash" && m.amount > 0).map((m) => `${m.method} ${shilling(m.amount)}`);
+  const received = `${shilling(day.received)} (Cash ${shilling(cashReceived)}${others.length ? ", " + others.join(", ") : ""})`;
+  const multi = day.tills.length > 1;
+  const cashLines = day.tills.filter((t) => t.received + t.refunds > 0 || t.close).map((t) => {
+    const who = multi ? `${t.name}: ` : "";
+    if (!t.close) return `${who}not counted yet (expected ${shilling(t.expected)})`;
+    const v = t.close.variance;
+    return `${who}counted ${shilling(t.close.counted)}, ${Math.abs(v) < 0.5 ? "balanced" : v < 0 ? `short ${shilling(-v)}` : `over ${shilling(v)}`} (${t.close.status === "Approved" ? "approved" : "awaiting approval"})`;
+  });
+  const cash = cashLines.length ? cashLines.join("; ") : "no cash today";
+  const overdue = day.outstanding.bands.filter((b) => b.label !== "Not yet due").reduce((a2, b) => a2 + b.amount, 0);
+  const owed = `${shilling(day.outstanding.closing)}${overdue > 0 ? ` (${shilling(overdue)} overdue)` : ""}`;
+  const notes = [];
+  if (day.ncba.active) notes.push(`NCBA sent ${shilling(day.ncba.sent.amount)}${day.ncba.notOnOrder.count ? `; ${day.ncba.notOnOrder.count} receipt${day.ncba.notOnOrder.count === 1 ? "" : "s"} (${shilling(day.ncba.notOnOrder.amount)}) not on an order` : "; all on orders"}${day.ncba.otherMpesa.count ? `; ${day.ncba.otherMpesa.count} M-Pesa payment${day.ncba.otherMpesa.count === 1 ? "" : "s"} NCBA did not send` : ""}`);
+  const unclosed = rem.unclosed.map((u) => `${u.tillName} ${dayLabel(u.date)}`);
+  if (rem.unclosed.length) notes.push(`Not closed: ${unclosed.join(", ")}`);
+  else notes.push("No earlier day is waiting to be closed");
+  const label = dayLabel(date);
+  return {
+    date,
+    params: [label, received, cash, owed, notes.join(". ")],
+    text: [`GLM Branding \u2014 ${label}`, `Received: ${received}`, `Cash: ${cash}`, `Owed by customers: ${owed}`, ...notes].join("\n")
+  };
+}
+
+// apps/api/src/daySummary.ts
+var SUMMARY_TEMPLATE_BODY = "GLM daily summary for {{1}}. Received: {{2}}. Cash: {{3}}. Owed by customers: {{4}}. {{5}}";
+async function getSummarySettings() {
+  return prisma.dayCloseSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+}
+function parseNumbers(raw) {
+  return [...new Set(raw.split(/[,;\n]+/).map((s) => whatsappNumber(s.trim())).filter((n) => !!n))];
+}
+function nairobiNow(now = /* @__PURE__ */ new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+}
+async function sendSummary(date, by) {
+  const s = await getSummarySettings();
+  const numbers = parseNumbers(s.summaryNumbers);
+  const summary = await summaryFor(date);
+  if (numbers.length === 0) return { ok: false, sent: [], failed: [{ to: "", error: "No WhatsApp number to send the summary to" }], text: summary.text };
+  const cfg = await loadWhatsappConfig();
+  if (!cfg) return { ok: false, sent: [], failed: [{ to: "", error: "WhatsApp isn't set up yet \u2014 an Admin sets it up under Master Data \u2192 WhatsApp" }], text: summary.text };
+  const result = { ok: true, sent: [], failed: [], text: summary.text };
+  for (const to of numbers) {
+    const log2 = (status, extra) => prisma.whatsappMessage.create({ data: { toNumber: to, status, mode: s.summaryTemplate ? "template" : "text", fileName: "Daily summary", waMessageId: extra.id ?? null, error: extra.error ?? "", sentByName: by } });
+    try {
+      const id = s.summaryTemplate ? await sendTemplateText(cfg, to, s.summaryTemplate, summary.params) : await sendTextMessage(cfg, to, summary.text);
+      await log2("Sent", { id });
+      result.sent.push(to);
+    } catch (e) {
+      const error2 = e instanceof WhatsappError ? e.message : "Could not send the summary";
+      if (!(e instanceof WhatsappError)) console.error("Day summary send failed", e);
+      await log2("Failed", { error: error2 });
+      result.failed.push({ to, error: error2 });
+    }
+  }
+  result.ok = result.failed.length === 0;
+  return result;
+}
+var RETRY_AFTER_MS = 30 * 6e4;
+var MAX_ATTEMPTS2 = 3;
+function summaryDue(s, now = /* @__PURE__ */ new Date()) {
+  if (!s.summaryEnabled || parseNumbers(s.summaryNumbers).length === 0) return false;
+  const n = nairobiNow(now);
+  if (n.time < s.summaryTime) return false;
+  if (s.summaryLastDate !== n.date) return true;
+  if (s.summaryLastStatus === "Sent") return false;
+  return s.summaryAttempts < MAX_ATTEMPTS2 && (!s.summaryLastTryAt || now.getTime() - s.summaryLastTryAt.getTime() >= RETRY_AFTER_MS);
+}
+async function runScheduledSummary(now = /* @__PURE__ */ new Date()) {
+  const s = await getSummarySettings();
+  if (!summaryDue(s, now)) return null;
+  const date = nairobiNow(now).date;
+  const attempts = s.summaryLastDate === date ? s.summaryAttempts + 1 : 1;
+  const r = await sendSummary(date, "Day close summary");
+  await prisma.dayCloseSettings.update({
+    where: { id: 1 },
+    data: { summaryLastDate: date, summaryAttempts: attempts, summaryLastTryAt: now, summaryLastStatus: r.ok ? "Sent" : `Failed: ${r.failed[0]?.error ?? "unknown"}`.slice(0, 300) }
+  });
+  return r;
+}
+function startSummaryScheduler() {
+  const tick = async () => {
+    try {
+      await runScheduledSummary();
+    } catch (err) {
+      console.error("Evening summary failed", err);
+    }
+  };
+  setTimeout(tick, 9e4).unref();
+  setInterval(tick, 6e4).unref();
+}
+
+// apps/api/src/routes/dayClose.ts
+var dayCloseRouter = (0, import_express25.Router)();
+dayCloseRouter.use(requireAuth);
+var mayClose = requirePermission("canManagePayments", "canAccessFinance");
+var mayApprove = requirePermission("canAccessFinance");
+var dateSchema = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose a date");
+var serializeClose = (c, live) => {
+  const till = live.tills.find((t) => t.id === c.tillId);
+  return {
+    id: c.id,
+    tillId: c.tillId,
+    status: c.status,
+    openingFloat: c.openingFloat,
+    expectedCash: c.expectedCash,
+    countedCash: c.countedCash,
+    variance: c.variance,
+    floatCarried: c.floatCarried,
+    banked: c.banked,
+    denominations: c.denominations ? JSON.parse(c.denominations) : null,
+    note: c.note,
+    submittedByName: c.submittedByName,
+    submittedAt: c.submittedAt.toISOString(),
+    approvedByName: c.approvedByName,
+    approvedAt: c.approvedAt?.toISOString() ?? null,
+    // payments dated that day were added or removed after the close
+    changedSince: !!till && (Math.abs(till.received - c.cashReceived) > 9e-3 || Math.abs(till.refunds - c.cashRefunds) > 9e-3)
+  };
+};
+async function tillFrom(raw) {
+  const tills = await ensureTills();
+  if (raw === "all") return { tillId: null };
+  if (raw === void 0 || raw === "" || raw === null) return { tillId: tills.find((t2) => t2.isMain).id };
+  const id = Number(raw);
+  const t = tills.find((x) => x.id === id && x.active);
+  return t ? { tillId: t.id } : { error: "That till cannot be found" };
+}
+dayCloseRouter.get("/", mayClose, async (req, res) => {
+  const date = dateSchema.safeParse(req.query.date ?? todayStr());
+  if (!date.success) return res.status(400).json({ error: date.error.issues[0]?.message });
+  const till = await tillFrom(req.query.till);
+  if ("error" in till) return res.status(400).json({ error: till.error });
+  const live = await liveDay(date.data, till.tillId);
+  const close = till.tillId == null ? null : await prisma.dayClose.findUnique({ where: { date_tillId: { date: date.data, tillId: till.tillId } } });
+  res.json({ ...live, amberUpTo: AMBER_UP_TO, denominations: DENOMINATIONS, close: close ? serializeClose(close, live) : null, today: todayStr() });
+});
+var submitSchema = external_exports.object({
+  date: dateSchema,
+  tillId: external_exports.number().int().positive().optional(),
+  counted: external_exports.number().min(0).max(1e8),
+  floatCarried: external_exports.number().min(0).max(1e8).default(0),
+  openingFloat: external_exports.number().min(0).max(1e8).optional(),
+  // only to correct the very first close of a till; afterwards it is the last close's carried float
+  denominations: external_exports.record(external_exports.string(), external_exports.number().int().min(0).max(1e5)).optional(),
+  note: external_exports.string().trim().max(500).default("")
+});
+dayCloseRouter.post("/", mayClose, async (req, res) => {
+  const parsed = submitSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
+  const d = parsed.data;
+  const till = await tillFrom(d.tillId);
+  if ("error" in till || till.tillId == null) return res.status(400).json({ error: "Choose the till to close" });
+  const tillId = till.tillId;
+  if (d.date > todayStr()) return res.status(400).json({ error: "A day cannot be closed before it has happened" });
+  const existing = await prisma.dayClose.findUnique({ where: { date_tillId: { date: d.date, tillId } } });
+  if (existing?.status === "Approved") return res.status(409).json({ error: "That day is already approved and locked. An Admin can reopen it." });
+  if (d.denominations) {
+    const sum = Object.entries(d.denominations).reduce((a2, [k, n]) => a2 + Number(k) * n, 0);
+    if (Math.abs(sum - d.counted) > 9e-3) return res.status(400).json({ error: `The notes and coins add up to Ksh ${sum.toLocaleString("en-KE")}, not Ksh ${d.counted.toLocaleString("en-KE")}` });
+  }
+  if (d.floatCarried > d.counted + 9e-3) return res.status(400).json({ error: "The float left in the drawer cannot be more than the cash counted" });
+  const live = await liveDay(d.date, tillId);
+  const t = live.tills.find((x) => x.id === tillId);
+  const hasEarlier = !!await prisma.dayClose.findFirst({ where: { tillId, date: { lt: d.date } }, select: { id: true } });
+  const openingFloat = hasEarlier || d.openingFloat === void 0 ? t.openingFloat : d.openingFloat;
+  const expected = round23(openingFloat + t.received - t.refunds);
+  const data = {
+    openingFloat,
+    cashReceived: t.received,
+    cashRefunds: t.refunds,
+    expectedCash: expected,
+    countedCash: round23(d.counted),
+    variance: round23(d.counted - expected),
+    floatCarried: round23(d.floatCarried),
+    banked: round23(d.counted - d.floatCarried),
+    denominations: d.denominations ? JSON.stringify(d.denominations) : "",
+    note: d.note,
+    methodsJson: JSON.stringify(live.byMethod),
+    outstanding: live.outstanding.closing,
+    status: "Submitted",
+    submittedByName: req.user.name,
+    submittedAt: /* @__PURE__ */ new Date(),
+    approvedByName: null,
+    approvedAt: null
+  };
+  const saved = await prisma.dayClose.upsert({ where: { date_tillId: { date: d.date, tillId } }, update: data, create: { date: d.date, tillId, ...data } });
+  res.status(201).json(serializeClose(saved, live));
+});
+var tillBody = external_exports.object({ tillId: external_exports.number().int().positive().optional() });
+dayCloseRouter.post("/:date/approve", mayApprove, async (req, res) => {
+  const date = dateSchema.safeParse(req.params.date);
+  const body = tillBody.safeParse(req.body ?? {});
+  if (!date.success || !body.success) return res.status(400).json({ error: "Choose a date" });
+  const till = await tillFrom(body.data.tillId);
+  if ("error" in till || till.tillId == null) return res.status(400).json({ error: "Choose the till" });
+  const close = await prisma.dayClose.findUnique({ where: { date_tillId: { date: date.data, tillId: till.tillId } } });
+  if (!close) return res.status(404).json({ error: "That day has not been closed yet" });
+  if (close.status === "Approved") return res.status(409).json({ error: "Already approved" });
+  if (close.submittedByName === req.user.name && req.user.role !== "Admin") return res.status(403).json({ error: "Someone other than the person who counted the cash approves the day" });
+  const saved = await prisma.dayClose.update({ where: { id: close.id }, data: { status: "Approved", approvedByName: req.user.name, approvedAt: /* @__PURE__ */ new Date() } });
+  res.json(serializeClose(saved, await liveDay(date.data, till.tillId)));
+});
+dayCloseRouter.post("/:date/reopen", requireRole("Admin"), async (req, res) => {
+  const date = dateSchema.safeParse(req.params.date);
+  const body = tillBody.safeParse(req.body ?? {});
+  if (!date.success || !body.success) return res.status(400).json({ error: "Choose a date" });
+  const till = await tillFrom(body.data.tillId);
+  if ("error" in till || till.tillId == null) return res.status(400).json({ error: "Choose the till" });
+  const close = await prisma.dayClose.findUnique({ where: { date_tillId: { date: date.data, tillId: till.tillId } } });
+  if (!close) return res.status(404).json({ error: "That day has not been closed yet" });
+  const saved = await prisma.dayClose.update({ where: { id: close.id }, data: { status: "Submitted", approvedByName: null, approvedAt: null } });
+  res.json(serializeClose(saved, await liveDay(date.data, till.tillId)));
+});
+dayCloseRouter.get("/month", mayClose, async (req, res) => {
+  const month = external_exports.string().regex(/^\d{4}-\d{2}$/).safeParse(req.query.month ?? todayStr().slice(0, 7));
+  if (!month.success) return res.status(400).json({ error: "Choose a month" });
+  const from = `${month.data}-01`;
+  const to = `${month.data}-31`;
+  const tills = await ensureTills();
+  const main = tills.find((t) => t.isMain);
+  const active = new Map(tills.filter((t) => t.active).map((t) => [t.id, t.name]));
+  const users = await prisma.user.findMany({ where: { tillId: { not: null } }, select: { id: true, tillId: true } });
+  const tillOf = new Map(users.map((u) => [u.id, active.has(u.tillId) ? u.tillId : main.id]));
+  const [closes, payments] = await Promise.all([
+    prisma.dayClose.findMany({ where: { date: { gte: from, lte: to } } }),
+    prisma.payment.findMany({ where: { date: { gte: from, lte: to } }, select: { date: true, method: true, amount: true, staffId: true } })
+  ]);
+  const days = /* @__PURE__ */ new Map();
+  for (const p of payments) {
+    const r = days.get(p.date) ?? { date: p.date, received: 0, cash: 0, payments: 0, cashByTill: /* @__PURE__ */ new Map() };
+    r.received = round23(r.received + p.amount);
+    if (p.method === "Cash") {
+      r.cash = round23(r.cash + p.amount);
+      const t = p.staffId != null ? tillOf.get(p.staffId) ?? main.id : main.id;
+      r.cashByTill.set(t, round23((r.cashByTill.get(t) ?? 0) + p.amount));
+    }
+    r.payments++;
+    days.set(p.date, r);
+  }
+  const closesOn = /* @__PURE__ */ new Map();
+  for (const c of closes) closesOn.set(c.date, [...closesOn.get(c.date) ?? [], c]);
+  const dates = /* @__PURE__ */ new Set([...days.keys(), ...closesOn.keys()]);
+  const today = todayStr();
+  const out = [...dates].sort().map((date) => {
+    const cs = closesOn.get(date) ?? [];
+    const r = days.get(date) ?? { received: 0, cash: 0, payments: 0, cashByTill: /* @__PURE__ */ new Map() };
+    const closedTills = new Set(cs.map((c) => c.tillId));
+    const missing = [...r.cashByTill.entries()].filter(([t, cash]) => cash > 0 && !closedTills.has(t)).map(([t]) => active.get(t) ?? "Till");
+    let status;
+    if (date >= today && missing.length > 0) status = "Open";
+    else if (missing.length > 0) status = "Not closed";
+    else if (cs.length > 0) status = cs.every((c) => c.status === "Approved") ? "Approved" : "Submitted";
+    else status = date >= today ? "Open" : "No cash";
+    return {
+      date,
+      received: r.received,
+      cash: r.cash,
+      payments: r.payments,
+      status,
+      notClosedTills: date < today ? missing : [],
+      variance: cs.length ? round23(cs.reduce((a2, c) => a2 + c.variance, 0)) : null,
+      counted: cs.length ? round23(cs.reduce((a2, c) => a2 + c.countedCash, 0)) : null,
+      banked: cs.length ? round23(cs.reduce((a2, c) => a2 + c.banked, 0)) : null
+    };
+  });
+  res.json({
+    month: month.data,
+    amberUpTo: AMBER_UP_TO,
+    days: out,
+    notClosed: out.filter((d) => d.status === "Not closed").length,
+    totalVariance: round23(out.reduce((a2, d) => a2 + (d.variance ?? 0), 0)),
+    totalBanked: round23(out.reduce((a2, d) => a2 + (d.banked ?? 0), 0))
+  });
+});
+dayCloseRouter.get("/reminder", mayClose, async (_req, res) => {
+  res.json(await reminder());
+});
+dayCloseRouter.get("/tills", mayClose, async (req, res) => {
+  const tills = await ensureTills();
+  const people = req.user.role === "Admin" ? await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true, tillId: true }, orderBy: { name: "asc" } }) : [];
+  res.json({ tills: tills.map((t) => ({ id: t.id, name: t.name, isMain: t.isMain, active: t.active, people: people.filter((p) => p.tillId === t.id).length })), people });
+});
+dayCloseRouter.post("/tills", requireRole("Admin"), async (req, res) => {
+  const p = external_exports.object({ name: external_exports.string().trim().min(1, "Name the till").max(40) }).safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message ?? "Invalid input" });
+  await ensureTills();
+  const t = await prisma.till.create({ data: { name: p.data.name } }).catch(() => null);
+  if (!t) return res.status(400).json({ error: "A till with that name already exists" });
+  res.status(201).json({ id: t.id, name: t.name });
+});
+dayCloseRouter.put("/tills/assign", requireRole("Admin"), async (req, res) => {
+  const p = external_exports.object({ userId: external_exports.number().int().positive(), tillId: external_exports.number().int().positive().nullable() }).safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: "Choose the person and the till" });
+  const tills = await ensureTills();
+  if (p.data.tillId != null && !tills.some((t) => t.id === p.data.tillId && t.active)) return res.status(400).json({ error: "That till cannot be found" });
+  const u = await prisma.user.findUnique({ where: { id: p.data.userId }, select: { id: true } });
+  if (!u) return res.status(404).json({ error: "Person not found" });
+  const main = tills.find((t) => t.isMain);
+  await prisma.user.update({ where: { id: u.id }, data: { tillId: p.data.tillId === main.id ? null : p.data.tillId } });
+  res.json({ ok: true });
+});
+dayCloseRouter.put("/tills/:id", requireRole("Admin"), async (req, res) => {
+  const p = external_exports.object({ name: external_exports.string().trim().min(1).max(40).optional(), active: external_exports.boolean().optional() }).safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: "Invalid input" });
+  const tills = await ensureTills();
+  const t = tills.find((x) => x.id === Number(req.params.id));
+  if (!t) return res.status(404).json({ error: "Till not found" });
+  if (p.data.active === false) {
+    if (t.isMain) return res.status(400).json({ error: "The main till cannot be switched off" });
+    if (await prisma.user.count({ where: { tillId: t.id } }) > 0) return res.status(400).json({ error: "Move the people at this till to another till first" });
+  }
+  const saved = await prisma.till.update({ where: { id: t.id }, data: { name: p.data.name ?? t.name, active: p.data.active ?? t.active } }).catch(() => null);
+  if (!saved) return res.status(400).json({ error: "A till with that name already exists" });
+  res.json({ id: saved.id, name: saved.name, active: saved.active });
+});
+var publicSettings3 = async () => {
+  const s = await getSummarySettings();
+  return { enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
+};
+dayCloseRouter.get("/settings", requireRole("Admin"), async (_req, res) => {
+  res.json(await publicSettings3());
+});
+dayCloseRouter.put("/settings", requireRole("Admin"), async (req, res) => {
+  const p = external_exports.object({
+    enabled: external_exports.boolean().optional(),
+    time: external_exports.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "The time looks like 18:30").optional(),
+    numbers: external_exports.string().max(400).optional(),
+    template: external_exports.string().trim().regex(/^[a-z0-9_]{0,512}$/, "A template name has only lowercase letters, numbers and underscores").optional()
+  }).safeParse(req.body);
+  if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message ?? "Invalid input" });
+  const cur = await getSummarySettings();
+  const numbers = p.data.numbers ?? cur.summaryNumbers;
+  if (p.data.numbers !== void 0 && numbers.trim() && parseNumbers(numbers).length === 0) return res.status(400).json({ error: "Enter WhatsApp numbers like 0797 785 033, separated by commas" });
+  if ((p.data.enabled ?? cur.summaryEnabled) && parseNumbers(numbers).length === 0) return res.status(400).json({ error: "Enter at least one WhatsApp number before switching the summary on" });
+  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate } });
+  res.json(await publicSettings3());
+});
+dayCloseRouter.get("/summary/preview", requireRole("Admin"), async (req, res) => {
+  const date = dateSchema.safeParse(req.query.date ?? todayStr());
+  if (!date.success) return res.status(400).json({ error: "Choose a date" });
+  res.json(await summaryFor(date.data));
+});
+dayCloseRouter.post("/summary/send", requireRole("Admin"), async (req, res) => {
+  const date = dateSchema.safeParse(req.body?.date ?? todayStr());
+  if (!date.success) return res.status(400).json({ error: "Choose a date" });
+  const r = await sendSummary(date.data, req.user.name);
+  if (!r.ok && r.sent.length === 0) return res.status(502).json({ error: r.failed[0]?.error ?? "Could not send the summary", ...r });
+  res.json(r);
+});
+
+// apps/api/src/routes/etims.ts
+var import_express26 = __toESM(require_express2());
 
 // apps/api/src/etims.ts
 var ETIMS_TAX_TYPE = "B";
@@ -83882,7 +84454,7 @@ async function sellableLines() {
 }
 
 // apps/api/src/routes/etims.ts
-var etimsRouter = (0, import_express25.Router)();
+var etimsRouter = (0, import_express26.Router)();
 etimsRouter.use(requireAuth, requireRole("Admin"));
 var XLSX_TYPE2 = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 var KIND_LABEL = { head: "Business head", service: "Service", material: "Stock item" };
@@ -84024,7 +84596,7 @@ etimsRouter.get("/mapping.xlsx", async (_req, res) => {
   res.setHeader("Content-Disposition", 'attachment; filename="etims-item-codes.xlsx"');
   res.send(writeXlsx("eTIMS codes", out, [14, 7, 36, 24, 9, 14, 20, 12, 12, 20, 16, 16, 24, 30]));
 });
-var rawBody3 = import_express25.default.raw({ type: () => true, limit: "10mb" });
+var rawBody3 = import_express26.default.raw({ type: () => true, limit: "10mb" });
 etimsRouter.post("/mapping", rawBody3, async (req, res) => {
   const dryRun = req.query.dryRun === "1";
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: "Choose an Excel (.xlsx) file to upload" });
@@ -84093,7 +84665,7 @@ etimsRouter.post("/mapping", rawBody3, async (req, res) => {
 });
 
 // apps/api/src/routes/hr.ts
-var import_express26 = __toESM(require_express2());
+var import_express27 = __toESM(require_express2());
 
 // apps/api/src/hr.ts
 var toType2 = (t) => ({ ...t, accrual: t.accrual === "monthly" ? "monthly" : "upfront" });
@@ -84169,7 +84741,7 @@ async function onLeaveByDay(days, exceptRequestId) {
 }
 
 // apps/api/src/routes/hr.ts
-var hrRouter = (0, import_express26.Router)();
+var hrRouter = (0, import_express27.Router)();
 hrRouter.use(requireAuth, requirePermission("canAccessHr", "canManageHr"), async (_req, _res, next) => {
   await ensureHrDefaults();
   next();
@@ -84514,8 +85086,8 @@ hrRouter.post("/notes", manage3, async (req, res) => {
 });
 
 // apps/api/src/routes/approvals.ts
-var import_express27 = __toESM(require_express2());
-var approvalsRouter = (0, import_express27.Router)();
+var import_express28 = __toESM(require_express2());
+var approvalsRouter = (0, import_express28.Router)();
 approvalsRouter.use(requireAuth);
 approvalsRouter.get("/", async (req, res) => {
   const [lists, setting] = await Promise.all([approvalsFor(req.user), prisma.setting.findUnique({ where: { id: 1 } })]);
@@ -84532,8 +85104,8 @@ approvalsRouter.put("/email", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/allocation.ts
-var import_express28 = __toESM(require_express2());
-var allocationRouter = (0, import_express28.Router)();
+var import_express29 = __toESM(require_express2());
+var allocationRouter = (0, import_express29.Router)();
 allocationRouter.use(requireAuth);
 async function mayCorrectAllocation(role) {
   return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
@@ -84643,12 +85215,12 @@ allocationRouter.post("/requests/:id/reject", (req, res) => decide2(req, res, fa
 
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express29.default)();
+var app = (0, import_express30.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use("/api/whatsapp/send-file", import_express29.default.json({ limit: "15mb" }));
-app.use(import_express29.default.json({ limit: "5mb" }));
+app.use("/api/whatsapp/send-file", import_express30.default.json({ limit: "15mb" }));
+app.use(import_express30.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -84691,6 +85263,7 @@ app.use("/api/backup", backupRouter);
 app.use("/api/security", securityRouter);
 app.use("/api/freelance", freelanceRouter);
 app.use("/api/whatsapp", whatsappRouter);
+app.use("/api/day-close", dayCloseRouter);
 app.use("/api/costing", costingRouter);
 app.use("/api/etims", etimsRouter);
 app.use("/api/hr", hrRouter);
@@ -84732,6 +85305,7 @@ app.listen(port, () => {
   console.log(`POS API listening on :${port}`);
   ensureChartOnce().then(() => startDepreciationSchedule()).catch((e) => console.error("Accounting start-up failed", e));
   startBackupScheduler();
+  startSummaryScheduler();
   void pruneAudit();
   sealStoredSecrets().catch((e) => console.error("Sealing saved secrets failed", e));
   if (!dataKeyConfigured()) console.warn("DATA_KEY is not set: saved secrets and backup files are stored unprotected. See Master Data \u2192 Security.");

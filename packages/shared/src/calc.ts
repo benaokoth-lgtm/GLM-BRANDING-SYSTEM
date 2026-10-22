@@ -47,8 +47,9 @@ export function isOverdue(kind: 'walkin' | 'corporate', status: string, dueDate:
 }
 
 export function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + days);
+  // UTC arithmetic: the date is a calendar date, so the machine's own time zone must not move it a day
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
 

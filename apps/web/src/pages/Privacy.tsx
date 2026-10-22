@@ -78,7 +78,7 @@ export default function Privacy() {
       <h2 style={h2}>Your rights</h2>
       <p>
         Under Kenya's Data Protection Act, 2019, you may ask {company} what information it holds about you, ask for it to be corrected, or ask for it to be deleted where the law allows. To do so, contact {company} using the details on the company's invoices or at{' '}
-        <a href="https://glmgroup.co.ke">glmgroup.co.ke</a>.
+        <a href="https://glmgroup.co.ke">glmgroup.co.ke</a>. The steps for asking for deletion are on the <Link to="/data-deletion">data deletion instructions</Link> page.
       </p>
 
       <h2 style={h2}>Changes</h2>

@@ -6,6 +6,7 @@ import RequireRole from './components/RequireRole';
 import RequirePermission from './components/RequirePermission';
 import Login from './pages/Login';
 const Privacy = lazy(() => import('./pages/Privacy'));
+const DataDeletion = lazy(() => import('./pages/DataDeletion'));
 const DayClose = lazy(() => import('./pages/DayClose'));
 const WhatsappSend = lazy(() => import('./pages/WhatsappSend'));
 const NewWalkinOrder = lazy(() => import('./pages/NewWalkinOrder'));
@@ -81,6 +82,7 @@ export default function App() {
       <Route path="/login" element={<Login />} />
       {/* Public: what the system stores and why (Google asks for this address when Drive backups are connected). */}
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/data-deletion" element={<DataDeletion />} />
       <Route element={user ? <AppLayout /> : <Navigate to="/login" replace />}>
         <Route index element={<DefaultRedirect />} />
         <Route element={<SalesHub />}>{salesRoutes('')}</Route>

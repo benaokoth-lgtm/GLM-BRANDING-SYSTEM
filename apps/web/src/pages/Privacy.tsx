@@ -16,7 +16,7 @@ export default function Privacy() {
       </p>
       <h1 style={{ marginBottom: 'var(--space-1)' }}>Privacy Policy</h1>
       <p className="text-muted" style={{ marginTop: 0 }}>
-        {company} · Last updated 6 October 2026
+        {company} · Last updated 22 October 2026
       </p>
 
       <p>
@@ -44,10 +44,37 @@ export default function Privacy() {
       <p>Only as needed to do the job, and only through services the company chooses to switch on:</p>
       <ul>
         <li>an email service, to send invoices, quotations and sign-in details to the person concerned;</li>
-        <li>Safaricom M-Pesa, to request and confirm customer payments;</li>
+        <li>Safaricom M-Pesa, and NCBA Bank where its Paybill is used, to request and confirm customer payments;</li>
+        <li>WhatsApp (Meta Platforms), to send a customer their invoice, quotation, receipt or another document, and a summary to the business's own staff, when the company has connected it;</li>
         <li>the company's tax and statutory authorities, where the law requires it;</li>
         <li>Google Drive, to hold backup copies (below).</li>
       </ul>
+
+      <h2 style={h2}>Service providers who handle the information for us</h2>
+      <p>
+        {company} is responsible for the information in this system. To run it, the company uses service providers who handle information on its behalf and only on its instructions. They are not allowed to use it for their own purposes:
+      </p>
+      <ul>
+        <li>
+          <b>The hosting company that runs the secured server</b> (Contabo GmbH) on which the system and its database are kept. It provides the machine; the information on it is protected as described below.
+        </li>
+        <li>
+          <b>Google</b>, only where an administrator has connected Google Drive for backup copies (see below).
+        </li>
+        <li>
+          <b>Meta Platforms (WhatsApp)</b>, only where the company has connected WhatsApp to send documents. The system keeps from Meta only what it needs to send and to show whether a message was sent: its access token (stored sealed), message identifiers and the sent or failed status. It does not receive customers' WhatsApp profiles or contacts from Meta.
+        </li>
+        <li>
+          <b>The email service</b> the company has set up, and <b>Safaricom (M-Pesa) and NCBA Bank</b> for payments, as listed above.
+        </li>
+      </ul>
+
+      <h2 style={h2}>Requests from public authorities</h2>
+      <p>
+        {company} does not give personal information to the police, a court, a regulator or any other public authority unless the law requires it. Every such request is handled under a written procedure: the person asking is checked; the legality of the request is reviewed
+        before anything is disclosed; a request that is unlawful, unclear or too wide is challenged; only the minimum information needed is disclosed; and each request, the reasoning and what was done are recorded. In the past 12 months {company} has not provided anyone's
+        personal information to a public authority in response to a national-security request.
+      </p>
 
       <h2 style={h2}>Google Drive backups</h2>
       <p>

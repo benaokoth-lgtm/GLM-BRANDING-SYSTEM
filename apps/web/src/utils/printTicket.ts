@@ -1,4 +1,4 @@
-import { fmtDate, fmtDateTime, fmtKsh, splitVatInclusive } from '@glm/shared';
+import { fmtDate, fmtDateTime, fmtKsh, fmtKshCents, splitVatInclusive } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 
 const THERMAL_WIDTH_MM = 80;
@@ -100,9 +100,9 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   </div>
   <hr />
   ${order.payments
-    .map((p) => `<div class="row"><span>${fmtDate(p.date)} ${esc(p.method).toUpperCase()}</span><span>${fmtKsh(p.amount)}</span></div>`)
+    .map((p) => `<div class="row"><span>${fmtDate(p.date)} ${esc(p.method).toUpperCase()}</span><span>${fmtKshCents(p.amount)}</span></div>`)
     .join('')}
-  ${order.totals.balanceDue > 0 ? `<div class="row balance"><span>BALANCE DUE</span><span>${fmtKsh(order.totals.balanceDue)}</span></div>` : ''}
+  ${order.totals.balanceDue > 0 ? `<div class="row balance"><span>BALANCE DUE</span><span>${fmtKshCents(order.totals.balanceDue)}</span></div>` : ''}
   <hr />
   <div class="keep-note">${order.totals.balanceDue > 0 ? 'PAY THE BALANCE AGAINST THIS ORDER NUMBER' : 'PLEASE KEEP THIS RECEIPT FOR YOUR RECORDS'}</div>
   <div class="keep-note">ITEMS: ${itemCount}</div>

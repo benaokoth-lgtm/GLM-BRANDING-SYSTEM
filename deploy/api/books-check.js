@@ -43,15 +43,21 @@ function buildLineTotal(li) {
   const amt = Number(li.discountAmt) || 0;
   return Math.max(0, qty * (price + heatPressFee) * (1 - pct / 100) - amt);
 }
+var SETTLED_UNDER = 1;
+function owingAfter(total, paid) {
+  const raw = total - paid;
+  return paid > 0 && raw > 0 && raw < SETTLED_UNDER ? 0 : Math.max(0, raw);
+}
 function computeOrderTotals(order, payments = []) {
   const subtotal = order.lineItems.reduce((a2, li) => a2 + buildLineTotal(li), 0);
   const opct = Number(order.orderDiscountPct) || 0;
   const oamt = Number(order.orderDiscountAmt) || 0;
   const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
   const paidTotal = payments.reduce((a2, p) => a2 + (Number(p.amount) || 0), 0);
-  const balanceDue = Math.max(0, grandTotal - paidTotal);
-  const paidPct = grandTotal > 0 ? Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
-  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
+  const balanceDue = owingAfter(grandTotal, paidTotal);
+  const roundedOff = grandTotal - paidTotal > 0 && balanceDue === 0 ? grandTotal - paidTotal : 0;
+  const paidPct = grandTotal > 0 ? balanceDue === 0 && paidTotal > 0 ? 100 : Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
+  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct, roundedOff };
 }
 function todayStr(now = /* @__PURE__ */ new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -265,6 +271,7 @@ var ACCT = {
   salesReturns: "4900",
   costOfSales: "5000",
   salaries: "5010",
+  rounding: "5210",
   depreciation: "6800",
   uncategorised: "6999"
 };
@@ -320,6 +327,7 @@ var DEFAULT_CHART = [
   a("5180", "Airtime & Data", "Expense"),
   a("5190", "Cleaning", "Expense"),
   a("5200", "Bank Charges", "Expense"),
+  a("5210", "Rounding Adjustments", "Expense", "", "The few cents (under Ksh 1) left on an order that was paid in whole shillings; the order counts as paid and the cents are written off here."),
   a("6800", "Depreciation", "Expense", "", "Charged automatically each month from the Asset Register."),
   a("6900", "Miscellaneous Expenses", "Expense"),
   a("6999", "Uncategorised Expenses", "Expense", "", "Catch-all for an expense head that has no account yet.")
@@ -667,7 +675,7 @@ async function orderPostings(book, ctx) {
   const merchandise = idOf(ctx, ACCT.merchandiseIncome);
   const ncbaReceipts = await ncbaReceiptCodes();
   const orders = await prisma.order.findMany({
-    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true }
+    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true, notes: { select: { id: true } } }
   });
   for (const o of orders) {
     const party = o.customerName || o.corporateClient?.name || "Customer";
@@ -710,6 +718,15 @@ async function orderPostings(book, ctx) {
         book.dr(p.date, methodAccountCode(p.method), p.amount, "Payment", o.orderNo, label);
       }
       book.cr(p.date, recognised ? ACCT.receivables : ACCT.customerCredits, p.amount, "Payment", o.orderNo, label);
+    }
+    if (recognised && total > 0 && o.payments.length > 0 && o.notes.length === 0) {
+      const paid = round2(o.payments.reduce((a2, p) => a2 + p.amount, 0));
+      const left = round2(total - paid);
+      if (left > 4e-3 && left < SETTLED_UNDER) {
+        const when = o.payments.map((p) => p.date).sort().at(-1);
+        book.dr(when, ACCT.rounding, left, "Rounding", o.orderNo, `Rounding \u2014 Ksh ${left.toFixed(2)} left on a settled order \u2014 ${memo}`);
+        book.cr(when, ACCT.receivables, left, "Rounding", o.orderNo, `Rounding \u2014 Ksh ${left.toFixed(2)} left on a settled order \u2014 ${memo}`);
+      }
     }
   }
 }
@@ -892,6 +909,7 @@ async function buildReceivablesAging(asOf) {
     const outstanding = round2(amount + adjustments - paid);
     if (outstanding < -4e-3) credits += outstanding;
     if (!(outstanding > 4e-3)) continue;
+    if (outstanding < SETTLED_UNDER && paid > 0 && o.notes.length === 0) continue;
     const ageDays = daysBetween(o.dueDate ?? o.createdDate, asOf);
     rows.push({
       orderId: o.id,

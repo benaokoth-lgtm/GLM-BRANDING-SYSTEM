@@ -89,4 +89,6 @@ export interface OrderTotals {
   paidTotal: number;
   balanceDue: number;
   paidPct: number;
+  /** The part of a balance under Ksh 1 that is treated as settled (cash and M-Pesa are paid in whole shillings, so a total with cents cannot be paid to the cent). */
+  roundedOff: number;
 }

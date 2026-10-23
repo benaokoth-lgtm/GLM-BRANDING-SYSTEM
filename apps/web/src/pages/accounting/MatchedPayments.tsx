@@ -8,6 +8,11 @@ import { Card, Loading, Notice, Tag, numStyle, useLoad } from './shared';
 
 interface Row {
   id: number;
+  paymentId: number;
+  /** What the whole receipt was, what is still free on it, and whether several orders share it. */
+  receiptAmount: number;
+  left: number;
+  shared: boolean;
   receipt: string | null;
   kind: string;
   amount: number;
@@ -27,7 +32,7 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
   const { data, error, loading, reload } = useLoad<{ rows: Row[] }>(`/accounting/mpesa/matched${term ? `?q=${encodeURIComponent(term)}` : ''}`);
-  const [open, setOpen] = useState<{ id: number; mode: 'move' | 'off' } | null>(null);
+  const [open, setOpen] = useState<{ id: number; mode: 'move' | 'off' } | null>(null); // id = the payment (one part of a receipt)
   const [target, setTarget] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -46,10 +51,10 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
     setMsg('');
     try {
       if (open.mode === 'move') {
-        await api.post(`/accounting/mpesa/${r.id}/rematch`, { orderId: Number(target), reason });
+        await api.post(`/accounting/mpesa/${r.id}/rematch`, { orderId: Number(target), reason, paymentId: r.paymentId });
         setMsg(`${r.receipt ?? 'The payment'} moved from ${r.orderNo} to ${openOrders.find((o) => o.orderId === Number(target))?.ref ?? 'the other order'}.`);
       } else {
-        await api.post(`/accounting/mpesa/${r.id}/unmatch`, { reason });
+        await api.post(`/accounting/mpesa/${r.id}/unmatch`, { reason, paymentId: r.paymentId });
         setMsg(`${r.receipt ?? 'The payment'} taken off ${r.orderNo}. It is back under “Waiting to be matched”.`);
       }
       close();
@@ -97,7 +102,7 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
             </thead>
             <tbody>
               {data.rows.map((r) => (
-                <Fragment key={r.id}>
+                <Fragment key={r.paymentId}>
                   <tr>
                     <td>
                       {r.receipt ?? '—'} {r.kind === 'STK' ? <Tag>push</Tag> : null}
@@ -109,6 +114,7 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
                     </td>
                     <td>
                       <b>{r.orderNo}</b> <span className="text-muted">{r.customer}</span>
+                      {r.shared && <div className="text-muted" style={{ fontSize: 12 }}>part of a Ksh {Math.round(r.receiptAmount).toLocaleString('en-KE')} payment shared by several orders{r.left >= 1 ? ` — Ksh ${Math.round(r.left).toLocaleString('en-KE')} still free` : ''}</div>}
                       {r.matchedBy && <div className="text-muted" style={{ fontSize: 12 }}>{r.matchedBy}</div>}
                       {r.changes.map((c, i) => (
                         <div key={i} className="text-muted" style={{ fontSize: 12 }}>
@@ -118,11 +124,11 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
                     </td>
                     <td style={numStyle}>{fmtKsh(r.amount)}</td>
                     <td className="no-print" style={{ whiteSpace: 'nowrap' }}>
-                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => { close(); setOpen({ id: r.id, mode: 'move' }); }}>Move…</button>{' '}
-                      {r.canUnmatch && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { close(); setOpen({ id: r.id, mode: 'off' }); }}>Take off…</button>}
+                      <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => { close(); setOpen({ id: r.paymentId, mode: 'move' }); }}>Move…</button>{' '}
+                      {r.canUnmatch && <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { close(); setOpen({ id: r.paymentId, mode: 'off' }); }}>Take off…</button>}
                     </td>
                   </tr>
-                  {open?.id === r.id && (
+                  {open?.id === r.paymentId && (
                     <tr>
                       <td colSpan={6}>
                         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'flex-end', padding: 'var(--space-2) 0' }}>

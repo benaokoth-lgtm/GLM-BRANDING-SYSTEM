@@ -29,6 +29,7 @@ const job = (who: string, extra: Record<string, unknown>) =>
 
 describe('artwork job approvals', () => {
   before(async () => {
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { readyBeforeFinalPayment: false, warnDuplicateOrders: false }, create: { id: 1, readyBeforeFinalPayment: false, warnDuplicateOrders: false } }); // these tests are about something else: no hold on the final payment, no duplicate warning
     await prisma.role.create({ data: { name: 'Printer (appr test)', canAccessDtf: true, canCaptureOrders: true } });
     await prisma.role.create({ data: { name: 'Lead (appr test)', canAccessDtf: true, canManageDtf: true, canCaptureOrders: true, canManageProduction: true, canAccessProduction: true } });
     await prisma.role.create({ data: { name: 'Worker (appr test)', canAccessProduction: true } });

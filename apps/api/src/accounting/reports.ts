@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { ACCT, CASH_ACCOUNT_CODES, COST_OF_SALES_SUBTYPE, computeOrderTotals, round2 } from '@glm/shared';
+import { ACCT, CASH_ACCOUNT_CODES, COST_OF_SALES_SUBTYPE, SETTLED_UNDER, computeOrderTotals, round2 } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 import { loadLedger, naturalBalance, sumByAccount } from './ledger';
 import type { Posting } from './ledger';
@@ -255,6 +255,8 @@ export async function buildReceivablesAging(asOf: string) {
     const outstanding = round2(amount + adjustments - paid);
     if (outstanding < -0.004) credits += outstanding;
     if (!(outstanding > 0.004)) continue;
+    // under Ksh 1 left on an order that has been paid and has no notes: written off in the ledger as rounding, so it is not an open invoice
+    if (outstanding < SETTLED_UNDER && paid > 0 && o.notes.length === 0) continue;
     const ageDays = daysBetween(o.dueDate ?? o.createdDate, asOf);
     rows.push({
       orderId: o.id,

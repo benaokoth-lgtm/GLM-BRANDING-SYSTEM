@@ -23,6 +23,7 @@ const setup = (extra: object = {}) => ({ ...UV_DTF_SETTINGS, fixedChargePerMetre
 
 describe('artwork charged on running metres', () => {
   before(async () => {
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { readyBeforeFinalPayment: false, warnDuplicateOrders: false }, create: { id: 1, readyBeforeFinalPayment: false, warnDuplicateOrders: false } }); // these tests are about something else: no hold on the final payment, no duplicate warning
     await prisma.role.create({ data: { name: 'Printer (run metres test)', canAccessDtf: true, canCaptureOrders: true } });
     await prisma.role.create({ data: { name: 'Lead (run metres test)', canAccessDtf: true, canManageDtf: true, canCaptureOrders: true } });
     for (const [key, role] of [['printer', 'Printer (run metres test)'], ['lead', 'Lead (run metres test)'], ['lead2', 'Lead (run metres test)']] as const) {

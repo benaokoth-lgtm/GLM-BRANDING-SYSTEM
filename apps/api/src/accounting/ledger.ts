@@ -11,6 +11,7 @@ import {
   methodAccountCode,
   round2,
   splitGross,
+  SETTLED_UNDER,
 } from '@glm/shared';
 import type { LineItemInput } from '@glm/shared';
 
@@ -199,7 +200,7 @@ async function orderPostings(book: Book, ctx: Ctx) {
   const merchandise = idOf(ctx, ACCT.merchandiseIncome);
   const ncbaReceipts = await ncbaReceiptCodes();
   const orders = await prisma.order.findMany({
-    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true },
+    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true, notes: { select: { id: true } } },
   });
   for (const o of orders) {
     const party = o.customerName || o.corporateClient?.name || 'Customer';
@@ -251,6 +252,18 @@ async function orderPostings(book: Book, ctx: Ctx) {
         book.dr(p.date, methodAccountCode(p.method), p.amount, 'Payment', o.orderNo, label);
       }
       book.cr(p.date, recognised ? ACCT.receivables : ACCT.customerCredits, p.amount, 'Payment', o.orderNo, label);
+    }
+
+    // Paid in whole shillings, an order whose total has cents is left owing a few cents. Under Ksh 1 the order counts as paid (see SETTLED_UNDER), so the cents are written off — on the day of the last
+    // payment — instead of sitting in Accounts Receivable for good. (An order with a credit or debit note is left as it is.)
+    if (recognised && total > 0 && o.payments.length > 0 && o.notes.length === 0) {
+      const paid = round2(o.payments.reduce((a, p) => a + p.amount, 0));
+      const left = round2(total - paid);
+      if (left > 0.004 && left < SETTLED_UNDER) {
+        const when = o.payments.map((p) => p.date).sort().at(-1)!;
+        book.dr(when, ACCT.rounding, left, 'Rounding', o.orderNo, `Rounding — Ksh ${left.toFixed(2)} left on a settled order — ${memo}`);
+        book.cr(when, ACCT.receivables, left, 'Rounding', o.orderNo, `Rounding — Ksh ${left.toFixed(2)} left on a settled order — ${memo}`);
+      }
     }
   }
 }

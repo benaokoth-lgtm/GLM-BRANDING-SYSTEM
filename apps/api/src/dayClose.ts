@@ -94,17 +94,26 @@ export async function ncbaTieOut(date: string) {
   // every payment (on any day) that carries one of the codes NCBA sent today: that receipt is on an order
   const codeList = notes.map((n) => n.transId).filter(Boolean);
   const carrying = codeList.length
-    ? await prisma.payment.findMany({ where: { OR: [{ reference: { in: codeList } }, { mpesaTransaction: { mpesaReceipt: { in: codeList } } }] }, select: { reference: true, mpesaTransaction: { select: { mpesaReceipt: true } } } })
+    ? await prisma.payment.findMany({ where: { OR: [{ reference: { in: codeList } }, { mpesaTransaction: { mpesaReceipt: { in: codeList } } }] }, select: { amount: true, reference: true, mpesaTransaction: { select: { mpesaReceipt: true } } } })
     : [];
-  const onOrder = new Set(carrying.flatMap((p) => [p.reference, p.mpesaTransaction?.mpesaReceipt]).filter((c): c is string => !!c).map((c) => c.toUpperCase()));
-
+  // a receipt can be shared by several orders: what has been applied to orders, by code
+  const applied = new Map<string, number>();
+  for (const p of carrying) {
+    const code = (p.mpesaTransaction?.mpesaReceipt ?? p.reference ?? '').toUpperCase();
+    if (code) applied.set(code, (applied.get(code) ?? 0) + p.amount);
+  }
+  // what is still on no order, receipt by receipt (less than Ksh 1 left counts as all of it applied)
+  const leftOf = (n: { transId: string; amount: number }) => {
+    const left = n.amount - (applied.get(n.transId.toUpperCase()) ?? 0);
+    return left >= 1 ? Math.round(left * 100) / 100 : 0;
+  };
   const sent = notes.reduce((a, n) => a + n.amount, 0);
-  const notOnOrder = notes.filter((n) => !onOrder.has(n.transId.toUpperCase()));
+  const notOnOrder = notes.filter((n) => leftOf(n) > 0).map((n) => ({ ...n, amount: leftOf(n), part: leftOf(n) < n.amount - 0.5 }));
   const other = mpesaToday.filter((p) => !(p.mpesaTransaction?.checkoutRequestId ?? '').startsWith('NCBA-') && !codesOf(p).some((c) => ncbaCodes.has(c)));
   return {
     active: everSeen > 0,
     sent: { count: notes.length, amount: round2(sent) },
-    onOrders: { count: notes.length - notOnOrder.length, amount: round2(sent - notOnOrder.reduce((a, n) => a + n.amount, 0)) },
+    onOrders: { count: notes.length - notOnOrder.length, amount: round2(sent - notOnOrder.reduce((a, n) => a + n.amount, 0)) }, // receipts wholly on orders; a part-matched receipt counts here for what is applied
     notOnOrder: { count: notOnOrder.length, amount: round2(notOnOrder.reduce((a, n) => a + n.amount, 0)), receipts: notOnOrder.slice(0, 100).map((n) => ({ id: n.id, receipt: n.transId, amount: n.amount, phone: n.phone, payer: n.payerName, billRef: n.billRef, outcome: n.outcome })) },
     otherMpesa: { count: other.length, amount: round2(other.reduce((a, p) => a + p.amount, 0)), payments: other.slice(0, 100).map((p) => ({ id: p.id, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || '—', amount: p.amount, reference: p.reference ?? p.mpesaTransaction?.mpesaReceipt ?? '' })) },
     duplicatesOrRejected: ignoredCount,
@@ -167,11 +176,12 @@ export async function liveDay(date: string, tillId: number | null) {
   const received = round2(mine.reduce((a, p) => a + p.amount, 0));
 
   // what is owed: as at this day, and as at the day before, and how it moved
-  const [closing, opening, raised, ncba] = await Promise.all([
+  const [closing, opening, raised, ncba, toCheck] = await Promise.all([
     outstandingAsAt(date),
     outstandingAsAt(addDays(date, -1)),
     prisma.order.findMany({ where: { status: { not: 'Quote' }, createdDate: date }, include: orderListInclude }),
     ncbaTieOut(date),
+    ordersToCheck(date),
   ]);
   const sum = (rows: { balance: number }[]) => round2(rows.reduce((a, x) => a + x.balance, 0));
   const raisedToday = round2(raised.reduce((a, o) => a + serializeSummary({ ...o, payments: [] }).totals.grandTotal, 0));
@@ -203,10 +213,31 @@ export async function liveDay(date: string, tillId: number | null) {
       invoiceCount: closing.length,
     },
     ncba,
+    toCheck,
   };
 }
 
 export type LiveDay = Awaited<ReturnType<typeof liveDay>>;
+
+// ── Orders to check ─────────────────────────────────────────────────────────
+/**
+ * Orders that went round the proper process: PAID but never started in production (still "Order Received" after the day they were captured — the customer paid, and nobody made or released it), and the
+ * orders a manager RELEASED early on the day (settled or handed over before they were ready, with the reason). Money that arrives by itself (M-Pesa) can pay an order at any stage, so this list is how
+ * it is noticed.
+ */
+export async function ordersToCheck(date: string) {
+  const today = todayStr();
+  const waiting = await prisma.order.findMany({ where: { status: { not: 'Quote' }, stage: 'Order Received', createdDate: { lt: today } }, include: orderListInclude, orderBy: { id: 'asc' }, take: 400 });
+  const notProduced = waiting
+    .map((o) => ({ o, s: serializeSummary(o) }))
+    .filter(({ s }) => s.totals.grandTotal > 0 && s.totals.balanceDue <= 0.005)
+    .map(({ o, s }) => ({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || '—', createdDate: o.createdDate, total: s.totals.grandTotal, staff: o.staff.name, daysWaiting: Math.max(0, Math.round((Date.parse(today) - Date.parse(o.createdDate)) / 86400000)) }))
+    .sort((a, b) => b.daysWaiting - a.daysWaiting);
+  const from = new Date(`${date}T00:00:00+03:00`);
+  const to = new Date(from.getTime() + 24 * 3600_000);
+  const releases = (await prisma.orderOverride.findMany({ where: { at: { gte: from, lt: to } }, orderBy: { id: 'asc' } })).map((r) => ({ id: r.id, orderNo: r.orderNo, kind: r.kind, stage: r.stage, amount: r.amount, reason: r.reason, by: r.byName }));
+  return { notProduced: notProduced.slice(0, 100), notProducedCount: notProduced.length, releases };
+}
 
 // ── Days not closed ─────────────────────────────────────────────────────────
 /** Past days (up to a week back) on which a till took cash and was not closed, and cash-ups waiting for approval. */
@@ -260,6 +291,8 @@ export async function summaryFor(date: string) {
   const owed = `${shilling(day.outstanding.closing)}${overdue > 0 ? ` (${shilling(overdue)} overdue)` : ''}`;
   const notes: string[] = [];
   if (day.ncba.active) notes.push(`NCBA sent ${shilling(day.ncba.sent.amount)}${day.ncba.notOnOrder.count ? `; ${day.ncba.notOnOrder.count} receipt${day.ncba.notOnOrder.count === 1 ? '' : 's'} (${shilling(day.ncba.notOnOrder.amount)}) not on an order` : '; all on orders'}${day.ncba.otherMpesa.count ? `; ${day.ncba.otherMpesa.count} M-Pesa payment${day.ncba.otherMpesa.count === 1 ? '' : 's'} NCBA did not send` : ''}`);
+  if (day.toCheck.notProducedCount > 0) notes.push(`${day.toCheck.notProducedCount} paid order${day.toCheck.notProducedCount === 1 ? '' : 's'} never started in production`);
+  if (day.toCheck.releases.length > 0) notes.push(`${day.toCheck.releases.length} order${day.toCheck.releases.length === 1 ? '' : 's'} released early by a manager`);
   const unclosed = rem.unclosed.map((u) => `${u.tillName} ${dayLabel(u.date)}`);
   if (rem.unclosed.length) notes.push(`Not closed: ${unclosed.join(', ')}`);
   else notes.push('No earlier day is waiting to be closed');

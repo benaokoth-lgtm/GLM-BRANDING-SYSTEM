@@ -1982,6 +1982,7 @@ var ACCT = {
   salesReturns: "4900",
   costOfSales: "5000",
   salaries: "5010",
+  rounding: "5210",
   depreciation: "6800",
   uncategorised: "6999"
 };
@@ -2037,6 +2038,7 @@ var DEFAULT_CHART = [
   a("5180", "Airtime & Data", "Expense"),
   a("5190", "Cleaning", "Expense"),
   a("5200", "Bank Charges", "Expense"),
+  a("5210", "Rounding Adjustments", "Expense", "", "The few cents (under Ksh 1) left on an order that was paid in whole shillings; the order counts as paid and the cents are written off here."),
   a("6800", "Depreciation", "Expense", "", "Charged automatically each month from the Asset Register."),
   a("6900", "Miscellaneous Expenses", "Expense"),
   a("6999", "Uncategorised Expenses", "Expense", "", "Catch-all for an expense head that has no account yet.")

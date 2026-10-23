@@ -262,7 +262,7 @@ dayCloseRouter.put('/tills/:id', requireRole('Admin'), async (req, res) => {
 // ── The evening summary (Admin) ─────────────────────────────────────────────
 const publicSettings = async () => {
   const s = await getSummarySettings();
-  return { enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
+  return { readyBeforeFinalPayment: s.readyBeforeFinalPayment, warnDuplicateOrders: s.warnDuplicateOrders, enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
 };
 
 dayCloseRouter.get('/settings', requireRole('Admin'), async (_req, res) => {
@@ -276,6 +276,8 @@ dayCloseRouter.put('/settings', requireRole('Admin'), async (req, res) => {
       time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'The time looks like 18:30').optional(),
       numbers: z.string().max(400).optional(),
       template: z.string().trim().regex(/^[a-z0-9_]{0,512}$/, 'A template name has only lowercase letters, numbers and underscores').optional(),
+      readyBeforeFinalPayment: z.boolean().optional(),
+      warnDuplicateOrders: z.boolean().optional(),
     })
     .safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message ?? 'Invalid input' });
@@ -283,7 +285,7 @@ dayCloseRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   const numbers = p.data.numbers ?? cur.summaryNumbers;
   if (p.data.numbers !== undefined && numbers.trim() && parseNumbers(numbers).length === 0) return res.status(400).json({ error: 'Enter WhatsApp numbers like 0797 785 033, separated by commas' });
   if ((p.data.enabled ?? cur.summaryEnabled) && parseNumbers(numbers).length === 0) return res.status(400).json({ error: 'Enter at least one WhatsApp number before switching the summary on' });
-  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate } });
+  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate, readyBeforeFinalPayment: p.data.readyBeforeFinalPayment ?? cur.readyBeforeFinalPayment, warnDuplicateOrders: p.data.warnDuplicateOrders ?? cur.warnDuplicateOrders } });
   res.json(await publicSettings());
 });
 

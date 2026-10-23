@@ -21,6 +21,7 @@ const sell = async (rollId: string) => call('POST', '/dtf/sales', { rollId, clie
 describe('the DTF film and artwork services on the price list', () => {
   let rollId = '';
   before(async () => {
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { readyBeforeFinalPayment: false, warnDuplicateOrders: false }, create: { id: 1, readyBeforeFinalPayment: false, warnDuplicateOrders: false } }); // these tests are about something else: no hold on the final payment, no duplicate warning
     await prisma.role.create({ data: { name: 'Lead (dtf service test)', canAccessDtf: true, canManageDtf: true, canCaptureOrders: true } });
     const u = await prisma.user.create({ data: { name: 'lead (dtf service test)', role: 'Lead (dtf service test)', pinHash: 'x' } });
     token = signToken({ id: u.id, name: u.name, role: 'Lead (dtf service test)' });

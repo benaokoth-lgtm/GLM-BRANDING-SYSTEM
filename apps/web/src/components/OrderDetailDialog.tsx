@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { fmtDate, fmtDateTime, fmtKsh, STAGES, todayStr, whatsappNumber } from '@glm/shared';
+import { SETTLED_UNDER, fmtDate, fmtDateTime, fmtKsh, fmtKshCents, STAGES, todayStr, whatsappNumber } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
-import { api, fetchFile } from '../api/client';
+import { ApiError, api, fetchFile } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printCorporateDocument, printOrderDocument } from '../utils/printInvoice';
 import WhatsappFileSend from './WhatsappFileSend';
 import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from '../utils/shareOrder';
-import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
+import SplitPayments, { newPaymentRow, paymentProblem, paymentsTotal, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
 import OrderAllocation from './OrderAllocation';
 import OrderChangePanel from './OrderChangePanel';
@@ -31,6 +31,9 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmCredit, setConfirmCredit] = useState(false);
+  // A manager's early release: the server said the order is not ready, and a manager may go ahead with a reason (see orderRelease.ts).
+  const [release, setRelease] = useState<null | { kind: 'pay' | 'handover'; message: string }>(null);
+  const [releaseReason, setReleaseReason] = useState('');
 
   // Sending the document to the customer: by email (the A4 document) or WhatsApp (a message to their number). One panel, opened from the buttons
   // beside Print; the recipient is filled in from the order when we have it and can always be typed.
@@ -62,35 +65,44 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
     setWaTo(c.phone);
   }, [detail]);
 
-  async function recordPayment() {
+  async function recordPayment(overrideReason?: string) {
     const payments = toApiPayments(paymentRows);
     if (payments.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/orders/${orderId}/payments`, { payments });
+      await api.post(`/orders/${orderId}/payments`, { payments, ...(overrideReason ? { overrideReason } : {}) });
       setPaymentRows([newPaymentRow()]);
+      setRelease(null);
+      setReleaseReason('');
       load();
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to record payment');
+      // the payment that settles the order is taken at the counter once the order is ready; a manager can release it earlier, with a reason
+      if (err instanceof ApiError && err.code === 'FINAL_PAYMENT_NOT_READY' && err.data?.canOverride) setRelease({ kind: 'pay', message: err.message });
+      else setError(err instanceof Error ? err.message : 'Failed to record payment');
     } finally {
       setBusy(false);
     }
   }
 
-  // The only way an order is completed: handing it to the customer after it has passed quality control. Normally that needs it
-  // paid in full; "on credit" releases it with a balance and turns it into an invoice.
-  async function handOver(onCredit = false) {
+  // The only way an order is completed: handing it to the customer after it has passed quality control, with the final payment taken in the same action ("Take final payment & hand over").
+  // "On credit" releases it with a balance and turns it into an invoice. A manager can hand over an order that is not ready yet, with a reason.
+  async function handOver(onCredit = false, withPayment = false, overrideReason?: string) {
     setBusy(true);
     setError(null);
     try {
-      await api.post(`/orders/${orderId}/handover`, { onCredit });
+      const payments = withPayment ? toApiPayments(paymentRows) : [];
+      await api.post(`/orders/${orderId}/handover`, { onCredit, ...(payments.length ? { payments } : {}), ...(overrideReason ? { overrideReason } : {}) });
       setConfirmCredit(false);
+      setPaymentRows([newPaymentRow()]);
+      setRelease(null);
+      setReleaseReason('');
       load();
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not hand the order over');
+      if (err instanceof ApiError && err.code === 'NOT_READY' && err.data?.canOverride) setRelease({ kind: 'handover', message: err.message });
+      else setError(err instanceof Error ? err.message : 'Could not hand the order over');
     } finally {
       setBusy(false);
     }
@@ -333,9 +345,9 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
           </table>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-6)', margin: 'var(--space-3) 0', fontFamily: 'var(--font-heading)' }}>
-            <div>Subtotal: {fmtKsh(detail.totals.subtotal)}</div>
-            <div>Order discount: {fmtKsh(detail.totals.orderDiscount)}</div>
-            <div>Grand total: {fmtKsh(detail.totals.grandTotal)}</div>
+            <div>Subtotal: {fmtKshCents(detail.totals.subtotal)}</div>
+            <div>Order discount: {fmtKshCents(detail.totals.orderDiscount)}</div>
+            <div>Grand total: {fmtKshCents(detail.totals.grandTotal)}</div>
           </div>
 
           {seeCosts && detail.lineItems.some((l) => l.outsourced) && <OutsourcedCostingPanel orderId={orderId} onChanged={onChanged} />}
@@ -371,7 +383,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 {detail.stage === 'Completed' && 'Handed over to the customer.'}
               </p>
               {detail.stage === 'Ready for Pickup/Delivery' &&
-                (detail.totals.balanceDue <= 0.009 ? (
+                (detail.totals.balanceDue <= 0 ? (
                   <button type="button" className="btn btn-primary blueprint" onClick={() => handOver(false)} disabled={busy}>
                     <i className="corner tl"></i>
                     <i className="corner tr"></i>
@@ -382,8 +394,37 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 ) : (
                   <div style={{ border: '1px solid var(--color-divider)', padding: 'var(--space-3)' }}>
                     <p style={{ margin: 0 }}>
-                      <strong>{fmtKsh(detail.totals.balanceDue)} is still owing.</strong> Take the payment below and the order can be handed over — or release it on credit.
+                      <strong>{fmtKshCents(detail.totals.balanceDue)} is still owing.</strong> Take the final payment and hand the order over in one step — or release it on credit.
                     </p>
+                    {detail.canTakePayment !== false && (
+                      <div style={{ marginTop: 'var(--space-2)' }}>
+                        <SplitPayments rows={paymentRows} onChange={setPaymentRows} total={detail.totals.balanceDue} phone={detail.phone || detail.corporateClient?.phone || ''} accountReference={detail.orderNo} />
+                        {paymentProblem(paymentRows, detail.totals.balanceDue) && <p className="note" style={{ color: 'var(--color-error)' }}>{paymentProblem(paymentRows, detail.totals.balanceDue)}</p>}
+                        <button
+                          type="button"
+                          className="btn btn-primary blueprint"
+                          style={{ marginTop: 'var(--space-2)' }}
+                          onClick={() => handOver(false, true)}
+                          disabled={busy || !!paymentProblem(paymentRows, detail.totals.balanceDue) || detail.totals.balanceDue - paymentsTotal(paymentRows) >= SETTLED_UNDER}
+                        >
+                          <i className="corner tl"></i>
+                          <i className="corner tr"></i>
+                          <i className="corner bl"></i>
+                          <i className="corner br"></i>
+                          Take final payment &amp; hand over
+                        </button>
+                        {detail.totals.balanceDue - paymentsTotal(paymentRows) >= SETTLED_UNDER && (
+                          <>
+                            <span className="note" style={{ marginLeft: 8 }}>Enter the whole {fmtKshCents(detail.totals.balanceDue)} to enable this.</span>
+                            {paymentsTotal(paymentRows) > 0 && !paymentProblem(paymentRows, detail.totals.balanceDue) && (
+                              <button type="button" className="btn btn-secondary" style={{ marginLeft: 8 }} onClick={() => handOver(true, true)} disabled={busy}>
+                                Take {fmtKsh(paymentsTotal(paymentRows))} &amp; hand over on credit (owes {fmtKshCents(detail.totals.balanceDue - paymentsTotal(paymentRows))})
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                     {!confirmCredit ? (
                       <button type="button" className="btn btn-secondary" style={{ marginTop: 'var(--space-2)' }} onClick={() => setConfirmCredit(true)} disabled={busy}>
                         Hand over on credit…
@@ -407,6 +448,21 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                     )}
                   </div>
                 ))}
+              {release && (
+                <div style={{ border: '1px solid var(--color-error)', padding: 'var(--space-3)', marginTop: 'var(--space-2)' }} role="alert">
+                  <p style={{ marginTop: 0 }}><strong>Manager release.</strong> {release.message}</p>
+                  <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div className="field" style={{ margin: 0, flex: '1 1 320px' }}>
+                      <label>Reason for releasing it early (recorded)</label>
+                      <input className="input" value={releaseReason} onChange={(e) => setReleaseReason(e.target.value)} maxLength={300} placeholder="e.g. customer collecting the finished copy tomorrow" />
+                    </div>
+                    <button type="button" className="btn btn-primary btn-sm" disabled={busy || releaseReason.trim().length < 3} onClick={() => (release.kind === 'pay' ? recordPayment(releaseReason.trim()) : handOver(false, true, releaseReason.trim()))}>
+                      {release.kind === 'pay' ? 'Take the payment now' : 'Hand over now'}
+                    </button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setRelease(null); setReleaseReason(''); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -435,7 +491,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
               {detail.payments.map((p) => (
                 <tr key={p.id}>
                   <td className="text-muted">{fmtDate(p.date)}</td>
-                  <td>{fmtKsh(p.amount)}</td>
+                  <td>{fmtKshCents(p.amount)}</td>
                   <td>{p.method}</td>
                   <td className="text-muted">{p.reference || (p.method === 'M-Pesa' ? 'no code' : '—')}</td>
                 </tr>
@@ -445,7 +501,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
           {detail.payments.length === 0 && <p className="note">No payments recorded yet.</p>}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--space-3)' }}>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 18 }}>Balance due: {fmtKsh(detail.totals.balanceDue)}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 18 }}>Balance due: {fmtKshCents(detail.totals.balanceDue)}</div>
             {detail.overdue && <span className="tag tag-accent">Overdue — due {fmtDate(detail.dueDate)}</span>}
           </div>
 
@@ -470,8 +526,12 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                   onChanged();
                 }}
               />
+              {detail.stage === 'Ready for Pickup/Delivery' && detail.status !== 'Quote' ? (
+                <p className="note" style={{ marginTop: 'var(--space-3)' }}>The order is ready: the final payment is taken above, together with the handover.</p>
+              ) : (
+              <>
               <div className="card-kicker" style={{ margin: 'var(--space-4) 0 var(--space-2)' }}>
-                Or record a payment — split across methods if needed
+                {detail.stage === 'Completed' ? 'Record a payment — split across methods if needed' : 'Or record a deposit or part-payment — the payment that settles the order is taken when it is ready'}
               </div>
               <SplitPayments
                 rows={paymentRows}
@@ -489,7 +549,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 type="button"
                 className="btn btn-secondary blueprint"
                 style={{ marginTop: 'var(--space-3)' }}
-                onClick={recordPayment}
+                onClick={() => recordPayment()}
                 disabled={busy || toApiPayments(paymentRows).length === 0 || !!paymentProblem(paymentRows, detail.totals.balanceDue)}
               >
                 <i className="corner tl"></i>
@@ -498,6 +558,8 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                 <i className="corner br"></i>
                 Record payment
               </button>
+              </>
+              )}
             </div>
           )}
 

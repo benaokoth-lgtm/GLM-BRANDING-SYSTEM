@@ -16,8 +16,8 @@ import type { FullOrder } from './orders';
 //   1. the person who needs the change asks, with a reason (the order's salesperson, or the front office);
 //   2. a manager (Finance, or the Admin) approves it in the Approvals inbox — never the person who asked, except the Admin;
 //   3. then the SAME person makes the change, once: amending the lines, customer and discount, or deleting the order.
-// Every step is kept, with what the order looked like before and after. Film, artwork and embroidery orders, and completed ones, are not changed here; an order with payments cannot be deleted until its
-// payments are moved to the right order or refunded (Accounting → M-Pesa Matching → Matched payments; credit notes).
+// Every step is kept, with what the order looked like before and after. Completed orders and orders Production has worked on are not amended; a mistaken one (a duplicate) can be deleted whatever its
+// type if nothing real has happened to it. An order with payments cannot be deleted until its payments are moved to the right order or refunded (Accounting → M-Pesa Matching → Matched payments; credit notes).
 export const orderChangesRouter = Router();
 orderChangesRouter.use(requireAuth);
 
@@ -46,10 +46,23 @@ function view(r: Awaited<ReturnType<typeof prisma.orderChange.findMany>>[number]
   };
 }
 
-/** Why this order cannot be amended or deleted here (null when it can). */
-function kindProblem(order: FullOrder): string | null {
-  if (order.dtfFilmSale || order.dtfArtworkJob || order.embroideryJob) return 'Film, artwork and embroidery orders are tied to the roll and the job, so they cannot be amended or deleted here';
-  if (order.stage === 'Completed' || order.handedOverOnCredit) return 'A completed order cannot be changed — raise a credit note instead';
+/** Why this order cannot be AMENDED here (null when it can). */
+function amendProblem(order: FullOrder): string | null {
+  if (order.dtfFilmSale || order.dtfArtworkJob || order.embroideryJob) return 'Film, artwork and embroidery orders are tied to the roll and the job, so they cannot be amended here (a mistaken one can be deleted instead)';
+  if (order.stage === 'Completed' || order.handedOverOnCredit) return 'A completed order cannot be amended — raise a credit note instead';
+  return null;
+}
+
+/**
+ * Why this order cannot be DELETED (null when it can). A mistaken order — a duplicate — can be deleted whatever its type and even if it was wrongly marked Completed, as long as nothing real
+ * has happened to it: no payment taken, no credit note, no supplier bill, and Production has not worked on it. Otherwise a credit note is the way to undo it.
+ */
+async function deleteProblem(order: FullOrder): Promise<string | null> {
+  const worked = await prisma.productionTask.count({ where: { orderId: order.id, status: { in: ['In Progress', 'Finished'] } } });
+  const checked = await prisma.qualityCheck.count({ where: { orderId: order.id } });
+  if (worked > 0 || checked > 0) return 'Production has already worked on this order, so it cannot be deleted — raise a credit note instead';
+  if ((await prisma.expense.count({ where: { orderId: order.id } })) > 0) return 'A supplier bill has been recorded against this order, so it cannot be deleted';
+  if ((await prisma.adjustmentNote.count({ where: { orderId: order.id } })) > 0) return 'A credit or debit note has been raised against this order, so it cannot be deleted';
   return null;
 }
 
@@ -74,7 +87,7 @@ orderChangesRouter.get('/orders/:orderId', async (req, res) => {
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   const rows = await prisma.orderChange.findMany({ where: { orderId }, orderBy: { id: 'desc' }, take: 20 });
-  res.json({ requests: rows.map((r) => view(r, req.user!.id)), problem: kindProblem(order), hasPayments: order.payments.length > 0 });
+  res.json({ requests: rows.map((r) => view(r, req.user!.id)), amendProblem: amendProblem(order), deleteProblem: await deleteProblem(order), hasPayments: order.payments.length > 0 });
 });
 
 const askSchema = z.object({ kind: z.enum(['Amend', 'Delete']), reason: z.string().trim().min(3, 'Say why the order needs to be changed').max(300) });
@@ -86,7 +99,7 @@ orderChangesRouter.post('/orders/:orderId', async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
-  const problem = kindProblem(order);
+  const problem = body.data.kind === 'Amend' ? amendProblem(order) : await deleteProblem(order);
   if (problem) return res.status(400).json({ error: problem });
   const open = await prisma.orderChange.findFirst({ where: { orderId, status: { in: ['Pending', 'Approved'] } } });
   if (open) return res.status(409).json({ error: `There is already ${open.status === 'Pending' ? 'a request waiting for approval' : 'an approved request not used yet'} for this order` });
@@ -143,7 +156,7 @@ orderChangesRouter.put('/orders/:orderId/amend', async (req, res) => {
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   const request = await approvedFor(req.user!.id, orderId, 'Amend');
   if (!request) return res.status(403).json({ error: 'There is no approved request for you to amend this order. Ask for the amendment first, and wait for it to be approved.' });
-  const problem = kindProblem(order);
+  const problem = amendProblem(order);
   if (problem) return res.status(400).json({ error: problem });
 
   const d = body.data;
@@ -209,17 +222,20 @@ orderChangesRouter.delete('/orders/:orderId', async (req, res) => {
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
   const request = await approvedFor(req.user!.id, orderId, 'Delete');
   if (!request) return res.status(403).json({ error: 'There is no approved request for you to delete this order. Ask for the deletion first, and wait for it to be approved.' });
-  const problem = kindProblem(order);
+  const problem = await deleteProblem(order);
   if (problem) return res.status(400).json({ error: problem });
   if (order.payments.length > 0) {
     return res.status(400).json({ error: `This order has ${order.payments.length} payment${order.payments.length === 1 ? '' : 's'} on it. Move an M-Pesa / NCBA payment to the right order (Accounting → M-Pesa Matching → Matched payments), or refund the customer, before the order is deleted.` });
   }
-  if ((await prisma.adjustmentNote.count({ where: { orderId } })) > 0) return res.status(400).json({ error: 'A credit or debit note has been raised against this order, so it cannot be deleted' });
   const before = snapshot(order);
   try {
     await prisma.$transaction(async (tx) => {
       await returnOrderStock(tx, orderId);
       await tx.mpesaTransaction.updateMany({ where: { orderId }, data: { orderId: null } }); // a push that never completed
+      // a film sale or artwork job lives on after its order (the link is only cleared): remove it with the order, which gives its film back to the roll
+      await tx.priceApproval.deleteMany({ where: { orderId } });
+      await tx.dtfArtworkJob.deleteMany({ where: { orderId } });
+      await tx.dtfFilmSale.deleteMany({ where: { orderId } });
       await tx.order.delete({ where: { id: orderId } });
       await tx.orderChange.update({ where: { id: request.id }, data: { status: 'Done', doneAt: new Date(), beforeJson: before, afterJson: '' } });
     });

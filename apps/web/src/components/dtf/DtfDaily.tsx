@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { fmtDate, fmtKsh, fmtNum, todayStr } from '@glm/shared';
-import { api } from '../../api/client';
+import { ApiError, api } from '../../api/client';
 import { useAuth } from '../../state/AuthContext';
 import OrderDetailDialog from '../OrderDetailDialog';
 import { Card, right } from './shared';
@@ -299,7 +299,18 @@ export default function DtfDaily({ kind, data, reload, setError }: { kind: 'jobs
                                           <td className="text-muted">{o.capturedByName}</td>
                                           <td className="no-print" style={{ whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                                             {o.balance > 0 && (
-                                              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => act(() => api.patch(`/dtf/sales/${o.saleId}/paid`, { amountPaid: Math.round(o.metres * o.pricePerM * 100) / 100 }))}>
+                                              <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => act(async () => {
+                                                const body = { amountPaid: Math.round(o.metres * o.pricePerM * 100) / 100 };
+                                                try {
+                                                  await api.patch(`/dtf/sales/${o.saleId}/paid`, body);
+                                                } catch (e) {
+                                                  // the order is not ready yet: a manager can release it with a reason
+                                                  if (e instanceof ApiError && e.code === 'FINAL_PAYMENT_NOT_READY' && e.data?.canOverride) {
+                                                    const reason = window.prompt(e.message + '\n\nReason for taking the payment now:');
+                                                    if (reason && reason.trim()) await api.patch(`/dtf/sales/${o.saleId}/paid`, { ...body, overrideReason: reason.trim() });
+                                                  } else throw e;
+                                                }
+                                              })}>
                                                 Mark paid
                                               </button>
                                             )}

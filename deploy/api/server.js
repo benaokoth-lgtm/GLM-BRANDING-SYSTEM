@@ -65279,15 +65279,21 @@ function buildLineTotal(li) {
   const amt = Number(li.discountAmt) || 0;
   return Math.max(0, qty * (price + heatPressFee) * (1 - pct / 100) - amt);
 }
+var SETTLED_UNDER = 1;
+function owingAfter(total, paid) {
+  const raw = total - paid;
+  return paid > 0 && raw > 0 && raw < SETTLED_UNDER ? 0 : Math.max(0, raw);
+}
 function computeOrderTotals(order, payments = []) {
   const subtotal = order.lineItems.reduce((a2, li) => a2 + buildLineTotal(li), 0);
   const opct = Number(order.orderDiscountPct) || 0;
   const oamt = Number(order.orderDiscountAmt) || 0;
   const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
   const paidTotal = payments.reduce((a2, p) => a2 + (Number(p.amount) || 0), 0);
-  const balanceDue = Math.max(0, grandTotal - paidTotal);
-  const paidPct = grandTotal > 0 ? Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
-  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
+  const balanceDue = owingAfter(grandTotal, paidTotal);
+  const roundedOff = grandTotal - paidTotal > 0 && balanceDue === 0 ? grandTotal - paidTotal : 0;
+  const paidPct = grandTotal > 0 ? balanceDue === 0 && paidTotal > 0 ? 100 : Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
+  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct, roundedOff };
 }
 function isOverdue(kind, status, dueDate, balanceDue, today) {
   return status === "Invoice" && !!dueDate && dueDate < today && balanceDue > 0;
@@ -65636,6 +65642,7 @@ var ACCT = {
   salesReturns: "4900",
   costOfSales: "5000",
   salaries: "5010",
+  rounding: "5210",
   depreciation: "6800",
   uncategorised: "6999"
 };
@@ -65691,6 +65698,7 @@ var DEFAULT_CHART = [
   a("5180", "Airtime & Data", "Expense"),
   a("5190", "Cleaning", "Expense"),
   a("5200", "Bank Charges", "Expense"),
+  a("5210", "Rounding Adjustments", "Expense", "", "The few cents (under Ksh 1) left on an order that was paid in whole shillings; the order counts as paid and the cents are written off here."),
   a("6800", "Depreciation", "Expense", "", "Charged automatically each month from the Asset Register."),
   a("6900", "Miscellaneous Expenses", "Expense"),
   a("6999", "Uncategorised Expenses", "Expense", "", "Catch-all for an expense head that has no account yet.")
@@ -65997,8 +66005,8 @@ function isNamedClient(name2) {
 }
 function clientKeyFor(c) {
   if (c.corporateClientId) return `c:${c.corporateClientId}`;
-  const digits = (c.phone ?? "").replace(/\D/g, "");
-  if (digits.length >= 9) return `p:${digits.slice(-9)}`;
+  const digits2 = (c.phone ?? "").replace(/\D/g, "");
+  if (digits2.length >= 9) return `p:${digits2.slice(-9)}`;
   if (!isNamedClient(c.name)) return null;
   const name2 = (c.name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   return name2.length >= 3 ? `n:${name2}` : null;
@@ -66708,8 +66716,8 @@ function flatbedDescription(s, widthCm, heightCm, pieces, opts = {}, note = "") 
 // packages/shared/src/dtfSheet.ts
 var r28 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 function sheetClientKey(client, phone) {
-  const digits = phone.replace(/\D/g, "");
-  return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
+  const digits2 = phone.replace(/\D/g, "");
+  return digits2.length >= 7 ? `p:${digits2.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 function sheetCalc(rows, metres, fixedChargePerMetre, minPricePerPiece, defaultClient = "", defaultPhone = "", expectedPieces = 0, smallSharePrice = 0, smallShareBelow = 0) {
   const problems = [];
@@ -66758,8 +66766,8 @@ var r2to = (n) => Math.round((n + Number.EPSILON) * 1e3) / 1e3;
 var r29 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 var r3 = (n) => Math.round((n + Number.EPSILON) * 1e3) / 1e3;
 function artworkClientKey(client, phone) {
-  const digits = phone.replace(/\D/g, "");
-  return digits.length >= 7 ? `p:${digits.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
+  const digits2 = phone.replace(/\D/g, "");
+  return digits2.length >= 7 ? `p:${digits2.slice(-9)}` : `n:${client.trim().toLowerCase().replace(/\s+/g, " ")}`;
 }
 var fin = (n) => Number.isFinite(n) ? n : 0;
 var artworkRowTotal = (r) => r29(fin(r.qty) * (fin(r.price) + fin(r.press) + (r.garmentId ? fin(r.garmentPrice) : 0)));
@@ -72935,6 +72943,64 @@ function headGroup(head, dtfKind) {
   return head;
 }
 
+// apps/api/src/orderRelease.ts
+var STAGE_READY2 = "Ready for Pickup/Delivery";
+var STAGE_DONE = "Completed";
+async function mayRelease(user) {
+  if (user.role === "Admin") return true;
+  const p = await permissionsForRole(user.role);
+  return p.canAccessFinance || p.canManageProduction;
+}
+async function readyGateOn() {
+  const s = await prisma.dayCloseSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+  return s.readyBeforeFinalPayment;
+}
+async function logOverride(db, o) {
+  await db.orderOverride.create({ data: { orderId: o.orderId, orderNo: o.orderNo, kind: o.kind, stage: o.stage, amount: o.amount ?? 0, reason: o.reason.slice(0, 300), byName: o.byName } });
+}
+
+// apps/api/src/orderDup.ts
+var DuplicateError = class extends Error {
+  constructor(hits) {
+    super("Possible duplicate order");
+    this.hits = hits;
+  }
+};
+var digits = (s) => (s ?? "").replace(/\D/g, "");
+var phoneKey2 = (s) => digits(s).length >= 9 ? digits(s).slice(-9) : "";
+var nameKey = (s) => {
+  const n = (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return n && n !== WALK_IN_CLIENT.toLowerCase() && n !== "walk-in" ? n : "";
+};
+async function findDuplicates(db, q) {
+  const on = await db.dayCloseSettings.findUnique({ where: { id: 1 } });
+  if (on && !on.warnDuplicateOrders) return [];
+  const pk = phoneKey2(q.phone);
+  const nk = nameKey(q.name);
+  if (!pk && !nk && !q.corporateClientId) return [];
+  const since = new Date(Date.now() - 24 * 36e5);
+  const recent = await db.order.findMany({ where: { status: { not: "Quote" }, capturedAt: { gte: since } }, include: orderListInclude, orderBy: { id: "desc" }, take: 400 });
+  const hits = [];
+  for (const o of recent) {
+    const sameClient = q.corporateClientId && o.corporateClientId === q.corporateClientId || pk && phoneKey2(o.phone) === pk || nk && nameKey(o.customerName) === nk;
+    if (!sameClient) continue;
+    const total = serializeSummary(o).totals.grandTotal;
+    if (Math.abs(total - q.total) > 0.5) continue;
+    hits.push({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || "", total, minutesAgo: Math.max(0, Math.round((Date.now() - o.capturedAt.getTime()) / 6e4)) });
+  }
+  return hits.slice(0, 3);
+}
+var ago = (m) => m < 1 ? "a moment ago" : m < 60 ? `${m} minute${m === 1 ? "" : "s"} ago` : `${Math.round(m / 60)} hour${Math.round(m / 60) === 1 ? "" : "s"} ago`;
+function sendDuplicate(res, err) {
+  const list = err.hits.map((h) => `${h.orderNo} (${h.customer || "same client"}, Ksh ${Math.round(h.total).toLocaleString("en-KE")}, captured ${ago(h.minutesAgo)})`).join("; ");
+  return res.status(409).json({ code: "POSSIBLE_DUPLICATE", error: `This looks like a duplicate of ${list}. Open that order instead, or capture this one anyway if it really is a second order.`, duplicates: err.hits });
+}
+async function assertNotDuplicate(db, q, confirmed) {
+  if (confirmed) return;
+  const hits = await findDuplicates(db, q);
+  if (hits.length) throw new DuplicateError(hits);
+}
+
 // apps/api/src/orderPdf.ts
 var import_pdf_lib = __toESM(require_cjs());
 function documentKind(order) {
@@ -73305,7 +73371,7 @@ async function orderPostings(book, ctx) {
   const merchandise = idOf(ctx, ACCT.merchandiseIncome);
   const ncbaReceipts = await ncbaReceiptCodes();
   const orders = await prisma.order.findMany({
-    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true }
+    include: { lineItems: { include: { service: true, material: true } }, payments: { include: { mpesaTransaction: true } }, corporateClient: true, notes: { select: { id: true } } }
   });
   for (const o of orders) {
     const party = o.customerName || o.corporateClient?.name || "Customer";
@@ -73348,6 +73414,15 @@ async function orderPostings(book, ctx) {
         book.dr(p.date, methodAccountCode(p.method), p.amount, "Payment", o.orderNo, label);
       }
       book.cr(p.date, recognised ? ACCT.receivables : ACCT.customerCredits, p.amount, "Payment", o.orderNo, label);
+    }
+    if (recognised && total > 0 && o.payments.length > 0 && o.notes.length === 0) {
+      const paid = round2(o.payments.reduce((a2, p) => a2 + p.amount, 0));
+      const left = round2(total - paid);
+      if (left > 4e-3 && left < SETTLED_UNDER) {
+        const when = o.payments.map((p) => p.date).sort().at(-1);
+        book.dr(when, ACCT.rounding, left, "Rounding", o.orderNo, `Rounding \u2014 Ksh ${left.toFixed(2)} left on a settled order \u2014 ${memo}`);
+        book.cr(when, ACCT.receivables, left, "Rounding", o.orderNo, `Rounding \u2014 Ksh ${left.toFixed(2)} left on a settled order \u2014 ${memo}`);
+      }
     }
   }
 }
@@ -73613,6 +73688,10 @@ var paymentLineSchema = external_exports.object({
   // statement line ties the two together.
   reference: external_exports.string().trim().max(60).optional().nullable()
 });
+async function receiptLeft(db, tx) {
+  const used = await db.payment.aggregate({ _sum: { amount: true }, where: { mpesaTransactionId: tx.id } });
+  return Math.max(0, Math.round((tx.amount - (used._sum.amount ?? 0)) * 100) / 100);
+}
 var PaymentError = class extends Error {
   constructor(message) {
     super(message);
@@ -73623,29 +73702,34 @@ async function recordOrderPayments(tx, order, lines, staffId, date = todayStr())
     const reference = line.reference ? line.reference.trim().toUpperCase() : null;
     let mpesaTransactionId = line.linkedTransactionId ?? null;
     let stkClaimed = false;
+    let left = 0;
+    let receivedTx = null;
     const linkedByEntry = mpesaTransactionId === null;
     if (linkedByEntry && line.method === "M-Pesa" && reference) {
       const received = await tx.mpesaTransaction.findUnique({ where: { mpesaReceipt: reference } });
-      const claimable = received?.kind === "STK" && received.status === "Success" && !received.orderId && !await tx.payment.findUnique({ where: { mpesaTransactionId: received.id } });
+      const claimable = received?.kind === "STK" && received.status === "Success" && !received.orderId && !await tx.payment.findFirst({ where: { mpesaTransactionId: received.id } });
       if (received && claimable) {
         await tx.mpesaTransaction.update({ where: { id: received.id }, data: { orderId: order.id } });
         mpesaTransactionId = received.id;
         stkClaimed = true;
       } else if (received) {
         if (received.status !== "Unmatched") throw new PaymentError(`M-Pesa receipt ${reference} has already been used`);
-        if (Math.abs(received.amount - line.amount) > 1) {
-          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString("en-KE")}, not Ksh ${Math.round(line.amount).toLocaleString("en-KE")}`);
+        left = await receiptLeft(tx, received);
+        if (line.amount > left + 1) {
+          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString("en-KE")} and only Ksh ${Math.round(left).toLocaleString("en-KE")} of it is still free (the rest is on other orders), not Ksh ${Math.round(line.amount).toLocaleString("en-KE")}`);
         }
         mpesaTransactionId = received.id;
+        receivedTx = received;
       }
     }
     await tx.payment.create({
       data: { orderId: order.id, date, amount: line.amount, method: line.method, reference, mpesaTransactionId, staffId }
     });
     if (mpesaTransactionId && linkedByEntry && !stkClaimed) {
+      const used = left - line.amount < 1;
       await tx.mpesaTransaction.update({
         where: { id: mpesaTransactionId },
-        data: { status: "Applied", orderId: order.id, appliedAt: /* @__PURE__ */ new Date(), appliedByName: "Matched on entry" }
+        data: { orderId: receivedTx?.orderId ?? order.id, appliedByName: used ? "Matched on entry" : "Matched on entry (part)", ...used ? { status: "Applied", appliedAt: /* @__PURE__ */ new Date() } : {} }
       });
     }
   }
@@ -73762,6 +73846,12 @@ async function captureWalkin(req, res, form, extra = {}) {
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
   const claim = await claimProblem(req.user, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
+  try {
+    await assertNotDuplicate(prisma, { phone: form.phone, name: form.customerName, total: totals.grandTotal }, !!req.body?.confirmDuplicate);
+  } catch (e) {
+    if (e instanceof DuplicateError) return sendDuplicate(res, e);
+    throw e;
+  }
   const order = await prisma.$transaction(async (tx) => {
     const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: extra.creditLines ?? form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
@@ -73854,6 +73944,13 @@ ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req,
   const dueDate = addDays(todayStr(), client.creditDays);
   const claim = await claimProblem(req.user, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
+  try {
+    const t = computeOrderTotals({ lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt }, []);
+    await assertNotDuplicate(prisma, { corporateClientId: form.corporateClientId, total: t.grandTotal }, !!req.body?.confirmDuplicate);
+  } catch (e) {
+    if (e instanceof DuplicateError) return sendDuplicate(res, e);
+    throw e;
+  }
   const order = await prisma.$transaction(async (tx) => {
     const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
     const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
@@ -73886,7 +73983,9 @@ var paymentSchema = external_exports.object({
   amount: external_exports.number().positive().optional(),
   method: external_exports.enum(["Cash", "M-Pesa", "Bank Transfer", "Card"]).optional(),
   reference: external_exports.string().trim().max(60).optional().nullable(),
-  payments: external_exports.array(paymentLineSchema).min(1).max(6).optional()
+  payments: external_exports.array(paymentLineSchema).min(1).max(6).optional(),
+  // A manager's reason for settling the order before it is ready (see orderRelease.ts).
+  overrideReason: external_exports.string().trim().max(300).optional()
 }).refine((b) => b.payments && b.payments.length > 0 || b.amount && b.method, { message: "Enter at least one payment" });
 ordersRouter.post("/:id/payments", async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: { corporateClient: true } });
@@ -73905,8 +74004,26 @@ ordersRouter.post("/:id/payments", async (req, res) => {
   if (paying > before.balanceDue + 0.01) {
     return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString("en-KE")}, but only Ksh ${Math.round(before.balanceDue).toLocaleString("en-KE")} is outstanding` });
   }
+  let overrideReason = null;
+  const settles = before.balanceDue > 5e-3 && before.balanceDue - paying < SETTLED_UNDER;
+  if (settles && current.stage !== STAGE_DONE && await readyGateOn()) {
+    const ready = current.stage === STAGE_READY2;
+    const may = await mayRelease(req.user);
+    const reason = (parsed.data.overrideReason ?? "").trim();
+    if (!(may && reason)) {
+      return res.status(409).json({
+        code: ready ? "USE_COUNTER" : "FINAL_PAYMENT_NOT_READY",
+        canOverride: may,
+        error: ready ? "This payment settles the order. Take it with \u201CTake final payment & hand over\u201D, so the order leaves through the counter." : `This payment would settle the order, but it is at \u201C${current.stage}\u201D \u2014 it has not been produced and passed quality control. The final payment is taken when the order is ready, together with the handover. A deposit or part-payment can be taken now.${may ? " As a manager you can take it now with a reason." : " A manager can release it with a reason."}`
+      });
+    }
+    overrideReason = reason;
+  }
   try {
-    await prisma.$transaction((tx) => recordOrderPayments(tx, order, lines, req.user.id));
+    await prisma.$transaction(async (tx) => {
+      await recordOrderPayments(tx, order, lines, req.user.id);
+      if (overrideReason) await logOverride(tx, { orderId: order.id, orderNo: order.orderNo, kind: "FinalPayment", stage: current.stage, amount: paying, reason: overrideReason, byName: req.user.name });
+    });
   } catch (e) {
     if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
     throw e;
@@ -74078,34 +74195,67 @@ ordersRouter.post("/:id/supplier-bills", async (req, res) => {
   }
   res.status(201).json(await jobCosting(order.id));
 });
-var handoverSchema = external_exports.object({ onCredit: external_exports.boolean().optional() });
+var handoverSchema = external_exports.object({
+  onCredit: external_exports.boolean().optional(),
+  // The final payment, taken in the same action: "Take final payment & hand over". Recorded and the handover done together, or neither.
+  payments: external_exports.array(paymentLineSchema).min(1).max(6).optional(),
+  // A manager handing over before the order is ready (not produced, or not through quality control), with the reason.
+  overrideReason: external_exports.string().trim().max(300).optional()
+});
 ordersRouter.post("/:id/handover", async (req, res) => {
   const parsed = handoverSchema.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: "Invalid request" });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request" });
   const onCredit = parsed.data.onCredit === true;
+  const payLines = parsed.data.payments ?? [];
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
-  if (order.stage === "Completed") return res.status(400).json({ error: "This order has already been handed over" });
-  if (order.stage !== "Ready for Pickup/Delivery") {
-    return res.status(400).json({ error: `This order is at \u201C${order.stage}\u201D. It can only be handed over once it has been produced and has passed quality control.` });
+  if (order.stage === STAGE_DONE) return res.status(400).json({ error: "This order has already been handed over" });
+  if (order.status === "Quote") return res.status(400).json({ error: "This is a quotation: it has to be accepted and produced before it can be handed over" });
+  let override = null;
+  if (order.stage !== STAGE_READY2) {
+    const reason = (parsed.data.overrideReason ?? "").trim();
+    if (!reason || !await mayRelease(req.user)) {
+      return res.status(400).json({
+        code: "NOT_READY",
+        canOverride: await mayRelease(req.user),
+        error: `This order is at \u201C${order.stage}\u201D. It can only be handed over once it has been produced and has passed quality control.${await mayRelease(req.user) ? " As a manager you can release it now with a reason." : " A manager can release it with a reason."}`
+      });
+    }
+    override = reason;
   }
+  if (priceApprovalPending(order)) return res.status(400).json({ error: "This job is priced below the recommended price and is waiting for a manager\u2019s approval" });
   const balance = serializeDetail(order).totals.balanceDue;
-  const owes = balance > 9e-3;
+  const paying = payLines.reduce((a2, p) => a2 + p.amount, 0);
+  if (payLines.length && !await canTakePayment(req.user, order)) return res.status(403).json({ error: "Payments on this order are taken by the person who captured it or by someone who handles payments" });
+  if (paying > balance + 0.01) {
+    return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString("en-KE")}, but only Ksh ${Math.round(balance).toLocaleString("en-KE")} is outstanding` });
+  }
+  const owes = balance - paying >= SETTLED_UNDER;
   if (owes && !onCredit) {
     return res.status(400).json({
-      error: `This order still owes Ksh ${Math.round(balance).toLocaleString("en-KE")}. Take the payment first \u2014 or hand it over on credit, which turns it into an invoice.`,
-      balanceDue: balance,
+      error: `This order still owes Ksh ${Math.round(balance - paying).toLocaleString("en-KE")}. Take the whole payment, or hand it over on credit, which turns it into an invoice.`,
+      balanceDue: balance - paying,
       code: "BALANCE_DUE"
     });
   }
-  const data = { stage: "Completed", handedOverAt: /* @__PURE__ */ new Date(), handedOverByName: req.user.name, handedOverOnCredit: owes };
+  const data = { stage: STAGE_DONE, handedOverAt: /* @__PURE__ */ new Date(), handedOverByName: req.user.name, handedOverOnCredit: owes };
   if (owes) {
     const days = order.corporateClient?.creditDays ?? WALKIN_INVOICE_DUE_DAYS;
     data.status = "Invoice";
     if (!order.dueDate || order.dueDate < todayStr()) data.dueDate = addDays(todayStr(), days);
   }
-  const updated = await prisma.order.update({ where: { id: order.id }, data, include: orderInclude });
+  let updated;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
+      if (payLines.length) await recordOrderPayments(tx, order, payLines, req.user.id);
+      if (override) await logOverride(tx, { orderId: order.id, orderNo: order.orderNo, kind: "Handover", stage: order.stage, amount: paying, reason: override, byName: req.user.name });
+      return tx.order.update({ where: { id: order.id }, data, include: orderInclude });
+    });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
   res.json({ ...serializeDetail(updated), handedOverOnCredit: owes });
 });
 ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canViewAllOrders"), async (req, res) => {
@@ -74761,6 +74911,7 @@ async function buildReceivablesAging(asOf) {
     const outstanding = round2(amount + adjustments - paid);
     if (outstanding < -4e-3) credits += outstanding;
     if (!(outstanding > 4e-3)) continue;
+    if (outstanding < SETTLED_UNDER && paid > 0 && o.notes.length === 0) continue;
     const ageDays = daysBetween(o.dueDate ?? o.createdDate, asOf);
     rows.push({
       orderId: o.id,
@@ -77831,8 +77982,10 @@ function parseStatement(text) {
 }
 async function storeReceipt(r, by) {
   if (await prisma.mpesaTransaction.findUnique({ where: { mpesaReceipt: r.receipt } })) return null;
-  const manual = await prisma.payment.findFirst({ where: { method: "M-Pesa", reference: r.receipt, mpesaTransactionId: null } });
-  const linkable = manual && Math.abs(manual.amount - r.amount) <= 1 ? manual : null;
+  const manuals = await prisma.payment.findMany({ where: { method: "M-Pesa", reference: r.receipt, mpesaTransactionId: null }, orderBy: { id: "asc" } });
+  const manualTotal = round2(manuals.reduce((a2, p) => a2 + p.amount, 0));
+  const linkable = manuals.length > 0 && manualTotal <= r.amount + 1 ? manuals : [];
+  const used = linkable.length > 0 && r.amount - manualTotal < 1;
   const tx = await prisma.mpesaTransaction.create({
     data: {
       checkoutRequestId: `${r.kind}-${r.receipt}`,
@@ -77840,38 +77993,92 @@ async function storeReceipt(r, by) {
       phone: r.phone,
       amount: r.amount,
       accountReference: r.reference,
-      status: linkable ? "Applied" : "Unmatched",
+      status: used ? "Applied" : "Unmatched",
       mpesaReceipt: r.receipt,
-      orderId: linkable?.orderId ?? null,
+      orderId: linkable[0]?.orderId ?? null,
       createdByName: by,
       kind: r.kind,
       payerName: r.name,
       receivedOn: r.date,
-      appliedByName: linkable ? "Matched to a payment already recorded" : null,
-      appliedAt: linkable ? /* @__PURE__ */ new Date() : null,
+      appliedByName: linkable.length ? used ? "Matched to a payment already recorded" : "Part matched to payments already recorded" : null,
+      appliedAt: used ? /* @__PURE__ */ new Date() : null,
       rawJson: JSON.stringify(r.raw ?? {})
     }
   });
-  if (linkable) await prisma.payment.update({ where: { id: linkable.id }, data: { mpesaTransactionId: tx.id } });
-  return { tx, linked: !!linkable };
+  for (const p of linkable) await prisma.payment.update({ where: { id: p.id }, data: { mpesaTransactionId: tx.id } });
+  const linked = linkable.length > 0;
+  return { tx, linked };
 }
-async function applyReceiptToOrder(txId, orderId, by) {
+async function allocateReceipt(txId, allocations, by) {
   const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId } });
   if (!tx) throw new PaymentError("M-Pesa payment not found");
   if (tx.status !== "Unmatched") throw new PaymentError("This payment has already been dealt with");
   if (!tx.mpesaReceipt) throw new PaymentError("This payment has no M-Pesa receipt code to match on");
-  const order = await prisma.order.findUnique({ where: { id: orderId }, include: { corporateClient: true } });
-  if (!order) throw new PaymentError("Order not found");
+  const parts = allocations.filter((a2) => a2.amount > 0);
+  if (parts.length === 0) throw new PaymentError("Enter the amount for at least one order");
+  if (new Set(parts.map((a2) => a2.orderId)).size !== parts.length) throw new PaymentError("An order is listed twice \u2014 give it one amount");
+  const left = await receiptLeft(prisma, tx);
+  const total = round2(parts.reduce((a2, p) => a2 + p.amount, 0));
+  if (total > left + 1) throw new PaymentError(`The amounts add up to Ksh ${Math.round(total).toLocaleString("en-KE")}, but only Ksh ${Math.round(left).toLocaleString("en-KE")} of this payment is still free`);
   const targets = await openTargets();
-  const target = targets.find((t) => t.orderId === orderId);
-  if (!target) throw new PaymentError(`${order.orderNo} has nothing outstanding`);
-  if (round2(tx.amount) > round2(target.balance) + 1) {
-    throw new PaymentError(`${order.orderNo} only owes Ksh ${Math.round(target.balance).toLocaleString("en-KE")} \u2014 less than the Ksh ${Math.round(tx.amount).toLocaleString("en-KE")} received`);
+  const orders = await prisma.order.findMany({ where: { id: { in: parts.map((p) => p.orderId) } }, include: { corporateClient: true } });
+  for (const p of parts) {
+    const order = orders.find((o) => o.id === p.orderId);
+    if (!order) throw new PaymentError("Order not found");
+    const target = targets.find((t) => t.orderId === p.orderId);
+    if (!target) throw new PaymentError(`${order.orderNo} has nothing outstanding`);
+    if (round2(p.amount) > round2(target.balance) + 1) {
+      throw new PaymentError(`${order.orderNo} only owes Ksh ${Math.round(target.balance).toLocaleString("en-KE")} \u2014 less than the Ksh ${Math.round(p.amount).toLocaleString("en-KE")} given to it. Lower its amount, or split the payment across more orders.`);
+    }
   }
+  const remaining = round2(left - total);
+  const used = remaining < 1;
   await prisma.$transaction(async (db) => {
-    await recordOrderPayments(db, order, [{ method: "M-Pesa", amount: tx.amount, reference: tx.mpesaReceipt }], null, tx.receivedOn ?? todayStr());
-    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { appliedByName: by } });
+    for (const p of parts) {
+      const order = orders.find((o) => o.id === p.orderId);
+      await recordOrderPayments(db, order, [{ method: "M-Pesa", amount: p.amount, reference: tx.mpesaReceipt, linkedTransactionId: tx.id }], null, tx.receivedOn ?? todayStr());
+      if (parts.length > 1 || !used) await db.matchChange.create({ data: { transactionId: tx.id, receipt: tx.mpesaReceipt ?? "", amount: p.amount, fromOrderNo: "(unallocated)", toOrderNo: order.orderNo, reason: `Part of this receipt (Ksh ${Math.round(total).toLocaleString("en-KE")} of Ksh ${Math.round(tx.amount).toLocaleString("en-KE")})`.slice(0, 300), byName: by } });
+    }
+    await db.mpesaTransaction.update({
+      where: { id: tx.id },
+      data: { orderId: tx.orderId ?? parts[0].orderId, appliedByName: parts.length > 1 ? `${by} (split across ${parts.length} orders)` : used ? by : `${by} (part)`, ...used ? { status: "Applied", appliedAt: /* @__PURE__ */ new Date() } : {} }
+    });
   });
+  return { applied: total, remaining, orders: parts.length };
+}
+async function applyReceiptToOrder(txId, orderId, by) {
+  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId } });
+  if (!tx) throw new PaymentError("M-Pesa payment not found");
+  const left = await receiptLeft(prisma, tx);
+  return allocateReceipt(txId, [{ orderId, amount: left }], by);
+}
+async function splitSuggestion(txId) {
+  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId }, include: { payments: { include: { order: { select: { orderNo: true } } } } } });
+  if (!tx) throw new PaymentError("M-Pesa payment not found");
+  const left = await receiptLeft(prisma, tx);
+  const key3 = phoneKey(tx.phone);
+  const targets = await openTargets();
+  const rows = targets.map((t) => ({ orderId: t.orderId, ref: t.ref, party: t.party, balance: round2(t.balance), date: t.createdDate, samePayer: !!key3 && phoneKey(t.phone) === key3 })).sort((a2, b) => Number(b.samePayer) - Number(a2.samePayer) || a2.date.localeCompare(b.date) || a2.orderId - b.orderId);
+  let free = left;
+  const suggested = [];
+  for (const r of rows.filter((x) => x.samePayer)) {
+    if (free < 0.5) break;
+    const amount = round2(Math.min(free, r.balance));
+    suggested.push({ orderId: r.orderId, amount });
+    free = round2(free - amount);
+  }
+  return {
+    id: tx.id,
+    receipt: tx.mpesaReceipt,
+    amount: tx.amount,
+    left,
+    phone: tx.phone,
+    payerName: tx.payerName,
+    status: tx.status,
+    applied: tx.payments.map((p) => ({ orderNo: p.order.orderNo, amount: p.amount })),
+    orders: rows.slice(0, 300),
+    suggested
+  };
 }
 async function autoMatch(by) {
   const unmatched = await prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: "Unmatched" }, orderBy: { id: "asc" } });
@@ -77904,16 +78111,18 @@ async function importStatement(text, by) {
   return { read: receipts.length, added, duplicates, linkedToRecorded: linked, autoApplied: applied, skipped };
 }
 var kes = (n) => "Ksh " + Math.round(n).toLocaleString("en-KE");
-async function matchedPayment(txId) {
-  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId }, include: { payment: { include: { order: true } } } });
+async function matchedPayment(txId, paymentId) {
+  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId }, include: { payments: { include: { order: true }, orderBy: { id: "asc" } } } });
   if (!tx) throw new PaymentError("That M-Pesa payment was not found");
-  if (!tx.payment) throw new PaymentError("That receipt is not matched to an order, so there is nothing to put right");
-  return { tx, payment: tx.payment, order: tx.payment.order };
+  if (tx.payments.length === 0) throw new PaymentError("That receipt is not matched to an order, so there is nothing to put right");
+  const payment = paymentId ? tx.payments.find((p) => p.id === paymentId) : tx.payments.length === 1 ? tx.payments[0] : void 0;
+  if (!payment) throw new PaymentError(paymentId ? "That part of the receipt was not found" : "This receipt is shared by several orders \u2014 choose which part to change");
+  return { tx, payment, order: payment.order };
 }
-async function moveMatchedPayment(txId, toOrderId, by, reason) {
+async function moveMatchedPayment(txId, toOrderId, by, reason, paymentId) {
   const why = reason.trim();
   if (!why) throw new PaymentError("Say why the payment is being moved");
-  const { tx, payment, order: from } = await matchedPayment(txId);
+  const { tx, payment, order: from } = await matchedPayment(txId, paymentId);
   if (payment.method !== "M-Pesa") throw new PaymentError("Only an M-Pesa or NCBA payment can be moved here");
   if (from.id === toOrderId) throw new PaymentError("It is already on that order");
   const to = await prisma.order.findUnique({ where: { id: toOrderId } });
@@ -77925,20 +78134,21 @@ async function moveMatchedPayment(txId, toOrderId, by, reason) {
   }
   await prisma.$transaction(async (db) => {
     await db.payment.update({ where: { id: payment.id }, data: { orderId: to.id } });
-    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { orderId: to.id, appliedByName: `${by} (moved from ${from.orderNo})` } });
+    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { orderId: tx.orderId === from.id ? to.id : tx.orderId, appliedByName: `${by} (moved from ${from.orderNo})` } });
     await db.matchChange.create({ data: { transactionId: tx.id, receipt: tx.mpesaReceipt ?? "", amount: payment.amount, fromOrderNo: from.orderNo, toOrderNo: to.orderNo, reason: why.slice(0, 300), byName: by } });
   });
   return { from: from.orderNo, to: to.orderNo };
 }
-async function unmatchPayment(txId, by, reason) {
+async function unmatchPayment(txId, by, reason, paymentId) {
   const why = reason.trim();
   if (!why) throw new PaymentError("Say why the payment is being taken off the order");
-  const { tx, payment, order: from } = await matchedPayment(txId);
+  const { tx, payment, order: from } = await matchedPayment(txId, paymentId);
   if (payment.method !== "M-Pesa") throw new PaymentError("Only an M-Pesa or NCBA payment can be taken off here");
   if (tx.kind === "STK") throw new PaymentError("A payment from a push we sent belongs to the order it was sent for \u2014 move it to another order instead");
   await prisma.$transaction(async (db) => {
     await db.payment.delete({ where: { id: payment.id } });
-    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Unmatched", orderId: null, appliedByName: null, appliedAt: null } });
+    const others = tx.payments.filter((p) => p.id !== payment.id);
+    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Unmatched", orderId: others[0]?.orderId ?? null, appliedByName: others.length ? "Part matched" : null, appliedAt: null } });
     await db.matchChange.create({ data: { transactionId: tx.id, receipt: tx.mpesaReceipt ?? "", amount: payment.amount, fromOrderNo: from.orderNo, toOrderNo: null, reason: why.slice(0, 300), byName: by } });
   });
   return { from: from.orderNo };
@@ -78396,14 +78606,14 @@ function credentialsOk(c, n) {
 function phoneMatches(sent, reported) {
   const r = reported.trim();
   if (!r) return false;
-  const digits = (s) => s.replace(/\D/g, "");
+  const digits2 = (s) => s.replace(/\D/g, "");
   if (/^[0-9a-f]{64}$/i.test(r)) {
-    const d = digits(sent);
+    const d = digits2(sent);
     const forms = [d, "+" + d, "0" + d.slice(3), d.slice(3)];
     return forms.some((f) => (0, import_crypto6.createHash)("sha256").update(f).digest("hex") === r.toLowerCase());
   }
-  const a2 = digits(sent);
-  const b = digits(r);
+  const a2 = digits2(sent);
+  const b = digits2(r);
   return !!a2 && !!b && a2.slice(-9) === b.slice(-9);
 }
 function replyFor(format, ok) {
@@ -78419,10 +78629,10 @@ var mpesaRouter = (0, import_express9.Router)();
 var MAX_STK_AMOUNT = 25e4;
 var NOT_SET_UP = "M-Pesa isn't set up (or is switched off) \u2014 an Admin can set it up under Master Data \u2192 M-Pesa";
 function normalizePhone(raw) {
-  const digits = raw.replace(/[^\d]/g, "");
-  if (/^0[17]\d{8}$/.test(digits)) return "254" + digits.slice(1);
-  if (/^254[17]\d{8}$/.test(digits)) return digits;
-  if (/^[17]\d{8}$/.test(digits)) return "254" + digits;
+  const digits2 = raw.replace(/[^\d]/g, "");
+  if (/^0[17]\d{8}$/.test(digits2)) return "254" + digits2.slice(1);
+  if (/^254[17]\d{8}$/.test(digits2)) return digits2;
+  if (/^[17]\d{8}$/.test(digits2)) return "254" + digits2;
   return null;
 }
 function publicSettings(c) {
@@ -79395,6 +79605,7 @@ async function createDtfOrder(tx, opts) {
     { lineItems: lineItemInputs, orderDiscountPct: 0, orderDiscountAmt: 0 },
     opts.payments.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method }))
   );
+  await assertNotDuplicate(tx, { phone: opts.phone, name: opts.customerName, total: totals.grandTotal }, !!opts.confirmDuplicate);
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
   const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   const uv = opts.product === "uv";
@@ -79594,6 +79805,7 @@ dtfRouter.post("/pen-orders", async (req, res) => {
     const order = await prisma.$transaction(async (tx) => {
       const service = await penService(tx);
       const made = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product: "uv",
         channel: "general",
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -79614,6 +79826,7 @@ dtfRouter.post("/pen-orders", async (req, res) => {
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the pen order") });
   }
 });
@@ -79703,6 +79916,7 @@ dtfRouter.post("/flatbed-orders", async (req, res) => {
     const order = await prisma.$transaction(async (tx) => {
       const service = await flatbedService(tx, quote.unitPrice);
       const made = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product: "uv",
         channel: "general",
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -79723,6 +79937,7 @@ dtfRouter.post("/flatbed-orders", async (req, res) => {
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the flatbed order") });
   }
 });
@@ -80033,6 +80248,7 @@ dtfRouter.post("/sales", async (req, res) => {
     const { sale, order } = await prisma.$transaction(async (tx) => {
       const service = await dtfService(tx, "film", product);
       const order2 = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product,
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
@@ -80066,6 +80282,7 @@ dtfRouter.post("/sales", async (req, res) => {
     });
     res.status(201).json({ sale, order: serializeDetail(order) });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record sale") });
   }
 });
@@ -80084,8 +80301,28 @@ dtfRouter.patch("/sales/:id/paid", manageOnly, async (req, res) => {
     return res.status(400).json({ error: `Amount paid must be between 0 and ${total}` });
   }
   const topUp = amountPaid - sale.amountPaid;
+  let overrideReason = null;
+  let orderStage = "";
+  let orderNo = "";
+  if (sale.orderId && topUp > 0) {
+    const order = await prisma.order.findUnique({ where: { id: sale.orderId }, include: orderInclude });
+    if (order && order.stage !== STAGE_DONE && await readyGateOn()) {
+      const bal = serializeSummary(order).totals.balanceDue;
+      if (bal > 5e-3 && bal - topUp < SETTLED_UNDER) {
+        const may = await mayRelease(req.user);
+        const reason = String(req.body.overrideReason ?? "").trim();
+        if (!(may && reason)) {
+          return res.status(409).json({ code: "FINAL_PAYMENT_NOT_READY", canOverride: may, error: `This would settle ${order.orderNo}, which is at \u201C${order.stage}\u201D \u2014 not produced and through quality control yet. The final payment is taken when the order is ready, with the handover.${may ? " As a manager you can mark it paid now with a reason." : " A manager can release it with a reason."}` });
+        }
+        overrideReason = reason;
+        orderStage = order.stage;
+        orderNo = order.orderNo;
+      }
+    }
+  }
   const updated = await prisma.$transaction(async (tx) => {
     await syncOrderPayment(tx, sale.orderId, topUp);
+    if (overrideReason) await logOverride(tx, { orderId: sale.orderId, orderNo, kind: "FinalPayment", stage: orderStage, amount: topUp, reason: overrideReason, byName: req.user.name });
     return tx.dtfFilmSale.update({ where: { id: sale.id }, data: { amountPaid } });
   });
   res.json(updated);
@@ -80149,6 +80386,7 @@ dtfRouter.post("/jobs", async (req, res) => {
     const { job, order } = await prisma.$transaction(async (tx) => {
       const service = await dtfService(tx, "artwork", product);
       const order2 = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product,
         priceList: label,
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -80206,6 +80444,7 @@ dtfRouter.post("/jobs", async (req, res) => {
     const fresh = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
     res.status(201).json({ job, order: serializeDetail(fresh), approval: needsApproval ? "Pending" : null });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record job") });
   }
 });
@@ -80268,6 +80507,7 @@ dtfRouter.post("/sheets", async (req, res) => {
         const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: r.label.trim(), heatPressFee }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
+          confirmDuplicate: !!req.body?.confirmDuplicate,
           product,
           priceList: label,
           customerName: c.client.trim() || WALK_IN_CLIENT,
@@ -80315,6 +80555,7 @@ dtfRouter.post("/sheets", async (req, res) => {
       orders: made.map((m) => serializeDetail(m.order))
     });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the sheet") });
   }
 });
@@ -80392,6 +80633,7 @@ dtfRouter.post("/prints", async (req, res) => {
         const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: r.label.trim(), heatPressFee: null }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
+          confirmDuplicate: !!req.body?.confirmDuplicate,
           product,
           priceList: label,
           customerName: c.client.trim() || WALK_IN_CLIENT,
@@ -80440,6 +80682,7 @@ dtfRouter.post("/prints", async (req, res) => {
       orders: made.map((m) => serializeDetail(m))
     });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, "Failed to record the print") });
   }
 });
@@ -81270,14 +81513,16 @@ accountingRouter.get("/mpesa", ...mpesaAccess, async (req, res) => {
   const [txs, targets] = await Promise.all([
     prisma.mpesaTransaction.findMany({
       where: { kind: { in: ["C2B", "Import"] }, ...status ? { status } : {} },
-      include: { order: true },
+      include: { order: true, payments: { include: { order: { select: { orderNo: true } } } } },
       orderBy: [{ receivedOn: "desc" }, { id: "desc" }],
       take: 500
     }),
     openTargets()
   ]);
   const rows = txs.map((t) => {
-    const incoming = { amount: t.amount, phone: t.phone, accountReference: t.accountReference };
+    const allocated = round2(t.payments.reduce((a2, p) => a2 + p.amount, 0));
+    const left = round2(Math.max(0, t.amount - allocated));
+    const incoming = { amount: left, phone: t.phone, accountReference: t.accountReference };
     const m = t.status === "Unmatched" ? matchPayment(incoming, targets) : null;
     return {
       id: t.id,
@@ -81289,9 +81534,12 @@ accountingRouter.get("/mpesa", ...mpesaAccess, async (req, res) => {
       payerName: t.payerName,
       reference: t.accountReference,
       receivedOn: t.receivedOn,
-      appliedTo: t.order?.orderNo ?? null,
+      appliedTo: t.payments.length ? [...new Set(t.payments.map((p) => p.order.orderNo))].join(", ") : t.order?.orderNo ?? null,
       appliedByName: t.appliedByName,
       dismissedNote: t.dismissedNote,
+      allocated,
+      left,
+      parts: t.payments.map((p) => ({ orderNo: p.order.orderNo, amount: p.amount })),
       suggestions: t.status === "Unmatched" ? suggestionsFor(incoming, targets).map((s) => ({ ...s, best: m?.matched ? m.target.orderId === s.orderId : false })) : [],
       note: m && !m.matched ? m.reason : null
     };
@@ -81300,7 +81548,7 @@ accountingRouter.get("/mpesa", ...mpesaAccess, async (req, res) => {
   const unverified = await prisma.payment.findMany({ where: { method: "M-Pesa", reference: null }, include: { order: true }, orderBy: { id: "desc" }, take: 200 });
   res.json({
     rows,
-    summary: { unmatchedCount: unmatched.length, unmatchedTotal: round2(unmatched.reduce((a2, r) => a2 + r.amount, 0)) },
+    summary: { unmatchedCount: unmatched.length, unmatchedTotal: round2(unmatched.reduce((a2, r) => a2 + r.left, 0)) },
     openOrders: targets.map((t) => ({ orderId: t.orderId, ref: t.ref, party: t.party, balance: t.balance })),
     unverifiedPayments: unverified.map((p) => ({ id: p.id, orderNo: p.order.orderNo, date: p.date, amount: p.amount }))
   });
@@ -81330,48 +81578,74 @@ accountingRouter.get("/mpesa/matched", ...mpesaAccess, async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   const txs = await prisma.mpesaTransaction.findMany({
     where: {
-      payment: { isNot: null },
-      ...q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payment: { is: { order: { orderNo: { contains: q } } } } }] } : {}
+      payments: { some: {} },
+      ...q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payments: { some: { order: { orderNo: { contains: q } } } } }] } : {}
     },
-    include: { payment: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } } } },
+    include: { payments: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } }, orderBy: { id: "asc" } } },
     orderBy: { id: "desc" },
     take: 100
   });
   const changes = txs.length ? await prisma.matchChange.findMany({ where: { transactionId: { in: txs.map((t) => t.id) } }, orderBy: { id: "desc" } }) : [];
   res.json({
-    rows: txs.map((t) => ({
-      id: t.id,
-      receipt: t.mpesaReceipt,
-      kind: t.kind,
-      amount: t.amount,
-      phone: t.phone,
-      payerName: t.payerName,
-      reference: t.accountReference,
-      date: t.payment.date,
-      orderId: t.payment.order.id,
-      orderNo: t.payment.order.orderNo,
-      customer: t.payment.order.corporateClient?.name || t.payment.order.customerName || "\u2014",
-      matchedBy: t.appliedByName ?? "",
-      canUnmatch: t.kind !== "STK",
-      changes: changes.filter((c) => c.transactionId === t.id).map((c) => ({ from: c.fromOrderNo, to: c.toOrderNo, reason: c.reason, by: c.byName, at: c.at.toISOString() }))
-    }))
+    rows: txs.flatMap((t) => {
+      const applied = round2(t.payments.reduce((a2, p) => a2 + p.amount, 0));
+      return t.payments.map((p) => ({
+        id: t.id,
+        paymentId: p.id,
+        receipt: t.mpesaReceipt,
+        kind: t.kind,
+        amount: p.amount,
+        // this part
+        receiptAmount: t.amount,
+        left: round2(Math.max(0, t.amount - applied)),
+        shared: t.payments.length > 1,
+        phone: t.phone,
+        payerName: t.payerName,
+        reference: t.accountReference,
+        date: p.date,
+        orderId: p.order.id,
+        orderNo: p.order.orderNo,
+        customer: p.order.corporateClient?.name || p.order.customerName || "\u2014",
+        matchedBy: t.appliedByName ?? "",
+        canUnmatch: t.kind !== "STK",
+        changes: changes.filter((c) => c.transactionId === t.id && (c.toOrderNo === p.order.orderNo || c.fromOrderNo === p.order.orderNo)).map((c) => ({ from: c.fromOrderNo, to: c.toOrderNo, reason: c.reason, by: c.byName, at: c.at.toISOString() }))
+      }));
+    })
   });
 });
+accountingRouter.get("/mpesa/:id/split", ...mpesaAccess, async (req, res) => {
+  try {
+    res.json(await splitSuggestion(Number(req.params.id)));
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+accountingRouter.post("/mpesa/:id/allocate", ...mpesaAccess, async (req, res) => {
+  const body = external_exports.object({ allocations: external_exports.array(external_exports.object({ orderId: external_exports.number().int().positive(), amount: external_exports.number().positive().max(1e8) })).min(1).max(40) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: "Choose the orders and give an amount for each" });
+  try {
+    res.json({ ok: true, ...await allocateReceipt(Number(req.params.id), body.data.allocations, req.user.name) });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
 accountingRouter.post("/mpesa/:id/rematch", ...mpesaAccess, async (req, res) => {
-  const body = external_exports.object({ orderId: external_exports.number().int().positive(), reason: external_exports.string().trim().min(1, "Say why the payment is being moved").max(300) }).safeParse(req.body);
+  const body = external_exports.object({ orderId: external_exports.number().int().positive(), paymentId: external_exports.number().int().positive().optional(), reason: external_exports.string().trim().min(1, "Say why the payment is being moved").max(300) }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Choose the order and give a reason" });
   try {
-    res.json({ ok: true, ...await moveMatchedPayment(Number(req.params.id), body.data.orderId, req.user.name, body.data.reason) });
+    res.json({ ok: true, ...await moveMatchedPayment(Number(req.params.id), body.data.orderId, req.user.name, body.data.reason, body.data.paymentId) });
   } catch (e) {
     if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
     throw e;
   }
 });
 accountingRouter.post("/mpesa/:id/unmatch", ...mpesaAccess, async (req, res) => {
-  const body = external_exports.object({ reason: external_exports.string().trim().min(1, "Say why the payment is being taken off the order").max(300) }).safeParse(req.body);
+  const body = external_exports.object({ paymentId: external_exports.number().int().positive().optional(), reason: external_exports.string().trim().min(1, "Say why the payment is being taken off the order").max(300) }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Give a reason" });
   try {
-    res.json({ ok: true, ...await unmatchPayment(Number(req.params.id), req.user.name, body.data.reason) });
+    res.json({ ok: true, ...await unmatchPayment(Number(req.params.id), req.user.name, body.data.reason, body.data.paymentId) });
   } catch (e) {
     if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
     throw e;
@@ -81382,6 +81656,7 @@ accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => 
   if (!note) return res.status(400).json({ error: "Say why this payment is being dismissed" });
   const tx = await prisma.mpesaTransaction.findUnique({ where: { id: Number(req.params.id) } });
   if (!tx || tx.status !== "Unmatched") return res.status(400).json({ error: "Only an unmatched payment can be dismissed" });
+  if (await prisma.payment.count({ where: { mpesaTransactionId: tx.id } }) > 0) return res.status(400).json({ error: "Part of this payment is already on an order. Take those parts off first, or apply the rest." });
   await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Dismissed", dismissedNote: note.slice(0, 200), appliedByName: req.user.name, appliedAt: /* @__PURE__ */ new Date() } });
   res.json({ ok: true });
 });
@@ -84001,15 +84276,24 @@ async function ncbaTieOut(date) {
   const known = wanted.size ? await prisma.ncbaNotification.findMany({ where: { transId: { in: [...wanted] } }, select: { transId: true } }) : [];
   const ncbaCodes = new Set(known.map((k) => k.transId.toUpperCase()));
   const codeList = notes.map((n) => n.transId).filter(Boolean);
-  const carrying = codeList.length ? await prisma.payment.findMany({ where: { OR: [{ reference: { in: codeList } }, { mpesaTransaction: { mpesaReceipt: { in: codeList } } }] }, select: { reference: true, mpesaTransaction: { select: { mpesaReceipt: true } } } }) : [];
-  const onOrder = new Set(carrying.flatMap((p) => [p.reference, p.mpesaTransaction?.mpesaReceipt]).filter((c) => !!c).map((c) => c.toUpperCase()));
+  const carrying = codeList.length ? await prisma.payment.findMany({ where: { OR: [{ reference: { in: codeList } }, { mpesaTransaction: { mpesaReceipt: { in: codeList } } }] }, select: { amount: true, reference: true, mpesaTransaction: { select: { mpesaReceipt: true } } } }) : [];
+  const applied = /* @__PURE__ */ new Map();
+  for (const p of carrying) {
+    const code = (p.mpesaTransaction?.mpesaReceipt ?? p.reference ?? "").toUpperCase();
+    if (code) applied.set(code, (applied.get(code) ?? 0) + p.amount);
+  }
+  const leftOf = (n) => {
+    const left = n.amount - (applied.get(n.transId.toUpperCase()) ?? 0);
+    return left >= 1 ? Math.round(left * 100) / 100 : 0;
+  };
   const sent = notes.reduce((a2, n) => a2 + n.amount, 0);
-  const notOnOrder = notes.filter((n) => !onOrder.has(n.transId.toUpperCase()));
+  const notOnOrder = notes.filter((n) => leftOf(n) > 0).map((n) => ({ ...n, amount: leftOf(n), part: leftOf(n) < n.amount - 0.5 }));
   const other = mpesaToday.filter((p) => !(p.mpesaTransaction?.checkoutRequestId ?? "").startsWith("NCBA-") && !codesOf(p).some((c) => ncbaCodes.has(c)));
   return {
     active: everSeen > 0,
     sent: { count: notes.length, amount: round23(sent) },
     onOrders: { count: notes.length - notOnOrder.length, amount: round23(sent - notOnOrder.reduce((a2, n) => a2 + n.amount, 0)) },
+    // receipts wholly on orders; a part-matched receipt counts here for what is applied
     notOnOrder: { count: notOnOrder.length, amount: round23(notOnOrder.reduce((a2, n) => a2 + n.amount, 0)), receipts: notOnOrder.slice(0, 100).map((n) => ({ id: n.id, receipt: n.transId, amount: n.amount, phone: n.phone, payer: n.payerName, billRef: n.billRef, outcome: n.outcome })) },
     otherMpesa: { count: other.length, amount: round23(other.reduce((a2, p) => a2 + p.amount, 0)), payments: other.slice(0, 100).map((p) => ({ id: p.id, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || "\u2014", amount: p.amount, reference: p.reference ?? p.mpesaTransaction?.mpesaReceipt ?? "" })) },
     duplicatesOrRejected: ignoredCount,
@@ -84064,11 +84348,12 @@ async function liveDay(date, tillId) {
     byPerson.set(name2, row);
   }
   const received = round23(mine.reduce((a2, p) => a2 + p.amount, 0));
-  const [closing, opening, raised, ncba] = await Promise.all([
+  const [closing, opening, raised, ncba, toCheck] = await Promise.all([
     outstandingAsAt(date),
     outstandingAsAt(addDays(date, -1)),
     prisma.order.findMany({ where: { status: { not: "Quote" }, createdDate: date }, include: orderListInclude }),
-    ncbaTieOut(date)
+    ncbaTieOut(date),
+    ordersToCheck(date)
   ]);
   const sum = (rows) => round23(rows.reduce((a2, x) => a2 + x.balance, 0));
   const raisedToday = round23(raised.reduce((a2, o) => a2 + serializeSummary({ ...o, payments: [] }).totals.grandTotal, 0));
@@ -84099,8 +84384,18 @@ async function liveDay(date, tillId) {
       invoices: closing.slice(0, 200),
       invoiceCount: closing.length
     },
-    ncba
+    ncba,
+    toCheck
   };
+}
+async function ordersToCheck(date) {
+  const today = todayStr();
+  const waiting = await prisma.order.findMany({ where: { status: { not: "Quote" }, stage: "Order Received", createdDate: { lt: today } }, include: orderListInclude, orderBy: { id: "asc" }, take: 400 });
+  const notProduced = waiting.map((o) => ({ o, s: serializeSummary(o) })).filter(({ s }) => s.totals.grandTotal > 0 && s.totals.balanceDue <= 5e-3).map(({ o, s }) => ({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || "\u2014", createdDate: o.createdDate, total: s.totals.grandTotal, staff: o.staff.name, daysWaiting: Math.max(0, Math.round((Date.parse(today) - Date.parse(o.createdDate)) / 864e5)) })).sort((a2, b) => b.daysWaiting - a2.daysWaiting);
+  const from = /* @__PURE__ */ new Date(`${date}T00:00:00+03:00`);
+  const to = new Date(from.getTime() + 24 * 36e5);
+  const releases = (await prisma.orderOverride.findMany({ where: { at: { gte: from, lt: to } }, orderBy: { id: "asc" } })).map((r) => ({ id: r.id, orderNo: r.orderNo, kind: r.kind, stage: r.stage, amount: r.amount, reason: r.reason, by: r.byName }));
+  return { notProduced: notProduced.slice(0, 100), notProducedCount: notProduced.length, releases };
 }
 async function reminder() {
   const today = todayStr();
@@ -84146,6 +84441,8 @@ async function summaryFor(date) {
   const owed = `${shilling(day.outstanding.closing)}${overdue > 0 ? ` (${shilling(overdue)} overdue)` : ""}`;
   const notes = [];
   if (day.ncba.active) notes.push(`NCBA sent ${shilling(day.ncba.sent.amount)}${day.ncba.notOnOrder.count ? `; ${day.ncba.notOnOrder.count} receipt${day.ncba.notOnOrder.count === 1 ? "" : "s"} (${shilling(day.ncba.notOnOrder.amount)}) not on an order` : "; all on orders"}${day.ncba.otherMpesa.count ? `; ${day.ncba.otherMpesa.count} M-Pesa payment${day.ncba.otherMpesa.count === 1 ? "" : "s"} NCBA did not send` : ""}`);
+  if (day.toCheck.notProducedCount > 0) notes.push(`${day.toCheck.notProducedCount} paid order${day.toCheck.notProducedCount === 1 ? "" : "s"} never started in production`);
+  if (day.toCheck.releases.length > 0) notes.push(`${day.toCheck.releases.length} order${day.toCheck.releases.length === 1 ? "" : "s"} released early by a manager`);
   const unclosed = rem.unclosed.map((u) => `${u.tillName} ${dayLabel(u.date)}`);
   if (rem.unclosed.length) notes.push(`Not closed: ${unclosed.join(", ")}`);
   else notes.push("No earlier day is waiting to be closed");
@@ -84453,7 +84750,7 @@ dayCloseRouter.put("/tills/:id", requireRole("Admin"), async (req, res) => {
 });
 var publicSettings3 = async () => {
   const s = await getSummarySettings();
-  return { enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
+  return { readyBeforeFinalPayment: s.readyBeforeFinalPayment, warnDuplicateOrders: s.warnDuplicateOrders, enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
 };
 dayCloseRouter.get("/settings", requireRole("Admin"), async (_req, res) => {
   res.json(await publicSettings3());
@@ -84463,14 +84760,16 @@ dayCloseRouter.put("/settings", requireRole("Admin"), async (req, res) => {
     enabled: external_exports.boolean().optional(),
     time: external_exports.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "The time looks like 18:30").optional(),
     numbers: external_exports.string().max(400).optional(),
-    template: external_exports.string().trim().regex(/^[a-z0-9_]{0,512}$/, "A template name has only lowercase letters, numbers and underscores").optional()
+    template: external_exports.string().trim().regex(/^[a-z0-9_]{0,512}$/, "A template name has only lowercase letters, numbers and underscores").optional(),
+    readyBeforeFinalPayment: external_exports.boolean().optional(),
+    warnDuplicateOrders: external_exports.boolean().optional()
   }).safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message ?? "Invalid input" });
   const cur = await getSummarySettings();
   const numbers = p.data.numbers ?? cur.summaryNumbers;
   if (p.data.numbers !== void 0 && numbers.trim() && parseNumbers(numbers).length === 0) return res.status(400).json({ error: "Enter WhatsApp numbers like 0797 785 033, separated by commas" });
   if ((p.data.enabled ?? cur.summaryEnabled) && parseNumbers(numbers).length === 0) return res.status(400).json({ error: "Enter at least one WhatsApp number before switching the summary on" });
-  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate } });
+  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate, readyBeforeFinalPayment: p.data.readyBeforeFinalPayment ?? cur.readyBeforeFinalPayment, warnDuplicateOrders: p.data.warnDuplicateOrders ?? cur.warnDuplicateOrders } });
   res.json(await publicSettings3());
 });
 dayCloseRouter.get("/summary/preview", requireRole("Admin"), async (req, res) => {
@@ -84511,9 +84810,17 @@ function view(r, userId) {
     mine: r.requestedById === userId
   };
 }
-function kindProblem(order) {
-  if (order.dtfFilmSale || order.dtfArtworkJob || order.embroideryJob) return "Film, artwork and embroidery orders are tied to the roll and the job, so they cannot be amended or deleted here";
-  if (order.stage === "Completed" || order.handedOverOnCredit) return "A completed order cannot be changed \u2014 raise a credit note instead";
+function amendProblem(order) {
+  if (order.dtfFilmSale || order.dtfArtworkJob || order.embroideryJob) return "Film, artwork and embroidery orders are tied to the roll and the job, so they cannot be amended here (a mistaken one can be deleted instead)";
+  if (order.stage === "Completed" || order.handedOverOnCredit) return "A completed order cannot be amended \u2014 raise a credit note instead";
+  return null;
+}
+async function deleteProblem(order) {
+  const worked = await prisma.productionTask.count({ where: { orderId: order.id, status: { in: ["In Progress", "Finished"] } } });
+  const checked = await prisma.qualityCheck.count({ where: { orderId: order.id } });
+  if (worked > 0 || checked > 0) return "Production has already worked on this order, so it cannot be deleted \u2014 raise a credit note instead";
+  if (await prisma.expense.count({ where: { orderId: order.id } }) > 0) return "A supplier bill has been recorded against this order, so it cannot be deleted";
+  if (await prisma.adjustmentNote.count({ where: { orderId: order.id } }) > 0) return "A credit or debit note has been raised against this order, so it cannot be deleted";
   return null;
 }
 var snapshot = (o) => {
@@ -84535,7 +84842,7 @@ orderChangesRouter.get("/orders/:orderId", async (req, res) => {
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
   const rows = await prisma.orderChange.findMany({ where: { orderId }, orderBy: { id: "desc" }, take: 20 });
-  res.json({ requests: rows.map((r) => view(r, req.user.id)), problem: kindProblem(order), hasPayments: order.payments.length > 0 });
+  res.json({ requests: rows.map((r) => view(r, req.user.id)), amendProblem: amendProblem(order), deleteProblem: await deleteProblem(order), hasPayments: order.payments.length > 0 });
 });
 var askSchema = external_exports.object({ kind: external_exports.enum(["Amend", "Delete"]), reason: external_exports.string().trim().min(3, "Say why the order needs to be changed").max(300) });
 orderChangesRouter.post("/orders/:orderId", async (req, res) => {
@@ -84545,7 +84852,7 @@ orderChangesRouter.post("/orders/:orderId", async (req, res) => {
   const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
   if (!order) return res.status(404).json({ error: "Order not found" });
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
-  const problem = kindProblem(order);
+  const problem = body.data.kind === "Amend" ? amendProblem(order) : await deleteProblem(order);
   if (problem) return res.status(400).json({ error: problem });
   const open2 = await prisma.orderChange.findFirst({ where: { orderId, status: { in: ["Pending", "Approved"] } } });
   if (open2) return res.status(409).json({ error: `There is already ${open2.status === "Pending" ? "a request waiting for approval" : "an approved request not used yet"} for this order` });
@@ -84594,7 +84901,7 @@ orderChangesRouter.put("/orders/:orderId/amend", async (req, res) => {
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
   const request = await approvedFor(req.user.id, orderId, "Amend");
   if (!request) return res.status(403).json({ error: "There is no approved request for you to amend this order. Ask for the amendment first, and wait for it to be approved." });
-  const problem = kindProblem(order);
+  const problem = amendProblem(order);
   if (problem) return res.status(400).json({ error: problem });
   const d = body.data;
   const totals = computeOrderTotals({ lineItems: d.lineItems, orderDiscountPct: d.orderDiscountPct, orderDiscountAmt: d.orderDiscountAmt }, []);
@@ -84654,17 +84961,19 @@ orderChangesRouter.delete("/orders/:orderId", async (req, res) => {
   if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
   const request = await approvedFor(req.user.id, orderId, "Delete");
   if (!request) return res.status(403).json({ error: "There is no approved request for you to delete this order. Ask for the deletion first, and wait for it to be approved." });
-  const problem = kindProblem(order);
+  const problem = await deleteProblem(order);
   if (problem) return res.status(400).json({ error: problem });
   if (order.payments.length > 0) {
     return res.status(400).json({ error: `This order has ${order.payments.length} payment${order.payments.length === 1 ? "" : "s"} on it. Move an M-Pesa / NCBA payment to the right order (Accounting \u2192 M-Pesa Matching \u2192 Matched payments), or refund the customer, before the order is deleted.` });
   }
-  if (await prisma.adjustmentNote.count({ where: { orderId } }) > 0) return res.status(400).json({ error: "A credit or debit note has been raised against this order, so it cannot be deleted" });
   const before = snapshot(order);
   try {
     await prisma.$transaction(async (tx) => {
       await returnOrderStock(tx, orderId);
       await tx.mpesaTransaction.updateMany({ where: { orderId }, data: { orderId: null } });
+      await tx.priceApproval.deleteMany({ where: { orderId } });
+      await tx.dtfArtworkJob.deleteMany({ where: { orderId } });
+      await tx.dtfFilmSale.deleteMany({ where: { orderId } });
       await tx.order.delete({ where: { id: orderId } });
       await tx.orderChange.update({ where: { id: request.id }, data: { status: "Done", doneAt: /* @__PURE__ */ new Date(), beforeJson: before, afterJson: "" } });
     });

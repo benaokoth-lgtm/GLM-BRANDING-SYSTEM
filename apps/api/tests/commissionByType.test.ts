@@ -24,6 +24,7 @@ const row = (st: any, type: string) => st.byType.find((r: any) => r.type === typ
 
 describe('commission by kind of sale', () => {
   before(async () => {
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { readyBeforeFinalPayment: false, warnDuplicateOrders: false }, create: { id: 1, readyBeforeFinalPayment: false, warnDuplicateOrders: false } }); // these tests are about something else: no hold on the final payment, no duplicate warning
     await prisma.role.create({ data: { name: 'ByType Counter', canCaptureOrders: true, canBeAssignedOrders: true, canAccessDtf: true } });
     for (const key of ['cara', 'dan']) {
       const u = await prisma.user.create({ data: { name: `${key} (bytype test)`, role: 'ByType Counter', pinHash: 'x' } });

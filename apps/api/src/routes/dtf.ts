@@ -10,13 +10,15 @@ import { sheetCalc, DISCOUNT_PRODUCTS, canGiveDiscount, unitDiscountAmount, canD
 import type { DiscountProduct, UnitDiscount, DtfProduct, FlatbedSettings, LineItemInput, PaymentMethod } from '@glm/shared';
 import { artworkListCalc } from '@glm/shared';
 import { prisma } from '../db';
+import { DuplicateError, assertNotDuplicate, sendDuplicate } from '../orderDup';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth';
 import { permissionsForRole } from '../permissions';
 import { claimProblem, resolveSourcing } from '../commission';
 import { resolveCapture } from '../frontOffice';
-import { WALK_IN_CLIENT } from '@glm/shared';
+import { SETTLED_UNDER, WALK_IN_CLIENT } from '@glm/shared';
 import { DTF_HEAD } from '../orderHeads';
-import { paymentLineSchema, recordOrderPayments, PaymentError, orderInclude, resolveWalkinStatus, serializeDetail } from './orders';
+import { paymentLineSchema, recordOrderPayments, PaymentError, orderInclude, resolveWalkinStatus, serializeDetail, serializeSummary } from './orders';
+import { STAGE_DONE, logOverride, mayRelease, readyGateOn } from '../orderRelease';
 import type { PaymentLine } from './orders';
 
 // DTF Sales & Roll Tracker. Two access levels (see Role model):
@@ -118,6 +120,8 @@ async function createDtfOrder(
     serviceBase?: number;
     /** The order's lines exactly as listed — the artwork, the heat press and the garment of each row in turn — used INSTEAD of serviceLine / moreServiceLines / materialLines (serviceLine is still the first line, for sourcing). */
     orderedLines?: { itemType: 'service' | 'material'; serviceId?: number; materialId?: number; qty: number; unitPrice: number; description?: string }[];
+    /** The person has seen the duplicate warning and chose to capture the order anyway. */
+    confirmDuplicate?: boolean;
   },
 ) {
   // The order's staffId comes straight from the caller's JWT — if the dev
@@ -148,6 +152,8 @@ async function createDtfOrder(
     { lineItems: lineItemInputs, orderDiscountPct: 0, orderDiscountAmt: 0 },
     opts.payments.map((p) => ({ date: todayStr(), amount: p.amount, method: p.method as PaymentMethod })),
   );
+  // the same client with the same total in the last 24 hours: ask before capturing it twice (the screen turns this into a "capture it anyway?")
+  await assertNotDuplicate(tx, { phone: opts.phone, name: opts.customerName, total: totals.grandTotal }, !!opts.confirmDuplicate);
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
 
   const settings = await tx.setting.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
@@ -383,6 +389,7 @@ dtfRouter.post('/pen-orders', async (req, res) => {
     const order = await prisma.$transaction(async (tx) => {
       const service = await penService(tx);
       const made = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product: 'uv',
         channel: 'general',
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -402,6 +409,7 @@ dtfRouter.post('/pen-orders', async (req, res) => {
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the pen order') });
   }
 });
@@ -505,6 +513,7 @@ dtfRouter.post('/flatbed-orders', async (req, res) => {
     const order = await prisma.$transaction(async (tx) => {
       const service = await flatbedService(tx, quote.unitPrice);
       const made = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product: 'uv',
         channel: 'general',
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -524,6 +533,7 @@ dtfRouter.post('/flatbed-orders', async (req, res) => {
     });
     res.status(201).json({ order: serializeDetail(order) });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the flatbed order') });
   }
 });
@@ -911,6 +921,7 @@ dtfRouter.post('/sales', async (req, res) => {
     const { sale, order } = await prisma.$transaction(async (tx) => {
       const service = await dtfService(tx, 'film', product);
       const order = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product,
         customerName: d.client.trim() || WALK_IN_CLIENT,
         phone: d.phone.trim(),
@@ -943,6 +954,7 @@ dtfRouter.post('/sales', async (req, res) => {
     });
     res.status(201).json({ sale, order: serializeDetail(order) });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record sale') });
   }
 });
@@ -971,8 +983,29 @@ dtfRouter.patch('/sales/:id/paid', manageOnly, async (req, res) => {
     return res.status(400).json({ error: `Amount paid must be between 0 and ${total}` });
   }
   const topUp = amountPaid - sale.amountPaid;
+  // "Mark paid" is a payment on the order like any other: the one that settles it is taken when the order is ready, with the handover (a manager can release it earlier, with a reason)
+  let overrideReason: string | null = null;
+  let orderStage = '';
+  let orderNo = '';
+  if (sale.orderId && topUp > 0) {
+    const order = await prisma.order.findUnique({ where: { id: sale.orderId }, include: orderInclude });
+    if (order && order.stage !== STAGE_DONE && (await readyGateOn())) {
+      const bal = serializeSummary(order).totals.balanceDue;
+      if (bal > 0.005 && bal - topUp < SETTLED_UNDER) {
+        const may = await mayRelease(req.user!);
+        const reason = String((req.body as { overrideReason?: string }).overrideReason ?? '').trim();
+        if (!(may && reason)) {
+          return res.status(409).json({ code: 'FINAL_PAYMENT_NOT_READY', canOverride: may, error: `This would settle ${order.orderNo}, which is at “${order.stage}” — not produced and through quality control yet. The final payment is taken when the order is ready, with the handover.${may ? ' As a manager you can mark it paid now with a reason.' : ' A manager can release it with a reason.'}` });
+        }
+        overrideReason = reason;
+        orderStage = order.stage;
+        orderNo = order.orderNo;
+      }
+    }
+  }
   const updated = await prisma.$transaction(async (tx) => {
     await syncOrderPayment(tx, sale.orderId, topUp);
+    if (overrideReason) await logOverride(tx, { orderId: sale.orderId!, orderNo, kind: 'FinalPayment', stage: orderStage, amount: topUp, reason: overrideReason, byName: req.user!.name });
     return tx.dtfFilmSale.update({ where: { id: sale.id }, data: { amountPaid } });
   });
   res.json(updated);
@@ -1050,6 +1083,7 @@ dtfRouter.post('/jobs', async (req, res) => {
     const { job, order } = await prisma.$transaction(async (tx) => {
       const service = await dtfService(tx, 'artwork', product);
       const order = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
         product,
         priceList: label,
         customerName: d.client.trim() || WALK_IN_CLIENT,
@@ -1105,6 +1139,7 @@ dtfRouter.post('/jobs', async (req, res) => {
     const fresh = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: orderInclude });
     res.status(201).json({ job, order: serializeDetail(fresh), approval: needsApproval ? 'Pending' : null });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record job') });
   }
 });
@@ -1178,6 +1213,7 @@ dtfRouter.post('/sheets', async (req, res) => {
         const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: r.label.trim(), heatPressFee }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
           product,
           priceList: label,
           customerName: c.client.trim() || WALK_IN_CLIENT,
@@ -1223,6 +1259,7 @@ dtfRouter.post('/sheets', async (req, res) => {
       orders: made.map((m) => serializeDetail(m.order)),
     });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the sheet') });
   }
 });
@@ -1310,6 +1347,7 @@ dtfRouter.post('/prints', async (req, res) => {
         const lines = c.rows.map((r) => ({ qty: r.qty, unitPrice: r.price, description: r.label.trim(), heatPressFee: null }));
         const [first, ...rest] = lines;
         const order = await createDtfOrder(tx, {
+        confirmDuplicate: !!req.body?.confirmDuplicate,
           product,
           priceList: label,
           customerName: c.client.trim() || WALK_IN_CLIENT,
@@ -1355,6 +1393,7 @@ dtfRouter.post('/prints', async (req, res) => {
       orders: made.map((m) => serializeDetail(m)),
     });
   } catch (err) {
+    if (err instanceof DuplicateError) return sendDuplicate(res, err);
     res.status(400).json({ error: orderCreationErrorMessage(err, 'Failed to record the print') });
   }
 });

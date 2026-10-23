@@ -23,6 +23,7 @@ const order = (who: string, extra: object = {}) => call(who, 'POST', '/orders/wa
 
 describe('GLM and sales persons, allocated by the front office', () => {
   before(async () => {
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { readyBeforeFinalPayment: false, warnDuplicateOrders: false }, create: { id: 1, readyBeforeFinalPayment: false, warnDuplicateOrders: false } }); // these tests are about something else: no hold on the final payment, no duplicate warning
     await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true }, create: { id: 1, enabled: true } });
     await prisma.role.create({ data: { name: 'Seller (src test)', canCaptureOrders: true, canBeAssignedOrders: true, canAccessDtf: true } });
     await prisma.role.create({ data: { name: 'Desk (src test)', canCaptureOrders: true, canCaptureForOthers: true, canAccessDtf: true, canViewAllOrders: true } });

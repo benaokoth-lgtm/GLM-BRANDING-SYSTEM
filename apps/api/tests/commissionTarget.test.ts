@@ -37,6 +37,7 @@ const settings = (extra: Record<string, unknown>) =>
 
 describe('commission needs the sales target first', () => {
   before(async () => {
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { readyBeforeFinalPayment: false, warnDuplicateOrders: false }, create: { id: 1, readyBeforeFinalPayment: false, warnDuplicateOrders: false } }); // these tests are about something else: no hold on the final payment, no duplicate warning
     await prisma.role.create({ data: { name: 'Target Counter', canCaptureOrders: true, canBeAssignedOrders: true, canAccessDtf: true } });
     await prisma.role.create({ data: { name: 'Target Boss', canCaptureOrders: true, canAccessFinance: true, canAccessAccounting: true, canManageCommission: true } });
     for (const [key, role, salary] of [['amina', 'Target Counter', 40000], ['brian', 'Target Counter', null], ['carol', 'Target Counter', null], ['dave', 'Target Counter', null], ['boss', 'Target Boss', null]] as const) {

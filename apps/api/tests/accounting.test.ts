@@ -84,9 +84,9 @@ describe('accounting module', () => {
     await prisma.mpesaTransaction.create({ data: { checkoutRequestId: 'ws_CO_claim1', merchantRequestId: '', phone: '254711111111', amount: 700, accountReference: 'Walk-in', mpesaReceipt: 'STKCLAIM01', status: 'Success', createdByName: 't', kind: 'STK' } });
     const o = await newOrder('T-2B', [[1, 700]]);
     await prisma.$transaction((tx) => recordOrderPayments(tx, o, [{ method: 'M-Pesa', amount: 700, reference: 'stkclaim01' }], staffId));
-    const stk = await prisma.mpesaTransaction.findUniqueOrThrow({ where: { mpesaReceipt: 'STKCLAIM01' }, include: { payment: true } });
+    const stk = await prisma.mpesaTransaction.findUniqueOrThrow({ where: { mpesaReceipt: 'STKCLAIM01' }, include: { payments: true } });
     assert.equal(stk.orderId, o.id);
-    assert.equal(stk.payment?.amount, 700);
+    assert.equal(stk.payments[0]?.amount, 700);
     assert.equal(stk.status, 'Success');
     // an STK receipt goes straight to M-Pesa (it is never held in the unallocated account)
     const l = await loadLedger();

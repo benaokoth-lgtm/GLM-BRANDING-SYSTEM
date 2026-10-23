@@ -51,6 +51,11 @@ interface Day {
     duplicatesOrRejected: number;
     expectedBankSettlement: number;
   };
+  toCheck: {
+    notProduced: { id: number; orderNo: string; customer: string; createdDate: string; total: number; staff: string; daysWaiting: number }[];
+    notProducedCount: number;
+    releases: { id: number; orderNo: string; kind: string; stage: string; amount: number; reason: string; by: string }[];
+  };
   close: null | {
     status: 'Submitted' | 'Approved';
     openingFloat: number;
@@ -430,6 +435,40 @@ export default function DayClose() {
                 </Card>
               )}
 
+              {(d.toCheck.notProducedCount > 0 || d.toCheck.releases.length > 0) && (
+                <Card title="Orders to check" hint="Orders that went round the proper process. An order is made, passes quality control, and then the final payment is taken with the handover.">
+                  {d.toCheck.releases.length > 0 && (
+                    <>
+                      <p className="note" style={{ marginBottom: 0 }}><b>Released early by a manager on this day</b> — paid off or handed over before it was ready, with the reason given.</p>
+                      <div className="table-wrap">
+                        <table className="table">
+                          <thead><tr><th>Order</th><th>What was done</th><th>Order was at</th><th style={numStyle}>Amount</th><th>By</th><th>Reason</th></tr></thead>
+                          <tbody>
+                            {d.toCheck.releases.map((r) => (
+                              <tr key={r.id}><td>{r.orderNo}</td><td>{r.kind === 'FinalPayment' ? 'Final payment taken' : 'Handed over'}</td><td>{r.stage}</td><td style={numStyle}>{r.amount > 0 ? fmtKsh(r.amount) : '—'}</td><td>{r.by}</td><td>{r.reason}</td></tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                  {d.toCheck.notProducedCount > 0 && (
+                    <>
+                      <p className="note" style={{ marginBottom: 0 }}><b>{d.toCheck.notProducedCount} paid order{d.toCheck.notProducedCount === 1 ? '' : 's'} never started in production</b> (right now; captured before today and still at “Order Received”). Was it made and released without the system, or captured twice?</p>
+                      <div className="table-wrap">
+                        <table className="table">
+                          <thead><tr><th>Order</th><th>Customer</th><th>Captured</th><th>Days waiting</th><th>Sales person</th><th style={numStyle}>Total</th></tr></thead>
+                          <tbody>
+                            {d.toCheck.notProduced.map((o) => (
+                              <tr key={o.id}><td>{o.orderNo}</td><td>{o.customer}</td><td>{o.createdDate}</td><td>{o.daysWaiting}</td><td>{o.staff}</td><td style={numStyle}>{fmtKsh(o.total)}</td></tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </Card>
+              )}
               <Card title="Still to be received" hint="Invoices with a balance at the end of this day, aged by due date. This is for the whole business.">
                 <div className="table-wrap" style={{ maxWidth: 560 }}>
                   <table className="table">
@@ -526,6 +565,8 @@ interface TillsData {
   people: { id: number; name: string; role: string; tillId: number | null }[];
 }
 interface SummarySettings {
+  readyBeforeFinalPayment: boolean;
+  warnDuplicateOrders: boolean;
   enabled: boolean;
   time: string;
   numbers: string;
@@ -542,6 +583,8 @@ function DayCloseSetup({ onChanged }: { onChanged: () => void }) {
   const settings = useLoad<SummarySettings>('/day-close/settings');
   const [name, setName] = useState('');
   const [enabled, setEnabled] = useState(false);
+  const [readyGate, setReadyGate] = useState(true);
+  const [warnDup, setWarnDup] = useState(true);
   const [time, setTime] = useState('18:30');
   const [numbers, setNumbers] = useState('');
   const [template, setTemplate] = useState('');
@@ -554,6 +597,8 @@ function DayCloseSetup({ onChanged }: { onChanged: () => void }) {
     const s = settings.data;
     if (!s) return;
     setEnabled(s.enabled);
+    setReadyGate(s.readyBeforeFinalPayment);
+    setWarnDup(s.warnDuplicateOrders);
     setTime(s.time);
     setNumbers(s.numbers);
     setTemplate(s.template);
@@ -627,6 +672,23 @@ function DayCloseSetup({ onChanged }: { onChanged: () => void }) {
                 </tbody>
               </table>
             </div>
+          </>
+        )}
+      </Card>
+
+      <Card title="Order release rules" hint="Keeps orders going through Production and Quality Control, and stops the same order being captured twice.">
+        <Loading loading={settings.loading} error={settings.error} />
+        {settings.data && (
+          <>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
+              <input type="checkbox" checked={readyGate} onChange={(e) => setReadyGate(e.target.checked)} style={{ marginTop: 4 }} />
+              <span><b>The final payment is taken only when the order is ready</b> — together with the handover. A deposit or part-payment can be taken at any stage; a manager (Admin, Finance, or Production management) can release an order earlier, with a reason that is recorded here and on Day close.</span>
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
+              <input type="checkbox" checked={warnDup} onChange={(e) => setWarnDup(e.target.checked)} style={{ marginTop: 4 }} />
+              <span><b>Ask before a possible duplicate is captured</b> — the same client (phone or name) with the same total in the last 24 hours. The person can still capture it on purpose.</span>
+            </label>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(async () => { await api.put('/day-close/settings', { readyBeforeFinalPayment: readyGate, warnDuplicateOrders: warnDup }); settings.reload(); }, 'Saved.')}>Save</button>
           </>
         )}
       </Card>

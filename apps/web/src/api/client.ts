@@ -11,6 +11,16 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+/** An error from the server that keeps what it said (a code and any extra fields), so a screen can offer the next step — for example a manager's release. */
+export class ApiError extends Error {
+  constructor(message: string, public status: number, public data: Record<string, unknown> | null) {
+    super(message);
+  }
+  get code(): string | undefined {
+    return typeof this.data?.code === 'string' ? this.data.code : undefined;
+  }
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   // Only a request with a body says it is JSON: a plain GET then needs no cross-origin "preflight" check first, which some browsers' blockers refuse (and which the public sign-in name list should not depend on).
   const headers: Record<string, string> = body !== undefined ? { 'Content-Type': 'application/json' } : {};
@@ -30,8 +40,15 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
 
   const data = res.status === 204 ? null : await res.json().catch(() => null);
+  // A possible duplicate at capture (the same client and total in the last 24 hours): ask, and capture it anyway only if the person confirms.
+  if (res.status === 409 && data?.code === 'POSSIBLE_DUPLICATE' && method === 'POST' && body && typeof body === 'object' && !(body as { confirmDuplicate?: boolean }).confirmDuplicate) {
+    if (window.confirm(`${data.error}
+
+Press OK to capture it anyway, or Cancel to stop.`)) return request<T>(method, path, { ...(body as object), confirmDuplicate: true });
+    throw new Error('Not captured: it looks like a duplicate of an order captured earlier.');
+  }
   if (!res.ok) {
-    throw new Error((data && data.error) || `Request failed (${res.status})`);
+    throw new ApiError((data && data.error) || `Request failed (${res.status})`, res.status, data);
   }
   return data as T;
 }

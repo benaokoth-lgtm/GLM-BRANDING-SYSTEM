@@ -9,7 +9,7 @@ import { buildAccountLedger, buildBalanceSheet, buildCashFlowStatement, buildPay
 import { reconcile } from '../accounting/reconcile';
 import { creditableLines, issueCreditNote, issueDebitNote, issueSupplierDebitNote, NoteError } from '../accounting/notes';
 import { depreciationSchedule, runDepreciationOnce } from '../accounting/depreciation';
-import { applyReceiptToOrder, autoMatch, importStatement, moveMatchedPayment, openTargets, unmatchPayment } from '../accounting/mpesaMatching';
+import { allocateReceipt, applyReceiptToOrder, autoMatch, importStatement, moveMatchedPayment, openTargets, splitSuggestion, unmatchPayment } from '../accounting/mpesaMatching';
 import { PaymentError } from './orders';
 
 export const accountingRouter = Router();
@@ -330,18 +330,22 @@ accountingRouter.get('/mpesa', ...mpesaAccess, async (req, res) => {
   const [txs, targets] = await Promise.all([
     prisma.mpesaTransaction.findMany({
       where: { kind: { in: ['C2B', 'Import'] }, ...(status ? { status } : {}) },
-      include: { order: true },
+      include: { order: true, payments: { include: { order: { select: { orderNo: true } } } } },
       orderBy: [{ receivedOn: 'desc' }, { id: 'desc' }],
       take: 500,
     }),
     openTargets(),
   ]);
   const rows = txs.map((t) => {
-    const incoming = { amount: t.amount, phone: t.phone, accountReference: t.accountReference };
+    // a receipt can be shared by several orders: what is on orders and what is still free
+    const allocated = round2(t.payments.reduce((a, p) => a + p.amount, 0));
+    const left = round2(Math.max(0, t.amount - allocated));
+    const incoming = { amount: left, phone: t.phone, accountReference: t.accountReference };
     const m = t.status === 'Unmatched' ? matchPayment(incoming, targets) : null;
     return {
       id: t.id, receipt: t.mpesaReceipt, kind: t.kind, status: t.status, amount: t.amount, phone: t.phone, payerName: t.payerName, reference: t.accountReference, receivedOn: t.receivedOn,
-      appliedTo: t.order?.orderNo ?? null, appliedByName: t.appliedByName, dismissedNote: t.dismissedNote,
+      appliedTo: t.payments.length ? [...new Set(t.payments.map((p) => p.order.orderNo))].join(', ') : t.order?.orderNo ?? null, appliedByName: t.appliedByName, dismissedNote: t.dismissedNote,
+      allocated, left, parts: t.payments.map((p) => ({ orderNo: p.order.orderNo, amount: p.amount })),
       suggestions: t.status === 'Unmatched' ? suggestionsFor(incoming, targets).map((s) => ({ ...s, best: m?.matched ? m.target.orderId === s.orderId : false })) : [],
       note: m && !m.matched ? m.reason : null,
     };
@@ -351,7 +355,7 @@ accountingRouter.get('/mpesa', ...mpesaAccess, async (req, res) => {
   const unverified = await prisma.payment.findMany({ where: { method: 'M-Pesa', reference: null }, include: { order: true }, orderBy: { id: 'desc' }, take: 200 });
   res.json({
     rows,
-    summary: { unmatchedCount: unmatched.length, unmatchedTotal: round2(unmatched.reduce((a, r) => a + r.amount, 0)) },
+    summary: { unmatchedCount: unmatched.length, unmatchedTotal: round2(unmatched.reduce((a, r) => a + r.left, 0)) },
     openOrders: targets.map((t) => ({ orderId: t.orderId, ref: t.ref, party: t.party, balance: t.balance })),
     unverifiedPayments: unverified.map((p) => ({ id: p.id, orderNo: p.order.orderNo, date: p.date, amount: p.amount })),
   });
@@ -381,45 +385,74 @@ accountingRouter.post('/mpesa/:id/apply', ...mpesaAccess, async (req, res) => {
   }
 });
 
-// Receipts already matched to an order — the list for putting a wrong match right (move it to the right order, or take it off). Most recent first; `q` finds a receipt code, a phone, a payer or an order number.
+// Receipts already matched to an order — the list for putting a wrong match right (move it to the right order, or take it off). A receipt shared by several orders has a row for each. Most recent
+// first; `q` finds a receipt code, a phone, a payer or an order number.
 accountingRouter.get('/mpesa/matched', ...mpesaAccess, async (req, res) => {
   const q = String(req.query.q ?? '').trim();
   const txs = await prisma.mpesaTransaction.findMany({
     where: {
-      payment: { isNot: null },
-      ...(q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payment: { is: { order: { orderNo: { contains: q } } } } }] } : {}),
+      payments: { some: {} },
+      ...(q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payments: { some: { order: { orderNo: { contains: q } } } } }] } : {}),
     },
-    include: { payment: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } } } },
+    include: { payments: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } }, orderBy: { id: 'asc' } } },
     orderBy: { id: 'desc' },
     take: 100,
   });
   const changes = txs.length ? await prisma.matchChange.findMany({ where: { transactionId: { in: txs.map((t) => t.id) } }, orderBy: { id: 'desc' } }) : [];
   res.json({
-    rows: txs.map((t) => ({
-      id: t.id,
-      receipt: t.mpesaReceipt,
-      kind: t.kind,
-      amount: t.amount,
-      phone: t.phone,
-      payerName: t.payerName,
-      reference: t.accountReference,
-      date: t.payment!.date,
-      orderId: t.payment!.order.id,
-      orderNo: t.payment!.order.orderNo,
-      customer: t.payment!.order.corporateClient?.name || t.payment!.order.customerName || '—',
-      matchedBy: t.appliedByName ?? '',
-      canUnmatch: t.kind !== 'STK',
-      changes: changes.filter((c) => c.transactionId === t.id).map((c) => ({ from: c.fromOrderNo, to: c.toOrderNo, reason: c.reason, by: c.byName, at: c.at.toISOString() })),
-    })),
+    rows: txs.flatMap((t) => {
+      const applied = round2(t.payments.reduce((a, p) => a + p.amount, 0));
+      return t.payments.map((p) => ({
+        id: t.id,
+        paymentId: p.id,
+        receipt: t.mpesaReceipt,
+        kind: t.kind,
+        amount: p.amount, // this part
+        receiptAmount: t.amount,
+        left: round2(Math.max(0, t.amount - applied)),
+        shared: t.payments.length > 1,
+        phone: t.phone,
+        payerName: t.payerName,
+        reference: t.accountReference,
+        date: p.date,
+        orderId: p.order.id,
+        orderNo: p.order.orderNo,
+        customer: p.order.corporateClient?.name || p.order.customerName || '—',
+        matchedBy: t.appliedByName ?? '',
+        canUnmatch: t.kind !== 'STK',
+        changes: changes.filter((c) => c.transactionId === t.id && (c.toOrderNo === p.order.orderNo || c.fromOrderNo === p.order.orderNo)).map((c) => ({ from: c.fromOrderNo, to: c.toOrderNo, reason: c.reason, by: c.byName, at: c.at.toISOString() })),
+      }));
+    }),
   });
+});
+
+// A receipt shared by several orders: what could take it (the payer's own orders first) with a suggested split, and the confirmation. Nothing is split by itself — a person confirms the amounts.
+accountingRouter.get('/mpesa/:id/split', ...mpesaAccess, async (req, res) => {
+  try {
+    res.json(await splitSuggestion(Number(req.params.id)));
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+accountingRouter.post('/mpesa/:id/allocate', ...mpesaAccess, async (req, res) => {
+  const body = z.object({ allocations: z.array(z.object({ orderId: z.number().int().positive(), amount: z.number().positive().max(100_000_000) })).min(1).max(40) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: 'Choose the orders and give an amount for each' });
+  try {
+    res.json({ ok: true, ...(await allocateReceipt(Number(req.params.id), body.data.allocations, req.user!.name)) });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
 });
 
 // A wrong match put right: moved to the right order (it must still owe that much), or taken off its order and returned to the waiting list. Both need a reason and are logged.
 accountingRouter.post('/mpesa/:id/rematch', ...mpesaAccess, async (req, res) => {
-  const body = z.object({ orderId: z.number().int().positive(), reason: z.string().trim().min(1, 'Say why the payment is being moved').max(300) }).safeParse(req.body);
+  const body = z.object({ orderId: z.number().int().positive(), paymentId: z.number().int().positive().optional(), reason: z.string().trim().min(1, 'Say why the payment is being moved').max(300) }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? 'Choose the order and give a reason' });
   try {
-    res.json({ ok: true, ...(await moveMatchedPayment(Number(req.params.id), body.data.orderId, req.user!.name, body.data.reason)) });
+    res.json({ ok: true, ...(await moveMatchedPayment(Number(req.params.id), body.data.orderId, req.user!.name, body.data.reason, body.data.paymentId)) });
   } catch (e) {
     if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
     throw e;
@@ -427,10 +460,10 @@ accountingRouter.post('/mpesa/:id/rematch', ...mpesaAccess, async (req, res) => 
 });
 
 accountingRouter.post('/mpesa/:id/unmatch', ...mpesaAccess, async (req, res) => {
-  const body = z.object({ reason: z.string().trim().min(1, 'Say why the payment is being taken off the order').max(300) }).safeParse(req.body);
+  const body = z.object({ paymentId: z.number().int().positive().optional(), reason: z.string().trim().min(1, 'Say why the payment is being taken off the order').max(300) }).safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? 'Give a reason' });
   try {
-    res.json({ ok: true, ...(await unmatchPayment(Number(req.params.id), req.user!.name, body.data.reason)) });
+    res.json({ ok: true, ...(await unmatchPayment(Number(req.params.id), req.user!.name, body.data.reason, body.data.paymentId)) });
   } catch (e) {
     if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
     throw e;
@@ -443,6 +476,7 @@ accountingRouter.post('/mpesa/:id/dismiss', ...mpesaAccess, async (req, res) => 
   if (!note) return res.status(400).json({ error: 'Say why this payment is being dismissed' });
   const tx = await prisma.mpesaTransaction.findUnique({ where: { id: Number(req.params.id) } });
   if (!tx || tx.status !== 'Unmatched') return res.status(400).json({ error: 'Only an unmatched payment can be dismissed' });
+  if ((await prisma.payment.count({ where: { mpesaTransactionId: tx.id } })) > 0) return res.status(400).json({ error: 'Part of this payment is already on an order. Take those parts off first, or apply the rest.' });
   await prisma.mpesaTransaction.update({ where: { id: tx.id }, data: { status: 'Dismissed', dismissedNote: note.slice(0, 200), appliedByName: req.user!.name, appliedAt: new Date() } });
   res.json({ ok: true });
 });

@@ -708,7 +708,8 @@ model Payment {
   // M-Pesa receipt code / bank or card reference, when there is one — what makes a payment
   // matchable against the M-Pesa statement.
   reference String?
-  mpesaTransactionId Int? @unique
+  // The M-Pesa / NCBA receipt this payment came from. One receipt can be applied to several orders (a customer paid several orders with one payment), so several payments can point at the same receipt.
+  mpesaTransactionId Int?
   mpesaTransaction   MpesaTransaction? @relation(fields: [mpesaTransactionId], references: [id])
   staffId  Int?
   staff    User?  @relation(fields: [staffId], references: [id])
@@ -717,6 +718,7 @@ model Payment {
   @@index([orderId])
   @@index([staffId])
   @@index([date])
+  @@index([mpesaTransactionId])
 }
 
 // One STK push request/result. orderId is set once the push is tied to a
@@ -755,7 +757,7 @@ model MpesaTransaction {
   appliedAt         DateTime?
   dismissedNote     String?
   rawJson           String   @default("{}")
-  payment           Payment?
+  payments          Payment[]
 
   // Speeds up the lists and statements that join on these (see the performance note in DEPLOYMENT.md).
   @@index([orderId])
@@ -1866,6 +1868,11 @@ model DayCloseSettings {
   summaryAttempts   Int       @default(0) // tries so far for that day
   summaryLastTryAt  DateTime?
   summaryLastStatus String    @default("")
+  // The final payment on an order (the one that settles it) is taken only when the order is ready for the customer — produced and through quality control — together with the handover.
+  // Deposits and part payments are taken at any stage. A manager can release it earlier, with a reason.
+  readyBeforeFinalPayment Boolean @default(true)
+  // A possible duplicate at capture (same client, same total, last 24 hours) asks "capture it anyway?" before it goes through.
+  warnDuplicateOrders Boolean @default(true)
 }
 
 // The log of wrongly matched M-Pesa / NCBA receipts put right (Accounting → M-Pesa Matching → Matched payments): a receipt moved from one order to another, or taken off its order. Who, when and why.
@@ -1905,4 +1912,20 @@ model OrderChange {
 
   @@index([orderId])
   @@index([status])
+}
+
+// An order released or paid off before it was ready (not yet produced, or not through quality control): a manager did it on purpose, with a reason. Kind: FinalPayment | Handover.
+model OrderOverride {
+  id      Int      @id @default(autoincrement())
+  orderId Int
+  orderNo String
+  kind    String
+  stage   String // where the order was
+  amount  Float    @default(0)
+  reason  String
+  byName  String
+  at      DateTime @default(now())
+
+  @@index([orderId])
+  @@index([at])
 }

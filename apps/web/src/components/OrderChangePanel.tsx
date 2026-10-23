@@ -23,7 +23,8 @@ interface Request {
 }
 interface Info {
   requests: Request[];
-  problem: string | null;
+  amendProblem: string | null;
+  deleteProblem: string | null;
   hasPayments: boolean;
 }
 
@@ -109,13 +110,13 @@ export default function OrderChangePanel({ detail, onChanged, onDeleted }: { det
       {error && <p className="note" role="alert" style={{ color: 'var(--color-error)', fontWeight: 700 }}>{error}</p>}
       {note && <p className="note" role="status">{note}</p>}
 
-      {info.problem && !open && <p className="note" style={{ margin: 0 }}>{info.problem}.</p>}
-
-      {!open && !info.problem && !asking && (
+      {!open && !asking && (
         <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap', alignItems: 'center' }}>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAsking('Amend'); setNote(''); }}>Ask to amend…</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAsking('Delete'); setNote(''); }}>Ask to delete…</button>
-          <span className="note" style={{ margin: 0 }}>A manager approves it first; then you make the change.</span>
+          {!info.amendProblem && <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setAsking('Amend'); setNote(''); }}>Ask to amend…</button>}
+          {!info.deleteProblem && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAsking('Delete'); setNote(''); }}>Ask to delete…</button>}
+          {(!info.amendProblem || !info.deleteProblem) && <span className="note" style={{ margin: 0 }}>A manager approves it first; then you make the change.</span>}
+          {info.amendProblem && <span className="note" style={{ margin: 0, flexBasis: '100%' }}>Amending: {info.amendProblem}.</span>}
+          {info.deleteProblem && <span className="note" style={{ margin: 0, flexBasis: '100%' }}>Deleting: {info.deleteProblem}.</span>}
         </div>
       )}
 

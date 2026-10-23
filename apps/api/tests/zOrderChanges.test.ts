@@ -23,6 +23,7 @@ const invoice = (who: string, name: string, lines: any[], extra: Record<string, 
 
 describe('wrong M-Pesa matches, and amending or deleting an order', () => {
   before(async () => {
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { readyBeforeFinalPayment: false, warnDuplicateOrders: false }, create: { id: 1, readyBeforeFinalPayment: false, warnDuplicateOrders: false } }); // these tests are about something else
     await prisma.role.create({ data: { name: 'Seller (order change test)', canCaptureOrders: true } });
     await prisma.role.create({ data: { name: 'Front (order change test)', canCaptureOrders: true, canManagePayments: true, canViewAllOrders: true } });
     await prisma.role.create({ data: { name: 'Finance (order change test)', canAccessFinance: true, canViewAllOrders: true } });
@@ -188,12 +189,13 @@ describe('wrong M-Pesa matches, and amending or deleting an order', () => {
       assert.equal((await call('seller', 'DELETE', `/order-changes/orders/${o.id}`)).status, 404);
     });
 
-    it('is refused for a completed order and for a film order', async () => {
+    it('a completed order cannot be amended, but a mistaken one can still be asked to be deleted', async () => {
       const o = (await invoice('seller', 'Done Client', [line(1, 1000)])).body;
       await prisma.order.update({ where: { id: o.id }, data: { stage: 'Completed' } });
-      const refused = await call('seller', 'POST', `/order-changes/orders/${o.id}`, { kind: 'Delete', reason: 'too late' });
-      assert.equal(refused.status, 400);
-      assert.match(refused.body.error, /completed/i);
+      const amend = await call('seller', 'POST', `/order-changes/orders/${o.id}`, { kind: 'Amend', reason: 'too late to change it' });
+      assert.equal(amend.status, 400);
+      assert.match(amend.body.error, /completed/i);
+      assert.equal((await call('seller', 'POST', `/order-changes/orders/${o.id}`, { kind: 'Delete', reason: 'a duplicate' })).status, 201);
     });
   });
 });

@@ -12,10 +12,12 @@ import { resolveCapture } from '../frontOffice';
 import { isSalesPersonOrder, labelFor, salesPersonIds, salesPersonRoleNames } from '../orderSource';
 import { WALK_IN_CLIENT } from '@glm/shared';
 import { orderHeads, primaryHead } from '../orderHeads';
+import { STAGE_DONE, STAGE_READY, logOverride, mayRelease, readyGateOn } from '../orderRelease';
+import { DuplicateError, assertNotDuplicate, sendDuplicate } from '../orderDup';
 import { buildOrderPdf, documentKind } from '../orderPdf';
 import { defaultExpenseVatApplicable } from '@glm/shared';
 import { pettyCashShortfall } from '../accounting/ledger';
-import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
+import { EXPENSE_METHODS, MARKUP_TYPES, PETTY_CASH_METHOD, SETTLED_UNDER, VAT_RATE, addDays, buildLineTotal, computeOrderTotals, isOverdue, jobMargin, needsCosting, round2, todayStr, WALKIN_INVOICE_DUE_DAYS } from '@glm/shared';
 import type { LineItemInput, PaymentRecord, PermissionKey } from '@glm/shared';
 
 export const ordersRouter = Router();
@@ -222,6 +224,12 @@ export type PaymentLine = z.infer<typeof paymentLineSchema>;
 /** Internal: a line already tied to an M-Pesa transaction (an STK push that just succeeded) — no receipt lookup needed. */
 export type LinkedPaymentLine = PaymentLine & { linkedTransactionId?: number };
 
+/** What is still free on a received M-Pesa / NCBA receipt: what arrived, less what has been applied to orders so far (a receipt can be shared by several orders). */
+export async function receiptLeft(db: Prisma.TransactionClient | typeof prisma, tx: { id: number; amount: number }): Promise<number> {
+  const used = await db.payment.aggregate({ _sum: { amount: true }, where: { mpesaTransactionId: tx.id } });
+  return Math.max(0, Math.round((tx.amount - (used._sum.amount ?? 0)) * 100) / 100);
+}
+
 export class PaymentError extends Error {
   constructor(message: string) {
     super(message);
@@ -245,31 +253,38 @@ export async function recordOrderPayments(
     const reference = line.reference ? line.reference.trim().toUpperCase() : null;
     let mpesaTransactionId: number | null = line.linkedTransactionId ?? null;
     let stkClaimed = false;
+    let left = 0;
+    let receivedTx: { id: number; orderId: number | null } | null = null;
     const linkedByEntry = mpesaTransactionId === null;
     if (linkedByEntry && line.method === 'M-Pesa' && reference) {
       const received = await tx.mpesaTransaction.findUnique({ where: { mpesaReceipt: reference } });
       // An STK push that succeeded before this order existed (walk-in capture) is claimed by the order it paid for.
       const claimable =
-        received?.kind === 'STK' && received.status === 'Success' && !received.orderId && !(await tx.payment.findUnique({ where: { mpesaTransactionId: received.id } }));
+        received?.kind === 'STK' && received.status === 'Success' && !received.orderId && !(await tx.payment.findFirst({ where: { mpesaTransactionId: received.id } }));
       if (received && claimable) {
         await tx.mpesaTransaction.update({ where: { id: received.id }, data: { orderId: order.id } });
         mpesaTransactionId = received.id;
         stkClaimed = true;
       } else if (received) {
         if (received.status !== 'Unmatched') throw new PaymentError(`M-Pesa receipt ${reference} has already been used`);
-        if (Math.abs(received.amount - line.amount) > 1) {
-          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString('en-KE')}, not Ksh ${Math.round(line.amount).toLocaleString('en-KE')}`);
+        // a receipt can be shared by several orders: this payment may be any part of what is still free on it
+        left = await receiptLeft(tx, received);
+        if (line.amount > left + 1) {
+          throw new PaymentError(`M-Pesa receipt ${reference} is for Ksh ${Math.round(received.amount).toLocaleString('en-KE')} and only Ksh ${Math.round(left).toLocaleString('en-KE')} of it is still free (the rest is on other orders), not Ksh ${Math.round(line.amount).toLocaleString('en-KE')}`);
         }
         mpesaTransactionId = received.id;
+        receivedTx = received;
       }
     }
     await tx.payment.create({
       data: { orderId: order.id, date, amount: line.amount, method: line.method, reference, mpesaTransactionId, staffId },
     });
     if (mpesaTransactionId && linkedByEntry && !stkClaimed) {
+      // fully used up → Applied; part of it still free → it stays on the waiting list with what is left, for the next order
+      const used = left - line.amount < 1;
       await tx.mpesaTransaction.update({
         where: { id: mpesaTransactionId },
-        data: { status: 'Applied', orderId: order.id, appliedAt: new Date(), appliedByName: 'Matched on entry' },
+        data: { orderId: receivedTx?.orderId ?? order.id, appliedByName: used ? 'Matched on entry' : 'Matched on entry (part)', ...(used ? { status: 'Applied', appliedAt: new Date() } : {}) },
       });
     }
   }
@@ -432,6 +447,12 @@ export async function captureWalkin(req: import('express').Request, res: import(
   const { status, dueDate } = resolveWalkinStatus(totals.balanceDue);
   const claim = await claimProblem(req.user!, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
+  try {
+    await assertNotDuplicate(prisma, { phone: form.phone, name: form.customerName, total: totals.grandTotal }, !!req.body?.confirmDuplicate);
+  } catch (e) {
+    if (e instanceof DuplicateError) return sendDuplicate(res, e);
+    throw e;
+  }
 
   const order = await prisma.$transaction(async (tx) => {
     const sourcing = await resolveSourcing(tx, { phone: form.phone, name: form.customerName, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: extra.creditLines ?? form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
@@ -542,6 +563,13 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
   const dueDate = addDays(todayStr(), client.creditDays);
   const claim = await claimProblem(req.user!, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId });
   if (claim) return res.status(400).json({ error: claim });
+  try {
+    const t = computeOrderTotals({ lineItems: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt }, []);
+    await assertNotDuplicate(prisma, { corporateClientId: form.corporateClientId, total: t.grandTotal }, !!req.body?.confirmDuplicate);
+  } catch (e) {
+    if (e instanceof DuplicateError) return sendDuplicate(res, e);
+    throw e;
+  }
 
   const order = await prisma.$transaction(async (tx) => {
     const sourcing = await resolveSourcing(tx, { corporateClientId: form.corporateClientId, sourcedBy: form.sourcedBy, freelanceAgentId: form.freelanceAgentId, lines: form.lineItems, orderDiscountPct: form.orderDiscountPct, orderDiscountAmt: form.orderDiscountAmt });
@@ -582,6 +610,8 @@ const paymentSchema = z
     method: z.enum(['Cash', 'M-Pesa', 'Bank Transfer', 'Card']).optional(),
     reference: z.string().trim().max(60).optional().nullable(),
     payments: z.array(paymentLineSchema).min(1).max(6).optional(),
+    // A manager's reason for settling the order before it is ready (see orderRelease.ts).
+    overrideReason: z.string().trim().max(300).optional(),
   })
   .refine((b) => (b.payments && b.payments.length > 0) || (b.amount && b.method), { message: 'Enter at least one payment' });
 
@@ -608,8 +638,31 @@ ordersRouter.post('/:id/payments', async (req, res) => {
     return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString('en-KE')}, but only Ksh ${Math.round(before.balanceDue).toLocaleString('en-KE')} is outstanding` });
   }
 
+  // The payment that SETTLES the order is taken at the counter, with the handover, once the order is ready; a deposit or part-payment can be taken at any stage. (Money that arrives by itself — an
+  // M-Pesa push, a Paybill payment matched to the order — is recorded whenever it comes: it is money in, and Day close lists orders paid but not produced.)
+  let overrideReason: string | null = null;
+  const settles = before.balanceDue > 0.005 && before.balanceDue - paying < SETTLED_UNDER; // what is left is under Ksh 1: the order is settled
+  if (settles && current!.stage !== STAGE_DONE && (await readyGateOn())) {
+    const ready = current!.stage === STAGE_READY;
+    const may = await mayRelease(req.user!);
+    const reason = (parsed.data.overrideReason ?? '').trim();
+    if (!(may && reason)) {
+      return res.status(409).json({
+        code: ready ? 'USE_COUNTER' : 'FINAL_PAYMENT_NOT_READY',
+        canOverride: may,
+        error: ready
+          ? 'This payment settles the order. Take it with “Take final payment & hand over”, so the order leaves through the counter.'
+          : `This payment would settle the order, but it is at “${current!.stage}” — it has not been produced and passed quality control. The final payment is taken when the order is ready, together with the handover. A deposit or part-payment can be taken now.${may ? ' As a manager you can take it now with a reason.' : ' A manager can release it with a reason.'}`,
+      });
+    }
+    overrideReason = reason;
+  }
+
   try {
-    await prisma.$transaction((tx) => recordOrderPayments(tx, order, lines, req.user!.id));
+    await prisma.$transaction(async (tx) => {
+      await recordOrderPayments(tx, order, lines, req.user!.id);
+      if (overrideReason) await logOverride(tx, { orderId: order.id, orderNo: order.orderNo, kind: 'FinalPayment', stage: current!.stage, amount: paying, reason: overrideReason, byName: req.user!.name });
+    });
   } catch (e) {
     if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
     throw e;
@@ -817,32 +870,55 @@ ordersRouter.post('/:id/supplier-bills', async (req, res) => {
 // Handover also needs the order PAID IN FULL — unless the person handing it over chooses to release it on credit
 // ({ onCredit: true }). Then the order is converted to an invoice automatically: status 'Invoice' with a due date (the client's
 // credit terms, or WALKIN_INVOICE_DUE_DAYS for a walk-in), so what is still owed is collected and aged in Accounts Receivable.
-const handoverSchema = z.object({ onCredit: z.boolean().optional() });
+const handoverSchema = z.object({
+  onCredit: z.boolean().optional(),
+  // The final payment, taken in the same action: "Take final payment & hand over". Recorded and the handover done together, or neither.
+  payments: z.array(paymentLineSchema).min(1).max(6).optional(),
+  // A manager handing over before the order is ready (not produced, or not through quality control), with the reason.
+  overrideReason: z.string().trim().max(300).optional(),
+});
 
 ordersRouter.post('/:id/handover', async (req, res) => {
   const parsed = handoverSchema.safeParse(req.body ?? {});
-  if (!parsed.success) return res.status(400).json({ error: 'Invalid request' });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' });
   const onCredit = parsed.data.onCredit === true;
+  const payLines = parsed.data.payments ?? [];
 
   const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) }, include: orderInclude });
   if (!order) return res.status(404).json({ error: 'Order not found' });
   if (!(await canAccessOrder(req.user!, order))) return res.status(403).json({ error: 'Not permitted' });
-  if (order.stage === 'Completed') return res.status(400).json({ error: 'This order has already been handed over' });
-  if (order.stage !== 'Ready for Pickup/Delivery') {
-    return res.status(400).json({ error: `This order is at “${order.stage}”. It can only be handed over once it has been produced and has passed quality control.` });
+  if (order.stage === STAGE_DONE) return res.status(400).json({ error: 'This order has already been handed over' });
+  if (order.status === 'Quote') return res.status(400).json({ error: 'This is a quotation: it has to be accepted and produced before it can be handed over' });
+  let override: string | null = null;
+  if (order.stage !== STAGE_READY) {
+    const reason = (parsed.data.overrideReason ?? '').trim();
+    if (!reason || !(await mayRelease(req.user!))) {
+      return res.status(400).json({
+        code: 'NOT_READY',
+        canOverride: await mayRelease(req.user!),
+        error: `This order is at “${order.stage}”. It can only be handed over once it has been produced and has passed quality control.${(await mayRelease(req.user!)) ? ' As a manager you can release it now with a reason.' : ' A manager can release it with a reason.'}`,
+      });
+    }
+    override = reason;
   }
+  if (priceApprovalPending(order)) return res.status(400).json({ error: 'This job is priced below the recommended price and is waiting for a manager’s approval' });
 
   const balance = serializeDetail(order).totals.balanceDue;
-  const owes = balance > 0.009;
+  const paying = payLines.reduce((a, p) => a + p.amount, 0);
+  if (payLines.length && !(await canTakePayment(req.user!, order))) return res.status(403).json({ error: 'Payments on this order are taken by the person who captured it or by someone who handles payments' });
+  if (paying > balance + 0.01) {
+    return res.status(400).json({ error: `The payments add up to Ksh ${Math.round(paying).toLocaleString('en-KE')}, but only Ksh ${Math.round(balance).toLocaleString('en-KE')} is outstanding` });
+  }
+  const owes = balance - paying >= SETTLED_UNDER; // under Ksh 1 left counts as paid
   if (owes && !onCredit) {
     return res.status(400).json({
-      error: `This order still owes Ksh ${Math.round(balance).toLocaleString('en-KE')}. Take the payment first — or hand it over on credit, which turns it into an invoice.`,
-      balanceDue: balance,
+      error: `This order still owes Ksh ${Math.round(balance - paying).toLocaleString('en-KE')}. Take the whole payment, or hand it over on credit, which turns it into an invoice.`,
+      balanceDue: balance - paying,
       code: 'BALANCE_DUE',
     });
   }
 
-  const data: Prisma.OrderUpdateInput = { stage: 'Completed', handedOverAt: new Date(), handedOverByName: req.user!.name, handedOverOnCredit: owes };
+  const data: Prisma.OrderUpdateInput = { stage: STAGE_DONE, handedOverAt: new Date(), handedOverByName: req.user!.name, handedOverOnCredit: owes };
   if (owes) {
     // Converted to an invoice now. An invoice that already has a due date still in the future keeps it; otherwise the due date
     // is counted from today on the client's credit terms (or the walk-in term).
@@ -850,7 +926,17 @@ ordersRouter.post('/:id/handover', async (req, res) => {
     data.status = 'Invoice';
     if (!order.dueDate || order.dueDate < todayStr()) data.dueDate = addDays(todayStr(), days);
   }
-  const updated = await prisma.order.update({ where: { id: order.id }, data, include: orderInclude });
+  let updated;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
+      if (payLines.length) await recordOrderPayments(tx, order, payLines, req.user!.id);
+      if (override) await logOverride(tx, { orderId: order.id, orderNo: order.orderNo, kind: 'Handover', stage: order.stage, amount: paying, reason: override, byName: req.user!.name });
+      return tx.order.update({ where: { id: order.id }, data, include: orderInclude });
+    });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
   res.json({ ...serializeDetail(updated), handedOverOnCredit: owes });
 });
 

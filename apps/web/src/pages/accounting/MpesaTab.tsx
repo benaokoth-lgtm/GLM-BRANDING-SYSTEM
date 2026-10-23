@@ -3,6 +3,7 @@ import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../../api/client';
 import { Card, Loading, Notice, Tag, money, numStyle, useLoad } from './shared';
 import { MatchedPayments } from './MatchedPayments';
+import { SplitReceipt } from './SplitReceipt';
 
 interface Suggestion {
   orderId: number;
@@ -26,6 +27,10 @@ interface Row {
   dismissedNote: string | null;
   suggestions: Suggestion[];
   note: string | null;
+  /** A receipt can be shared by several orders: what is on orders, what is still free, and the parts. */
+  allocated: number;
+  left: number;
+  parts: { orderNo: string; amount: number }[];
 }
 interface Data {
   rows: Row[];
@@ -53,6 +58,7 @@ export function MpesaTab() {
   const [busy, setBusy] = useState(false);
   const [pick, setPick] = useState<Record<number, string>>({});
   const [dismissing, setDismissing] = useState<number | null>(null);
+  const [splitting, setSplitting] = useState<number | null>(null);
   const [dismissNote, setDismissNote] = useState('');
 
   async function run(fn: () => Promise<string>) {
@@ -173,7 +179,10 @@ export function MpesaTab() {
                 <td className="text-muted" style={{ maxWidth: 220, fontSize: 12 }}>
                   {r.reference || '—'}
                 </td>
-                <td style={{ ...numStyle, fontWeight: 700 }}>{money(r.amount)}</td>
+                <td style={{ ...numStyle, fontWeight: 700 }}>
+                  {money(r.amount)}
+                  {r.status === 'Unmatched' && r.allocated > 0 && <div className="note" style={{ fontWeight: 400 }}>{money(r.allocated)} applied ({r.parts.map((p) => p.orderNo).join(', ')}) · <b>{money(r.left)} left</b></div>}
+                </td>
                 <td>
                   {r.status === 'Applied' && (
                     <>
@@ -208,10 +217,16 @@ export function MpesaTab() {
                         <button type="button" className="btn btn-secondary btn-sm" disabled={busy || !pick[r.id]} onClick={() => apply(r.id, Number(pick[r.id]))}>
                           Match
                         </button>
-                        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setDismissing(r.id); setDismissNote(''); }}>
-                          Dismiss
+                        <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={() => setSplitting(splitting === r.id ? null : r.id)} title="One payment for several orders: share it between them">
+                          Split across orders…
                         </button>
+                        {r.allocated <= 0 && (
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => { setDismissing(r.id); setDismissNote(''); }}>
+                            Dismiss
+                          </button>
+                        )}
                       </div>
+                      {splitting === r.id && <SplitReceipt id={r.id} onClose={() => setSplitting(null)} onDone={(m) => { setSplitting(null); setMsg(m); reload(); }} />}
                       {dismissing === r.id && (
                         <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
                           <input className="input" placeholder="Why? (e.g. sent in error, not ours)" value={dismissNote} onChange={(e) => setDismissNote(e.target.value)} />

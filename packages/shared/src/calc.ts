@@ -4,6 +4,12 @@ export function fmtKsh(n: number): string {
   return 'Ksh ' + Math.round(n || 0).toLocaleString('en-KE');
 }
 
+/** Like fmtKsh, but with the cents when there are any ("Ksh 4,689.60"), so a balance of a few cents is never hidden as "Ksh 0"; whole shillings show without them. */
+export function fmtKshCents(n: number): string {
+  const v = Math.round((n || 0) * 100) / 100;
+  return 'Ksh ' + v.toLocaleString('en-KE', { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 });
+}
+
 /**
  * Display-only date formatting: 'YYYY-MM-DD' -> 'DD/MM/YYYY'. Storage,
  * comparisons (isOverdue, date-range filters) and <input type="date">
@@ -40,15 +46,28 @@ export function buildLineTotal(li: LineItemInput): number {
   return Math.max(0, qty * (price + heatPressFee) * (1 - pct / 100) - amt);
 }
 
+/**
+ * A balance under this many shillings counts as settled, once something has been paid. Cash and M-Pesa are paid in whole shillings, so an order whose total has cents (Ksh 4,689.60) can only ever
+ * be paid to within a shilling; the few cents left are not owed, and the order is paid. (The books write them off — see ledger.ts.)
+ */
+export const SETTLED_UNDER = 1;
+
+/** What is still owing after the payments: nothing when what is left is under Ksh 1 and something has been paid. */
+export function owingAfter(total: number, paid: number): number {
+  const raw = total - paid;
+  return paid > 0 && raw > 0 && raw < SETTLED_UNDER ? 0 : Math.max(0, raw);
+}
+
 export function computeOrderTotals(order: OrderTotalsInput, payments: PaymentRecord[] = []): OrderTotals {
   const subtotal = order.lineItems.reduce((a, li) => a + buildLineTotal(li), 0);
   const opct = Number(order.orderDiscountPct) || 0;
   const oamt = Number(order.orderDiscountAmt) || 0;
   const grandTotal = Math.max(0, subtotal * (1 - opct / 100) - oamt);
   const paidTotal = payments.reduce((a, p) => a + (Number(p.amount) || 0), 0);
-  const balanceDue = Math.max(0, grandTotal - paidTotal);
-  const paidPct = grandTotal > 0 ? Math.min(100, (paidTotal / grandTotal) * 100) : paidTotal > 0 ? 100 : 0;
-  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
+  const balanceDue = owingAfter(grandTotal, paidTotal);
+  const roundedOff = grandTotal - paidTotal > 0 && balanceDue === 0 ? grandTotal - paidTotal : 0;
+  const paidPct = grandTotal > 0 ? (balanceDue === 0 && paidTotal > 0 ? 100 : Math.min(100, (paidTotal / grandTotal) * 100)) : paidTotal > 0 ? 100 : 0;
+  return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct, roundedOff };
 }
 
 // Corporate invoices get a dueDate from the client's credit terms; walk-in/DTF

@@ -3,7 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DEFAULT_FREELANCE_BANDS, bandedAmount, todayStr, weekStart, withholdingOn } from '@glm/shared';
+import { todayStr, weekStart, withholdingOn } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -38,7 +38,7 @@ const order = (agent: number, serviceId: number, qty: number, unitPrice: number)
     payments: [{ method: 'Bank Transfer', amount: qty * unitPrice }],
   });
 
-describe('freelancers: the scale to KES 10 million and the annual statement', () => {
+describe('freelancers: a very large sale and the annual statement', () => {
   before(async () => {
     await prisma.role.create({ data: { name: 'Seller (fl scale test)', canCaptureOrders: true } });
     await prisma.role.create({ data: { name: 'Boss (fl scale test)', canCaptureOrders: true, canAccessFinance: true, canAccessAccounting: true, canManageCommission: true } });
@@ -47,7 +47,7 @@ describe('freelancers: the scale to KES 10 million and the annual statement', ()
       ids[key] = u.id;
       tokens[key] = signToken({ id: u.id, name: u.name, role });
     }
-    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, freelanceBandsJson: JSON.stringify(DEFAULT_FREELANCE_BANDS) }, create: { id: 1, enabled: true } });
+    await prisma.commissionSettings.upsert({ where: { id: 1 }, update: { enabled: true, freelanceRatePct: 8, freelanceLowRatePct: 4 }, create: { id: 1, enabled: true } });
     listedId = (await prisma.service.create({ data: { name: 'Banner (fl scale test)', unit: 'piece', price: 2320 } })).id;
     megaId = (await prisma.service.create({ data: { name: 'Mega contract (fl scale test)', unit: 'piece', price: 10_000_000 } })).id;
     await ensureChartOfAccounts();
@@ -59,17 +59,14 @@ describe('freelancers: the scale to KES 10 million and the annual statement', ()
     await prisma.$disconnect();
   });
 
-  it('the scale reaches a single KES 10 million sale: about 1.85% of its net, with the largest slice at 1%', async () => {
+  it('a single KES 10 million sale earns the flat 8% of its net — the rate does not fall with the size of the deal', async () => {
     const agent = await newAgent('Mega Agent');
     const sale = await order(agent, megaId, 1, 10_000_000);
     assert.equal(sale.status, 201, JSON.stringify(sale.body));
     const s = await stmt(agent);
-    assert.equal(s.qualifyingNet, 8_620_689.66); // 10,000,000 ÷ 1.16
-    // 2% of 50,000 + 3% of 100,000 + 4% of 350,000 + 3% of 1,500,000 + 2% of 3,000,000 + 1% of the rest
-    assert.equal(s.baseCommission, bandedAmount(DEFAULT_FREELANCE_BANDS, 8_620_689.66));
-    assert.ok(Math.abs(s.baseCommission - 159_206.9) < 0.02, String(s.baseCommission));
-    assert.equal(s.premiumCommission, 0);
-    assert.ok(s.baseCommission / s.qualifyingNet < 0.02); // well under the 4% a flat top band would pay
+    assert.equal(s.netSales, 8_620_689.66); // 10,000,000 ÷ 1.16
+    assert.equal(s.commission, 689_655.17); // 8% of the net
+    assert.ok(Math.abs(s.commission / s.netSales - 0.08) < 1e-6);
     // the tax withheld comes off what is paid
     assert.equal(s.withholdingTax, withholdingOn(s.commission, s.whtRate));
     assert.equal(s.netPay, Math.round((s.commission - s.withholdingTax) * 100) / 100);
@@ -77,15 +74,15 @@ describe('freelancers: the scale to KES 10 million and the annual statement', ()
 
   it("the year's statement lists what each freelancer was paid and the tax withheld, and who is missing a KRA PIN or national ID", async () => {
     const agent = await newAgent('Annual Agent');
-    assert.equal((await order(agent, listedId, 10, 2320)).status, 201); // 23,200 → 20,000 net at base → 2% = 400
+    assert.equal((await order(agent, listedId, 10, 2320)).status, 201); // 23,200 → 20,000 net → 8% = 1,600
     assert.equal((await call('boss', 'POST', '/freelance/payouts/approve', { weekStart: week })).status, 200);
     const payout = await prisma.freelancePayout.findFirstOrThrow({ where: { agentId: agent } });
     assert.equal((await call('boss', 'POST', `/freelance/payouts/${payout.id}/pay`, { method: 'M-Pesa' })).status, 200);
     const year = Number(todayStr().slice(0, 4));
     const a = (await call('boss', 'GET', `/freelance/annual?year=${year}`)).body;
     const me = a.people.find((p: any) => p.agentId === agent);
-    const tax = withholdingOn(400, payout.withholdingRate);
-    assert.deepEqual([me.weeks, me.gross, me.withheld, me.net, me.kraPin], [1, 400, tax, 400 - tax, 'A000000001Z']);
+    const tax = withholdingOn(1600, payout.withholdingRate);
+    assert.deepEqual([me.weeks, me.gross, me.withheld, me.net, me.kraPin], [1, 1600, tax, 1600 - tax, 'A000000001Z']);
     assert.ok(a.missingId.includes('Annual Agent')); // no national ID on file
     assert.equal(a.year, year);
     assert.equal((await call('seller', 'GET', `/freelance/annual?year=${year}`)).status, 403); // for managers

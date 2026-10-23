@@ -4,7 +4,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DEFAULT_ROLE_PERMISSIONS } from '@glm/shared';
+import { DEFAULT_ROLE_PERMISSIONS, todayStr } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -14,7 +14,7 @@ import { ensureChartOfAccounts } from '../src/accounting/chart';
 let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens[who]}` }, body: body === undefined ? undefined : JSON.stringify(body) });

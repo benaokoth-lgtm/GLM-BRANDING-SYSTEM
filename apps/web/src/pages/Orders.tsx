@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { DEFAULT_BUSINESS_HEADS, fmtDate, fmtKsh } from '@glm/shared';
+import { addDays, DEFAULT_BUSINESS_HEADS, fmtDate, fmtDateTime, fmtKsh, todayStr } from '@glm/shared';
 import { api } from '../api/client';
 import type { OrderSummary, StaffUser } from '../api/models';
 import { useCatalog } from '../hooks/useCatalog';
 import { useAuth } from '../state/AuthContext';
+import { useBranding } from '../hooks/useBranding';
+import { printOrdersList } from '../utils/printOrdersList';
 import OrderDetailDialog from '../components/OrderDetailDialog';
 import { StkCollectDialog, StkRowButton, useMayCollect } from '../components/StkCollect';
 import { useSubTab } from '../state/SubNavContext';
@@ -14,6 +16,7 @@ import { useSubTab } from '../state/SubNavContext';
 export default function Orders() {
   const { staff } = useCatalog();
   const { user } = useAuth();
+  const branding = useBranding();
   const viewAll = user?.role === 'Admin' || !!user?.permissions.canViewAllOrders;
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +110,7 @@ export default function Orders() {
   const thisPage = Math.min(page, pageCount);
   const pageRows = found.slice((thisPage - 1) * PAGE_SIZE, thisPage * PAGE_SIZE);
   // an older day, or a number that is not in the recent list: look in all of them
-  const recentCutoff = new Date(Date.now() - RECENT_DAYS * 86400000).toISOString().slice(0, 10);
+  const recentCutoff = addDays(todayStr(), -RECENT_DAYS);
   useEffect(() => {
     if (!showAll && !loading && ((from && from < recentCutoff) || (q && found.length === 0))) setShowAll(true);
   }, [showAll, loading, from, q, found.length, recentCutoff]);
@@ -290,7 +293,7 @@ export default function Orders() {
                   {kpiRows[openDef.key].map((o) => (
                     <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(o.id)}>
                       <td>{o.orderNo}</td>
-                      <td className="text-muted">{fmtDate(o.createdDate)}</td>
+                      <td className="text-muted">{fmtDateTime(o.createdDate, o.capturedAt)}</td>
                       <td>{o.kind === 'corporate' ? o.corporateClient?.name ?? '—' : o.customerName ?? '—'}</td>
                       <td>{o.staff.name}</td>
                       <td>
@@ -352,6 +355,24 @@ export default function Orders() {
             Clear search
           </button>
         )}
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={found.length === 0}
+          title="Print the orders listed here (all of them, not just this page) on A4"
+          onClick={() => {
+            const ok = printOrdersList(found, {
+              company: branding?.companyName || 'GLM Branding',
+              title: kind === 'Invoice' ? 'Invoices' : kind === 'Quote' ? 'Quotations' : 'Orders list',
+              period: from && to ? (from === to ? 'On ' + fmtDate(from) : 'From ' + fmtDate(from) + ' to ' + fmtDate(to)) : from ? 'On ' + fmtDate(from) : to ? 'Up to ' + fmtDate(to) : showAll ? 'All dates' : 'Last ' + RECENT_DAYS + ' days and every open order',
+              filters: [category !== 'all' ? category : '', listFilter === 'glm' ? "GLM's own" : listFilter === 'sales' ? "Sales persons'" : '', q ? 'order no. ' + orderQ : ''].filter(Boolean).join(' · '),
+              printedBy: user?.name ?? '',
+            });
+            if (!ok) setLoadError('Your browser blocked the print window. Allow pop-ups for this site and press Print list again.');
+          }}
+        >
+          🖶 Print list
+        </button>
         <span className="note" style={{ margin: 0 }}>
           {searching
             ? `${found.length} found${when}`
@@ -387,7 +408,7 @@ export default function Orders() {
                   {row.source === 'sales' && <div><span className="tag tag-neutral">Sales person</span></div>}
                   {row.priceApproval === 'Pending' && <div><span className="tag tag-outline">Awaiting price approval</span></div>}
                 </td>
-                <td className="text-muted">{fmtDate(row.createdDate)}</td>
+                <td className="text-muted">{fmtDateTime(row.createdDate, row.capturedAt)}</td>
                 <td>{row.kind === 'corporate' ? 'Corporate' : row.dtfKind === 'film' ? 'Film' : row.dtfKind === 'artwork' ? 'Artwork' : row.channel === 'dtf' ? 'Film/Artwork' : 'Walk-in'}</td>
                 <td>{row.kind === 'corporate' ? row.corporateClient?.name ?? '—' : row.customerName ?? '—'}</td>
                 <td>{row.staff.name}</td>

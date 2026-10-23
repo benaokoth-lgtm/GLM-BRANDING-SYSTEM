@@ -1,4 +1,4 @@
-import { fmtDate, fmtKsh, splitVatInclusive } from '@glm/shared';
+import { fmtDate, fmtDateTime, fmtKsh, splitVatInclusive } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 
 const THERMAL_WIDTH_MM = 80;
@@ -82,7 +82,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   <div class="center copy-label">${esc(label)}</div>
   <hr />
   <div class="row"><span>ORDER NO.</span><span>${esc(order.orderNo)}</span></div>
-  <div class="row"><span>DATE</span><span>${fmtDate(order.createdDate)}</span></div>
+  <div class="row"><span>DATE</span><span>${fmtDateTime(order.createdDate, order.capturedAt)}</span></div>
   ${order.totals.balanceDue > 0 && order.dueDate ? `<div class="row"><span>PAY BY</span><span>${fmtDate(order.dueDate)}</span></div>` : ''}
   <div class="row"><span>CUSTOMER</span><span>${esc(order.customerName || '—')}</span></div>
   ${order.phone ? `<div class="row"><span>PHONE</span><span>${esc(order.phone)}</span></div>` : ''}
@@ -109,7 +109,7 @@ export function printWalkinReceipt(w: Window | null, order: OrderDetail, company
   <div class="barcode-wrap"><svg id="barcode${i}"></svg></div>
   <div class="footer">Thank you for choosing ${companyName}!</div>
   ${websiteLine ? `<div class="footer">${websiteLine}</div>` : ''}
-  <div class="footer">${fmtDate(order.createdDate)}</div>
+  <div class="footer">${fmtDateTime(order.createdDate, order.capturedAt)}</div>
 </div>`;
 
   const html = `<!doctype html>

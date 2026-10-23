@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../../api/client';
 import { Card, Loading, Notice, Tag, money, numStyle, useLoad } from './shared';
+import { MatchedPayments } from './MatchedPayments';
 
 interface Suggestion {
   orderId: number;
@@ -254,6 +255,7 @@ export function MpesaTab() {
           </table>
         </Card>
       )}
+      {data && <MatchedPayments openOrders={data.openOrders} onChanged={reload} />}
     </div>
   );
 }

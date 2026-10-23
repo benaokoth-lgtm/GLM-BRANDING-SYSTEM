@@ -7,13 +7,13 @@ import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
 import { ensureChartOfAccounts } from '../src/accounting/chart';
-import { STAGE_QUALITY, STAGE_WAITING } from '@glm/shared';
+import { STAGE_QUALITY, STAGE_WAITING, todayStr } from '@glm/shared';
 
 let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
 const ROLL = 'ROLL-DAILY';
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 const day = `from=${today}&to=${today}`;
 
 async function call(who: string, method: string, path: string, body?: unknown) {

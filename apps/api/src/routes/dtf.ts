@@ -168,6 +168,7 @@ async function createDtfOrder(
       capturedByName: opts.capturedByName,
       ...sourcing,
       createdDate: todayStr(),
+      capturedAt: new Date(),
       status,
       dueDate,
       stage: 'Order Received',

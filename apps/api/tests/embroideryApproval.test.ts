@@ -1,5 +1,6 @@
 // Embroidery: a below-recommended price waits in the same approval queue artwork jobs use (it cannot be paid for or produced until a manager decides, and
 // not by the person who asked), the old per-sqm "Embroidery" service is deleted (or retired when it has been sold), and the profitability report reads the jobs.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -13,7 +14,7 @@ let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
 const ids: Record<string, number> = {};
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, {

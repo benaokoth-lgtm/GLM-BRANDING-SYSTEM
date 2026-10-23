@@ -22389,7 +22389,7 @@ var require_application = __commonJS({
   "node_modules/express/lib/application.js"(exports2, module2) {
     "use strict";
     var finalhandler = require_finalhandler();
-    var Router31 = require_router();
+    var Router32 = require_router();
     var methods = require_methods();
     var middleware = require_init();
     var query = require_query();
@@ -22454,7 +22454,7 @@ var require_application = __commonJS({
     };
     app2.lazyrouter = function lazyrouter() {
       if (!this._router) {
-        this._router = new Router31({
+        this._router = new Router32({
           caseSensitive: this.enabled("case sensitive routing"),
           strict: this.enabled("strict routing")
         });
@@ -22608,7 +22608,7 @@ var require_application = __commonJS({
       var engines = this.engines;
       var opts = options;
       var renderOptions = {};
-      var view;
+      var view2;
       if (typeof options === "function") {
         done3 = options;
         opts = {};
@@ -22622,26 +22622,26 @@ var require_application = __commonJS({
         renderOptions.cache = this.enabled("view cache");
       }
       if (renderOptions.cache) {
-        view = cache[name2];
+        view2 = cache[name2];
       }
-      if (!view) {
+      if (!view2) {
         var View2 = this.get("view");
-        view = new View2(name2, {
+        view2 = new View2(name2, {
           defaultEngine: this.get("view engine"),
           root: this.get("views"),
           engines
         });
-        if (!view.path) {
-          var dirs = Array.isArray(view.root) && view.root.length > 1 ? 'directories "' + view.root.slice(0, -1).join('", "') + '" or "' + view.root[view.root.length - 1] + '"' : 'directory "' + view.root + '"';
+        if (!view2.path) {
+          var dirs = Array.isArray(view2.root) && view2.root.length > 1 ? 'directories "' + view2.root.slice(0, -1).join('", "') + '" or "' + view2.root[view2.root.length - 1] + '"' : 'directory "' + view2.root + '"';
           var err = new Error('Failed to lookup view "' + name2 + '" in views ' + dirs);
-          err.view = view;
+          err.view = view2;
           return done3(err);
         }
         if (renderOptions.cache) {
-          cache[name2] = view;
+          cache[name2] = view2;
         }
       }
-      tryRender(view, renderOptions, done3);
+      tryRender(view2, renderOptions, done3);
     };
     app2.listen = function listen() {
       var server = http2.createServer(this);
@@ -22650,9 +22650,9 @@ var require_application = __commonJS({
     function logerror(err) {
       if (this.get("env") !== "test") console.error(err.stack || err.toString());
     }
-    function tryRender(view, options, callback) {
+    function tryRender(view2, options, callback) {
       try {
-        view.render(options, callback);
+        view2.render(options, callback);
       } catch (err) {
         callback(err);
       }
@@ -24100,7 +24100,7 @@ var require_response = __commonJS({
       vary(this, field);
       return this;
     };
-    res.render = function render(view, options, callback) {
+    res.render = function render(view2, options, callback) {
       var app2 = this.req.app;
       var done3 = callback;
       var opts = options || {};
@@ -24115,7 +24115,7 @@ var require_response = __commonJS({
         if (err) return req.next(err);
         self2.send(str);
       };
-      app2.render(view, opts, done3);
+      app2.render(view2, opts, done3);
     };
     function sendfile(res2, file, options, callback) {
       var done3 = false;
@@ -24318,7 +24318,7 @@ var require_express = __commonJS({
     var mixin = require_merge_descriptors();
     var proto = require_application();
     var Route = require_route();
-    var Router31 = require_router();
+    var Router32 = require_router();
     var req = require_request();
     var res = require_response();
     exports2 = module2.exports = createApplication;
@@ -24341,7 +24341,7 @@ var require_express = __commonJS({
     exports2.request = req;
     exports2.response = res;
     exports2.Route = Route;
-    exports2.Router = Router31;
+    exports2.Router = Router32;
     exports2.json = bodyParser.json;
     exports2.query = require_query();
     exports2.raw = bodyParser.raw;
@@ -52230,7 +52230,7 @@ var require_cjs = __commonJS({
 })();
 
 // apps/api/src/app.ts
-var import_express30 = __toESM(require_express2());
+var import_express31 = __toESM(require_express2());
 var import_cors = __toESM(require_lib3());
 
 // node_modules/express-async-errors/index.js
@@ -65261,6 +65261,16 @@ function fmtDate(iso) {
   const [, y, mo, d] = m;
   return `${d}/${mo}/${y}`;
 }
+function fmtTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(d);
+}
+function fmtDateTime(date, capturedAt) {
+  const t = fmtTime(capturedAt);
+  return t ? fmtDate(date) + " " + t : fmtDate(date);
+}
 function buildLineTotal(li) {
   const qty = Number(li.qty) || 0;
   const price = Number(li.unitPrice) || 0;
@@ -65287,8 +65297,8 @@ function addDays(dateStr7, days) {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-function todayStr() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+function todayStr(now = /* @__PURE__ */ new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
 // packages/shared/src/constants.ts
@@ -66019,23 +66029,13 @@ function withholdingOn(gross, ratePct) {
   if (!(gross > 0) || !(ratePct > 0)) return 0;
   return Math.round(gross * ratePct / 100 * 100 + Number.EPSILON) / 100;
 }
-var DEFAULT_FREELANCE_BANDS = [
-  { from: 0, rate: 2 },
-  { from: 5e4, rate: 3 },
-  { from: 15e4, rate: 4 },
-  // Large deals are bargained down to a thin margin, so the marginal share falls again: a single sale of KES 10 million (net 8.62 million) pays about 1.85% in all —
-  // 159,207 — rather than the 4% a flat top band would give (about 345,000).
-  { from: 5e5, rate: 3 },
-  { from: 2e6, rate: 2 },
-  { from: 5e6, rate: 1 }
-];
-var LEGACY_FREELANCE_BANDS = [
-  { from: 0, rate: 2 },
-  { from: 5e4, rate: 3 },
-  { from: 15e4, rate: 4 }
-];
-var DEFAULT_FREELANCE_PREMIUM_PCT = 30;
-var DEFAULT_FREELANCE_LOW_MARGIN_PCT = 50;
+var DEFAULT_FREELANCE_RATE_PCT = 8;
+var DEFAULT_FREELANCE_LOW_RATE_PCT = 4;
+function freelanceCommission(standardNet, lowNet, ratePct, lowRatePct) {
+  const standard = r22(Math.max(0, standardNet) * Math.max(0, ratePct) / 100);
+  const low = r22(Math.max(0, lowNet) * Math.max(0, lowRatePct) / 100);
+  return { standard, low, total: r22(standard + low) };
+}
 var DAY_MS = 864e5;
 var parseDay = (s) => {
   const [y, m, d] = s.split("-").map(Number);
@@ -67210,9 +67210,8 @@ async function getCommissionConfig(db = prisma) {
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
-    freelanceBands: ((saved) => JSON.stringify(saved) === JSON.stringify(LEGACY_FREELANCE_BANDS) ? DEFAULT_FREELANCE_BANDS : saved)(readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS)),
-    freelancePremiumPct: row?.freelancePremiumPct ?? DEFAULT_FREELANCE_PREMIUM_PCT,
-    freelanceLowMarginPct: row?.freelanceLowMarginPct ?? DEFAULT_FREELANCE_LOW_MARGIN_PCT,
+    freelanceRatePct: row?.freelanceRatePct ?? DEFAULT_FREELANCE_RATE_PCT,
+    freelanceLowRatePct: row?.freelanceLowRatePct ?? DEFAULT_FREELANCE_LOW_RATE_PCT,
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceWhtRate: row?.freelanceWhtRate ?? DEFAULT_FREELANCE_WHT_RATE,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
@@ -67631,32 +67630,24 @@ async function buildFreelanceStatements(weekStartDate, only) {
     const id = o.freelanceAgentId;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: "", status: "", phone: "", mpesaNumber: "", payMethod: "M-Pesa", kraPin: "", weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: "", status: "", phone: "", mpesaNumber: "", payMethod: "M-Pesa", kraPin: "", weekStart: start, weekEnd: end, received: 0, netSales: 0, standardNet: 0, lowNet: 0, ratePct: config.freelanceRatePct, lowRatePct: config.freelanceLowRatePct, standardCommission: 0, lowCommission: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id);
-    const net8 = f.received - f.refunded;
-    const share = o.freelanceQualifyingShare;
-    const qual = net8 * share / (1 + VAT_RATE);
-    const premiumShare = Math.min(share, Math.max(0, o.freelancePremiumShare));
-    const baseShare = Math.min(share, Math.max(0, o.freelanceBaseShare));
-    const lowShare = Math.min(baseShare, Math.max(0, o.freelanceLowShare));
-    const weight = config.freelanceLowMarginPct / 100;
-    const baseWeighted = net8 * (baseShare - lowShare * (1 - weight)) / (1 + VAT_RATE);
-    const prem = net8 * premiumShare / (1 + VAT_RATE);
-    st.received = round2(st.received + net8);
-    st.qualifyingNet = round2(st.qualifyingNet + qual);
-    st.baseNet = round2(st.baseNet + baseWeighted);
-    st.premiumNet = round2(st.premiumNet + prem);
-    st.belowBaseNet = round2(st.belowBaseNet + net8 * (1 - share) / (1 + VAT_RATE));
-    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net8), qualifyingPct: Math.round(share * 1e3) / 10, qualifyingNet: round2(qual), premiumNet: round2(prem) });
+    const received = f.received - f.refunded;
+    const net8 = received / (1 + VAT_RATE);
+    const lowNet = net8 * Math.min(1, Math.max(0, o.freelanceLowShare));
+    st.received = round2(st.received + received);
+    st.netSales = round2(st.netSales + net8);
+    st.lowNet = round2(st.lowNet + lowNet);
+    st.standardNet = round2(st.standardNet + (net8 - lowNet));
+    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(received), net: round2(net8), lowNet: round2(lowNet) });
   }
   for (const st of people.values()) {
-    const basis = Math.max(0, st.baseNet);
-    st.baseCommission = bandedAmount(config.freelanceBands, basis);
-    st.premiumCommission = round2(Math.max(0, st.premiumNet) * config.freelancePremiumPct / 100);
-    st.commission = round2(st.baseCommission + st.premiumCommission);
-    st.band = bandPosition(config.freelanceBands, basis);
+    const c = freelanceCommission(st.standardNet, st.lowNet, st.ratePct, st.lowRatePct);
+    st.standardCommission = c.standard;
+    st.lowCommission = c.low;
+    st.commission = c.total;
   }
   const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });
   const byId = new Map(agents.map((a2) => [a2.id, a2]));
@@ -73075,7 +73066,7 @@ async function buildOrderPdf(order, company) {
     text(l, colX[1], yp, { size: l === order.staff.name ? 10 : 9, color: l === order.staff.name ? INK : MUTED });
     yp -= 12.5;
   }
-  const meta = [[`${kind.word} #`, order.orderNo], [`${kind.word} DATE`, fmtDate(order.createdDate)]];
+  const meta = [[`${kind.word} #`, order.orderNo], [`${kind.word} DATE`, fmtDateTime(order.createdDate, order.capturedAt)]];
   if (kind.isInvoice && order.dueDate) meta.push(["DUE DATE", fmtDate(order.dueDate)]);
   if (!kind.isInvoice && order.validUntil) meta.push(["VALID UNTIL", fmtDate(order.validUntil)]);
   let ym = topInfo;
@@ -73543,6 +73534,7 @@ function serializeSummary(order) {
     // Set when someone other than the sales person keyed the order (the front office capturing on their behalf).
     capturedByName: order.capturedByName && order.capturedByName !== order.staff.name ? order.capturedByName : null,
     createdDate: order.createdDate,
+    capturedAt: order.capturedAt ? order.capturedAt.toISOString() : null,
     status: order.status,
     stage: order.stage,
     dueDate: order.dueDate,
@@ -73666,7 +73658,7 @@ ordersRouter.get("/", async (req, res) => {
   const where = {};
   const window2 = Number(days);
   if (Number.isInteger(window2) && window2 > 0 && window2 <= 3650) {
-    const cutoff = new Date(Date.now() - window2 * 864e5).toISOString().slice(0, 10);
+    const cutoff = addDays(todayStr(), -window2);
     where.OR = [{ createdDate: { gte: cutoff } }, { stage: { not: "Completed" }, status: { not: "Quote" } }, { handedOverOnCredit: true }];
   }
   if (!await seesAllOrders(req.user)) {
@@ -73788,6 +73780,7 @@ async function captureWalkin(req, res, form, extra = {}) {
         capturedByName: cap.capturedByName,
         ...sourcing,
         createdDate: todayStr(),
+        capturedAt: /* @__PURE__ */ new Date(),
         status,
         dueDate,
         stage: "Order Received",
@@ -73839,6 +73832,7 @@ ordersRouter.post("/quote", requirePermission("canAccessFinance"), async (req, r
         staffId: form.staffId,
         ...sourcing,
         createdDate: todayStr(),
+        capturedAt: /* @__PURE__ */ new Date(),
         status: "Quote",
         stage: "Order Received",
         orderDiscountPct: form.orderDiscountPct,
@@ -73873,6 +73867,7 @@ ordersRouter.post("/invoice", requirePermission("canAccessFinance"), async (req,
         staffId: form.staffId,
         ...sourcing,
         createdDate: todayStr(),
+        capturedAt: /* @__PURE__ */ new Date(),
         status: "Invoice",
         stage: "Order Received",
         dueDate,
@@ -74135,7 +74130,8 @@ var SOURCE_LABEL = {
   deletion: "Deletion",
   requisition: "Stock requisition",
   leave: "Leave",
-  allocation: "Sales person correction"
+  allocation: "Sales person correction",
+  orderchange: "Order amendment / deletion"
 };
 var ORIGINS = [
   { origin: "general", label: "General Order" },
@@ -74423,9 +74419,41 @@ async function allocation(u, perms) {
   };
   return { waiting: rows.filter((r) => r.status === "Pending" && r.requestedById !== u.id).map(make), mine: rows.filter((r) => r.requestedById === u.id).map(make) };
 }
+async function orderChange(u, perms) {
+  const since = recentSince();
+  const may = u.role === "Admin" || perms.canAccessFinance;
+  const rows = await prisma.orderChange.findMany({
+    where: { OR: [...may ? [{ status: "Pending", ...u.role === "Admin" ? {} : { requestedById: { not: u.id } } }] : [], { requestedById: u.id, OR: [{ status: { in: ["Pending", "Approved"] } }, { decidedAt: { gte: since } }] }] },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const make = (r) => ({
+    key: `orderchange:${r.id}`,
+    source: "orderchange",
+    sourceLabel: SOURCE_LABEL.orderchange,
+    ...originFields("general"),
+    title: `${r.kind === "Amend" ? "Amend" : "Delete"} order ${r.orderNo}${r.customer ? " \u2014 " + r.customer : ""}`,
+    detail: `${r.kind === "Amend" ? "Change the lines, customer or discount of the order" : "Delete the order"}. Reason: ${r.reason}${r.status === "Approved" && r.requestedById === u.id ? " \u2014 approved: open the order to make the change." : ""}`,
+    amount: null,
+    requestedByName: r.requestedByName,
+    requestedAt: r.requestedAt.toISOString(),
+    status: r.status,
+    decidedByName: r.decidedByName,
+    decidedAt: r.decidedAt?.toISOString() ?? null,
+    note: r.decisionNote || null,
+    link: `/orders/all?order=${r.orderId}`,
+    openLabel: r.status === "Approved" && r.requestedById === u.id ? r.kind === "Amend" ? "Continue \u2014 amend the order" : "Continue \u2014 delete the order" : "Open the order",
+    openPrimary: r.status === "Approved" && r.requestedById === u.id,
+    decide: { approve: `/order-changes/requests/${r.id}/approve`, reject: `/order-changes/requests/${r.id}/reject`, needsReason: false }
+  });
+  return {
+    waiting: rows.filter((r) => r.status === "Pending" && (r.requestedById !== u.id || u.role === "Admin") && may).map(make),
+    mine: rows.filter((r) => r.requestedById === u.id).map(make)
+  };
+}
 async function approvalsFor(u) {
   const perms = await permissionsForRole(u.role);
-  const parts = await Promise.all([costing(u, perms), artwork(u, perms), discount(u), amend(u, perms), deletion(u, perms), requisition(u, perms), leave(u, perms), allocation(u, perms)]);
+  const parts = await Promise.all([costing(u, perms), artwork(u, perms), discount(u), amend(u, perms), deletion(u, perms), requisition(u, perms), leave(u, perms), allocation(u, perms), orderChange(u, perms)]);
   const byTime = (a2, b) => a2.requestedAt < b.requestedAt ? 1 : -1;
   return { waiting: parts.flatMap((p) => p.waiting).sort(byTime), mine: parts.flatMap((p) => p.mine).sort((a2, b) => (b.decidedAt ?? b.requestedAt) > (a2.decidedAt ?? a2.requestedAt) ? 1 : -1) };
 }
@@ -74440,7 +74468,8 @@ var ROLE_WHERE = {
   deletion: { canAccessFinance: true },
   requisition: { canApproveStock: true, canAccessStock: true },
   leave: { canManageHr: true },
-  allocation: { canManageCommission: true }
+  allocation: { canManageCommission: true },
+  orderchange: { canAccessFinance: true }
 };
 async function approverRecipients(source, except) {
   const roles = source === "discount" ? [...DISCOUNT_ROLES] : [...(await prisma.role.findMany({ where: ROLE_WHERE[source], select: { name: true } })).map((r) => r.name), "Admin"];
@@ -76047,7 +76076,7 @@ stockRouter.post("/takes", async (req, res) => {
     prisma.stockTake.create({
       data: {
         materialId: material.id,
-        date: parsed.data.date ?? (/* @__PURE__ */ new Date()).toISOString().slice(0, 10),
+        date: parsed.data.date ?? todayStr(),
         systemQty,
         countedQty: parsed.data.countedQty,
         varianceQty,
@@ -77874,6 +77903,46 @@ async function importStatement(text, by) {
   const applied = await autoMatch(by);
   return { read: receipts.length, added, duplicates, linkedToRecorded: linked, autoApplied: applied, skipped };
 }
+var kes = (n) => "Ksh " + Math.round(n).toLocaleString("en-KE");
+async function matchedPayment(txId) {
+  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId }, include: { payment: { include: { order: true } } } });
+  if (!tx) throw new PaymentError("That M-Pesa payment was not found");
+  if (!tx.payment) throw new PaymentError("That receipt is not matched to an order, so there is nothing to put right");
+  return { tx, payment: tx.payment, order: tx.payment.order };
+}
+async function moveMatchedPayment(txId, toOrderId, by, reason) {
+  const why = reason.trim();
+  if (!why) throw new PaymentError("Say why the payment is being moved");
+  const { tx, payment, order: from } = await matchedPayment(txId);
+  if (payment.method !== "M-Pesa") throw new PaymentError("Only an M-Pesa or NCBA payment can be moved here");
+  if (from.id === toOrderId) throw new PaymentError("It is already on that order");
+  const to = await prisma.order.findUnique({ where: { id: toOrderId } });
+  if (!to) throw new PaymentError("The order to move it to was not found");
+  const target = (await openTargets()).find((t) => t.orderId === toOrderId);
+  if (!target) throw new PaymentError(`${to.orderNo} has nothing outstanding to put it against`);
+  if (round2(payment.amount) > round2(target.balance) + 1) {
+    throw new PaymentError(`${to.orderNo} only owes ${kes(target.balance)} \u2014 less than the ${kes(payment.amount)} received`);
+  }
+  await prisma.$transaction(async (db) => {
+    await db.payment.update({ where: { id: payment.id }, data: { orderId: to.id } });
+    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { orderId: to.id, appliedByName: `${by} (moved from ${from.orderNo})` } });
+    await db.matchChange.create({ data: { transactionId: tx.id, receipt: tx.mpesaReceipt ?? "", amount: payment.amount, fromOrderNo: from.orderNo, toOrderNo: to.orderNo, reason: why.slice(0, 300), byName: by } });
+  });
+  return { from: from.orderNo, to: to.orderNo };
+}
+async function unmatchPayment(txId, by, reason) {
+  const why = reason.trim();
+  if (!why) throw new PaymentError("Say why the payment is being taken off the order");
+  const { tx, payment, order: from } = await matchedPayment(txId);
+  if (payment.method !== "M-Pesa") throw new PaymentError("Only an M-Pesa or NCBA payment can be taken off here");
+  if (tx.kind === "STK") throw new PaymentError("A payment from a push we sent belongs to the order it was sent for \u2014 move it to another order instead");
+  await prisma.$transaction(async (db) => {
+    await db.payment.delete({ where: { id: payment.id } });
+    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { status: "Unmatched", orderId: null, appliedByName: null, appliedAt: null } });
+    await db.matchChange.create({ data: { transactionId: tx.id, receipt: tx.mpesaReceipt ?? "", amount: payment.amount, fromOrderNo: from.orderNo, toOrderNo: null, reason: why.slice(0, 300), byName: by } });
+  });
+  return { from: from.orderNo };
+}
 
 // apps/api/src/mpesaConfig.ts
 var import_crypto4 = require("crypto");
@@ -78920,7 +78989,7 @@ taxRouter.get("/year/:year", async (req, res) => {
 });
 taxRouter.get("/set-aside/current", async (_req, res) => {
   const cfg = await loadTaxConfig();
-  const today = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+  const today = todayStr();
   const year = Number(today.slice(0, 4)) + (Number(today.slice(5, 7)) > cfg.yearEndMonth ? 1 : 0);
   res.json(await computeSetAside(year, cfg));
 });
@@ -79344,6 +79413,7 @@ async function createDtfOrder(tx, opts) {
       capturedByName: opts.capturedByName,
       ...sourcing,
       createdDate: todayStr(),
+      capturedAt: /* @__PURE__ */ new Date(),
       status,
       dueDate,
       stage: "Order Received",
@@ -81256,6 +81326,57 @@ accountingRouter.post("/mpesa/:id/apply", ...mpesaAccess, async (req, res) => {
     throw e;
   }
 });
+accountingRouter.get("/mpesa/matched", ...mpesaAccess, async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
+  const txs = await prisma.mpesaTransaction.findMany({
+    where: {
+      payment: { isNot: null },
+      ...q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payment: { is: { order: { orderNo: { contains: q } } } } }] } : {}
+    },
+    include: { payment: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } } } },
+    orderBy: { id: "desc" },
+    take: 100
+  });
+  const changes = txs.length ? await prisma.matchChange.findMany({ where: { transactionId: { in: txs.map((t) => t.id) } }, orderBy: { id: "desc" } }) : [];
+  res.json({
+    rows: txs.map((t) => ({
+      id: t.id,
+      receipt: t.mpesaReceipt,
+      kind: t.kind,
+      amount: t.amount,
+      phone: t.phone,
+      payerName: t.payerName,
+      reference: t.accountReference,
+      date: t.payment.date,
+      orderId: t.payment.order.id,
+      orderNo: t.payment.order.orderNo,
+      customer: t.payment.order.corporateClient?.name || t.payment.order.customerName || "\u2014",
+      matchedBy: t.appliedByName ?? "",
+      canUnmatch: t.kind !== "STK",
+      changes: changes.filter((c) => c.transactionId === t.id).map((c) => ({ from: c.fromOrderNo, to: c.toOrderNo, reason: c.reason, by: c.byName, at: c.at.toISOString() }))
+    }))
+  });
+});
+accountingRouter.post("/mpesa/:id/rematch", ...mpesaAccess, async (req, res) => {
+  const body = external_exports.object({ orderId: external_exports.number().int().positive(), reason: external_exports.string().trim().min(1, "Say why the payment is being moved").max(300) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Choose the order and give a reason" });
+  try {
+    res.json({ ok: true, ...await moveMatchedPayment(Number(req.params.id), body.data.orderId, req.user.name, body.data.reason) });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+accountingRouter.post("/mpesa/:id/unmatch", ...mpesaAccess, async (req, res) => {
+  const body = external_exports.object({ reason: external_exports.string().trim().min(1, "Say why the payment is being taken off the order").max(300) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Give a reason" });
+  try {
+    res.json({ ok: true, ...await unmatchPayment(Number(req.params.id), req.user.name, body.data.reason) });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
 accountingRouter.post("/mpesa/:id/dismiss", ...mpesaAccess, async (req, res) => {
   const note = String(req.body.note || "").trim();
   if (!note) return res.status(400).json({ error: "Say why this payment is being dismissed" });
@@ -81324,6 +81445,7 @@ function productionSummary(o) {
     status: o.status,
     stage: o.stage,
     createdDate: o.createdDate,
+    capturedAt: o.capturedAt ? o.capturedAt.toISOString() : null,
     dueDate: o.dueDate,
     items: o.lineItems.map((li) => ({ name: li.material?.name ?? li.service?.name ?? "Item", qty: li.qty })),
     // A contracted-out job (every line is an outsourced service) is sent to its supplier rather than given to a staff member.
@@ -81780,14 +81902,13 @@ var settingsSchema7 = external_exports.object({
   generalBands: external_exports.array(bandSchema).min(1),
   filmBands: external_exports.array(bandSchema).min(1),
   // Freelance sales persons — weekly net sales received at or above base prices → rate
-  freelanceBands: external_exports.array(bandSchema).min(1).optional(),
   artworkRatePct: external_exports.number().min(0).max(100),
   ownershipMonths: external_exports.number().int().min(1).max(60),
   freelanceOwnershipMonths: external_exports.number().int().min(1).max(60).optional(),
   // Withholding tax deducted from freelance commission (percent; 0 = none)
   freelanceWhtRate: external_exports.number().min(0).max(100).optional(),
-  freelancePremiumPct: external_exports.number().min(0).max(100).optional(),
-  freelanceLowMarginPct: external_exports.number().min(0).max(100).optional(),
+  freelanceRatePct: external_exports.number().min(0).max(30).optional(),
+  freelanceLowRatePct: external_exports.number().min(0).max(30).optional(),
   // The sales target: times their gross monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: external_exports.number().min(0).max(20).optional(),
   targetMode: external_exports.enum(TARGET_MODES).optional(),
@@ -81806,19 +81927,18 @@ commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   const parsed = settingsSchema7.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, "Freelance bands") : null) ?? (d.payBands ? payStepsProblem(d.payBands, "Pay bands") : null);
+  const problem = bandsProblem(d.generalBands, "General sales bands") ?? bandsProblem(d.filmBands, "Film premium bands") ?? (d.payBands ? payStepsProblem(d.payBands, "Pay bands") : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b) => [...b].sort((x, y) => x.from - y.from);
   const data = {
     generalBandsJson: JSON.stringify(sort(d.generalBands)),
     filmBandsJson: JSON.stringify(sort(d.filmBands)),
-    ...d.freelanceBands ? { freelanceBandsJson: JSON.stringify(sort(d.freelanceBands)) } : {},
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
     ...d.freelanceOwnershipMonths !== void 0 ? { freelanceOwnershipMonths: d.freelanceOwnershipMonths } : {},
     ...d.freelanceWhtRate !== void 0 ? { freelanceWhtRate: d.freelanceWhtRate } : {},
-    ...d.freelancePremiumPct !== void 0 ? { freelancePremiumPct: d.freelancePremiumPct } : {},
-    ...d.freelanceLowMarginPct !== void 0 ? { freelanceLowMarginPct: d.freelanceLowMarginPct } : {},
+    ...d.freelanceRatePct !== void 0 ? { freelanceRatePct: d.freelanceRatePct } : {},
+    ...d.freelanceLowRatePct !== void 0 ? { freelanceLowRatePct: d.freelanceLowRatePct } : {},
     ...d.targetMultiplier !== void 0 ? { targetMultiplier: d.targetMultiplier } : {},
     ...d.targetMode !== void 0 ? { targetMode: d.targetMode } : {},
     ...d.generalMode !== void 0 ? { generalMode: d.generalMode } : {},
@@ -81833,22 +81953,18 @@ commissionRouter.put("/settings", requireRole("Admin"), async (req, res) => {
   res.json(await getCommissionConfig());
 });
 var freelanceRatesSchema = external_exports.object({
-  freelanceBands: external_exports.array(bandSchema).min(1),
-  freelancePremiumPct: external_exports.number().min(0).max(100),
-  freelanceLowMarginPct: external_exports.number().min(0).max(100),
+  freelanceRatePct: external_exports.number().min(0, "The rate cannot be below 0").max(30, "The rate cannot be above 30%"),
+  freelanceLowRatePct: external_exports.number().min(0, "The low rate cannot be below 0").max(30, "The low rate cannot be above 30%"),
   freelanceOwnershipMonths: external_exports.number().int().min(1).max(60),
   freelanceWhtRate: external_exports.number().min(0).max(100)
-});
+}).refine((d) => d.freelanceLowRatePct <= d.freelanceRatePct, { message: "The low rate (thin-margin lines) cannot be more than the standard rate" });
 commissionRouter.put("/freelance-settings", requireRole("Admin"), async (req, res) => {
   const parsed = freelanceRatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid input" });
   const d = parsed.data;
-  const problem = bandsProblem(d.freelanceBands, "Freelance bands");
-  if (problem) return res.status(400).json({ error: problem });
   const data = {
-    freelanceBandsJson: JSON.stringify([...d.freelanceBands].sort((x, y) => x.from - y.from)),
-    freelancePremiumPct: d.freelancePremiumPct,
-    freelanceLowMarginPct: d.freelanceLowMarginPct,
+    freelanceRatePct: d.freelanceRatePct,
+    freelanceLowRatePct: d.freelanceLowRatePct,
     freelanceOwnershipMonths: d.freelanceOwnershipMonths,
     freelanceWhtRate: d.freelanceWhtRate,
     updatedByName: req.user.name
@@ -83235,9 +83351,8 @@ freelanceRouter.get("/statement", manage2, async (req, res) => {
     weekEnd: weekEnd(week),
     open: weekEnd(week) >= todayStr(),
     // the week is not over, so more money may still arrive
-    bands: config.freelanceBands,
-    premiumPct: config.freelancePremiumPct,
-    lowMarginPct: config.freelanceLowMarginPct,
+    ratePct: config.freelanceRatePct,
+    lowRatePct: config.freelanceLowRatePct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
     b2cReady: isB2cReady(await loadMpesaConfig()),
     statements: statements.map((s) => {
@@ -83272,11 +83387,11 @@ freelanceRouter.post("/payouts/approve", manage2, async (req, res) => {
       continue;
     }
     const data = {
-      qualifyingNet: s.qualifyingNet,
+      qualifyingNet: s.netSales,
       amount: s.commission,
       withholdingRate: s.whtRate,
       withholdingTax: s.withholdingTax,
-      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, belowBaseNet: s.belowBaseNet, orders: s.orders }),
+      detailJson: JSON.stringify({ received: s.received, netSales: s.netSales, standardNet: s.standardNet, lowNet: s.lowNet, ratePct: s.ratePct, lowRatePct: s.lowRatePct, standardCommission: s.standardCommission, lowCommission: s.lowCommission, orders: s.orders }),
       status: "Approved",
       approvedByName: req.user.name,
       approvedAt: /* @__PURE__ */ new Date()
@@ -83478,8 +83593,8 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
       taxWithheld: round2(payouts.filter((p) => p.status === "Paid").reduce((a2, p) => a2 + p.withholdingTax, 0))
     },
     weeks,
-    bands: (await getCommissionConfig()).freelanceBands,
-    premiumPct: (await getCommissionConfig()).freelancePremiumPct
+    ratePct: (await getCommissionConfig()).freelanceRatePct,
+    lowRatePct: (await getCommissionConfig()).freelanceLowRatePct
   });
 });
 
@@ -84371,8 +84486,197 @@ dayCloseRouter.post("/summary/send", requireRole("Admin"), async (req, res) => {
   res.json(r);
 });
 
-// apps/api/src/routes/etims.ts
+// apps/api/src/routes/orderChanges.ts
 var import_express26 = __toESM(require_express2());
+var orderChangesRouter = (0, import_express26.Router)();
+orderChangesRouter.use(requireAuth);
+async function mayDecide(role) {
+  return role === "Admin" || (await permissionsForRole(role)).canAccessFinance;
+}
+var KIND_WORD = { Amend: "amendment", Delete: "deletion" };
+function view(r, userId) {
+  return {
+    id: r.id,
+    orderId: r.orderId,
+    orderNo: r.orderNo,
+    kind: r.kind,
+    reason: r.reason,
+    status: r.status,
+    requestedByName: r.requestedByName,
+    requestedAt: r.requestedAt.toISOString(),
+    decidedByName: r.decidedByName,
+    decidedAt: r.decidedAt?.toISOString() ?? null,
+    decisionNote: r.decisionNote,
+    doneAt: r.doneAt?.toISOString() ?? null,
+    mine: r.requestedById === userId
+  };
+}
+function kindProblem(order) {
+  if (order.dtfFilmSale || order.dtfArtworkJob || order.embroideryJob) return "Film, artwork and embroidery orders are tied to the roll and the job, so they cannot be amended or deleted here";
+  if (order.stage === "Completed" || order.handedOverOnCredit) return "A completed order cannot be changed \u2014 raise a credit note instead";
+  return null;
+}
+var snapshot = (o) => {
+  const totals = computeOrderTotals({ lineItems: o.lineItems, orderDiscountPct: o.orderDiscountPct, orderDiscountAmt: o.orderDiscountAmt }, o.payments.map((p) => ({ date: p.date, amount: p.amount, method: p.method })));
+  return JSON.stringify({
+    customerName: o.customerName,
+    phone: o.phone,
+    status: o.status,
+    orderDiscountPct: o.orderDiscountPct,
+    orderDiscountAmt: o.orderDiscountAmt,
+    total: round2(totals.grandTotal),
+    paid: round2(totals.paidTotal),
+    lines: o.lineItems.map((li) => ({ item: li.service?.name ?? li.material?.name ?? "Item", qty: li.qty, unitPrice: li.unitPrice, discountPct: li.discountPct, discountAmt: li.discountAmt, heatPressFee: li.heatPressFee, description: li.description }))
+  });
+};
+orderChangesRouter.get("/orders/:orderId", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  const rows = await prisma.orderChange.findMany({ where: { orderId }, orderBy: { id: "desc" }, take: 20 });
+  res.json({ requests: rows.map((r) => view(r, req.user.id)), problem: kindProblem(order), hasPayments: order.payments.length > 0 });
+});
+var askSchema = external_exports.object({ kind: external_exports.enum(["Amend", "Delete"]), reason: external_exports.string().trim().min(3, "Say why the order needs to be changed").max(300) });
+orderChangesRouter.post("/orders/:orderId", async (req, res) => {
+  const body = askSchema.safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Give a reason" });
+  const orderId = Number(req.params.orderId);
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  const problem = kindProblem(order);
+  if (problem) return res.status(400).json({ error: problem });
+  const open2 = await prisma.orderChange.findFirst({ where: { orderId, status: { in: ["Pending", "Approved"] } } });
+  if (open2) return res.status(409).json({ error: `There is already ${open2.status === "Pending" ? "a request waiting for approval" : "an approved request not used yet"} for this order` });
+  const row = await prisma.orderChange.create({
+    data: { orderId, orderNo: order.orderNo, customer: order.corporateClient?.name || order.customerName || "", kind: body.data.kind, reason: body.data.reason, requestedById: req.user.id, requestedByName: req.user.name }
+  });
+  notifyApprovers("orderchange", `Order ${order.orderNo}: ${KIND_WORD[body.data.kind]} requested`, `${req.user.name} asks to ${body.data.kind === "Amend" ? "amend" : "delete"} order ${order.orderNo} (${row.customer || "customer"}). Reason: ${body.data.reason}`, { id: req.user.id, name: req.user.name });
+  res.status(201).json(view(row, req.user.id));
+});
+async function decide2(req, res, approve) {
+  if (!await mayDecide(req.user.role)) return res.status(403).json({ error: "Only Finance or the Admin decide requests to change an order" });
+  const row = await prisma.orderChange.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row) return res.status(404).json({ error: "Request not found" });
+  if (row.status !== "Pending") return res.status(409).json({ error: "That request has already been dealt with" });
+  if (row.requestedById === req.user.id && req.user.role !== "Admin") return res.status(403).json({ error: "Someone other than the person who asked decides it" });
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 300) : "";
+  const saved = await prisma.orderChange.update({ where: { id: row.id }, data: { status: approve ? "Approved" : "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date(), decisionNote: note } });
+  res.json(view(saved, req.user.id));
+}
+orderChangesRouter.post("/requests/:id/approve", (req, res) => decide2(req, res, true));
+orderChangesRouter.post("/requests/:id/reject", (req, res) => decide2(req, res, false));
+orderChangesRouter.post("/requests/:id/cancel", async (req, res) => {
+  const row = await prisma.orderChange.findUnique({ where: { id: Number(req.params.id) } });
+  if (!row) return res.status(404).json({ error: "Request not found" });
+  if (row.requestedById !== req.user.id) return res.status(403).json({ error: "Only the person who asked can withdraw it" });
+  if (row.status !== "Pending" && row.status !== "Approved") return res.status(409).json({ error: "That request is already closed" });
+  await prisma.orderChange.update({ where: { id: row.id }, data: { status: "Cancelled" } });
+  res.json({ ok: true });
+});
+async function approvedFor(userId, orderId, kind) {
+  return prisma.orderChange.findFirst({ where: { orderId, kind, status: "Approved", requestedById: userId }, orderBy: { id: "desc" } });
+}
+var amendSchema2 = external_exports.object({
+  customerName: external_exports.string().trim().max(120).optional(),
+  phone: external_exports.string().trim().max(40).optional(),
+  lineItems: external_exports.array(lineItemSchema).min(1, "An order needs at least one line"),
+  orderDiscountPct: external_exports.number().min(0).max(100).default(0),
+  orderDiscountAmt: external_exports.number().min(0).default(0)
+});
+orderChangesRouter.put("/orders/:orderId/amend", async (req, res) => {
+  const body = amendSchema2.safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
+  const orderId = Number(req.params.orderId);
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  const request = await approvedFor(req.user.id, orderId, "Amend");
+  if (!request) return res.status(403).json({ error: "There is no approved request for you to amend this order. Ask for the amendment first, and wait for it to be approved." });
+  const problem = kindProblem(order);
+  if (problem) return res.status(400).json({ error: problem });
+  const d = body.data;
+  const totals = computeOrderTotals({ lineItems: d.lineItems, orderDiscountPct: d.orderDiscountPct, orderDiscountAmt: d.orderDiscountAmt }, []);
+  const paid = order.payments.reduce((a2, p) => a2 + p.amount, 0);
+  if (paid > totals.grandTotal + 0.01) {
+    return res.status(400).json({ error: `The customer has already paid Ksh ${Math.round(paid).toLocaleString("en-KE")}, which is more than the new total of Ksh ${Math.round(totals.grandTotal).toLocaleString("en-KE")}. Refund or move the extra payment first (credit note, or Matched payments for M-Pesa).` });
+  }
+  const costs = await canSeeCosts(req.user.role);
+  const before = snapshot(order);
+  const updated = await prisma.$transaction(async (tx) => {
+    await returnOrderStock(tx, orderId);
+    const oldCosts = order.lineItems.filter((l) => l.serviceId).map((l) => ({ serviceId: l.serviceId, supplierName: l.supplierName, supplierCost: l.supplierCost, markupType: l.markupType, markupValue: l.markupValue, supplierVatClaimable: l.supplierVatClaimable, used: false }));
+    await tx.orderLineItem.deleteMany({ where: { orderId } });
+    for (const li of d.lineItems) {
+      const keep = !costs && li.serviceId ? oldCosts.find((c) => c.serviceId === li.serviceId && !c.used) : void 0;
+      if (keep) keep.used = true;
+      await tx.orderLineItem.create({
+        data: {
+          orderId,
+          itemType: li.itemType,
+          serviceId: li.serviceId ?? null,
+          materialId: li.materialId ?? null,
+          qty: li.qty,
+          unitPrice: li.unitPrice,
+          discountPct: li.discountPct,
+          discountAmt: li.discountAmt,
+          heatPressFee: li.heatPressFee ?? null,
+          artworkAreaSqm: li.artworkAreaSqm ?? null,
+          description: li.description ?? "",
+          ...keep ? { supplierName: keep.supplierName, supplierCost: keep.supplierCost, markupType: keep.markupType, markupValue: keep.markupValue, supplierVatClaimable: keep.supplierVatClaimable } : costFieldsFor(li, costs)
+        }
+      });
+    }
+    const balance = totals.grandTotal - paid;
+    const settle = order.kind === "walkin" && order.status === "Order" && balance > 5e-3 ? resolveWalkinStatus(balance) : null;
+    await tx.order.update({
+      where: { id: orderId },
+      data: {
+        orderDiscountPct: d.orderDiscountPct,
+        orderDiscountAmt: d.orderDiscountAmt,
+        ...order.kind === "walkin" && d.customerName !== void 0 ? { customerName: d.customerName || order.customerName } : {},
+        ...order.kind === "walkin" && d.phone !== void 0 ? { phone: d.phone || null } : {},
+        ...settle ? { status: settle.status, dueDate: settle.dueDate } : {}
+      }
+    });
+    await takeOrderStock(tx, orderId);
+    const after = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: orderInclude });
+    await tx.orderChange.update({ where: { id: request.id }, data: { status: "Done", doneAt: /* @__PURE__ */ new Date(), beforeJson: before, afterJson: snapshot(after) } });
+    return after;
+  });
+  res.json(serializeDetail(updated));
+});
+orderChangesRouter.delete("/orders/:orderId", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
+  if (!order) return res.status(404).json({ error: "Order not found" });
+  if (!await canAccessOrder(req.user, order)) return res.status(403).json({ error: "Not permitted" });
+  const request = await approvedFor(req.user.id, orderId, "Delete");
+  if (!request) return res.status(403).json({ error: "There is no approved request for you to delete this order. Ask for the deletion first, and wait for it to be approved." });
+  const problem = kindProblem(order);
+  if (problem) return res.status(400).json({ error: problem });
+  if (order.payments.length > 0) {
+    return res.status(400).json({ error: `This order has ${order.payments.length} payment${order.payments.length === 1 ? "" : "s"} on it. Move an M-Pesa / NCBA payment to the right order (Accounting \u2192 M-Pesa Matching \u2192 Matched payments), or refund the customer, before the order is deleted.` });
+  }
+  if (await prisma.adjustmentNote.count({ where: { orderId } }) > 0) return res.status(400).json({ error: "A credit or debit note has been raised against this order, so it cannot be deleted" });
+  const before = snapshot(order);
+  try {
+    await prisma.$transaction(async (tx) => {
+      await returnOrderStock(tx, orderId);
+      await tx.mpesaTransaction.updateMany({ where: { orderId }, data: { orderId: null } });
+      await tx.order.delete({ where: { id: orderId } });
+      await tx.orderChange.update({ where: { id: request.id }, data: { status: "Done", doneAt: /* @__PURE__ */ new Date(), beforeJson: before, afterJson: "" } });
+    });
+  } catch (e) {
+    console.error("Order delete failed", e);
+    return res.status(400).json({ error: "This order is linked to other records (production, supplier bills or costing) and cannot be deleted. Ask for the amendment instead, or raise a credit note." });
+  }
+  res.json({ ok: true, orderNo: order.orderNo, on: todayStr() });
+});
+
+// apps/api/src/routes/etims.ts
+var import_express27 = __toESM(require_express2());
 
 // apps/api/src/etims.ts
 var ETIMS_TAX_TYPE = "B";
@@ -84454,7 +84758,7 @@ async function sellableLines() {
 }
 
 // apps/api/src/routes/etims.ts
-var etimsRouter = (0, import_express26.Router)();
+var etimsRouter = (0, import_express27.Router)();
 etimsRouter.use(requireAuth, requireRole("Admin"));
 var XLSX_TYPE2 = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 var KIND_LABEL = { head: "Business head", service: "Service", material: "Stock item" };
@@ -84596,7 +84900,7 @@ etimsRouter.get("/mapping.xlsx", async (_req, res) => {
   res.setHeader("Content-Disposition", 'attachment; filename="etims-item-codes.xlsx"');
   res.send(writeXlsx("eTIMS codes", out, [14, 7, 36, 24, 9, 14, 20, 12, 12, 20, 16, 16, 24, 30]));
 });
-var rawBody3 = import_express26.default.raw({ type: () => true, limit: "10mb" });
+var rawBody3 = import_express27.default.raw({ type: () => true, limit: "10mb" });
 etimsRouter.post("/mapping", rawBody3, async (req, res) => {
   const dryRun = req.query.dryRun === "1";
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) return res.status(400).json({ error: "Choose an Excel (.xlsx) file to upload" });
@@ -84665,7 +84969,7 @@ etimsRouter.post("/mapping", rawBody3, async (req, res) => {
 });
 
 // apps/api/src/routes/hr.ts
-var import_express27 = __toESM(require_express2());
+var import_express28 = __toESM(require_express2());
 
 // apps/api/src/hr.ts
 var toType2 = (t) => ({ ...t, accrual: t.accrual === "monthly" ? "monthly" : "upfront" });
@@ -84741,7 +85045,7 @@ async function onLeaveByDay(days, exceptRequestId) {
 }
 
 // apps/api/src/routes/hr.ts
-var hrRouter = (0, import_express27.Router)();
+var hrRouter = (0, import_express28.Router)();
 hrRouter.use(requireAuth, requirePermission("canAccessHr", "canManageHr"), async (_req, _res, next) => {
   await ensureHrDefaults();
   next();
@@ -85086,8 +85390,8 @@ hrRouter.post("/notes", manage3, async (req, res) => {
 });
 
 // apps/api/src/routes/approvals.ts
-var import_express28 = __toESM(require_express2());
-var approvalsRouter = (0, import_express28.Router)();
+var import_express29 = __toESM(require_express2());
+var approvalsRouter = (0, import_express29.Router)();
 approvalsRouter.use(requireAuth);
 approvalsRouter.get("/", async (req, res) => {
   const [lists, setting] = await Promise.all([approvalsFor(req.user), prisma.setting.findUnique({ where: { id: 1 } })]);
@@ -85104,8 +85408,8 @@ approvalsRouter.put("/email", requireRole("Admin"), async (req, res) => {
 });
 
 // apps/api/src/routes/allocation.ts
-var import_express29 = __toESM(require_express2());
-var allocationRouter = (0, import_express29.Router)();
+var import_express30 = __toESM(require_express2());
+var allocationRouter = (0, import_express30.Router)();
 allocationRouter.use(requireAuth);
 async function mayCorrectAllocation(role) {
   return role === "Admin" || (await permissionsForRole(role)).canManageCommission;
@@ -85189,7 +85493,7 @@ allocationRouter.post("/orders/:orderId", async (req, res) => {
   notifyApprovers("allocation", `${order.orderNo}: sales person ${order.staff.name} \u2192 ${to.name}`, `${user.name} asks to change the sales person on order ${order.orderNo} from ${order.staff.name} to ${to.name}. Reason: ${parsed.data.reason}`, { id: user.id });
   res.status(201).json({ ok: true, applied: false, requestId: row.id });
 });
-async function decide2(req, res, approve) {
+async function decide3(req, res, approve) {
   if (!await mayCorrectAllocation(req.user.role)) return res.status(403).json({ error: "Only Admin or those who manage commission can decide this" });
   const row = await prisma.allocationChange.findUnique({ where: { id: Number(req.params.id) } });
   if (!row) return res.status(404).json({ error: "Correction request not found" });
@@ -85210,17 +85514,17 @@ async function decide2(req, res, approve) {
   await prisma.allocationChange.update({ where: { id: row.id }, data: { status: "Rejected", decidedByName: req.user.name, decidedAt: /* @__PURE__ */ new Date(), decisionNote: note } });
   res.json({ ok: true });
 }
-allocationRouter.post("/requests/:id/approve", (req, res) => decide2(req, res, true));
-allocationRouter.post("/requests/:id/reject", (req, res) => decide2(req, res, false));
+allocationRouter.post("/requests/:id/approve", (req, res) => decide3(req, res, true));
+allocationRouter.post("/requests/:id/reject", (req, res) => decide3(req, res, false));
 
 // apps/api/src/app.ts
 var allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5174").split(",").map((o) => o.trim());
-var app = (0, import_express30.default)();
+var app = (0, import_express31.default)();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY) app.set("trust proxy", /^\d+$/.test(process.env.TRUST_PROXY) ? Number(process.env.TRUST_PROXY) : process.env.TRUST_PROXY);
 app.use((0, import_cors.default)({ origin: allowedOrigins }));
-app.use("/api/whatsapp/send-file", import_express30.default.json({ limit: "15mb" }));
-app.use(import_express30.default.json({ limit: "5mb" }));
+app.use("/api/whatsapp/send-file", import_express31.default.json({ limit: "15mb" }));
+app.use(import_express31.default.json({ limit: "5mb" }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "DENY");
@@ -85264,6 +85568,7 @@ app.use("/api/security", securityRouter);
 app.use("/api/freelance", freelanceRouter);
 app.use("/api/whatsapp", whatsappRouter);
 app.use("/api/day-close", dayCloseRouter);
+app.use("/api/order-changes", orderChangesRouter);
 app.use("/api/costing", costingRouter);
 app.use("/api/etims", etimsRouter);
 app.use("/api/hr", hrRouter);

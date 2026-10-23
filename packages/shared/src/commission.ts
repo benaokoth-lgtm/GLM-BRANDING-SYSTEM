@@ -243,31 +243,20 @@ export function withholdingOn(gross: number, ratePct: number): number {
 }
 
 /**
- * A freelance sales person is paid in two parts, so commission never eats into our base prices:
- *   • a small banded % on the BASE-price part of what they sell (the price-list price: the part that already carries only our minimum margin);
- *   • a share of whatever was charged ABOVE base (the premium). The cost of the job does not change, so the premium is almost pure profit.
- * Contracted-out services and stock resale carry a thin mark-up, so the base part of those lines counts at a reduced weight towards the bands.
+ * A freelance sales person is paid a flat percentage of the money they bring in, net of VAT:
+ *   • the STANDARD rate on net sales received (our own production);
+ *   • the LOW rate on the part of an order that is a thin-margin line (a contracted-out service or stock resale).
+ * The rates are set by the Admin under Commission → Freelancers → Rates and can be changed at any time; the week's money received is paid at the rates in force when the week is approved.
  */
-export const DEFAULT_FREELANCE_BANDS: Band[] = [
-  { from: 0, rate: 2 },
-  { from: 50000, rate: 3 },
-  { from: 150000, rate: 4 },
-  // Large deals are bargained down to a thin margin, so the marginal share falls again: a single sale of KES 10 million (net 8.62 million) pays about 1.85% in all —
-  // 159,207 — rather than the 4% a flat top band would give (about 345,000).
-  { from: 500000, rate: 3 },
-  { from: 2000000, rate: 2 },
-  { from: 5000000, rate: 1 },
-];
-/** The scale freelancers were first given (up to 150,000 and flat above). A saved scale that is exactly this one has never been edited, so it follows the current defaults. */
-export const LEGACY_FREELANCE_BANDS: Band[] = [
-  { from: 0, rate: 2 },
-  { from: 50000, rate: 3 },
-  { from: 150000, rate: 4 },
-];
-/** The % of the amount charged above base that the freelancer keeps. */
-export const DEFAULT_FREELANCE_PREMIUM_PCT = 30;
-/** The weight (%) at which the base part of contracted-out and stock lines counts towards the bands: 100 = same as any other line. */
-export const DEFAULT_FREELANCE_LOW_MARGIN_PCT = 50;
+export const DEFAULT_FREELANCE_RATE_PCT = 8;
+export const DEFAULT_FREELANCE_LOW_RATE_PCT = 4;
+
+/** The commission on a week's net sales (VAT out): the standard part at the standard rate and the thin-margin part at the low rate, to the cent. Never negative. */
+export function freelanceCommission(standardNet: number, lowNet: number, ratePct: number, lowRatePct: number): { standard: number; low: number; total: number } {
+  const standard = r2(Math.max(0, standardNet) * Math.max(0, ratePct) / 100);
+  const low = r2(Math.max(0, lowNet) * Math.max(0, lowRatePct) / 100);
+  return { standard, low, total: r2(standard + low) };
+}
 
 const DAY_MS = 86_400_000;
 const parseDay = (s: string) => {

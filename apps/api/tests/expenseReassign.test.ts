@@ -1,5 +1,6 @@
 // A posted expense can be moved to the right expense head (account category) without an amendment request; the ones the system itself ties to
 // something (an outsourced job's bill, freelance commission with tax withheld) cannot. Corporate clients are managed from Finance.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -12,7 +13,7 @@ import { ensureChartOfAccounts } from '../src/accounting/chart';
 let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, {

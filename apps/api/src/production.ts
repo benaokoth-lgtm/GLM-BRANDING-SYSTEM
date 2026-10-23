@@ -51,6 +51,7 @@ type OrderWithLines = {
   stage: string;
   customerName: string | null;
   createdDate: string;
+  capturedAt?: Date | null;
   dueDate: string | null;
   orderDiscountPct: number;
   orderDiscountAmt: number;
@@ -91,6 +92,7 @@ export function productionSummary(o: OrderWithLines) {
     status: o.status,
     stage: o.stage,
     createdDate: o.createdDate,
+    capturedAt: o.capturedAt ? o.capturedAt.toISOString() : null,
     dueDate: o.dueDate,
     items: o.lineItems.map((li) => ({ name: li.material?.name ?? li.service?.name ?? 'Item', qty: li.qty })),
     // A contracted-out job (every line is an outsourced service) is sent to its supplier rather than given to a staff member.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { STAGES, fmtDate, fmtKsh, whatsappNumber } from '@glm/shared';
+import { fmtDate, fmtDateTime, fmtKsh, STAGES, todayStr, whatsappNumber } from '@glm/shared';
 import type { OrderStage } from '@glm/shared';
 import { api, fetchFile } from '../api/client';
 import type { CompanySettings, OrderDetail } from '../api/models';
@@ -9,6 +9,7 @@ import { documentLabel, documentTitleCase, orderContact, whatsappMessage } from 
 import SplitPayments, { newPaymentRow, paymentProblem, toApiPayments } from './SplitPayments';
 import OutsourcedCostingPanel from './OutsourcedCostingPanel';
 import OrderAllocation from './OrderAllocation';
+import OrderChangePanel from './OrderChangePanel';
 import { StkCollectPanel } from './StkCollect';
 import { useAuth } from '../state/AuthContext';
 import type { PaymentRow } from './SplitPayments';
@@ -270,7 +271,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             </div>
             <div>
               <div className="card-kicker">Created</div>
-              <div>{fmtDate(detail.createdDate)}</div>
+              <div>{fmtDateTime(detail.createdDate, detail.capturedAt)}</div>
             </div>
           </div>
           {detail.priceApproval === 'Pending' && (
@@ -391,7 +392,7 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
                       <div style={{ marginTop: 'var(--space-2)' }}>
                         <p className="note">
                           The customer takes the order now and it is <strong>converted to an invoice</strong> for the {fmtKsh(detail.totals.balanceDue)} still owing — due{' '}
-                          {detail.status === 'Invoice' && detail.dueDate && detail.dueDate >= new Date().toISOString().slice(0, 10) ? fmtDate(detail.dueDate) : 'after the credit terms'}, and
+                          {detail.status === 'Invoice' && detail.dueDate && detail.dueDate >= todayStr() ? fmtDate(detail.dueDate) : 'after the credit terms'}, and
                           collected through Accounts Receivable.
                         </p>
                         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
@@ -563,6 +564,9 @@ export default function OrderDetailDialog({ orderId, onClose, onChanged }: Props
             )}
           </div>
         )}
+        <div style={{ padding: '0 var(--space-4)' }}>
+          <OrderChangePanel detail={detail} onChanged={() => { load(); onChanged(); }} onDeleted={() => { onChanged(); onClose(); }} />
+        </div>
         <div className="dialog-actions">
           <button type="button" className={'btn blueprint ' + (sharePanel === 'email' ? 'btn-primary' : 'btn-secondary')} onClick={() => { setSharePanel(sharePanel === 'email' ? null : 'email'); setEmailSent(false); }}>
             <i className="corner tl"></i>

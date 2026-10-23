@@ -88,6 +88,8 @@ export interface OrderSummary {
   /** Set when the front office keyed the order for the sales person (staff). */
   capturedByName?: string | null;
   createdDate: string;
+  /** When the order was keyed in (ISO time); blank on orders captured before it was recorded. */
+  capturedAt?: string | null;
   status: OrderStatus;
   stage: OrderStage;
   dueDate: string | null;

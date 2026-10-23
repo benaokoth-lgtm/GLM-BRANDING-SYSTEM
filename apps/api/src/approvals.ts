@@ -9,7 +9,7 @@ import { getMailer } from './mailer';
 // Every request carries the screen it was raised on (its origin), and the inbox shows them under those heads, in the order of the menu. "Notifications" are the badge in the menu (the number waiting, plus the decisions on your own requests you have not looked at yet) and an email to those who can decide, when a new
 // request is raised and mail is set up.
 
-export type ApprovalSource = 'costing' | 'artwork' | 'discount' | 'amend' | 'deletion' | 'requisition' | 'leave' | 'allocation';
+export type ApprovalSource = 'costing' | 'artwork' | 'discount' | 'amend' | 'deletion' | 'requisition' | 'leave' | 'allocation' | 'orderchange';
 
 export const SOURCE_LABEL: Record<ApprovalSource, string> = {
   costing: 'Job Costing price',
@@ -20,6 +20,7 @@ export const SOURCE_LABEL: Record<ApprovalSource, string> = {
   requisition: 'Stock requisition',
   leave: 'Leave',
   allocation: 'Sales person correction',
+  orderchange: 'Order amendment / deletion',
 };
 
 /** Where a request comes from: the screen of the system it was raised on (the heads the inbox is arranged under), in the order of the menu. */
@@ -357,10 +358,44 @@ async function allocation(u: Who, perms: Awaited<ReturnType<typeof permissionsFo
   return { waiting: rows.filter((r) => r.status === 'Pending' && r.requestedById !== u.id).map(make), mine: rows.filter((r) => r.requestedById === u.id).map(make) };
 }
 
+/** Requests to amend or delete an order: Finance and the Admin decide; the person who asked makes the change once it is approved. */
+async function orderChange(u: Who, perms: Awaited<ReturnType<typeof permissionsForRole>>): Promise<Part> {
+  const since = recentSince();
+  const may = u.role === 'Admin' || perms.canAccessFinance;
+  const rows = await prisma.orderChange.findMany({
+    where: { OR: [...(may ? [{ status: 'Pending', ...(u.role === 'Admin' ? {} : { requestedById: { not: u.id } }) }] : []), { requestedById: u.id, OR: [{ status: { in: ['Pending', 'Approved'] } }, { decidedAt: { gte: since } }] }] },
+    orderBy: { id: 'desc' },
+    take: 100,
+  });
+  const make = (r: (typeof rows)[number]): ApprovalItem => ({
+    key: `orderchange:${r.id}`,
+    source: 'orderchange',
+    sourceLabel: SOURCE_LABEL.orderchange,
+    ...originFields('general'),
+    title: `${r.kind === 'Amend' ? 'Amend' : 'Delete'} order ${r.orderNo}${r.customer ? ' — ' + r.customer : ''}`,
+    detail: `${r.kind === 'Amend' ? 'Change the lines, customer or discount of the order' : 'Delete the order'}. Reason: ${r.reason}${r.status === 'Approved' && r.requestedById === u.id ? ' — approved: open the order to make the change.' : ''}`,
+    amount: null,
+    requestedByName: r.requestedByName,
+    requestedAt: r.requestedAt.toISOString(),
+    status: r.status,
+    decidedByName: r.decidedByName,
+    decidedAt: r.decidedAt?.toISOString() ?? null,
+    note: r.decisionNote || null,
+    link: `/orders/all?order=${r.orderId}`,
+    openLabel: r.status === 'Approved' && r.requestedById === u.id ? (r.kind === 'Amend' ? 'Continue — amend the order' : 'Continue — delete the order') : 'Open the order',
+    openPrimary: r.status === 'Approved' && r.requestedById === u.id,
+    decide: { approve: `/order-changes/requests/${r.id}/approve`, reject: `/order-changes/requests/${r.id}/reject`, needsReason: false },
+  });
+  return {
+    waiting: rows.filter((r) => r.status === 'Pending' && (r.requestedById !== u.id || u.role === 'Admin') && may).map(make),
+    mine: rows.filter((r) => r.requestedById === u.id).map(make),
+  };
+}
+
 /** What waits for this person's decision, and how their own requests are going (newest first). */
 export async function approvalsFor(u: Who): Promise<{ waiting: ApprovalItem[]; mine: ApprovalItem[] }> {
   const perms = await permissionsForRole(u.role);
-  const parts = await Promise.all([costing(u, perms), artwork(u, perms), discount(u), amend(u, perms), deletion(u, perms), requisition(u, perms), leave(u, perms), allocation(u, perms)]);
+  const parts = await Promise.all([costing(u, perms), artwork(u, perms), discount(u), amend(u, perms), deletion(u, perms), requisition(u, perms), leave(u, perms), allocation(u, perms), orderChange(u, perms)]);
   const byTime = (a: ApprovalItem, b: ApprovalItem) => (a.requestedAt < b.requestedAt ? 1 : -1);
   return { waiting: parts.flatMap((p) => p.waiting).sort(byTime), mine: parts.flatMap((p) => p.mine).sort((a, b) => ((b.decidedAt ?? b.requestedAt) > (a.decidedAt ?? a.requestedAt) ? 1 : -1)) };
 }
@@ -381,6 +416,7 @@ const ROLE_WHERE: Record<Exclude<ApprovalSource, 'discount'>, Prisma.RoleWhereIn
   requisition: { canApproveStock: true, canAccessStock: true },
   leave: { canManageHr: true },
   allocation: { canManageCommission: true },
+  orderchange: { canAccessFinance: true },
 };
 
 /** Who can decide this kind of request, with an email address and still working here. */

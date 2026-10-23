@@ -1,3 +1,4 @@
+import { todayStr } from '@glm/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
@@ -40,7 +41,7 @@ taxRouter.get('/year/:year', async (req, res) => {
 // the planner for the accounting year we are in now (the year that ends in or after this month)
 taxRouter.get('/set-aside/current', async (_req, res) => {
   const cfg = await loadTaxConfig();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayStr();
   const year = Number(today.slice(0, 4)) + (Number(today.slice(5, 7)) > cfg.yearEndMonth ? 1 : 0);
   res.json(await computeSetAside(year, cfg));
 });

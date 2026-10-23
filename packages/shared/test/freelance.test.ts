@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addWeeks, bandedAmount, freelanceSplit, isWeekStart, qualifyingShare, weekEnd, weekStart, DEFAULT_FREELANCE_BANDS } from '../src/commission.ts';
+import { addWeeks, bandedAmount, freelanceCommission, freelanceSplit, isWeekStart, qualifyingShare, weekEnd, weekStart, DEFAULT_GENERAL_BANDS } from '../src/commission.ts';
 
 test('pay weeks run Monday to Sunday', () => {
   assert.equal(weekStart('2026-10-07'), '2026-10-05'); // a Wednesday
@@ -13,10 +13,18 @@ test('pay weeks run Monday to Sunday', () => {
   assert.deepEqual([isWeekStart('2026-10-05'), isWeekStart('2026-10-06'), isWeekStart('nope')], [true, false, false]);
 });
 
-test('the weekly bands are marginal, like the staff bands', () => {
-  // 80,000 net of base-price sales: first 50,000 at 2% (1,000) + 30,000 at 3% (900)
-  assert.equal(bandedAmount(DEFAULT_FREELANCE_BANDS, 80000), 1900);
-  assert.equal(bandedAmount(DEFAULT_FREELANCE_BANDS, 200000), 1000 + 3000 + 2000);
+test('the bands are marginal (staff commission still uses them)', () => {
+  assert.equal(bandedAmount([{ from: 0, rate: 2 }, { from: 50000, rate: 3 }, { from: 150000, rate: 4 }], 80000), 1900); // 50,000 at 2% + 30,000 at 3%
+  assert.ok(DEFAULT_GENERAL_BANDS.length > 0);
+});
+
+test('freelance commission is a flat percentage: the standard rate, and a lower one on thin-margin lines', () => {
+  assert.deepEqual(freelanceCommission(100000, 0, 8, 4), { standard: 8000, low: 0, total: 8000 });
+  assert.deepEqual(freelanceCommission(80000, 20000, 8, 4), { standard: 6400, low: 800, total: 7200 });
+  assert.deepEqual(freelanceCommission(103879.31, 0, 8, 4), { standard: 8310.34, low: 0, total: 8310.34 });
+  assert.deepEqual(freelanceCommission(0, 0, 8, 4), { standard: 0, low: 0, total: 0 });
+  assert.equal(freelanceCommission(-500, 0, 8, 4).total, 0); // a week of refunds never goes below nothing
+  assert.equal(freelanceCommission(100000, 0, 0, 0).total, 0); // switched off
 });
 
 const line = (qty: number, unitPrice: number, baseUnit: number, extra: Record<string, number> = {}) => ({ qty, unitPrice, baseUnit, ...extra });

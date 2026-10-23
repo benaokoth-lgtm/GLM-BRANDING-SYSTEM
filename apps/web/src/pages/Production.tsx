@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fmtDate, fmtKsh } from '@glm/shared';
+import { fmtDate, fmtDateTime, fmtKsh } from '@glm/shared';
 import { useSubTab } from '../state/SubNavContext';
 import { HeadRow, groupByHead } from '../components/HeadGroups';
 import { localDay, useListSearch } from '../components/useListSearch';
@@ -21,6 +21,7 @@ interface OrderBits {
   channel: string;
   businessHead: string;
   createdDate: string;
+  capturedAt?: string | null;
   dueDate: string | null;
   items: { name: string; qty: number }[];
   units: number;
@@ -227,7 +228,7 @@ function Jobs({ queue, outCount, onOutsourced }: { queue: ReturnType<typeof useL
                   <td>
                     <strong>{o.orderNo}</strong> {o.channel === 'dtf' && <Tag>DTF</Tag>} {o.outsourced && <Tag>Outsourced</Tag>}
                   </td>
-                  <td className="text-muted">{fmtDate(o.createdDate)}</td>
+                  <td className="text-muted">{fmtDateTime(o.createdDate, o.capturedAt)}</td>
                   <td>{o.customer}</td>
                   <td className="text-muted" style={{ fontSize: 12 }}>
                     {itemsText(o.items)}
@@ -474,7 +475,7 @@ function OutsourcedTab({ queue, seeCosts }: { queue: ReturnType<typeof useLoad<Q
                   <td>
                     <strong>{o.orderNo}</strong> {o.channel === 'dtf' && <Tag>DTF</Tag>}
                   </td>
-                  <td className="text-muted">{fmtDate(o.createdDate)}</td>
+                  <td className="text-muted">{fmtDateTime(o.createdDate, o.capturedAt)}</td>
                   <td>{o.customer}</td>
                   <td className="text-muted" style={{ fontSize: 12 }}>
                     {itemsText(o.items)}

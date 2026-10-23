@@ -1,4 +1,4 @@
-import { VAT_RATE, WALK_IN_CLIENT, fmtDate, fmtKsh, splitGross } from '@glm/shared';
+import { VAT_RATE, WALK_IN_CLIENT, fmtDate, fmtDateTime, fmtKsh, splitGross } from '@glm/shared';
 import type { CompanySettings, OrderDetail } from '../api/models';
 import { printWalkinReceipt } from './printTicket';
 
@@ -182,7 +182,7 @@ export function buildCorporateDocumentHtml(order: OrderDetail, company: CompanyS
       </div>
       <div class="meta">
         <span class="k">${docWord} #</span><span class="v">${esc(order.orderNo)}</span>
-        <span class="k">${docWord} DATE</span><span class="v">${fmtDate(order.createdDate)}</span>
+        <span class="k">${docWord} DATE</span><span class="v">${fmtDateTime(order.createdDate, order.capturedAt)}</span>
         ${isInvoice && order.dueDate ? `<span class="k">DUE DATE</span><span class="v">${fmtDate(order.dueDate)}</span>` : ''}
         ${!isInvoice && order.validUntil ? `<span class="k">VALID UNTIL</span><span class="v">${fmtDate(order.validUntil)}</span>` : ''}
       </div>

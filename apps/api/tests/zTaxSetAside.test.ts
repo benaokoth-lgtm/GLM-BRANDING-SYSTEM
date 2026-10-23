@@ -1,5 +1,6 @@
 // (Named to run last: it adds a large sale to the books, which would show up in other tests' profit figures.)
 // The tax set-aside planner: what to hold back for the year's income tax, month by month, and what has been set aside. Information only.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -13,7 +14,7 @@ let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
 const year = Number(new Date().toISOString().slice(0, 4));
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens[who]}` }, body: body === undefined ? undefined : JSON.stringify(body) });

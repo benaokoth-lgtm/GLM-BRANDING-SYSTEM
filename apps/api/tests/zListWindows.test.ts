@@ -1,5 +1,6 @@
 // The two heaviest reads are kept short so the screens open fast: All Orders can ask for the last N days plus everything still open (GET /orders?days=N), and the DTF order screens ask
 // only for the open rolls and what is on them (GET /dtf/data?scope=order). Without those words both return everything, as before. (Named z… because it records orders and rolls.)
+import { addDays, todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -16,7 +17,7 @@ async function call(who: string, path: string) {
   const res = await fetch(`${base}/api${path}`, { headers: { Authorization: `Bearer ${tokens[who]}` } });
   return { status: res.status, body: (await res.json().catch(() => null)) as any };
 }
-const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+const daysAgo = (n: number) => addDays(todayStr(), -n);
 
 describe('short lists', () => {
   before(async () => {

@@ -17,6 +17,20 @@ export function fmtDate(iso: string | null | undefined): string {
   return `${d}/${mo}/${y}`;
 }
 
+/** The time of day an order was captured, in Nairobi time whatever the machine's own zone: "14:32" (blank when it was not recorded). */
+export function fmtTime(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+}
+
+/** "23/10/2026 14:32" — the order's date, with the time it was captured when that was recorded. */
+export function fmtDateTime(date: string | null | undefined, capturedAt: string | null | undefined): string {
+  const t = fmtTime(capturedAt);
+  return t ? fmtDate(date) + ' ' + t : fmtDate(date);
+}
+
 export function buildLineTotal(li: LineItemInput): number {
   const qty = Number(li.qty) || 0;
   const price = Number(li.unitPrice) || 0;
@@ -53,8 +67,9 @@ export function addDays(dateStr: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Today's date as 'YYYY-MM-DD' — the calendar day in Nairobi, whatever zone the server or browser is in (an order keyed at 01:00 in Nairobi belongs to that day, not the day before). */
+export function todayStr(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 
 export function exceedsDiscountCeiling(order: OrderTotalsInput, ceilingPct: number): boolean {

@@ -623,6 +623,8 @@ model Order {
   // Who keyed the order. staffId is the SALES PERSON it is credited to; when the front office captures for a sales person the two differ. Null on older orders.
   capturedById   Int?
   capturedByName String @default("")
+  // The moment the order was keyed in (the time shown beside its date). Blank on orders captured before this was recorded.
+  capturedAt     DateTime?
   // Accounts Receivable: who is responsible for collecting the balance. Blank = the sales person the order is credited to (staffId), whoever keyed it; set when Accounting moves the
   // collection to someone else. (A plain id, not a relation: it is an assignment, not a link that must always resolve.)
   collectorId Int?
@@ -1318,6 +1320,9 @@ model CommissionSettings {
   freelanceOwnershipMonths Int @default(12)
   // Withholding tax deducted from freelance commission (percent, 0 = none) — confirm the rate with your accountant
   freelanceWhtRate Float @default(5)
+  // The flat commission rates (percent of net sales received): the standard rate, and the lower rate on thin-margin lines (contracted-out services, stock resale). Set by the Admin; the bands above are no longer used.
+  freelanceRatePct    Float @default(8)
+  freelanceLowRatePct Float @default(4)
   freelanceBandsJson String @default("[{\"from\":0,\"rate\":2},{\"from\":50000,\"rate\":3},{\"from\":150000,\"rate\":4}]")
   // Bands apply to the BASE-price part of their sales only; this % of whatever was charged above base is paid on top (the premium is nearly all profit).
   freelancePremiumPct Float @default(30)
@@ -1861,4 +1866,43 @@ model DayCloseSettings {
   summaryAttempts   Int       @default(0) // tries so far for that day
   summaryLastTryAt  DateTime?
   summaryLastStatus String    @default("")
+}
+
+// The log of wrongly matched M-Pesa / NCBA receipts put right (Accounting → M-Pesa Matching → Matched payments): a receipt moved from one order to another, or taken off its order. Who, when and why.
+model MatchChange {
+  id            Int      @id @default(autoincrement())
+  transactionId Int
+  receipt       String   @default("")
+  amount        Float
+  fromOrderNo   String
+  toOrderNo     String? // blank = taken off the order, back to the waiting list
+  reason        String
+  byName        String
+  at            DateTime @default(now())
+
+  @@index([transactionId])
+}
+
+// Amending or deleting an order after it has been captured: the person asks (with a reason), a manager approves it in the Approvals inbox, and then the SAME person makes the change.
+// Status: Pending → Approved (or Rejected) → Done (the change was made) | Cancelled. The row keeps what the order looked like before and after, for the trail; it outlives a deleted order.
+model OrderChange {
+  id              Int       @id @default(autoincrement())
+  orderId         Int
+  orderNo         String
+  customer        String    @default("")
+  kind            String // Amend | Delete
+  reason          String
+  requestedById   Int
+  requestedByName String
+  requestedAt     DateTime  @default(now())
+  status          String    @default("Pending")
+  decidedByName   String?
+  decidedAt       DateTime?
+  decisionNote    String    @default("")
+  doneAt          DateTime?
+  beforeJson      String    @default("")
+  afterJson       String    @default("")
+
+  @@index([orderId])
+  @@index([status])
 }

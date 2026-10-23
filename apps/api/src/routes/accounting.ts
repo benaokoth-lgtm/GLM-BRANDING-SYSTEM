@@ -9,7 +9,7 @@ import { buildAccountLedger, buildBalanceSheet, buildCashFlowStatement, buildPay
 import { reconcile } from '../accounting/reconcile';
 import { creditableLines, issueCreditNote, issueDebitNote, issueSupplierDebitNote, NoteError } from '../accounting/notes';
 import { depreciationSchedule, runDepreciationOnce } from '../accounting/depreciation';
-import { applyReceiptToOrder, autoMatch, importStatement, openTargets } from '../accounting/mpesaMatching';
+import { applyReceiptToOrder, autoMatch, importStatement, moveMatchedPayment, openTargets, unmatchPayment } from '../accounting/mpesaMatching';
 import { PaymentError } from './orders';
 
 export const accountingRouter = Router();
@@ -375,6 +375,62 @@ accountingRouter.post('/mpesa/:id/apply', ...mpesaAccess, async (req, res) => {
   try {
     await applyReceiptToOrder(Number(req.params.id), orderId, req.user!.name);
     res.json({ ok: true });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+// Receipts already matched to an order — the list for putting a wrong match right (move it to the right order, or take it off). Most recent first; `q` finds a receipt code, a phone, a payer or an order number.
+accountingRouter.get('/mpesa/matched', ...mpesaAccess, async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  const txs = await prisma.mpesaTransaction.findMany({
+    where: {
+      payment: { isNot: null },
+      ...(q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payment: { is: { order: { orderNo: { contains: q } } } } }] } : {}),
+    },
+    include: { payment: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } } } },
+    orderBy: { id: 'desc' },
+    take: 100,
+  });
+  const changes = txs.length ? await prisma.matchChange.findMany({ where: { transactionId: { in: txs.map((t) => t.id) } }, orderBy: { id: 'desc' } }) : [];
+  res.json({
+    rows: txs.map((t) => ({
+      id: t.id,
+      receipt: t.mpesaReceipt,
+      kind: t.kind,
+      amount: t.amount,
+      phone: t.phone,
+      payerName: t.payerName,
+      reference: t.accountReference,
+      date: t.payment!.date,
+      orderId: t.payment!.order.id,
+      orderNo: t.payment!.order.orderNo,
+      customer: t.payment!.order.corporateClient?.name || t.payment!.order.customerName || '—',
+      matchedBy: t.appliedByName ?? '',
+      canUnmatch: t.kind !== 'STK',
+      changes: changes.filter((c) => c.transactionId === t.id).map((c) => ({ from: c.fromOrderNo, to: c.toOrderNo, reason: c.reason, by: c.byName, at: c.at.toISOString() })),
+    })),
+  });
+});
+
+// A wrong match put right: moved to the right order (it must still owe that much), or taken off its order and returned to the waiting list. Both need a reason and are logged.
+accountingRouter.post('/mpesa/:id/rematch', ...mpesaAccess, async (req, res) => {
+  const body = z.object({ orderId: z.number().int().positive(), reason: z.string().trim().min(1, 'Say why the payment is being moved').max(300) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? 'Choose the order and give a reason' });
+  try {
+    res.json({ ok: true, ...(await moveMatchedPayment(Number(req.params.id), body.data.orderId, req.user!.name, body.data.reason)) });
+  } catch (e) {
+    if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
+    throw e;
+  }
+});
+
+accountingRouter.post('/mpesa/:id/unmatch', ...mpesaAccess, async (req, res) => {
+  const body = z.object({ reason: z.string().trim().min(1, 'Say why the payment is being taken off the order').max(300) }).safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? 'Give a reason' });
+  try {
+    res.json({ ok: true, ...(await unmatchPayment(Number(req.params.id), req.user!.name, body.data.reason)) });
   } catch (e) {
     if (e instanceof PaymentError) return res.status(400).json({ error: e.message });
     throw e;

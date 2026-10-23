@@ -47,9 +47,7 @@ function presetRange(preset: Preset, today: string): { from: string; to: string 
     return { from: `${y}-${String(qm).padStart(2, '0')}-01`, to: today };
   }
   if (preset === 'year') return { from: `${y}-01-01`, to: today };
-  const d = new Date(today + 'T00:00:00');
-  d.setMonth(d.getMonth() - 11);
-  d.setDate(1);
+  const d = new Date(Date.UTC(Number(y), Number(m) - 1 - 11, 1)); // the first of the month eleven months back
   return { from: d.toISOString().slice(0, 10), to: today };
 }
 

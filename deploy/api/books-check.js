@@ -53,8 +53,8 @@ function computeOrderTotals(order, payments = []) {
   const paidPct = grandTotal > 0 ? Math.min(100, paidTotal / grandTotal * 100) : paidTotal > 0 ? 100 : 0;
   return { subtotal, grandTotal, orderDiscount: subtotal - grandTotal, paidTotal, balanceDue, paidPct };
 }
-function todayStr() {
-  return (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+function todayStr(now = /* @__PURE__ */ new Date()) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
 // packages/shared/src/constants.ts

@@ -179,7 +179,7 @@ stockRouter.post('/takes', async (req, res) => {
     prisma.stockTake.create({
       data: {
         materialId: material.id,
-        date: parsed.data.date ?? new Date().toISOString().slice(0, 10),
+        date: parsed.data.date ?? todayStr(),
         systemQty,
         countedQty: parsed.data.countedQty,
         varianceQty,

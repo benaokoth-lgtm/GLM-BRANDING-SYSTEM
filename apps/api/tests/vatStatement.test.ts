@@ -1,5 +1,6 @@
 // The VAT statement by account: Output VAT by income account, Input VAT by expense account, and outsourced work with VAT on both the sale and the
 // supplier's bill.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -13,7 +14,7 @@ let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
 const ids: Record<string, number> = {};
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 const r2 = (n: number) => Math.round(n * 100) / 100;
 let banner = 0;
 let eulogy = 0;

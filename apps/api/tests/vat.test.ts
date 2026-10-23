@@ -1,5 +1,6 @@
 // The VAT return (Compliance → VAT) is worked out from the books, automatically: Output VAT on every sale, Input VAT on every purchase and
 // expense whose head carries VAT, and the difference is what is payable to KRA (or carried forward). Nothing is claimed by hand.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -14,7 +15,7 @@ let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
 const ids: Record<string, number> = {};
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 const day = `from=${today}&to=${today}`;
 let service = 0;
 const r2 = (n: number) => Math.round(n * 100) / 100;

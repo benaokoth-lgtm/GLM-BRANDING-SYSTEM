@@ -1,3 +1,4 @@
+import { addDays, todayStr } from '@glm/shared';
 import { useState } from 'react';
 import { api } from '../api/client';
 import { Card, Loading, Notice, Tag, useLoad } from '../pages/accounting/shared';
@@ -29,8 +30,8 @@ interface AuditRow {
   ip: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
-const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+const today = () => todayStr();
+const daysAgo = (n: number) => addDays(todayStr(), -n);
 const when = (iso: string) => new Date(iso).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'medium' });
 
 function Check({ ok, title, children }: { ok: boolean; title: string; children?: React.ReactNode }) {

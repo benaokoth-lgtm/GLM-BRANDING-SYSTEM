@@ -195,3 +195,55 @@ export async function importStatement(text: string, by: string) {
 }
 
 export { phoneKey };
+
+// ── Putting a wrong match right ─────────────────────────────────────────────
+// A receipt that was matched to the wrong order (a mistyped order number, the wrong client with the same amount, an automatic match on a shared reference) can be MOVED to the right order, or taken
+// off the order altogether (UNMATCHED) so it goes back to the waiting list. Both leave a line in the match log with who did it and why; the money never leaves the books, only the order it is
+// counted against changes. Only M-Pesa and NCBA receipts are handled here: they are the ones with a statement line to be right about.
+
+const kes = (n: number) => 'Ksh ' + Math.round(n).toLocaleString('en-KE');
+
+/** The recorded payment behind an M-Pesa / NCBA receipt, with its order. */
+async function matchedPayment(txId: number) {
+  const tx = await prisma.mpesaTransaction.findUnique({ where: { id: txId }, include: { payment: { include: { order: true } } } });
+  if (!tx) throw new PaymentError('That M-Pesa payment was not found');
+  if (!tx.payment) throw new PaymentError('That receipt is not matched to an order, so there is nothing to put right');
+  return { tx, payment: tx.payment, order: tx.payment.order };
+}
+
+/** Moves a matched receipt from the order it is on to another order that still owes at least that much. */
+export async function moveMatchedPayment(txId: number, toOrderId: number, by: string, reason: string) {
+  const why = reason.trim();
+  if (!why) throw new PaymentError('Say why the payment is being moved');
+  const { tx, payment, order: from } = await matchedPayment(txId);
+  if (payment.method !== 'M-Pesa') throw new PaymentError('Only an M-Pesa or NCBA payment can be moved here');
+  if (from.id === toOrderId) throw new PaymentError('It is already on that order');
+  const to = await prisma.order.findUnique({ where: { id: toOrderId } });
+  if (!to) throw new PaymentError('The order to move it to was not found');
+  const target = (await openTargets()).find((t) => t.orderId === toOrderId);
+  if (!target) throw new PaymentError(`${to.orderNo} has nothing outstanding to put it against`);
+  if (round2(payment.amount) > round2(target.balance) + 1) {
+    throw new PaymentError(`${to.orderNo} only owes ${kes(target.balance)} — less than the ${kes(payment.amount)} received`);
+  }
+  await prisma.$transaction(async (db) => {
+    await db.payment.update({ where: { id: payment.id }, data: { orderId: to.id } });
+    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { orderId: to.id, appliedByName: `${by} (moved from ${from.orderNo})` } });
+    await db.matchChange.create({ data: { transactionId: tx.id, receipt: tx.mpesaReceipt ?? '', amount: payment.amount, fromOrderNo: from.orderNo, toOrderNo: to.orderNo, reason: why.slice(0, 300), byName: by } });
+  });
+  return { from: from.orderNo, to: to.orderNo };
+}
+
+/** Takes a matched Paybill / statement receipt off its order: the payment is removed and the receipt goes back to the waiting list (Unmatched), to be matched to the right order. */
+export async function unmatchPayment(txId: number, by: string, reason: string) {
+  const why = reason.trim();
+  if (!why) throw new PaymentError('Say why the payment is being taken off the order');
+  const { tx, payment, order: from } = await matchedPayment(txId);
+  if (payment.method !== 'M-Pesa') throw new PaymentError('Only an M-Pesa or NCBA payment can be taken off here');
+  if (tx.kind === 'STK') throw new PaymentError('A payment from a push we sent belongs to the order it was sent for — move it to another order instead');
+  await prisma.$transaction(async (db) => {
+    await db.payment.delete({ where: { id: payment.id } });
+    await db.mpesaTransaction.update({ where: { id: tx.id }, data: { status: 'Unmatched', orderId: null, appliedByName: null, appliedAt: null } });
+    await db.matchChange.create({ data: { transactionId: tx.id, receipt: tx.mpesaReceipt ?? '', amount: payment.amount, fromOrderNo: from.orderNo, toOrderNo: null, reason: why.slice(0, 300), byName: by } });
+  });
+  return { from: from.orderNo };
+}

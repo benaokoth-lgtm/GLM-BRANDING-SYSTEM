@@ -12,8 +12,9 @@ import {
   stepPosition,
   DEFAULT_FILM_BANDS,
   DEFAULT_GENERAL_BANDS,
-  DEFAULT_FREELANCE_BANDS,
-  LEGACY_FREELANCE_BANDS,
+  DEFAULT_FREELANCE_RATE_PCT,
+  DEFAULT_FREELANCE_LOW_RATE_PCT,
+  freelanceCommission,
   DEFAULT_FREELANCE_WHT_RATE,
   DEFAULT_OWNERSHIP_MONTHS,
   DEFAULT_TARGET_MODE,
@@ -33,8 +34,6 @@ import {
   filmPremiumPerM,
   ownershipEnd,
   freelanceSplit,
-  DEFAULT_FREELANCE_PREMIUM_PCT,
-  DEFAULT_FREELANCE_LOW_MARGIN_PCT,
   round2,
   weekEnd,
   salesTarget,
@@ -92,12 +91,9 @@ export interface CommissionConfig {
   filmBands: Band[];
   artworkRatePct: number;
   ownershipMonths: number;
-  /** Freelance sales persons: marginal bands on their weekly net sales received at or above base prices. */
-  freelanceBands: Band[];
-  /** % of what was charged above base prices that a freelancer keeps. */
-  freelancePremiumPct: number;
-  /** The weight (%) at which the base part of contracted-out and stock lines counts towards the bands. */
-  freelanceLowMarginPct: number;
+  /** Freelance sales persons: the flat commission (% of net sales received, VAT out), and the lower rate on thin-margin lines (contracted-out services, stock resale). */
+  freelanceRatePct: number;
+  freelanceLowRatePct: number;
   /** A freelancer keeps a client while an order comes in at least this often (months); every order restarts the count. */
   freelanceOwnershipMonths: number;
   /** The standard withholding tax rate (percent) deducted from freelance commission. */
@@ -147,9 +143,8 @@ export async function getCommissionConfig(db: Db = prisma): Promise<CommissionCo
     filmBands: readBands(row?.filmBandsJson, DEFAULT_FILM_BANDS),
     artworkRatePct: row?.artworkRatePct ?? DEFAULT_ARTWORK_RATE_PCT,
     ownershipMonths: row?.ownershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
-    freelanceBands: ((saved) => (JSON.stringify(saved) === JSON.stringify(LEGACY_FREELANCE_BANDS) ? DEFAULT_FREELANCE_BANDS : saved))(readBands(row?.freelanceBandsJson, DEFAULT_FREELANCE_BANDS)),
-    freelancePremiumPct: row?.freelancePremiumPct ?? DEFAULT_FREELANCE_PREMIUM_PCT,
-    freelanceLowMarginPct: row?.freelanceLowMarginPct ?? DEFAULT_FREELANCE_LOW_MARGIN_PCT,
+    freelanceRatePct: row?.freelanceRatePct ?? DEFAULT_FREELANCE_RATE_PCT,
+    freelanceLowRatePct: row?.freelanceLowRatePct ?? DEFAULT_FREELANCE_LOW_RATE_PCT,
     freelanceOwnershipMonths: row?.freelanceOwnershipMonths ?? DEFAULT_OWNERSHIP_MONTHS,
     freelanceWhtRate: row?.freelanceWhtRate ?? DEFAULT_FREELANCE_WHT_RATE,
     targetMultiplier: row?.targetMultiplier ?? DEFAULT_TARGET_MULTIPLIER,
@@ -791,24 +786,23 @@ export interface FreelanceStatement {
   weekEnd: string;
   /** Money received in the week on their orders (VAT included), less what was refunded. */
   received: number;
-  /** Net of VAT, at or above base prices (base part + premium). */
-  qualifyingNet: number;
-  /** Net of VAT: the base-price part that the bands apply to, after the thin-margin weighting. */
-  baseNet: number;
-  /** Net of VAT charged above base prices on those lines: the premium. */
-  premiumNet: number;
-  /** The two parts of the commission. */
-  baseCommission: number;
-  premiumCommission: number;
-  /** Net of VAT that did not qualify (sold below a base price): earns nothing. */
-  belowBaseNet: number;
+  /** Net of VAT: everything received less refunds, VAT taken out. */
+  netSales: number;
+  /** Of that, the part earning the standard rate and the part (thin-margin lines) earning the low rate. */
+  standardNet: number;
+  lowNet: number;
+  /** The rates the week was worked out at (percent). */
+  ratePct: number;
+  lowRatePct: number;
+  /** The commission on each part, and the total. */
+  standardCommission: number;
+  lowCommission: number;
   commission: number;
   /** Withholding tax: the rate that applies to this person, the tax to deduct, and what they are paid after it. */
   whtRate: number;
   withholdingTax: number;
   netPay: number;
-  band: { rate: number; nextFrom: number | null; nextRate: number | null; toNext: number | null };
-  orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; qualifyingPct: number; qualifyingNet: number; premiumNet: number }[];
+  orders: { orderNo: string; customer: string; orderTotal: number; moneyIn: number; net: number; lowNet: number }[];
 }
 
 /**
@@ -838,33 +832,25 @@ export async function buildFreelanceStatements(weekStartDate: string, only?: num
     const id = o.freelanceAgentId!;
     let st = people.get(id);
     if (!st) {
-      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, qualifyingNet: 0, baseNet: 0, premiumNet: 0, baseCommission: 0, premiumCommission: 0, belowBaseNet: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, band: { rate: 0, nextFrom: null, nextRate: null, toNext: null }, orders: [] };
+      st = { agentId: id, agentName: '', status: '', phone: '', mpesaNumber: '', payMethod: 'M-Pesa', kraPin: '', weekStart: start, weekEnd: end, received: 0, netSales: 0, standardNet: 0, lowNet: 0, ratePct: config.freelanceRatePct, lowRatePct: config.freelanceLowRatePct, standardCommission: 0, lowCommission: 0, commission: 0, whtRate: 0, withholdingTax: 0, netPay: 0, orders: [] };
       people.set(id, st);
     }
     const f = flows.get(o.id)!;
-    const net = f.received - f.refunded;
-    const share = o.freelanceQualifyingShare;
-    const qual = (net * share) / (1 + VAT_RATE);
-    // the order's qualifying part divides into the base price (banded; thin-margin lines at a reduced weight) and the premium above it (a share)
-    const premiumShare = Math.min(share, Math.max(0, o.freelancePremiumShare));
-    const baseShare = Math.min(share, Math.max(0, o.freelanceBaseShare));
-    const lowShare = Math.min(baseShare, Math.max(0, o.freelanceLowShare));
-    const weight = config.freelanceLowMarginPct / 100;
-    const baseWeighted = (net * (baseShare - lowShare * (1 - weight))) / (1 + VAT_RATE);
-    const prem = (net * premiumShare) / (1 + VAT_RATE);
-    st.received = round2(st.received + net);
-    st.qualifyingNet = round2(st.qualifyingNet + qual);
-    st.baseNet = round2(st.baseNet + baseWeighted);
-    st.premiumNet = round2(st.premiumNet + prem);
-    st.belowBaseNet = round2(st.belowBaseNet + (net * (1 - share)) / (1 + VAT_RATE));
-    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(net), qualifyingPct: Math.round(share * 1000) / 10, qualifyingNet: round2(qual), premiumNet: round2(prem) });
+    const received = f.received - f.refunded;
+    // everything received earns commission, VAT out; the part of the order that is thin-margin lines (contracted-out services, stock resale) earns the low rate, the rest the standard rate
+    const net = received / (1 + VAT_RATE);
+    const lowNet = net * Math.min(1, Math.max(0, o.freelanceLowShare));
+    st.received = round2(st.received + received);
+    st.netSales = round2(st.netSales + net);
+    st.lowNet = round2(st.lowNet + lowNet);
+    st.standardNet = round2(st.standardNet + (net - lowNet));
+    st.orders.push({ orderNo: o.orderNo, customer: customerOf(o), orderTotal: round2(orderTotal(o)), moneyIn: round2(received), net: round2(net), lowNet: round2(lowNet) });
   }
   for (const st of people.values()) {
-    const basis = Math.max(0, st.baseNet);
-    st.baseCommission = bandedAmount(config.freelanceBands, basis);
-    st.premiumCommission = round2((Math.max(0, st.premiumNet) * config.freelancePremiumPct) / 100);
-    st.commission = round2(st.baseCommission + st.premiumCommission);
-    st.band = bandPosition(config.freelanceBands, basis);
+    const c = freelanceCommission(st.standardNet, st.lowNet, st.ratePct, st.lowRatePct);
+    st.standardCommission = c.standard;
+    st.lowCommission = c.low;
+    st.commission = c.total;
   }
   const agents = await prisma.freelanceAgent.findMany({ where: { id: { in: [...people.keys()] } } });
   const byId = new Map(agents.map((a) => [a.id, a]));

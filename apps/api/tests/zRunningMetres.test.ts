@@ -5,7 +5,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { UV_DTF_SETTINGS, sheetCalc, systemJobCalc } from '@glm/shared';
+import { sheetCalc, systemJobCalc, todayStr, UV_DTF_SETTINGS } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -152,7 +152,7 @@ describe('artwork charged on running metres', () => {
     assert.ok(mine.requestedAt && mine.decidedAt);
     assert.equal(rep.count, rep.rows.length);
     // by date; the DTF report does not show UV ones; managers only
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayStr();
     assert.equal((await call('lead', 'GET', '/dtf/approvals/report?product=uv&from=2000-01-01&to=2000-01-02')).body.count, 0);
     assert.ok((await call('lead', 'GET', `/dtf/approvals/report?product=uv&from=${today}&to=${today}`)).body.rows.some((r: any) => r.orderNo === waiting.orderNo));
     assert.ok(!(await call('lead', 'GET', '/dtf/approvals/report')).body.rows.some((r: any) => r.orderNo === waiting.orderNo));

@@ -11,7 +11,6 @@ import { useCatalog } from '../hooks/useCatalog';
 import { Card, Loading, Notice, Tag, numStyle, useLoad } from './accounting/shared';
 import FreelancePanel from '../components/FreelancePanel';
 import PayGuide from '../components/PayGuide';
-import BigSaleScenario from '../components/BigSaleScenario';
 import BandEditor from '../components/BandEditor';
 
 // Sales commission. Everyone who captures orders sees their own month: what they earned, how, and what they have sold. Managers also
@@ -24,16 +23,13 @@ interface Config {
   filmBands: Band[];
   artworkRatePct: number;
   ownershipMonths: number;
-  /** Freelance sales persons: weekly net sales received at or above base prices → rate. */
-  freelanceBands: Band[];
   /** A freelancer keeps a client while an order comes in at least this often (months). */
   freelanceOwnershipMonths: number;
   /** Withholding tax (percent) deducted from freelance commission. */
   freelanceWhtRate: number;
-  /** The % of what was charged above base prices that a freelancer keeps. */
-  freelancePremiumPct: number;
-  /** The weight (%) at which the base part of contracted-out and stock lines counts towards the freelance bands. */
-  freelanceLowMarginPct: number;
+  /** Freelance commission: % of net sales received, and the lower rate on thin-margin lines (set under Freelancers → Rates). */
+  freelanceRatePct: number;
+  freelanceLowRatePct: number;
   /** Times their gross monthly salary a person must sell before commission starts (0 = no target). */
   targetMultiplier: number;
   targetMode: 'above' | 'all';
@@ -1168,13 +1164,10 @@ function RatesTab() {
   const [payday, setPayday] = useState('5');
   const [general, setGeneral] = useState<{ from: string; rate: string }[]>([]);
   const [film, setFilm] = useState<{ from: string; rate: string }[]>([]);
-  const [freelance, setFreelance] = useState<{ from: string; rate: string }[]>([]);
   const [artwork, setArtwork] = useState('');
   const [months, setMonths] = useState('');
   const [flMonths, setFlMonths] = useState('');
   const [flTax, setFlTax] = useState('');
-  const [flPremium, setFlPremium] = useState('');
-  const [flLow, setFlLow] = useState('');
   const [multiplier, setMultiplier] = useState('');
   const [mode, setMode] = useState<'above' | 'all'>('above');
   const [msg, setMsg] = useState('');
@@ -1185,13 +1178,10 @@ function RatesTab() {
     if (!data) return;
     setGeneral(data.generalBands.map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setFilm(data.filmBands.map((b) => ({ from: String(b.from), rate: String(b.rate) })));
-    setFreelance((data.freelanceBands ?? []).map((b) => ({ from: String(b.from), rate: String(b.rate) })));
     setArtwork(String(data.artworkRatePct));
     setMonths(String(data.ownershipMonths));
     setFlMonths(String(data.freelanceOwnershipMonths ?? 12));
     setFlTax(String(data.freelanceWhtRate ?? 5));
-    setFlPremium(String(data.freelancePremiumPct ?? 30));
-    setFlLow(String(data.freelanceLowMarginPct ?? 50));
     setMultiplier(String(data.targetMultiplier));
     setMode(data.targetMode);
     setGenMode(data.generalMode ?? 'steps');
@@ -1204,14 +1194,14 @@ function RatesTab() {
   if (!data) return <Loading loading={loading} error={error} />;
   const toBands = (rows: { from: string; rate: string }[]): Band[] => rows.map((r) => ({ from: Number(r.from), rate: Number(r.rate) }));
   const toSteps = payBands.map((r) => ({ from: Number(r.from), payout: Number(r.payout) }));
-  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? bandsProblem(toBands(freelance), 'Freelance bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null) ?? (genMode === 'steps' && !(Number(minWage) >= 0) ? 'Enter the minimum wage' : null) ?? (genMode === 'steps' && !(Number.isInteger(Number(payday)) && Number(payday) >= 1 && Number(payday) <= 28) ? 'The payday must be a day of the month from 1 to 28' : null);
+  const problem = (genMode === 'steps' ? payStepsProblem(toSteps, 'Pay bands') : bandsProblem(toBands(general), 'Sales bands')) ?? bandsProblem(toBands(film), 'Film bands') ?? (genMode === 'steps' && !(Number(floor) >= 0) ? 'Enter the performance floor' : null) ?? (genMode === 'steps' && !(Number(minWage) >= 0) ? 'Enter the minimum wage' : null) ?? (genMode === 'steps' && !(Number.isInteger(Number(payday)) && Number(payday) >= 1 && Number(payday) <= 28) ? 'The payday must be a day of the month from 1 to 28' : null);
 
   async function save() {
     setBusy(true);
     setErr('');
     setMsg('');
     try {
-      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), freelanceBands: toBands(freelance), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), freelancePremiumPct: Number(flPremium), freelanceLowMarginPct: Number(flLow), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor), minimumWage: Number(minWage), payday: Number(payday) });
+      await api.put('/commission/settings', { generalBands: toBands(general), filmBands: toBands(film), artworkRatePct: Number(artwork), ownershipMonths: Number(months), freelanceOwnershipMonths: Number(flMonths), freelanceWhtRate: Number(flTax), targetMultiplier: Number(multiplier), targetMode: mode, generalMode: genMode, payBands: toSteps, performanceFloor: Number(floor), minimumWage: Number(minWage), payday: Number(payday) });
       setMsg('Rates saved — they apply to money received from now on, and to any month not yet approved.');
       reload();
     } catch (e) {
@@ -1298,25 +1288,10 @@ function RatesTab() {
           bands={film}
           onChange={setFilm}
         />
-        <BandEditor
-          title="Freelance sales persons — weekly, on the base price"
-          hint="Marginal bands on the BASE-PRICE part of a freelance sales person's WEEKLY net sales received (Monday to Sunday) on orders credited to them, counting only lines sold at or above our base prices. What was charged above base is paid separately, as a share (below). Keep these rates well inside the margin you make at base price. Each rate applies only to the slice of the week inside its band. Staff do not earn this, and a freelancer's order earns no staff commission."
-          unit="Ksh net per week"
-          bands={freelance}
-          onChange={setFreelance}
-        />
-        <BigSaleScenario bands={toBands(freelance)} whtRate={Number(flTax) || 0} />
+        <p className="note" style={{ margin: 0 }}>
+          <b>Freelance commission</b> is a flat percentage of net sales received, set by the Admin under <b>Freelancers → Rates</b> (not here). The two fields at the end of this section — how long a client stays a freelancer’s, and the tax withheld — are shared with that screen.
+        </p>
         <div style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-          <div className="field" style={{ margin: 0 }}>
-            <label>Freelancers: % of the amount charged above base that they keep</label>
-            <input className="input" style={{ maxWidth: 120 }} inputMode="decimal" value={flPremium} onChange={(e) => setFlPremium(e.target.value)} />
-            <p className="note" style={{ margin: 0 }}>The cost of the job does not change when it is sold for more, so this is nearly all profit. The company keeps the rest.</p>
-          </div>
-          <div className="field" style={{ margin: 0 }}>
-            <label>Contracted-out and stock lines count at this % towards the bands</label>
-            <input className="input" style={{ maxWidth: 120 }} inputMode="decimal" value={flLow} onChange={(e) => setFlLow(e.target.value)} />
-            <p className="note" style={{ margin: 0 }}>These carry a thin mark-up. 50 = their base part counts half; 100 = no reduction. Any amount above base is still shared in full.</p>
-          </div>
           <div className="field" style={{ margin: 0 }}>
             <label>Artwork: % of the amount above the recommended price</label>
             <input className="input" style={{ maxWidth: 120 }} inputMode="decimal" value={artwork} onChange={(e) => setArtwork(e.target.value)} />
@@ -1339,7 +1314,7 @@ function RatesTab() {
         </div>
         {problem && <p className="note" style={{ color: 'var(--color-error)', margin: 0 }}>{problem}</p>}
         <div>
-          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!problem || !(Number(artwork) >= 0 && Number(artwork) <= 100) || !(Number(months) >= 1) || !(Number(multiplier) >= 0 && Number(multiplier) <= 20) || !(Number(flMonths) >= 1) || !(Number(flTax) >= 0 && Number(flTax) <= 100) || !(Number(flPremium) >= 0 && Number(flPremium) <= 100) || !(Number(flLow) >= 0 && Number(flLow) <= 100)} onClick={save}>
+          <button type="button" className="btn btn-primary btn-sm" disabled={busy || !!problem || !(Number(artwork) >= 0 && Number(artwork) <= 100) || !(Number(months) >= 1) || !(Number(multiplier) >= 0 && Number(multiplier) <= 20) || !(Number(flMonths) >= 1) || !(Number(flTax) >= 0 && Number(flTax) <= 100)} onClick={save}>
             Save rates
           </button>
         </div>

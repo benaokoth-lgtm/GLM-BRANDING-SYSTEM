@@ -4,13 +4,15 @@
 // fonts inside it, so it bundles into the single server.js and needs no browser or system fonts.
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import type { PDFFont, PDFPage } from 'pdf-lib';
-import { VAT_RATE, WALK_IN_CLIENT, fmtDate, fmtKsh, splitGross } from '@glm/shared';
+import { VAT_RATE, WALK_IN_CLIENT, fmtDate, fmtDateTime, fmtKsh, splitGross } from '@glm/shared';
 
 export interface PdfOrder {
   orderNo: string;
   kind: string;
   status: string;
   createdDate: string;
+  /** When the order was keyed in (ISO time), when recorded. */
+  capturedAt?: string | null;
   dueDate: string | null;
   /** A quotation's last day (a Job Costing quote). */
   validUntil?: string | null;
@@ -190,7 +192,7 @@ export async function buildOrderPdf(order: PdfOrder, company: PdfCompany): Promi
     text(l, colX[1]!, yp, { size: l === order.staff.name ? 10 : 9, color: l === order.staff.name ? INK : MUTED });
     yp -= 12.5;
   }
-  const meta: [string, string][] = [[`${kind.word} #`, order.orderNo], [`${kind.word} DATE`, fmtDate(order.createdDate)]];
+  const meta: [string, string][] = [[`${kind.word} #`, order.orderNo], [`${kind.word} DATE`, fmtDateTime(order.createdDate, order.capturedAt)]];
   if (kind.isInvoice && order.dueDate) meta.push(['DUE DATE', fmtDate(order.dueDate)]);
   if (!kind.isInvoice && order.validUntil) meta.push(['VALID UNTIL', fmtDate(order.validUntil)]);
   let ym = topInfo;

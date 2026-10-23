@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
-import { ACCT } from '@glm/shared';
+import { ACCT, todayStr } from '@glm/shared';
 import { loadLedger, naturalBalance, sumByAccount } from '../src/accounting/ledger';
 
 let server: Server;
@@ -215,7 +215,7 @@ describe('NCBA Paybill 880100', () => {
     assert.equal(await bal(ACCT.bank), bankBefore + 321);
     assert.equal(await bal(ACCT.mpesa), mpesaBefore);
     assert.equal(await bal(ACCT.unallocatedMpesa), unalloc + 321); // still waiting to be matched to an order
-    await prisma.mpesaTransaction.create({ data: { checkoutRequestId: 'IMPORT-BANKTEST', merchantRequestId: '', kind: 'Import', status: 'Unmatched', phone: '254799000111', amount: 100, mpesaReceipt: 'IMPORT0001', receivedOn: new Date().toISOString().slice(0, 10), accountReference: 'Z', createdByName: 'test' } });
+    await prisma.mpesaTransaction.create({ data: { checkoutRequestId: 'IMPORT-BANKTEST', merchantRequestId: '', kind: 'Import', status: 'Unmatched', phone: '254799000111', amount: 100, mpesaReceipt: 'IMPORT0001', receivedOn: todayStr(), accountReference: 'Z', createdByName: 'test' } });
     assert.equal(await bal(ACCT.mpesa), mpesaBefore + 100);
     assert.equal(await bal(ACCT.bank), bankBefore + 321);
   });

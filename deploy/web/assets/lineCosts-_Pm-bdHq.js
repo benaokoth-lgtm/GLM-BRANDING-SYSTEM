@@ -1,0 +1,1 @@
+function p(e){var u;const r=Number(e.supplierCost);return r>0?{supplierCost:r,markupType:e.markupType==="amount"?"amount":"percent",markupValue:Number(e.markupValue)||0,supplierName:((u=e.supplierName)==null?void 0:u.trim())||void 0}:{}}export{p as c};

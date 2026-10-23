@@ -5,7 +5,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { PRINTING_PUBLICATIONS_HEAD, UV_DTF_HEAD, UV_PEN_SERVICE, defaultBusinessHeadName } from '@glm/shared';
+import { defaultBusinessHeadName, PRINTING_PUBLICATIONS_HEAD, todayStr, UV_DTF_HEAD, UV_PEN_SERVICE } from '@glm/shared';
 import { app } from '../src/app';
 import { prisma } from '../src/db';
 import { signToken } from '../src/middleware/auth';
@@ -16,7 +16,7 @@ let base = '';
 let token = '';
 let svc = 0;
 let mat = 0;
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body === undefined ? undefined : JSON.stringify(body) });

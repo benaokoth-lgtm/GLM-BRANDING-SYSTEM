@@ -109,6 +109,7 @@ export function serializeSummary(order: ListOrder) {
     // Set when someone other than the sales person keyed the order (the front office capturing on their behalf).
     capturedByName: order.capturedByName && order.capturedByName !== order.staff.name ? order.capturedByName : null,
     createdDate: order.createdDate,
+    capturedAt: order.capturedAt ? order.capturedAt.toISOString() : null,
     status: order.status,
     stage: order.stage,
     dueDate: order.dueDate,
@@ -286,7 +287,7 @@ ordersRouter.get('/', async (req, res) => {
   // screen's open-order figures stay complete while years of finished orders are left out. Without it the whole list is returned, as before.
   const window = Number(days);
   if (Number.isInteger(window) && window > 0 && window <= 3650) {
-    const cutoff = new Date(Date.now() - window * 86400000).toISOString().slice(0, 10);
+    const cutoff = addDays(todayStr(), -window);
     where.OR = [{ createdDate: { gte: cutoff } }, { stage: { not: 'Completed' }, status: { not: 'Quote' } }, { handedOverOnCredit: true }];
   }
 
@@ -342,7 +343,7 @@ ordersRouter.get('/:id', async (req, res) => {
 // A line is either a material sale ('material': materialId set, no service)
 // or a service fee ('service'/'per-metre': serviceId set, no material) —
 // never both, matching the schema.prisma comment on OrderLineItem.
-const lineItemSchema = z
+export const lineItemSchema = z
   .object({
     itemType: z.enum(['material', 'service', 'per-metre']),
     serviceId: z.number().int().nullable().optional(),
@@ -451,6 +452,7 @@ export async function captureWalkin(req: import('express').Request, res: import(
         capturedByName: cap.capturedByName,
         ...sourcing,
         createdDate: todayStr(),
+        capturedAt: new Date(),
         status,
         dueDate,
         stage: 'Order Received',
@@ -510,6 +512,7 @@ ordersRouter.post('/quote', requirePermission('canAccessFinance'), async (req, r
         staffId: form.staffId,
         ...sourcing,
         createdDate: todayStr(),
+        capturedAt: new Date(),
         status: 'Quote',
         stage: 'Order Received',
         orderDiscountPct: form.orderDiscountPct,
@@ -554,6 +557,7 @@ ordersRouter.post('/invoice', requirePermission('canAccessFinance'), async (req,
         staffId: form.staffId,
         ...sourcing,
         createdDate: todayStr(),
+        capturedAt: new Date(),
         status: 'Invoice',
         stage: 'Order Received',
         dueDate,

@@ -1,5 +1,6 @@
 // (Named to run last: it adds petty cash movements and expenses to the books.)
 // The cheque register: cheque numbers on withdrawals and on payments, no number used twice, cleared against the bank, and where a withdrawal went.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -13,7 +14,7 @@ import { allocateFifo, normChequeNo } from '../src/cheques';
 let server: Server;
 let base = '';
 const tokens: Record<string, string> = {};
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokens[who]}` }, body: body === undefined ? undefined : JSON.stringify(body) });

@@ -1,5 +1,6 @@
 // The sales target: before any commission is earned a person must sell 3 × their basic monthly salary (net of VAT, money received). The bands then
 // start at the target. Prices at order taking are not touched — selling below the floor is still refused.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -15,7 +16,7 @@ const tokens: Record<string, string> = {};
 const ids: Record<string, number> = {};
 let banner = 0;
 const period = new Date().toISOString().slice(0, 7);
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, {

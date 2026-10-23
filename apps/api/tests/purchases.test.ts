@@ -1,5 +1,6 @@
 // Purchases: multi-line purchase orders with a PO reference, receiving into the store by the store manager, and the reconciliation of
 // what was requisitioned against what was bought and physically received. Also the business heads and sales by business head.
+import { todayStr } from '@glm/shared';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
@@ -17,7 +18,7 @@ let caps = 0;
 let polos = 0;
 let reqId = 0;
 let po1 = 0;
-const today = new Date().toISOString().slice(0, 10);
+const today = todayStr();
 
 async function call(who: string, method: string, path: string, body?: unknown) {
   const res = await fetch(`${base}/api${path}`, {

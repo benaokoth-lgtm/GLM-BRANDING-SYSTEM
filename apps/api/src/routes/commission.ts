@@ -41,14 +41,13 @@ const settingsSchema = z.object({
   generalBands: z.array(bandSchema).min(1),
   filmBands: z.array(bandSchema).min(1),
   // Freelance sales persons — weekly net sales received at or above base prices → rate
-  freelanceBands: z.array(bandSchema).min(1).optional(),
   artworkRatePct: z.number().min(0).max(100),
   ownershipMonths: z.number().int().min(1).max(60),
   freelanceOwnershipMonths: z.number().int().min(1).max(60).optional(),
   // Withholding tax deducted from freelance commission (percent; 0 = none)
   freelanceWhtRate: z.number().min(0).max(100).optional(),
-  freelancePremiumPct: z.number().min(0).max(100).optional(),
-  freelanceLowMarginPct: z.number().min(0).max(100).optional(),
+  freelanceRatePct: z.number().min(0).max(30).optional(),
+  freelanceLowRatePct: z.number().min(0).max(30).optional(),
   // The sales target: times their gross monthly salary a person must sell before commission starts (0 = no target), and how the bands then apply.
   targetMultiplier: z.number().min(0).max(20).optional(),
   targetMode: z.enum(TARGET_MODES).optional(),
@@ -69,19 +68,18 @@ commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   const parsed = settingsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
-  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands') ?? (d.freelanceBands ? bandsProblem(d.freelanceBands, 'Freelance bands') : null) ?? (d.payBands ? payStepsProblem(d.payBands, 'Pay bands') : null);
+  const problem = bandsProblem(d.generalBands, 'General sales bands') ?? bandsProblem(d.filmBands, 'Film premium bands') ?? (d.payBands ? payStepsProblem(d.payBands, 'Pay bands') : null);
   if (problem) return res.status(400).json({ error: problem });
   const sort = (b: { from: number; rate: number }[]) => [...b].sort((x, y) => x.from - y.from);
   const data = {
     generalBandsJson: JSON.stringify(sort(d.generalBands)),
     filmBandsJson: JSON.stringify(sort(d.filmBands)),
-    ...(d.freelanceBands ? { freelanceBandsJson: JSON.stringify(sort(d.freelanceBands)) } : {}),
     artworkRatePct: d.artworkRatePct,
     ownershipMonths: d.ownershipMonths,
     ...(d.freelanceOwnershipMonths !== undefined ? { freelanceOwnershipMonths: d.freelanceOwnershipMonths } : {}),
     ...(d.freelanceWhtRate !== undefined ? { freelanceWhtRate: d.freelanceWhtRate } : {}),
-    ...(d.freelancePremiumPct !== undefined ? { freelancePremiumPct: d.freelancePremiumPct } : {}),
-    ...(d.freelanceLowMarginPct !== undefined ? { freelanceLowMarginPct: d.freelanceLowMarginPct } : {}),
+    ...(d.freelanceRatePct !== undefined ? { freelanceRatePct: d.freelanceRatePct } : {}),
+    ...(d.freelanceLowRatePct !== undefined ? { freelanceLowRatePct: d.freelanceLowRatePct } : {}),
     ...(d.targetMultiplier !== undefined ? { targetMultiplier: d.targetMultiplier } : {}),
     ...(d.targetMode !== undefined ? { targetMode: d.targetMode } : {}),
     ...(d.generalMode !== undefined ? { generalMode: d.generalMode } : {}),
@@ -96,25 +94,24 @@ commissionRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   res.json(await getCommissionConfig());
 });
 
-// The freelance sales persons' rates on their own (Commission → Freelancers → Rates): the weekly bands, the share of what is charged above base, the weight of thin-margin lines, how long a
-// client stays theirs, and the tax withheld. They are the same fields as in Commission → Rates, so changing them in either place changes both. Admin only; managers and staff can read them.
-const freelanceRatesSchema = z.object({
-  freelanceBands: z.array(bandSchema).min(1),
-  freelancePremiumPct: z.number().min(0).max(100),
-  freelanceLowMarginPct: z.number().min(0).max(100),
-  freelanceOwnershipMonths: z.number().int().min(1).max(60),
-  freelanceWhtRate: z.number().min(0).max(100),
-});
+// The freelance sales persons' commission on its own (Commission → Freelancers → Rates): the flat rate (% of net sales received, VAT out), the lower rate on thin-margin lines, how long a client stays
+// theirs, and the tax withheld. A change applies from the moment it is saved: a week is worked out at the rates in force when it is approved, so an approved or paid week keeps its amount. Admin only;
+// managers and staff can read the rates. Every change is in the audit trail (Master Data → Security).
+const freelanceRatesSchema = z
+  .object({
+    freelanceRatePct: z.number().min(0, 'The rate cannot be below 0').max(30, 'The rate cannot be above 30%'),
+    freelanceLowRatePct: z.number().min(0, 'The low rate cannot be below 0').max(30, 'The low rate cannot be above 30%'),
+    freelanceOwnershipMonths: z.number().int().min(1).max(60),
+    freelanceWhtRate: z.number().min(0).max(100),
+  })
+  .refine((d) => d.freelanceLowRatePct <= d.freelanceRatePct, { message: 'The low rate (thin-margin lines) cannot be more than the standard rate' });
 commissionRouter.put('/freelance-settings', requireRole('Admin'), async (req, res) => {
   const parsed = freelanceRatesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid input' });
   const d = parsed.data;
-  const problem = bandsProblem(d.freelanceBands, 'Freelance bands');
-  if (problem) return res.status(400).json({ error: problem });
   const data = {
-    freelanceBandsJson: JSON.stringify([...d.freelanceBands].sort((x, y) => x.from - y.from)),
-    freelancePremiumPct: d.freelancePremiumPct,
-    freelanceLowMarginPct: d.freelanceLowMarginPct,
+    freelanceRatePct: d.freelanceRatePct,
+    freelanceLowRatePct: d.freelanceLowRatePct,
     freelanceOwnershipMonths: d.freelanceOwnershipMonths,
     freelanceWhtRate: d.freelanceWhtRate,
     updatedByName: req.user!.name,

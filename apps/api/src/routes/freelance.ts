@@ -203,9 +203,8 @@ freelanceRouter.get('/statement', manage, async (req, res) => {
     weekStart: week,
     weekEnd: weekEnd(week),
     open: weekEnd(week) >= todayStr(), // the week is not over, so more money may still arrive
-    bands: config.freelanceBands,
-    premiumPct: config.freelancePremiumPct,
-    lowMarginPct: config.freelanceLowMarginPct,
+    ratePct: config.freelanceRatePct,
+    lowRatePct: config.freelanceLowRatePct,
     // can money be sent straight to their phone from here? (otherwise M-Pesa is recorded by hand, like any other method)
     b2cReady: isB2cReady(await loadMpesaConfig()),
     statements: statements.map((s) => {
@@ -243,11 +242,11 @@ freelanceRouter.post('/payouts/approve', manage, async (req, res) => {
       continue;
     }
     const data = {
-      qualifyingNet: s.qualifyingNet,
+      qualifyingNet: s.netSales,
       amount: s.commission,
       withholdingRate: s.whtRate,
       withholdingTax: s.withholdingTax,
-      detailJson: JSON.stringify({ received: s.received, qualifyingNet: s.qualifyingNet, baseNet: s.baseNet, premiumNet: s.premiumNet, baseCommission: s.baseCommission, premiumCommission: s.premiumCommission, belowBaseNet: s.belowBaseNet, orders: s.orders }),
+      detailJson: JSON.stringify({ received: s.received, netSales: s.netSales, standardNet: s.standardNet, lowNet: s.lowNet, ratePct: s.ratePct, lowRatePct: s.lowRatePct, standardCommission: s.standardCommission, lowCommission: s.lowCommission, orders: s.orders }),
       status: 'Approved',
       approvedByName: req.user!.name,
       approvedAt: new Date(),
@@ -479,7 +478,7 @@ freelanceRouter.get('/agents/:id/account', manage, async (req, res) => {
       taxWithheld: round2(payouts.filter((p) => p.status === 'Paid').reduce((a, p) => a + p.withholdingTax, 0)),
     },
     weeks,
-    bands: (await getCommissionConfig()).freelanceBands,
-    premiumPct: (await getCommissionConfig()).freelancePremiumPct,
+    ratePct: (await getCommissionConfig()).freelanceRatePct,
+    lowRatePct: (await getCommissionConfig()).freelanceLowRatePct,
   });
 });

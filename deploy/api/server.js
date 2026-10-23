@@ -47112,8 +47112,8 @@ var require_svgPath = __commonJS({
       }
     };
     var solveArc = function(x, y, coords) {
-      var rx = coords[0], ry = coords[1], rot = coords[2], large = coords[3], sweep = coords[4], ex = coords[5], ey = coords[6];
-      var segs = arcToSegments(ex, ey, rx, ry, large, sweep, rot, x, y);
+      var rx = coords[0], ry = coords[1], rot = coords[2], large = coords[3], sweep2 = coords[4], ex = coords[5], ey = coords[6];
+      var segs = arcToSegments(ex, ey, rx, ry, large, sweep2, rot, x, y);
       var cmds = [];
       for (var _i = 0, segs_1 = segs; _i < segs_1.length; _i++) {
         var seg = segs_1[_i];
@@ -47122,7 +47122,7 @@ var require_svgPath = __commonJS({
       }
       return cmds;
     };
-    var arcToSegments = function(x, y, rx, ry, large, sweep, rotateX, ox, oy) {
+    var arcToSegments = function(x, y, rx, ry, large, sweep2, rotateX, ox, oy) {
       var th = rotateX * (Math.PI / 180);
       var sinTh = Math.sin(th);
       var cosTh = Math.cos(th);
@@ -47150,7 +47150,7 @@ var require_svgPath = __commonJS({
         sfactorSq = 0;
       }
       var sfactor = Math.sqrt(sfactorSq);
-      if (sweep === large) {
+      if (sweep2 === large) {
         sfactor = -sfactor;
       }
       var xc = 0.5 * (x0 + x1) - sfactor * (y1 - y0);
@@ -47158,9 +47158,9 @@ var require_svgPath = __commonJS({
       var th0 = Math.atan2(y0 - yc, x0 - xc);
       var th1 = Math.atan2(y1 - yc, x1 - xc);
       var thArc = th1 - th0;
-      if (thArc < 0 && sweep === 1) {
+      if (thArc < 0 && sweep2 === 1) {
         thArc += 2 * Math.PI;
-      } else if (thArc > 0 && sweep === 0) {
+      } else if (thArc > 0 && sweep2 === 0) {
         thArc -= 2 * Math.PI;
       }
       var segments = Math.ceil(Math.abs(thArc / (Math.PI * 0.5 + 1e-3)));
@@ -74268,6 +74268,509 @@ ordersRouter.post("/:id/convert", requirePermission("canCaptureOrders", "canView
   res.json(serializeDetail(updated));
 });
 
+// apps/api/src/dayClose.ts
+var AMBER_UP_TO = 200;
+var DENOMINATIONS = [1e3, 500, 200, 100, 50, 40, 20, 10, 5, 1];
+var METHODS = ["Cash", "M-Pesa", "Bank", "Card", "Cheque"];
+var round23 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+async function ensureTills() {
+  let tills = await prisma.till.findMany({ orderBy: [{ isMain: "desc" }, { name: "asc" }] });
+  if (!tills.some((t) => t.isMain)) {
+    const named = tills.find((t) => t.name === "Main till");
+    if (named) await prisma.till.update({ where: { id: named.id }, data: { isMain: true, active: true } });
+    else await prisma.till.create({ data: { name: "Main till", isMain: true } }).catch(() => void 0);
+    tills = await prisma.till.findMany({ orderBy: [{ isMain: "desc" }, { name: "asc" }] });
+  }
+  return tills;
+}
+async function tillResolver() {
+  const tills = await ensureTills();
+  const main = tills.find((t) => t.isMain);
+  const active = new Set(tills.filter((t) => t.active).map((t) => t.id));
+  const users = await prisma.user.findMany({ where: { tillId: { not: null } }, select: { id: true, name: true, tillId: true } });
+  const byId = new Map(users.map((u) => [u.id, u.tillId]));
+  const byName = new Map(users.map((u) => [u.name, u.tillId]));
+  const fix = (t) => t !== void 0 && active.has(t) ? t : main.id;
+  return {
+    tills,
+    main,
+    activeTills: tills.filter((t) => t.active),
+    ofUser: (id) => fix(id == null ? void 0 : byId.get(id)),
+    ofName: (name2) => fix(byName.get(name2))
+  };
+}
+async function outstandingAsAt(date) {
+  const orders = await prisma.order.findMany({
+    where: { status: { not: "Quote" }, createdDate: { lte: date }, OR: [{ status: "Invoice" }, { payments: { some: { date: { gt: date } } } }] },
+    include: orderListInclude
+  });
+  const rows = [];
+  for (const o of orders) {
+    const s = serializeSummary({ ...o, payments: o.payments.filter((p) => p.date <= date) });
+    if (s.totals.balanceDue < 0.01) continue;
+    const days = o.dueDate && o.dueDate < date ? Math.round((Date.parse(date) - Date.parse(o.dueDate)) / 864e5) : 0;
+    rows.push({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || "\u2014", createdDate: o.createdDate, dueDate: o.dueDate, balance: round23(s.totals.balanceDue), daysOverdue: days, staff: o.staff.name });
+  }
+  rows.sort((a2, b) => b.daysOverdue - a2.daysOverdue || b.balance - a2.balance);
+  return rows;
+}
+var BANDS = [
+  ["Not yet due", (d) => d <= 0],
+  ["1\u20137 days overdue", (d) => d >= 1 && d <= 7],
+  ["8\u201330 days", (d) => d >= 8 && d <= 30],
+  ["31\u201360 days", (d) => d >= 31 && d <= 60],
+  ["Over 60 days", (d) => d > 60]
+];
+async function ncbaTieOut(date) {
+  const from = /* @__PURE__ */ new Date(`${date}T00:00:00.000Z`);
+  const to = /* @__PURE__ */ new Date(`${addDays(date, 1)}T00:00:00.000Z`);
+  const [everSeen, notes, ignoredCount] = await Promise.all([
+    prisma.ncbaNotification.count(),
+    prisma.ncbaNotification.findMany({ where: { receivedAt: { gte: from, lt: to }, outcome: { in: ["Matched", "Received", "Held"] } }, orderBy: { id: "asc" } }),
+    prisma.ncbaNotification.count({ where: { receivedAt: { gte: from, lt: to }, outcome: { in: ["Duplicate", "Rejected"] } } })
+  ]);
+  const mpesaToday = await prisma.payment.findMany({
+    where: { date, method: "M-Pesa" },
+    include: { order: { select: { orderNo: true, customerName: true, corporateClient: { select: { name: true } } } }, mpesaTransaction: { select: { mpesaReceipt: true, checkoutRequestId: true } } }
+  });
+  const codesOf = (p) => [p.reference, p.mpesaTransaction?.mpesaReceipt].filter((c) => !!c).map((c) => c.toUpperCase());
+  const wanted = /* @__PURE__ */ new Set([...notes.map((n) => n.transId.toUpperCase()), ...mpesaToday.flatMap(codesOf)]);
+  const known = wanted.size ? await prisma.ncbaNotification.findMany({ where: { transId: { in: [...wanted] } }, select: { transId: true } }) : [];
+  const ncbaCodes = new Set(known.map((k) => k.transId.toUpperCase()));
+  const codeList = notes.map((n) => n.transId).filter(Boolean);
+  const carrying = codeList.length ? await prisma.payment.findMany({ where: { OR: [{ reference: { in: codeList } }, { mpesaTransaction: { mpesaReceipt: { in: codeList } } }] }, select: { amount: true, reference: true, mpesaTransaction: { select: { mpesaReceipt: true } } } }) : [];
+  const applied = /* @__PURE__ */ new Map();
+  for (const p of carrying) {
+    const code = (p.mpesaTransaction?.mpesaReceipt ?? p.reference ?? "").toUpperCase();
+    if (code) applied.set(code, (applied.get(code) ?? 0) + p.amount);
+  }
+  const leftOf = (n) => {
+    const left = n.amount - (applied.get(n.transId.toUpperCase()) ?? 0);
+    return left >= 1 ? Math.round(left * 100) / 100 : 0;
+  };
+  const sent = notes.reduce((a2, n) => a2 + n.amount, 0);
+  const notOnOrder = notes.filter((n) => leftOf(n) > 0).map((n) => ({ ...n, amount: leftOf(n), part: leftOf(n) < n.amount - 0.5 }));
+  const other = mpesaToday.filter((p) => !(p.mpesaTransaction?.checkoutRequestId ?? "").startsWith("NCBA-") && !codesOf(p).some((c) => ncbaCodes.has(c)));
+  return {
+    active: everSeen > 0,
+    sent: { count: notes.length, amount: round23(sent) },
+    onOrders: { count: notes.length - notOnOrder.length, amount: round23(sent - notOnOrder.reduce((a2, n) => a2 + n.amount, 0)) },
+    // receipts wholly on orders; a part-matched receipt counts here for what is applied
+    notOnOrder: { count: notOnOrder.length, amount: round23(notOnOrder.reduce((a2, n) => a2 + n.amount, 0)), receipts: notOnOrder.slice(0, 100).map((n) => ({ id: n.id, receipt: n.transId, amount: n.amount, phone: n.phone, payer: n.payerName, billRef: n.billRef, outcome: n.outcome })) },
+    otherMpesa: { count: other.length, amount: round23(other.reduce((a2, p) => a2 + p.amount, 0)), payments: other.slice(0, 100).map((p) => ({ id: p.id, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || "\u2014", amount: p.amount, reference: p.reference ?? p.mpesaTransaction?.mpesaReceipt ?? "" })) },
+    duplicatesOrRejected: ignoredCount,
+    // NCBA settles what it took into the bank account daily
+    expectedBankSettlement: round23(sent)
+  };
+}
+async function liveDay(date, tillId) {
+  const r = await tillResolver();
+  const [payments, refunds] = await Promise.all([
+    prisma.payment.findMany({ where: { date }, include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } }, staff: { select: { name: true } } }, orderBy: { id: "asc" } }),
+    prisma.adjustmentNote.findMany({ where: { type: "Credit", date, refundAmt: { gt: 0 } } })
+  ]);
+  const cashOf = /* @__PURE__ */ new Map();
+  for (const t of r.activeTills) cashOf.set(t.id, { received: 0, refunds: 0 });
+  for (const p of payments) if (p.method === "Cash") cashOf.get(r.ofUser(p.staffId)).received = round23(cashOf.get(r.ofUser(p.staffId)).received + p.amount);
+  for (const n of refunds) if ((n.refundMethod ?? "Cash") === "Cash") cashOf.get(r.ofName(n.createdByName)).refunds = round23(cashOf.get(r.ofName(n.createdByName)).refunds + n.refundAmt);
+  const floatOf = /* @__PURE__ */ new Map();
+  const closes = await prisma.dayClose.findMany({ where: { date } });
+  for (const t of r.activeTills) {
+    const prev = await prisma.dayClose.findFirst({ where: { tillId: t.id, date: { lt: date } }, orderBy: { date: "desc" } });
+    floatOf.set(t.id, prev?.floatCarried ?? 0);
+  }
+  const closeOf = new Map(closes.map((c) => [c.tillId, c]));
+  const tills = r.activeTills.map((t) => {
+    const c = cashOf.get(t.id);
+    const opening2 = floatOf.get(t.id);
+    const k = closeOf.get(t.id);
+    return { id: t.id, name: t.name, isMain: t.isMain, openingFloat: opening2, received: c.received, refunds: c.refunds, expected: round23(opening2 + c.received - c.refunds), close: k ? { status: k.status, counted: k.countedCash, variance: k.variance, banked: k.banked } : null };
+  });
+  const scope = tillId == null ? tills : tills.filter((t) => t.id === tillId);
+  const cash = {
+    openingFloat: round23(scope.reduce((a2, t) => a2 + t.openingFloat, 0)),
+    received: round23(scope.reduce((a2, t) => a2 + t.received, 0)),
+    refunds: round23(scope.reduce((a2, t) => a2 + t.refunds, 0)),
+    expected: round23(scope.reduce((a2, t) => a2 + t.expected, 0))
+  };
+  const mine = tillId == null ? payments : payments.filter((p) => r.ofUser(p.staffId) === tillId);
+  const byMethod = /* @__PURE__ */ new Map();
+  for (const m of METHODS) byMethod.set(m, { method: m, count: 0, amount: 0 });
+  const byPerson = /* @__PURE__ */ new Map();
+  for (const p of mine) {
+    const m = byMethod.get(p.method) ?? { method: p.method, count: 0, amount: 0 };
+    m.count++;
+    m.amount = round23(m.amount + p.amount);
+    byMethod.set(p.method, m);
+    const name2 = p.staff?.name ?? "Not recorded";
+    const row = byPerson.get(name2) ?? { person: name2, cash: 0, other: 0, count: 0 };
+    if (p.method === "Cash") row.cash = round23(row.cash + p.amount);
+    else row.other = round23(row.other + p.amount);
+    row.count++;
+    byPerson.set(name2, row);
+  }
+  const received = round23(mine.reduce((a2, p) => a2 + p.amount, 0));
+  const [closing, opening, raised, ncba, toCheck] = await Promise.all([
+    outstandingAsAt(date),
+    outstandingAsAt(addDays(date, -1)),
+    prisma.order.findMany({ where: { status: { not: "Quote" }, createdDate: date }, include: orderListInclude }),
+    ncbaTieOut(date),
+    ordersToCheck(date)
+  ]);
+  const sum = (rows) => round23(rows.reduce((a2, x) => a2 + x.balance, 0));
+  const raisedToday = round23(raised.reduce((a2, o) => a2 + serializeSummary({ ...o, payments: [] }).totals.grandTotal, 0));
+  const allReceived = round23(payments.reduce((a2, p) => a2 + p.amount, 0));
+  const closingTotal = sum(closing);
+  const openingTotal = sum(opening);
+  return {
+    date,
+    tillId,
+    tills,
+    allClosed: tills.every((t) => t.received + t.refunds === 0 || t.close),
+    byMethod: [...byMethod.values()],
+    received,
+    byPerson: [...byPerson.values()].sort((a2, b) => b.cash + b.other - (a2.cash + a2.other)),
+    payments: mine.slice(0, 500).map((p) => ({ id: p.id, orderId: p.orderId, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || "\u2014", method: p.method, amount: p.amount, reference: p.reference ?? "", by: p.staff?.name ?? "" })),
+    cash,
+    outstanding: {
+      opening: openingTotal,
+      raisedToday,
+      receivedToday: allReceived,
+      // credit notes, discounts given after the sale and anything else that changed what is owed
+      otherChanges: round23(closingTotal - (openingTotal + raisedToday - allReceived)),
+      closing: closingTotal,
+      bands: BANDS.map(([label, test]) => {
+        const rows = closing.filter((x) => test(x.daysOverdue));
+        return { label, count: rows.length, amount: sum(rows) };
+      }),
+      invoices: closing.slice(0, 200),
+      invoiceCount: closing.length
+    },
+    ncba,
+    toCheck
+  };
+}
+async function ordersToCheck(date) {
+  const today = todayStr();
+  const waiting = await prisma.order.findMany({ where: { status: { not: "Quote" }, stage: "Order Received", createdDate: { lt: today } }, include: orderListInclude, orderBy: { id: "asc" }, take: 400 });
+  const notProduced = waiting.map((o) => ({ o, s: serializeSummary(o) })).filter(({ s }) => s.totals.grandTotal > 0 && s.totals.balanceDue <= 5e-3).map(({ o, s }) => ({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || "\u2014", createdDate: o.createdDate, total: s.totals.grandTotal, staff: o.staff.name, daysWaiting: Math.max(0, Math.round((Date.parse(today) - Date.parse(o.createdDate)) / 864e5)) })).sort((a2, b) => b.daysWaiting - a2.daysWaiting);
+  const from = /* @__PURE__ */ new Date(`${date}T00:00:00+03:00`);
+  const to = new Date(from.getTime() + 24 * 36e5);
+  const releases = (await prisma.orderOverride.findMany({ where: { at: { gte: from, lt: to } }, orderBy: { id: "asc" } })).map((r) => ({ id: r.id, orderNo: r.orderNo, kind: r.kind, stage: r.stage, amount: r.amount, reason: r.reason, by: r.byName }));
+  return { notProduced: notProduced.slice(0, 100), notProducedCount: notProduced.length, releases };
+}
+async function reminder() {
+  const today = todayStr();
+  const from = addDays(today, -7);
+  const r = await tillResolver();
+  const [payments, closes, submitted] = await Promise.all([
+    prisma.payment.findMany({ where: { date: { gte: from, lt: today }, method: "Cash" }, select: { date: true, amount: true, staffId: true } }),
+    prisma.dayClose.findMany({ where: { date: { gte: from, lt: today } }, select: { date: true, tillId: true } }),
+    prisma.dayClose.findMany({ where: { status: "Submitted", date: { lt: today } }, orderBy: { date: "desc" }, take: 20 })
+  ]);
+  const closed = new Set(closes.map((c) => `${c.date}|${c.tillId}`));
+  const cash = /* @__PURE__ */ new Map();
+  for (const p of payments) {
+    const tillId = r.ofUser(p.staffId);
+    const k = `${p.date}|${tillId}`;
+    const row = cash.get(k) ?? { date: p.date, tillId, cash: 0 };
+    row.cash = round23(row.cash + p.amount);
+    cash.set(k, row);
+  }
+  const nameOf = new Map(r.tills.map((t) => [t.id, t.name]));
+  return {
+    unclosed: [...cash.entries()].filter(([k, v]) => !closed.has(k) && v.cash > 0).map(([, v]) => ({ ...v, tillName: nameOf.get(v.tillId) ?? "Till" })).sort((a2, b) => b.date.localeCompare(a2.date)),
+    awaiting: submitted.map((c) => ({ date: c.date, tillId: c.tillId, tillName: nameOf.get(c.tillId) ?? "Till", submittedByName: c.submittedByName, variance: c.variance }))
+  };
+}
+var dayLabel = (d) => (/* @__PURE__ */ new Date(d + "T00:00:00")).toLocaleDateString("en-KE", { weekday: "short", day: "numeric", month: "short" });
+var shilling = (n) => fmtKsh(n);
+async function summaryFor(date) {
+  const day = await liveDay(date, null);
+  const rem = await reminder();
+  const cashReceived = day.byMethod.find((m) => m.method === "Cash")?.amount ?? 0;
+  const others = day.byMethod.filter((m) => m.method !== "Cash" && m.amount > 0).map((m) => `${m.method} ${shilling(m.amount)}`);
+  const received = `${shilling(day.received)} (Cash ${shilling(cashReceived)}${others.length ? ", " + others.join(", ") : ""})`;
+  const multi = day.tills.length > 1;
+  const cashLines = day.tills.filter((t) => t.received + t.refunds > 0 || t.close).map((t) => {
+    const who = multi ? `${t.name}: ` : "";
+    if (!t.close) return `${who}not counted yet (expected ${shilling(t.expected)})`;
+    const v = t.close.variance;
+    return `${who}counted ${shilling(t.close.counted)}, ${Math.abs(v) < 0.5 ? "balanced" : v < 0 ? `short ${shilling(-v)}` : `over ${shilling(v)}`} (${t.close.status === "Approved" ? "approved" : "awaiting approval"})`;
+  });
+  const cash = cashLines.length ? cashLines.join("; ") : "no cash today";
+  const overdue = day.outstanding.bands.filter((b) => b.label !== "Not yet due").reduce((a2, b) => a2 + b.amount, 0);
+  const owed = `${shilling(day.outstanding.closing)}${overdue > 0 ? ` (${shilling(overdue)} overdue)` : ""}`;
+  const notes = [];
+  if (day.ncba.active) notes.push(`NCBA sent ${shilling(day.ncba.sent.amount)}${day.ncba.notOnOrder.count ? `; ${day.ncba.notOnOrder.count} receipt${day.ncba.notOnOrder.count === 1 ? "" : "s"} (${shilling(day.ncba.notOnOrder.amount)}) not on an order` : "; all on orders"}${day.ncba.otherMpesa.count ? `; ${day.ncba.otherMpesa.count} M-Pesa payment${day.ncba.otherMpesa.count === 1 ? "" : "s"} NCBA did not send` : ""}`);
+  if (day.toCheck.notProducedCount > 0) notes.push(`${day.toCheck.notProducedCount} paid order${day.toCheck.notProducedCount === 1 ? "" : "s"} never started in production`);
+  if (day.toCheck.releases.length > 0) notes.push(`${day.toCheck.releases.length} order${day.toCheck.releases.length === 1 ? "" : "s"} released early by a manager`);
+  const unclosed = rem.unclosed.map((u) => `${u.tillName} ${dayLabel(u.date)}`);
+  if (rem.unclosed.length) notes.push(`Not closed: ${unclosed.join(", ")}`);
+  else notes.push("No earlier day is waiting to be closed");
+  const label = dayLabel(date);
+  return {
+    date,
+    params: [label, received, cash, owed, notes.join(". ")],
+    text: [`GLM Branding \u2014 ${label}`, `Received: ${received}`, `Cash: ${cash}`, `Owed by customers: ${owed}`, ...notes].join("\n")
+  };
+}
+
+// apps/api/src/whatsapp.ts
+var base2 = () => process.env.NODE_ENV === "test" && process.env.WHATSAPP_TEST_URL ? process.env.WHATSAPP_TEST_URL : "https://graph.facebook.com";
+async function loadWhatsappConfig(opts = {}) {
+  const row = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
+  if (!row || !row.enabled && !opts.ignoreSwitch || !row.phoneNumberId || !row.accessToken) return null;
+  return {
+    phoneNumberId: row.phoneNumberId.trim(),
+    token: open(row.accessToken),
+    businessAccountId: row.businessAccountId,
+    templateName: row.templateName.trim(),
+    templateLanguage: row.templateLanguage.trim() || "en",
+    apiVersion: row.apiVersion.trim() || "v21.0"
+  };
+}
+var TEMPLATE_BODY = "Hello {{1}}, please find attached your {{2}} {{3}} from GLM Branding. Total: {{4}}. {{5}}";
+var WhatsappError = class extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+  }
+};
+function explainWhatsappError(code, message, detail) {
+  const raw = detail ? `${message} (${detail})` : message;
+  switch (code) {
+    case 190:
+    case 102:
+      return "WhatsApp refused the access token: it is wrong, has expired or was revoked. Create a new permanent token (a System User token) and save it under Master Data \u2192 WhatsApp.";
+    case 131030:
+      return "That number is not on the list of numbers allowed to receive messages yet. While the WhatsApp number is in test mode, add the recipient under WhatsApp \u2192 API Setup in Meta, or finish going live.";
+    case 131047:
+      return "The customer has not written to us in the last 24 hours, so only an approved template message can be sent to them. Set the template name under Master Data \u2192 WhatsApp.";
+    case 131026:
+      return "The message could not be delivered: that number may not be on WhatsApp.";
+    case 132e3:
+    case 132005:
+    case 132012:
+      return "The template does not match what was sent. Check that it has a Document header and five body variables, as shown under Master Data \u2192 WhatsApp.";
+    case 132001:
+      return "WhatsApp cannot find that template in that language. Check the template name and language code under Master Data \u2192 WhatsApp, and that Meta has approved it.";
+    case 132015:
+    case 132016:
+      return "That template is paused or disabled by WhatsApp. Check it in Meta\u2019s template manager.";
+    case 130429:
+    case 131048:
+    case 131056:
+      return "WhatsApp is limiting how fast messages can be sent. Try again in a minute.";
+    case 131042:
+    case 131045:
+      return "The WhatsApp Business account has a payment or registration problem. Check the account in Meta Business Settings.";
+    case 100:
+      return `WhatsApp rejected the request: ${raw}`;
+    default:
+      return `WhatsApp could not send it: ${raw}`;
+  }
+}
+async function graph(cfg, path4, init = {}) {
+  let res;
+  try {
+    res = await fetch(`${base2()}/${cfg.apiVersion}/${path4}`, { ...init, headers: { Authorization: `Bearer ${cfg.token}`, ...init.headers ?? {} }, signal: AbortSignal.timeout(3e4) });
+  } catch {
+    throw new WhatsappError("Could not reach WhatsApp (graph.facebook.com). Check the server\u2019s internet connection and try again.");
+  }
+  const body = await res.json().catch(() => null);
+  if (!res.ok || body?.error) {
+    const e = body?.error ?? {};
+    throw new WhatsappError(explainWhatsappError(e.code, e.message ?? `HTTP ${res.status}`, e.error_data?.details), e.code);
+  }
+  return body;
+}
+async function checkConnection(cfg) {
+  const r = await graph(cfg, `${cfg.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`);
+  return { displayPhoneNumber: r.display_phone_number ?? "", verifiedName: r.verified_name ?? "", quality: r.quality_rating ?? "" };
+}
+async function uploadPdf(cfg, pdf, filename, mime = "application/pdf") {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime);
+  form.append("file", new Blob([new Uint8Array(pdf)], { type: mime }), filename);
+  const r = await graph(cfg, `${cfg.phoneNumberId}/media`, { method: "POST", body: form });
+  if (!r?.id) throw new WhatsappError("WhatsApp did not accept the PDF upload.");
+  return String(r.id);
+}
+async function sendInvoiceDocument(cfg, m) {
+  const mediaId = await uploadPdf(cfg, m.pdf, m.filename);
+  const clean3 = (s) => s.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 900) || "-";
+  const payload = cfg.templateName ? {
+    messaging_product: "whatsapp",
+    to: m.to,
+    type: "template",
+    template: {
+      name: cfg.templateName,
+      language: { code: cfg.templateLanguage },
+      components: [
+        { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename: m.filename } }] },
+        { type: "body", parameters: m.params.map((t) => ({ type: "text", text: clean3(t) })) }
+      ]
+    }
+  } : { messaging_product: "whatsapp", to: m.to, type: "document", document: { id: mediaId, filename: m.filename, caption: m.caption.slice(0, 1e3) } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return { messageId: String(id), mode: cfg.templateName ? "template" : "document" };
+}
+async function sendFileMessage(cfg, m) {
+  if (m.mime === "application/pdf") return sendInvoiceDocument(cfg, { to: m.to, pdf: m.data, filename: m.filename, params: m.params, caption: m.caption });
+  const mediaId = await uploadPdf(cfg, m.data, m.filename, m.mime);
+  const isImage = m.mime.startsWith("image/");
+  const payload = isImage ? { messaging_product: "whatsapp", to: m.to, type: "image", image: { id: mediaId, caption: m.caption.slice(0, 1e3) } } : { messaging_product: "whatsapp", to: m.to, type: "document", document: { id: mediaId, filename: m.filename, caption: m.caption.slice(0, 1e3) } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return { messageId: String(id), mode: isImage ? "image" : "document" };
+}
+async function sendTextMessage(cfg, to, body) {
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: body.slice(0, 3500), preview_url: false } }) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return String(id);
+}
+async function sendTemplateText(cfg, to, name2, params) {
+  const clean3 = (s) => s.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 900) || "-";
+  const payload = { messaging_product: "whatsapp", to, type: "template", template: { name: name2, language: { code: cfg.templateLanguage }, components: [{ type: "body", parameters: params.map((t) => ({ type: "text", text: clean3(t) })) }] } };
+  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const id = r?.messages?.[0]?.id;
+  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
+  return String(id);
+}
+
+// apps/api/src/daySummary.ts
+var SUMMARY_TEMPLATE_BODY = "GLM daily summary for {{1}}. Received: {{2}}. Cash: {{3}}. Owed by customers: {{4}}. {{5}}";
+async function getSummarySettings() {
+  return prisma.dayCloseSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
+}
+function parseNumbers(raw) {
+  return [...new Set(raw.split(/[,;\n]+/).map((s) => whatsappNumber(s.trim())).filter((n) => !!n))];
+}
+function nairobiNow(now = /* @__PURE__ */ new Date()) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now).map((x) => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
+}
+async function sendSummary(date, by) {
+  const s = await getSummarySettings();
+  const numbers = parseNumbers(s.summaryNumbers);
+  const summary = await summaryFor(date);
+  if (numbers.length === 0) return { ok: false, sent: [], failed: [{ to: "", error: "No WhatsApp number to send the summary to" }], text: summary.text };
+  const cfg = await loadWhatsappConfig();
+  if (!cfg) return { ok: false, sent: [], failed: [{ to: "", error: "WhatsApp isn't set up yet \u2014 an Admin sets it up under Master Data \u2192 WhatsApp" }], text: summary.text };
+  const result = { ok: true, sent: [], failed: [], text: summary.text };
+  for (const to of numbers) {
+    const log2 = (status, extra) => prisma.whatsappMessage.create({ data: { toNumber: to, status, mode: s.summaryTemplate ? "template" : "text", fileName: "Daily summary", waMessageId: extra.id ?? null, error: extra.error ?? "", sentByName: by } });
+    try {
+      const id = s.summaryTemplate ? await sendTemplateText(cfg, to, s.summaryTemplate, summary.params) : await sendTextMessage(cfg, to, summary.text);
+      await log2("Sent", { id });
+      result.sent.push(to);
+    } catch (e) {
+      const error2 = e instanceof WhatsappError ? e.message : "Could not send the summary";
+      if (!(e instanceof WhatsappError)) console.error("Day summary send failed", e);
+      await log2("Failed", { error: error2 });
+      result.failed.push({ to, error: error2 });
+    }
+  }
+  result.ok = result.failed.length === 0;
+  return result;
+}
+var RETRY_AFTER_MS = 30 * 6e4;
+var MAX_ATTEMPTS2 = 3;
+function summaryDue(s, now = /* @__PURE__ */ new Date()) {
+  if (!s.summaryEnabled || parseNumbers(s.summaryNumbers).length === 0) return false;
+  const n = nairobiNow(now);
+  if (n.time < s.summaryTime) return false;
+  if (s.summaryLastDate !== n.date) return true;
+  if (s.summaryLastStatus === "Sent") return false;
+  return s.summaryAttempts < MAX_ATTEMPTS2 && (!s.summaryLastTryAt || now.getTime() - s.summaryLastTryAt.getTime() >= RETRY_AFTER_MS);
+}
+async function runScheduledSummary(now = /* @__PURE__ */ new Date()) {
+  const s = await getSummarySettings();
+  if (!summaryDue(s, now)) return null;
+  const date = nairobiNow(now).date;
+  const attempts = s.summaryLastDate === date ? s.summaryAttempts + 1 : 1;
+  const r = await sendSummary(date, "Day close summary");
+  await prisma.dayCloseSettings.update({
+    where: { id: 1 },
+    data: { summaryLastDate: date, summaryAttempts: attempts, summaryLastTryAt: now, summaryLastStatus: r.ok ? "Sent" : `Failed: ${r.failed[0]?.error ?? "unknown"}`.slice(0, 300) }
+  });
+  return r;
+}
+function startSummaryScheduler() {
+  const tick = async () => {
+    try {
+      await runScheduledSummary();
+    } catch (err) {
+      console.error("Evening summary failed", err);
+    }
+  };
+  setTimeout(tick, 9e4).unref();
+  setInterval(tick, 6e4).unref();
+}
+
+// apps/api/src/qualityAuto.ts
+var AUTO_CHECK_NOTE = "Passed automatically \u2014 quality inspection is switched off for now";
+async function qualityIsAutomatic() {
+  return (await getSummarySettings()).autoQualityCheck;
+}
+async function autoPassOrder(db, orderId, taskId, byUserId) {
+  await db.qualityCheck.create({ data: { orderId, taskId, inspectorId: byUserId, result: "Passed", auto: true, note: AUTO_CHECK_NOTE } });
+  await db.order.update({ where: { id: orderId }, data: { stage: STAGE_READY } });
+}
+async function sweepWaitingQuality(byUserId) {
+  if (!await qualityIsAutomatic()) return 0;
+  const waiting = await prisma.order.findMany({ where: { status: { not: "Quote" }, stage: STAGE_QUALITY }, select: { id: true } });
+  for (const o of waiting) {
+    const task = await prisma.productionTask.findFirst({ where: { orderId: o.id, status: "Finished" }, orderBy: { finishedAt: "desc" }, select: { id: true } });
+    await prisma.$transaction((tx) => autoPassOrder(tx, o.id, task?.id ?? null, byUserId));
+  }
+  return waiting.length;
+}
+
+// apps/api/src/autoStages.ts
+var running = null;
+async function sweep() {
+  const s = await getSummarySettings();
+  if (!s.autoProduction && !s.autoQualityCheck) return { produced: 0, passed: 0 };
+  const admin3 = await prisma.user.findFirst({ where: { role: "Admin" }, orderBy: { id: "asc" }, select: { id: true } });
+  if (!admin3) return { produced: 0, passed: 0 };
+  let produced = 0;
+  if (s.autoProduction) {
+    const waiting = await prisma.order.findMany({
+      where: { status: { not: "Quote" }, stage: { in: [STAGE_WAITING, STAGE_IN_PRODUCTION] }, productionTasks: { none: { status: { in: ACTIVE_TASK_STATUSES } } } },
+      select: { id: true, dtfArtworkJob: { select: { approvalStatus: true } }, embroideryJob: { select: { approvalStatus: true } } }
+    });
+    for (const o of waiting) {
+      if (priceApprovalPending(o)) continue;
+      await prisma.$transaction(async (tx) => {
+        if (s.autoQualityCheck) await autoPassOrder(tx, o.id, null, admin3.id);
+        else await tx.order.update({ where: { id: o.id }, data: { stage: STAGE_QUALITY } });
+      });
+      produced++;
+    }
+  }
+  const passed = s.autoQualityCheck ? await sweepWaitingQuality(admin3.id) : 0;
+  return { produced, passed };
+}
+function sweepAutomaticStages() {
+  if (!running) running = sweep().finally(() => running = null);
+  return running;
+}
+async function automaticStages(_req, _res, next) {
+  try {
+    await sweepAutomaticStages();
+  } catch (e) {
+    console.error("automatic stages", e);
+  }
+  next();
+}
+
 // apps/api/src/routes/finance.ts
 var import_express4 = __toESM(require_express2());
 
@@ -74859,12 +75362,12 @@ async function buildAccountLedger(accountId, from, to) {
   const mine = ledger.postings.filter((p) => p.accountId === accountId).sort((a2, b) => a2.date < b.date ? -1 : a2.date > b.date ? 1 : 0);
   const sign2 = (p) => acc.type === "Asset" || acc.type === "Expense" ? p.debit - p.credit : p.credit - p.debit;
   const opening = round2(mine.filter((p) => p.date < from).reduce((a2, p) => a2 + sign2(p), 0));
-  let running3 = opening;
+  let running4 = opening;
   const rows = mine.filter((p) => inRange(p.date, from, to)).map((p) => {
-    running3 = round2(running3 + sign2(p));
-    return { date: p.date, source: p.source, ref: p.ref, memo: p.memo, debit: p.debit, credit: p.credit, balance: running3 };
+    running4 = round2(running4 + sign2(p));
+    return { date: p.date, source: p.source, ref: p.ref, memo: p.memo, debit: p.debit, credit: p.credit, balance: running4 };
   });
-  return { account: { id: acc.id, code: acc.code, name: acc.name, type: acc.type }, from, to, opening, closing: running3, rows };
+  return { account: { id: acc.id, code: acc.code, name: acc.name, type: acc.type }, from, to, opening, closing: running4, rows };
 }
 var AGE_BUCKETS = ["Not yet due", "0\u201330 days", "31\u201360 days", "61\u201390 days", "Over 90 days"];
 function ageBucket(ageDays) {
@@ -77903,7 +78406,7 @@ emailRouter.post("/send", sendLimiter, async (req, res) => {
 
 // apps/api/src/routes/mpesa.ts
 var import_express9 = __toESM(require_express2());
-var import_crypto8 = require("crypto");
+var import_crypto9 = require("crypto");
 
 // apps/api/src/accounting/mpesaMatching.ts
 async function openTargets() {
@@ -78155,8 +78658,8 @@ async function unmatchPayment(txId, by, reason, paymentId) {
 }
 
 // apps/api/src/mpesaConfig.ts
-var import_crypto4 = require("crypto");
-var newCallbackSecret = () => (0, import_crypto4.randomBytes)(24).toString("hex");
+var import_crypto5 = require("crypto");
+var newCallbackSecret = () => (0, import_crypto5.randomBytes)(24).toString("hex");
 async function getSettingsRow() {
   return await prisma.mpesaSettings.findUnique({ where: { id: 1 } }) ?? prisma.mpesaSettings.create({ data: { id: 1 } });
 }
@@ -78222,11 +78725,11 @@ function isB2cReady(c) {
 function parseCertificate(text) {
   const t = text.trim();
   if (!t) throw new Error("No certificate");
-  return new import_crypto4.X509Certificate(/BEGIN CERTIFICATE/.test(t) ? t : Buffer.from(t.replace(/\s+/g, ""), "base64"));
+  return new import_crypto5.X509Certificate(/BEGIN CERTIFICATE/.test(t) ? t : Buffer.from(t.replace(/\s+/g, ""), "base64"));
 }
 function securityCredential(c) {
   const cert = parseCertificate(c.securityCert);
-  return (0, import_crypto4.publicEncrypt)({ key: cert.publicKey, padding: import_crypto4.constants.RSA_PKCS1_PADDING }, Buffer.from(c.initiatorPassword, "utf8")).toString("base64");
+  return (0, import_crypto5.publicEncrypt)({ key: cert.publicKey, padding: import_crypto5.constants.RSA_PKCS1_PADDING }, Buffer.from(c.initiatorPassword, "utf8")).toString("base64");
 }
 function callbackUrls(c) {
   if (!c.publicBaseUrl || !c.callbackSecret) return null;
@@ -78438,9 +78941,9 @@ async function handleB2cTimeout(body) {
 }
 
 // apps/api/src/ncba.ts
-var import_crypto6 = require("crypto");
+var import_crypto7 = require("crypto");
 var NCBA_BASE_URL = "https://c2bapis.ncbagroup.com";
-var newNcbaSecret = (bytes = 24) => (0, import_crypto6.randomBytes)(bytes).toString("hex");
+var newNcbaSecret = (bytes = 24) => (0, import_crypto7.randomBytes)(bytes).toString("hex");
 async function getNcbaRow() {
   return await prisma.ncbaSettings.findUnique({ where: { id: 1 } }) ?? prisma.ncbaSettings.create({ data: { id: 1 } });
 }
@@ -78585,7 +79088,7 @@ function hashCandidates(secret, n) {
   const core = (withFt, withNarr) => secret + n.transType + n.transId + (withFt ? n.ftRef : "") + n.transTime + n.amount + n.account + n.billRef + (withNarr ? n.narrative : "") + n.mobile + n.name + "1";
   const out = [];
   for (const [ft, narr] of [[false, false], [true, false], [false, true], [true, true]]) {
-    const digest = (0, import_crypto6.createHash)("sha256").update(core(ft, narr), "utf8");
+    const digest = (0, import_crypto7.createHash)("sha256").update(core(ft, narr), "utf8");
     const raw = digest.copy().digest();
     out.push(Buffer.from(raw.toString("hex")).toString("base64"), raw.toString("base64"));
   }
@@ -78594,7 +79097,7 @@ function hashCandidates(secret, n) {
 var same2 = (a2, b) => {
   const x = Buffer.from(a2);
   const y = Buffer.from(b);
-  return x.length === y.length && (0, import_crypto6.timingSafeEqual)(x, y);
+  return x.length === y.length && (0, import_crypto7.timingSafeEqual)(x, y);
 };
 function hashOk(secret, n) {
   if (!secret || !n.hash) return false;
@@ -78610,7 +79113,7 @@ function phoneMatches(sent, reported) {
   if (/^[0-9a-f]{64}$/i.test(r)) {
     const d = digits2(sent);
     const forms = [d, "+" + d, "0" + d.slice(3), d.slice(3)];
-    return forms.some((f) => (0, import_crypto6.createHash)("sha256").update(f).digest("hex") === r.toLowerCase());
+    return forms.some((f) => (0, import_crypto7.createHash)("sha256").update(f).digest("hex") === r.toLowerCase());
   }
   const a2 = digits2(sent);
   const b = digits2(r);
@@ -78880,7 +79383,7 @@ async function handleStkCallback(body) {
 function secretOk(given, want) {
   const a2 = Buffer.from(given);
   const b = Buffer.from(want);
-  return want.length >= 16 && a2.length === b.length && (0, import_crypto8.timingSafeEqual)(a2, b);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto9.timingSafeEqual)(a2, b);
 }
 mpesaRouter.post("/callback/:secret", async (req, res) => {
   const cfg = await loadMpesaConfig();
@@ -78974,7 +79477,7 @@ mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
 
 // apps/api/src/routes/ncba.ts
 var import_express10 = __toESM(require_express2());
-var import_crypto10 = require("crypto");
+var import_crypto11 = require("crypto");
 var ncbaRouter = (0, import_express10.Router)();
 var LABEL = "M-Pesa (NCBA Paybill)";
 function publicSettings2(c) {
@@ -79100,7 +79603,7 @@ ncbaRouter.post("/notifications/:id/accept", requireAuth, requireRole("Admin"), 
 function secretOk2(given, want) {
   const a2 = Buffer.from(given);
   const b = Buffer.from(want);
-  return want.length >= 16 && a2.length === b.length && (0, import_crypto10.timingSafeEqual)(a2, b);
+  return want.length >= 16 && a2.length === b.length && (0, import_crypto11.timingSafeEqual)(a2, b);
 }
 async function applyNotice(n, by) {
   const receipt = n.transId.toUpperCase();
@@ -81185,10 +81688,10 @@ async function runDepreciation(today = todayStr()) {
   }
   return created;
 }
-var running = null;
+var running2 = null;
 function runDepreciationOnce() {
-  if (!running) running = runDepreciation().finally(() => running = null);
-  return running;
+  if (!running2) running2 = runDepreciation().finally(() => running2 = null);
+  return running2;
 }
 function startDepreciationSchedule() {
   const tick = () => runDepreciationOnce().catch((e) => console.error("Depreciation run failed", e));
@@ -81865,14 +82368,16 @@ productionRouter.post("/tasks/:id/finish", async (req, res) => {
   if (!ACTIVE_TASK_STATUSES.includes(task.status)) return res.status(400).json({ error: "This job is already finished or no longer open" });
   if (task.order.stage !== STAGE_IN_PRODUCTION) return res.status(400).json({ error: `This order is at \u201C${task.order.stage}\u201D, not in production` });
   const now = /* @__PURE__ */ new Date();
-  await prisma.$transaction([
-    prisma.productionTask.update({
+  const auto = await qualityIsAutomatic();
+  await prisma.$transaction(async (tx) => {
+    await tx.productionTask.update({
       where: { id: task.id },
       data: { status: "Finished", startedAt: task.startedAt ?? now, finishedAt: now, unitsCompleted: parsed.data.unitsCompleted, note: parsed.data.note ? parsed.data.note : task.note }
-    }),
-    prisma.order.update({ where: { id: task.orderId }, data: { stage: STAGE_QUALITY } })
-  ]);
-  res.json({ ok: true, nextStage: STAGE_QUALITY });
+    });
+    if (auto) await autoPassOrder(tx, task.orderId, task.id, req.user.id);
+    else await tx.order.update({ where: { id: task.orderId }, data: { stage: STAGE_QUALITY } });
+  });
+  res.json({ ok: true, nextStage: auto ? STAGE_READY : STAGE_QUALITY, automatic: auto });
 });
 productionRouter.get("/productivity", async (req, res) => {
   const manager = await isProductionManager(req.user);
@@ -81880,7 +82385,7 @@ productionRouter.get("/productivity", async (req, res) => {
   const to = typeof req.query.to === "string" && dateStr4.safeParse(req.query.to).success ? req.query.to : todayStr();
   const [tasks, checks, users] = await Promise.all([
     prisma.productionTask.findMany({ where: manager ? {} : { assigneeId: req.user.id }, include: { order: { select: { orderNo: true } } } }),
-    prisma.qualityCheck.findMany({ where: { taskId: { not: null } } }),
+    prisma.qualityCheck.findMany({ where: { taskId: { not: null }, auto: false } }),
     prisma.user.findMany()
   ]);
   const names = new Map(users.map((u) => [u.id, u]));
@@ -81933,6 +82438,7 @@ qualityRouter.use(requireAuth, requirePermission("canAccessQuality"), async (_re
 });
 var dateStr5 = external_exports.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 qualityRouter.get("/queue", async (req, res) => {
+  await sweepWaitingQuality(req.user.id);
   const from = typeof req.query.from === "string" && dateStr5.safeParse(req.query.from).success ? req.query.from : `${todayStr().slice(0, 8)}01`;
   const to = typeof req.query.to === "string" && dateStr5.safeParse(req.query.to).success ? req.query.to : todayStr();
   const orders = await prisma.order.findMany({
@@ -81957,7 +82463,8 @@ qualityRouter.get("/queue", async (req, res) => {
   const lo = /* @__PURE__ */ new Date(`${from}T00:00:00.000Z`);
   const hi = /* @__PURE__ */ new Date(`${to}T23:59:59.999Z`);
   const checks = await prisma.qualityCheck.findMany({
-    where: { checkedAt: { gte: lo, lte: hi } },
+    where: { checkedAt: { gte: lo, lte: hi }, auto: false },
+    // automatic passes were not inspections: left out of the history and the pass rate
     include: { order: { select: { orderNo: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } }, dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { approvalStatus: true } } } }, inspector: true, task: { include: { assignee: true } } },
     orderBy: { checkedAt: "desc" },
     take: 200
@@ -83183,10 +83690,10 @@ Content-Type: ${isEncryptedBackup(data) ? "application/octet-stream" : "applicat
   for (const f of (list.files ?? []).slice(s.keepCount)) await fetch(`${DRIVE}/files/${f.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } }).catch(() => void 0);
 }
 var driveConnected = (s) => !!(s.driveRefreshToken && s.driveClientId && s.driveClientSecret);
-var running2 = false;
+var running3 = false;
 async function runBackup(trigger) {
-  if (running2) throw new Error("A backup is already running");
-  running2 = true;
+  if (running3) throw new Error("A backup is already running");
+  running3 = true;
   const attemptedAt = /* @__PURE__ */ new Date();
   let outcome = { ok: false, file: "", rows: 0, drive: "not connected", error: "" };
   try {
@@ -83207,7 +83714,7 @@ async function runBackup(trigger) {
   } catch (err) {
     outcome.error = err instanceof Error ? err.message : String(err);
   } finally {
-    running2 = false;
+    running3 = false;
   }
   const good = outcome.ok && outcome.drive !== "failed";
   await prisma.backupSettings.update({
@@ -83875,136 +84382,6 @@ freelanceRouter.get("/agents/:id/account", manage2, async (req, res) => {
 
 // apps/api/src/routes/whatsapp.ts
 var import_express24 = __toESM(require_express2());
-
-// apps/api/src/whatsapp.ts
-var base2 = () => process.env.NODE_ENV === "test" && process.env.WHATSAPP_TEST_URL ? process.env.WHATSAPP_TEST_URL : "https://graph.facebook.com";
-async function loadWhatsappConfig(opts = {}) {
-  const row = await prisma.whatsappSettings.findUnique({ where: { id: 1 } });
-  if (!row || !row.enabled && !opts.ignoreSwitch || !row.phoneNumberId || !row.accessToken) return null;
-  return {
-    phoneNumberId: row.phoneNumberId.trim(),
-    token: open(row.accessToken),
-    businessAccountId: row.businessAccountId,
-    templateName: row.templateName.trim(),
-    templateLanguage: row.templateLanguage.trim() || "en",
-    apiVersion: row.apiVersion.trim() || "v21.0"
-  };
-}
-var TEMPLATE_BODY = "Hello {{1}}, please find attached your {{2}} {{3}} from GLM Branding. Total: {{4}}. {{5}}";
-var WhatsappError = class extends Error {
-  constructor(message, code) {
-    super(message);
-    this.code = code;
-  }
-};
-function explainWhatsappError(code, message, detail) {
-  const raw = detail ? `${message} (${detail})` : message;
-  switch (code) {
-    case 190:
-    case 102:
-      return "WhatsApp refused the access token: it is wrong, has expired or was revoked. Create a new permanent token (a System User token) and save it under Master Data \u2192 WhatsApp.";
-    case 131030:
-      return "That number is not on the list of numbers allowed to receive messages yet. While the WhatsApp number is in test mode, add the recipient under WhatsApp \u2192 API Setup in Meta, or finish going live.";
-    case 131047:
-      return "The customer has not written to us in the last 24 hours, so only an approved template message can be sent to them. Set the template name under Master Data \u2192 WhatsApp.";
-    case 131026:
-      return "The message could not be delivered: that number may not be on WhatsApp.";
-    case 132e3:
-    case 132005:
-    case 132012:
-      return "The template does not match what was sent. Check that it has a Document header and five body variables, as shown under Master Data \u2192 WhatsApp.";
-    case 132001:
-      return "WhatsApp cannot find that template in that language. Check the template name and language code under Master Data \u2192 WhatsApp, and that Meta has approved it.";
-    case 132015:
-    case 132016:
-      return "That template is paused or disabled by WhatsApp. Check it in Meta\u2019s template manager.";
-    case 130429:
-    case 131048:
-    case 131056:
-      return "WhatsApp is limiting how fast messages can be sent. Try again in a minute.";
-    case 131042:
-    case 131045:
-      return "The WhatsApp Business account has a payment or registration problem. Check the account in Meta Business Settings.";
-    case 100:
-      return `WhatsApp rejected the request: ${raw}`;
-    default:
-      return `WhatsApp could not send it: ${raw}`;
-  }
-}
-async function graph(cfg, path4, init = {}) {
-  let res;
-  try {
-    res = await fetch(`${base2()}/${cfg.apiVersion}/${path4}`, { ...init, headers: { Authorization: `Bearer ${cfg.token}`, ...init.headers ?? {} }, signal: AbortSignal.timeout(3e4) });
-  } catch {
-    throw new WhatsappError("Could not reach WhatsApp (graph.facebook.com). Check the server\u2019s internet connection and try again.");
-  }
-  const body = await res.json().catch(() => null);
-  if (!res.ok || body?.error) {
-    const e = body?.error ?? {};
-    throw new WhatsappError(explainWhatsappError(e.code, e.message ?? `HTTP ${res.status}`, e.error_data?.details), e.code);
-  }
-  return body;
-}
-async function checkConnection(cfg) {
-  const r = await graph(cfg, `${cfg.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating`);
-  return { displayPhoneNumber: r.display_phone_number ?? "", verifiedName: r.verified_name ?? "", quality: r.quality_rating ?? "" };
-}
-async function uploadPdf(cfg, pdf, filename, mime = "application/pdf") {
-  const form = new FormData();
-  form.append("messaging_product", "whatsapp");
-  form.append("type", mime);
-  form.append("file", new Blob([new Uint8Array(pdf)], { type: mime }), filename);
-  const r = await graph(cfg, `${cfg.phoneNumberId}/media`, { method: "POST", body: form });
-  if (!r?.id) throw new WhatsappError("WhatsApp did not accept the PDF upload.");
-  return String(r.id);
-}
-async function sendInvoiceDocument(cfg, m) {
-  const mediaId = await uploadPdf(cfg, m.pdf, m.filename);
-  const clean3 = (s) => s.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 900) || "-";
-  const payload = cfg.templateName ? {
-    messaging_product: "whatsapp",
-    to: m.to,
-    type: "template",
-    template: {
-      name: cfg.templateName,
-      language: { code: cfg.templateLanguage },
-      components: [
-        { type: "header", parameters: [{ type: "document", document: { id: mediaId, filename: m.filename } }] },
-        { type: "body", parameters: m.params.map((t) => ({ type: "text", text: clean3(t) })) }
-      ]
-    }
-  } : { messaging_product: "whatsapp", to: m.to, type: "document", document: { id: mediaId, filename: m.filename, caption: m.caption.slice(0, 1e3) } };
-  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  const id = r?.messages?.[0]?.id;
-  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
-  return { messageId: String(id), mode: cfg.templateName ? "template" : "document" };
-}
-async function sendFileMessage(cfg, m) {
-  if (m.mime === "application/pdf") return sendInvoiceDocument(cfg, { to: m.to, pdf: m.data, filename: m.filename, params: m.params, caption: m.caption });
-  const mediaId = await uploadPdf(cfg, m.data, m.filename, m.mime);
-  const isImage = m.mime.startsWith("image/");
-  const payload = isImage ? { messaging_product: "whatsapp", to: m.to, type: "image", image: { id: mediaId, caption: m.caption.slice(0, 1e3) } } : { messaging_product: "whatsapp", to: m.to, type: "document", document: { id: mediaId, filename: m.filename, caption: m.caption.slice(0, 1e3) } };
-  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  const id = r?.messages?.[0]?.id;
-  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
-  return { messageId: String(id), mode: isImage ? "image" : "document" };
-}
-async function sendTextMessage(cfg, to, body) {
-  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { body: body.slice(0, 3500), preview_url: false } }) });
-  const id = r?.messages?.[0]?.id;
-  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
-  return String(id);
-}
-async function sendTemplateText(cfg, to, name2, params) {
-  const clean3 = (s) => s.replace(/[\r\n\t]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 900) || "-";
-  const payload = { messaging_product: "whatsapp", to, type: "template", template: { name: name2, language: { code: cfg.templateLanguage }, components: [{ type: "body", parameters: params.map((t) => ({ type: "text", text: clean3(t) })) }] } };
-  const r = await graph(cfg, `${cfg.phoneNumberId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  const id = r?.messages?.[0]?.id;
-  if (!id) throw new WhatsappError("WhatsApp did not confirm the message.");
-  return String(id);
-}
-
-// apps/api/src/routes/whatsapp.ts
 var whatsappRouter = (0, import_express24.Router)();
 whatsappRouter.use(requireAuth);
 var sendLimiter2 = lib_default({
@@ -84205,326 +84582,6 @@ whatsappRouter.get("/recent", async (req, res) => {
 
 // apps/api/src/routes/dayClose.ts
 var import_express25 = __toESM(require_express2());
-
-// apps/api/src/dayClose.ts
-var AMBER_UP_TO = 200;
-var DENOMINATIONS = [1e3, 500, 200, 100, 50, 40, 20, 10, 5, 1];
-var METHODS = ["Cash", "M-Pesa", "Bank", "Card", "Cheque"];
-var round23 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
-async function ensureTills() {
-  let tills = await prisma.till.findMany({ orderBy: [{ isMain: "desc" }, { name: "asc" }] });
-  if (!tills.some((t) => t.isMain)) {
-    const named = tills.find((t) => t.name === "Main till");
-    if (named) await prisma.till.update({ where: { id: named.id }, data: { isMain: true, active: true } });
-    else await prisma.till.create({ data: { name: "Main till", isMain: true } }).catch(() => void 0);
-    tills = await prisma.till.findMany({ orderBy: [{ isMain: "desc" }, { name: "asc" }] });
-  }
-  return tills;
-}
-async function tillResolver() {
-  const tills = await ensureTills();
-  const main = tills.find((t) => t.isMain);
-  const active = new Set(tills.filter((t) => t.active).map((t) => t.id));
-  const users = await prisma.user.findMany({ where: { tillId: { not: null } }, select: { id: true, name: true, tillId: true } });
-  const byId = new Map(users.map((u) => [u.id, u.tillId]));
-  const byName = new Map(users.map((u) => [u.name, u.tillId]));
-  const fix = (t) => t !== void 0 && active.has(t) ? t : main.id;
-  return {
-    tills,
-    main,
-    activeTills: tills.filter((t) => t.active),
-    ofUser: (id) => fix(id == null ? void 0 : byId.get(id)),
-    ofName: (name2) => fix(byName.get(name2))
-  };
-}
-async function outstandingAsAt(date) {
-  const orders = await prisma.order.findMany({
-    where: { status: { not: "Quote" }, createdDate: { lte: date }, OR: [{ status: "Invoice" }, { payments: { some: { date: { gt: date } } } }] },
-    include: orderListInclude
-  });
-  const rows = [];
-  for (const o of orders) {
-    const s = serializeSummary({ ...o, payments: o.payments.filter((p) => p.date <= date) });
-    if (s.totals.balanceDue < 0.01) continue;
-    const days = o.dueDate && o.dueDate < date ? Math.round((Date.parse(date) - Date.parse(o.dueDate)) / 864e5) : 0;
-    rows.push({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || "\u2014", createdDate: o.createdDate, dueDate: o.dueDate, balance: round23(s.totals.balanceDue), daysOverdue: days, staff: o.staff.name });
-  }
-  rows.sort((a2, b) => b.daysOverdue - a2.daysOverdue || b.balance - a2.balance);
-  return rows;
-}
-var BANDS = [
-  ["Not yet due", (d) => d <= 0],
-  ["1\u20137 days overdue", (d) => d >= 1 && d <= 7],
-  ["8\u201330 days", (d) => d >= 8 && d <= 30],
-  ["31\u201360 days", (d) => d >= 31 && d <= 60],
-  ["Over 60 days", (d) => d > 60]
-];
-async function ncbaTieOut(date) {
-  const from = /* @__PURE__ */ new Date(`${date}T00:00:00.000Z`);
-  const to = /* @__PURE__ */ new Date(`${addDays(date, 1)}T00:00:00.000Z`);
-  const [everSeen, notes, ignoredCount] = await Promise.all([
-    prisma.ncbaNotification.count(),
-    prisma.ncbaNotification.findMany({ where: { receivedAt: { gte: from, lt: to }, outcome: { in: ["Matched", "Received", "Held"] } }, orderBy: { id: "asc" } }),
-    prisma.ncbaNotification.count({ where: { receivedAt: { gte: from, lt: to }, outcome: { in: ["Duplicate", "Rejected"] } } })
-  ]);
-  const mpesaToday = await prisma.payment.findMany({
-    where: { date, method: "M-Pesa" },
-    include: { order: { select: { orderNo: true, customerName: true, corporateClient: { select: { name: true } } } }, mpesaTransaction: { select: { mpesaReceipt: true, checkoutRequestId: true } } }
-  });
-  const codesOf = (p) => [p.reference, p.mpesaTransaction?.mpesaReceipt].filter((c) => !!c).map((c) => c.toUpperCase());
-  const wanted = /* @__PURE__ */ new Set([...notes.map((n) => n.transId.toUpperCase()), ...mpesaToday.flatMap(codesOf)]);
-  const known = wanted.size ? await prisma.ncbaNotification.findMany({ where: { transId: { in: [...wanted] } }, select: { transId: true } }) : [];
-  const ncbaCodes = new Set(known.map((k) => k.transId.toUpperCase()));
-  const codeList = notes.map((n) => n.transId).filter(Boolean);
-  const carrying = codeList.length ? await prisma.payment.findMany({ where: { OR: [{ reference: { in: codeList } }, { mpesaTransaction: { mpesaReceipt: { in: codeList } } }] }, select: { amount: true, reference: true, mpesaTransaction: { select: { mpesaReceipt: true } } } }) : [];
-  const applied = /* @__PURE__ */ new Map();
-  for (const p of carrying) {
-    const code = (p.mpesaTransaction?.mpesaReceipt ?? p.reference ?? "").toUpperCase();
-    if (code) applied.set(code, (applied.get(code) ?? 0) + p.amount);
-  }
-  const leftOf = (n) => {
-    const left = n.amount - (applied.get(n.transId.toUpperCase()) ?? 0);
-    return left >= 1 ? Math.round(left * 100) / 100 : 0;
-  };
-  const sent = notes.reduce((a2, n) => a2 + n.amount, 0);
-  const notOnOrder = notes.filter((n) => leftOf(n) > 0).map((n) => ({ ...n, amount: leftOf(n), part: leftOf(n) < n.amount - 0.5 }));
-  const other = mpesaToday.filter((p) => !(p.mpesaTransaction?.checkoutRequestId ?? "").startsWith("NCBA-") && !codesOf(p).some((c) => ncbaCodes.has(c)));
-  return {
-    active: everSeen > 0,
-    sent: { count: notes.length, amount: round23(sent) },
-    onOrders: { count: notes.length - notOnOrder.length, amount: round23(sent - notOnOrder.reduce((a2, n) => a2 + n.amount, 0)) },
-    // receipts wholly on orders; a part-matched receipt counts here for what is applied
-    notOnOrder: { count: notOnOrder.length, amount: round23(notOnOrder.reduce((a2, n) => a2 + n.amount, 0)), receipts: notOnOrder.slice(0, 100).map((n) => ({ id: n.id, receipt: n.transId, amount: n.amount, phone: n.phone, payer: n.payerName, billRef: n.billRef, outcome: n.outcome })) },
-    otherMpesa: { count: other.length, amount: round23(other.reduce((a2, p) => a2 + p.amount, 0)), payments: other.slice(0, 100).map((p) => ({ id: p.id, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || "\u2014", amount: p.amount, reference: p.reference ?? p.mpesaTransaction?.mpesaReceipt ?? "" })) },
-    duplicatesOrRejected: ignoredCount,
-    // NCBA settles what it took into the bank account daily
-    expectedBankSettlement: round23(sent)
-  };
-}
-async function liveDay(date, tillId) {
-  const r = await tillResolver();
-  const [payments, refunds] = await Promise.all([
-    prisma.payment.findMany({ where: { date }, include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } }, staff: { select: { name: true } } }, orderBy: { id: "asc" } }),
-    prisma.adjustmentNote.findMany({ where: { type: "Credit", date, refundAmt: { gt: 0 } } })
-  ]);
-  const cashOf = /* @__PURE__ */ new Map();
-  for (const t of r.activeTills) cashOf.set(t.id, { received: 0, refunds: 0 });
-  for (const p of payments) if (p.method === "Cash") cashOf.get(r.ofUser(p.staffId)).received = round23(cashOf.get(r.ofUser(p.staffId)).received + p.amount);
-  for (const n of refunds) if ((n.refundMethod ?? "Cash") === "Cash") cashOf.get(r.ofName(n.createdByName)).refunds = round23(cashOf.get(r.ofName(n.createdByName)).refunds + n.refundAmt);
-  const floatOf = /* @__PURE__ */ new Map();
-  const closes = await prisma.dayClose.findMany({ where: { date } });
-  for (const t of r.activeTills) {
-    const prev = await prisma.dayClose.findFirst({ where: { tillId: t.id, date: { lt: date } }, orderBy: { date: "desc" } });
-    floatOf.set(t.id, prev?.floatCarried ?? 0);
-  }
-  const closeOf = new Map(closes.map((c) => [c.tillId, c]));
-  const tills = r.activeTills.map((t) => {
-    const c = cashOf.get(t.id);
-    const opening2 = floatOf.get(t.id);
-    const k = closeOf.get(t.id);
-    return { id: t.id, name: t.name, isMain: t.isMain, openingFloat: opening2, received: c.received, refunds: c.refunds, expected: round23(opening2 + c.received - c.refunds), close: k ? { status: k.status, counted: k.countedCash, variance: k.variance, banked: k.banked } : null };
-  });
-  const scope = tillId == null ? tills : tills.filter((t) => t.id === tillId);
-  const cash = {
-    openingFloat: round23(scope.reduce((a2, t) => a2 + t.openingFloat, 0)),
-    received: round23(scope.reduce((a2, t) => a2 + t.received, 0)),
-    refunds: round23(scope.reduce((a2, t) => a2 + t.refunds, 0)),
-    expected: round23(scope.reduce((a2, t) => a2 + t.expected, 0))
-  };
-  const mine = tillId == null ? payments : payments.filter((p) => r.ofUser(p.staffId) === tillId);
-  const byMethod = /* @__PURE__ */ new Map();
-  for (const m of METHODS) byMethod.set(m, { method: m, count: 0, amount: 0 });
-  const byPerson = /* @__PURE__ */ new Map();
-  for (const p of mine) {
-    const m = byMethod.get(p.method) ?? { method: p.method, count: 0, amount: 0 };
-    m.count++;
-    m.amount = round23(m.amount + p.amount);
-    byMethod.set(p.method, m);
-    const name2 = p.staff?.name ?? "Not recorded";
-    const row = byPerson.get(name2) ?? { person: name2, cash: 0, other: 0, count: 0 };
-    if (p.method === "Cash") row.cash = round23(row.cash + p.amount);
-    else row.other = round23(row.other + p.amount);
-    row.count++;
-    byPerson.set(name2, row);
-  }
-  const received = round23(mine.reduce((a2, p) => a2 + p.amount, 0));
-  const [closing, opening, raised, ncba, toCheck] = await Promise.all([
-    outstandingAsAt(date),
-    outstandingAsAt(addDays(date, -1)),
-    prisma.order.findMany({ where: { status: { not: "Quote" }, createdDate: date }, include: orderListInclude }),
-    ncbaTieOut(date),
-    ordersToCheck(date)
-  ]);
-  const sum = (rows) => round23(rows.reduce((a2, x) => a2 + x.balance, 0));
-  const raisedToday = round23(raised.reduce((a2, o) => a2 + serializeSummary({ ...o, payments: [] }).totals.grandTotal, 0));
-  const allReceived = round23(payments.reduce((a2, p) => a2 + p.amount, 0));
-  const closingTotal = sum(closing);
-  const openingTotal = sum(opening);
-  return {
-    date,
-    tillId,
-    tills,
-    allClosed: tills.every((t) => t.received + t.refunds === 0 || t.close),
-    byMethod: [...byMethod.values()],
-    received,
-    byPerson: [...byPerson.values()].sort((a2, b) => b.cash + b.other - (a2.cash + a2.other)),
-    payments: mine.slice(0, 500).map((p) => ({ id: p.id, orderId: p.orderId, orderNo: p.order.orderNo, customer: p.order.corporateClient?.name || p.order.customerName || "\u2014", method: p.method, amount: p.amount, reference: p.reference ?? "", by: p.staff?.name ?? "" })),
-    cash,
-    outstanding: {
-      opening: openingTotal,
-      raisedToday,
-      receivedToday: allReceived,
-      // credit notes, discounts given after the sale and anything else that changed what is owed
-      otherChanges: round23(closingTotal - (openingTotal + raisedToday - allReceived)),
-      closing: closingTotal,
-      bands: BANDS.map(([label, test]) => {
-        const rows = closing.filter((x) => test(x.daysOverdue));
-        return { label, count: rows.length, amount: sum(rows) };
-      }),
-      invoices: closing.slice(0, 200),
-      invoiceCount: closing.length
-    },
-    ncba,
-    toCheck
-  };
-}
-async function ordersToCheck(date) {
-  const today = todayStr();
-  const waiting = await prisma.order.findMany({ where: { status: { not: "Quote" }, stage: "Order Received", createdDate: { lt: today } }, include: orderListInclude, orderBy: { id: "asc" }, take: 400 });
-  const notProduced = waiting.map((o) => ({ o, s: serializeSummary(o) })).filter(({ s }) => s.totals.grandTotal > 0 && s.totals.balanceDue <= 5e-3).map(({ o, s }) => ({ id: o.id, orderNo: o.orderNo, customer: o.corporateClient?.name || o.customerName || "\u2014", createdDate: o.createdDate, total: s.totals.grandTotal, staff: o.staff.name, daysWaiting: Math.max(0, Math.round((Date.parse(today) - Date.parse(o.createdDate)) / 864e5)) })).sort((a2, b) => b.daysWaiting - a2.daysWaiting);
-  const from = /* @__PURE__ */ new Date(`${date}T00:00:00+03:00`);
-  const to = new Date(from.getTime() + 24 * 36e5);
-  const releases = (await prisma.orderOverride.findMany({ where: { at: { gte: from, lt: to } }, orderBy: { id: "asc" } })).map((r) => ({ id: r.id, orderNo: r.orderNo, kind: r.kind, stage: r.stage, amount: r.amount, reason: r.reason, by: r.byName }));
-  return { notProduced: notProduced.slice(0, 100), notProducedCount: notProduced.length, releases };
-}
-async function reminder() {
-  const today = todayStr();
-  const from = addDays(today, -7);
-  const r = await tillResolver();
-  const [payments, closes, submitted] = await Promise.all([
-    prisma.payment.findMany({ where: { date: { gte: from, lt: today }, method: "Cash" }, select: { date: true, amount: true, staffId: true } }),
-    prisma.dayClose.findMany({ where: { date: { gte: from, lt: today } }, select: { date: true, tillId: true } }),
-    prisma.dayClose.findMany({ where: { status: "Submitted", date: { lt: today } }, orderBy: { date: "desc" }, take: 20 })
-  ]);
-  const closed = new Set(closes.map((c) => `${c.date}|${c.tillId}`));
-  const cash = /* @__PURE__ */ new Map();
-  for (const p of payments) {
-    const tillId = r.ofUser(p.staffId);
-    const k = `${p.date}|${tillId}`;
-    const row = cash.get(k) ?? { date: p.date, tillId, cash: 0 };
-    row.cash = round23(row.cash + p.amount);
-    cash.set(k, row);
-  }
-  const nameOf = new Map(r.tills.map((t) => [t.id, t.name]));
-  return {
-    unclosed: [...cash.entries()].filter(([k, v]) => !closed.has(k) && v.cash > 0).map(([, v]) => ({ ...v, tillName: nameOf.get(v.tillId) ?? "Till" })).sort((a2, b) => b.date.localeCompare(a2.date)),
-    awaiting: submitted.map((c) => ({ date: c.date, tillId: c.tillId, tillName: nameOf.get(c.tillId) ?? "Till", submittedByName: c.submittedByName, variance: c.variance }))
-  };
-}
-var dayLabel = (d) => (/* @__PURE__ */ new Date(d + "T00:00:00")).toLocaleDateString("en-KE", { weekday: "short", day: "numeric", month: "short" });
-var shilling = (n) => fmtKsh(n);
-async function summaryFor(date) {
-  const day = await liveDay(date, null);
-  const rem = await reminder();
-  const cashReceived = day.byMethod.find((m) => m.method === "Cash")?.amount ?? 0;
-  const others = day.byMethod.filter((m) => m.method !== "Cash" && m.amount > 0).map((m) => `${m.method} ${shilling(m.amount)}`);
-  const received = `${shilling(day.received)} (Cash ${shilling(cashReceived)}${others.length ? ", " + others.join(", ") : ""})`;
-  const multi = day.tills.length > 1;
-  const cashLines = day.tills.filter((t) => t.received + t.refunds > 0 || t.close).map((t) => {
-    const who = multi ? `${t.name}: ` : "";
-    if (!t.close) return `${who}not counted yet (expected ${shilling(t.expected)})`;
-    const v = t.close.variance;
-    return `${who}counted ${shilling(t.close.counted)}, ${Math.abs(v) < 0.5 ? "balanced" : v < 0 ? `short ${shilling(-v)}` : `over ${shilling(v)}`} (${t.close.status === "Approved" ? "approved" : "awaiting approval"})`;
-  });
-  const cash = cashLines.length ? cashLines.join("; ") : "no cash today";
-  const overdue = day.outstanding.bands.filter((b) => b.label !== "Not yet due").reduce((a2, b) => a2 + b.amount, 0);
-  const owed = `${shilling(day.outstanding.closing)}${overdue > 0 ? ` (${shilling(overdue)} overdue)` : ""}`;
-  const notes = [];
-  if (day.ncba.active) notes.push(`NCBA sent ${shilling(day.ncba.sent.amount)}${day.ncba.notOnOrder.count ? `; ${day.ncba.notOnOrder.count} receipt${day.ncba.notOnOrder.count === 1 ? "" : "s"} (${shilling(day.ncba.notOnOrder.amount)}) not on an order` : "; all on orders"}${day.ncba.otherMpesa.count ? `; ${day.ncba.otherMpesa.count} M-Pesa payment${day.ncba.otherMpesa.count === 1 ? "" : "s"} NCBA did not send` : ""}`);
-  if (day.toCheck.notProducedCount > 0) notes.push(`${day.toCheck.notProducedCount} paid order${day.toCheck.notProducedCount === 1 ? "" : "s"} never started in production`);
-  if (day.toCheck.releases.length > 0) notes.push(`${day.toCheck.releases.length} order${day.toCheck.releases.length === 1 ? "" : "s"} released early by a manager`);
-  const unclosed = rem.unclosed.map((u) => `${u.tillName} ${dayLabel(u.date)}`);
-  if (rem.unclosed.length) notes.push(`Not closed: ${unclosed.join(", ")}`);
-  else notes.push("No earlier day is waiting to be closed");
-  const label = dayLabel(date);
-  return {
-    date,
-    params: [label, received, cash, owed, notes.join(". ")],
-    text: [`GLM Branding \u2014 ${label}`, `Received: ${received}`, `Cash: ${cash}`, `Owed by customers: ${owed}`, ...notes].join("\n")
-  };
-}
-
-// apps/api/src/daySummary.ts
-var SUMMARY_TEMPLATE_BODY = "GLM daily summary for {{1}}. Received: {{2}}. Cash: {{3}}. Owed by customers: {{4}}. {{5}}";
-async function getSummarySettings() {
-  return prisma.dayCloseSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-}
-function parseNumbers(raw) {
-  return [...new Set(raw.split(/[,;\n]+/).map((s) => whatsappNumber(s.trim())).filter((n) => !!n))];
-}
-function nairobiNow(now = /* @__PURE__ */ new Date()) {
-  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now).map((x) => [x.type, x.value]));
-  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}` };
-}
-async function sendSummary(date, by) {
-  const s = await getSummarySettings();
-  const numbers = parseNumbers(s.summaryNumbers);
-  const summary = await summaryFor(date);
-  if (numbers.length === 0) return { ok: false, sent: [], failed: [{ to: "", error: "No WhatsApp number to send the summary to" }], text: summary.text };
-  const cfg = await loadWhatsappConfig();
-  if (!cfg) return { ok: false, sent: [], failed: [{ to: "", error: "WhatsApp isn't set up yet \u2014 an Admin sets it up under Master Data \u2192 WhatsApp" }], text: summary.text };
-  const result = { ok: true, sent: [], failed: [], text: summary.text };
-  for (const to of numbers) {
-    const log2 = (status, extra) => prisma.whatsappMessage.create({ data: { toNumber: to, status, mode: s.summaryTemplate ? "template" : "text", fileName: "Daily summary", waMessageId: extra.id ?? null, error: extra.error ?? "", sentByName: by } });
-    try {
-      const id = s.summaryTemplate ? await sendTemplateText(cfg, to, s.summaryTemplate, summary.params) : await sendTextMessage(cfg, to, summary.text);
-      await log2("Sent", { id });
-      result.sent.push(to);
-    } catch (e) {
-      const error2 = e instanceof WhatsappError ? e.message : "Could not send the summary";
-      if (!(e instanceof WhatsappError)) console.error("Day summary send failed", e);
-      await log2("Failed", { error: error2 });
-      result.failed.push({ to, error: error2 });
-    }
-  }
-  result.ok = result.failed.length === 0;
-  return result;
-}
-var RETRY_AFTER_MS = 30 * 6e4;
-var MAX_ATTEMPTS2 = 3;
-function summaryDue(s, now = /* @__PURE__ */ new Date()) {
-  if (!s.summaryEnabled || parseNumbers(s.summaryNumbers).length === 0) return false;
-  const n = nairobiNow(now);
-  if (n.time < s.summaryTime) return false;
-  if (s.summaryLastDate !== n.date) return true;
-  if (s.summaryLastStatus === "Sent") return false;
-  return s.summaryAttempts < MAX_ATTEMPTS2 && (!s.summaryLastTryAt || now.getTime() - s.summaryLastTryAt.getTime() >= RETRY_AFTER_MS);
-}
-async function runScheduledSummary(now = /* @__PURE__ */ new Date()) {
-  const s = await getSummarySettings();
-  if (!summaryDue(s, now)) return null;
-  const date = nairobiNow(now).date;
-  const attempts = s.summaryLastDate === date ? s.summaryAttempts + 1 : 1;
-  const r = await sendSummary(date, "Day close summary");
-  await prisma.dayCloseSettings.update({
-    where: { id: 1 },
-    data: { summaryLastDate: date, summaryAttempts: attempts, summaryLastTryAt: now, summaryLastStatus: r.ok ? "Sent" : `Failed: ${r.failed[0]?.error ?? "unknown"}`.slice(0, 300) }
-  });
-  return r;
-}
-function startSummaryScheduler() {
-  const tick = async () => {
-    try {
-      await runScheduledSummary();
-    } catch (err) {
-      console.error("Evening summary failed", err);
-    }
-  };
-  setTimeout(tick, 9e4).unref();
-  setInterval(tick, 6e4).unref();
-}
-
-// apps/api/src/routes/dayClose.ts
 var dayCloseRouter = (0, import_express25.Router)();
 dayCloseRouter.use(requireAuth);
 var mayClose = requirePermission("canManagePayments", "canAccessFinance");
@@ -84750,7 +84807,7 @@ dayCloseRouter.put("/tills/:id", requireRole("Admin"), async (req, res) => {
 });
 var publicSettings3 = async () => {
   const s = await getSummarySettings();
-  return { readyBeforeFinalPayment: s.readyBeforeFinalPayment, warnDuplicateOrders: s.warnDuplicateOrders, enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
+  return { readyBeforeFinalPayment: s.readyBeforeFinalPayment, warnDuplicateOrders: s.warnDuplicateOrders, autoQualityCheck: s.autoQualityCheck, autoProduction: s.autoProduction, enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
 };
 dayCloseRouter.get("/settings", requireRole("Admin"), async (_req, res) => {
   res.json(await publicSettings3());
@@ -84762,15 +84819,18 @@ dayCloseRouter.put("/settings", requireRole("Admin"), async (req, res) => {
     numbers: external_exports.string().max(400).optional(),
     template: external_exports.string().trim().regex(/^[a-z0-9_]{0,512}$/, "A template name has only lowercase letters, numbers and underscores").optional(),
     readyBeforeFinalPayment: external_exports.boolean().optional(),
-    warnDuplicateOrders: external_exports.boolean().optional()
+    warnDuplicateOrders: external_exports.boolean().optional(),
+    autoQualityCheck: external_exports.boolean().optional(),
+    autoProduction: external_exports.boolean().optional()
   }).safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message ?? "Invalid input" });
   const cur = await getSummarySettings();
   const numbers = p.data.numbers ?? cur.summaryNumbers;
   if (p.data.numbers !== void 0 && numbers.trim() && parseNumbers(numbers).length === 0) return res.status(400).json({ error: "Enter WhatsApp numbers like 0797 785 033, separated by commas" });
   if ((p.data.enabled ?? cur.summaryEnabled) && parseNumbers(numbers).length === 0) return res.status(400).json({ error: "Enter at least one WhatsApp number before switching the summary on" });
-  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate, readyBeforeFinalPayment: p.data.readyBeforeFinalPayment ?? cur.readyBeforeFinalPayment, warnDuplicateOrders: p.data.warnDuplicateOrders ?? cur.warnDuplicateOrders } });
-  res.json(await publicSettings3());
+  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate, readyBeforeFinalPayment: p.data.readyBeforeFinalPayment ?? cur.readyBeforeFinalPayment, warnDuplicateOrders: p.data.warnDuplicateOrders ?? cur.warnDuplicateOrders, autoQualityCheck: p.data.autoQualityCheck ?? cur.autoQualityCheck, autoProduction: p.data.autoProduction ?? cur.autoProduction } });
+  const moved = await sweepAutomaticStages();
+  res.json({ ...await publicSettings3(), movedOn: moved.produced + moved.passed, producedAutomatically: moved.produced });
 });
 dayCloseRouter.get("/summary/preview", requireRole("Admin"), async (req, res) => {
   const date = dateSchema.safeParse(req.query.date ?? todayStr());
@@ -85856,6 +85916,7 @@ app.use(auditMiddleware);
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 app.use("/api/auth", authRouter);
 app.use("/api/master-data", masterDataRouter);
+app.use(["/api/orders", "/api/production", "/api/quality", "/api/dtf", "/api/embroidery", "/api/day-close", "/api/order-changes", "/api/reports"], automaticStages);
 app.use("/api/orders", ordersRouter);
 app.use("/api/finance", financeRouter);
 app.use("/api/tax", taxRouter);

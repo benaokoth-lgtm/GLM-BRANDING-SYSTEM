@@ -12,6 +12,7 @@ import { prisma } from '../db';
 import { requireAuth, requireRole, requirePermission } from '../middleware/auth';
 import { AMBER_UP_TO, DENOMINATIONS, ensureTills, liveDay, reminder, round2, summaryFor } from '../dayClose';
 import type { LiveDay } from '../dayClose';
+import { sweepAutomaticStages } from '../autoStages';
 import { SUMMARY_TEMPLATE_BODY, getSummarySettings, nairobiNow, parseNumbers, sendSummary } from '../daySummary';
 
 export const dayCloseRouter = Router();
@@ -262,7 +263,7 @@ dayCloseRouter.put('/tills/:id', requireRole('Admin'), async (req, res) => {
 // ── The evening summary (Admin) ─────────────────────────────────────────────
 const publicSettings = async () => {
   const s = await getSummarySettings();
-  return { readyBeforeFinalPayment: s.readyBeforeFinalPayment, warnDuplicateOrders: s.warnDuplicateOrders, enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
+  return { readyBeforeFinalPayment: s.readyBeforeFinalPayment, warnDuplicateOrders: s.warnDuplicateOrders, autoQualityCheck: s.autoQualityCheck, autoProduction: s.autoProduction, enabled: s.summaryEnabled, time: s.summaryTime, numbers: s.summaryNumbers, template: s.summaryTemplate, lastDate: s.summaryLastDate, lastStatus: s.summaryLastStatus, templateBody: SUMMARY_TEMPLATE_BODY, recipients: parseNumbers(s.summaryNumbers), nowNairobi: nairobiNow() };
 };
 
 dayCloseRouter.get('/settings', requireRole('Admin'), async (_req, res) => {
@@ -278,6 +279,8 @@ dayCloseRouter.put('/settings', requireRole('Admin'), async (req, res) => {
       template: z.string().trim().regex(/^[a-z0-9_]{0,512}$/, 'A template name has only lowercase letters, numbers and underscores').optional(),
       readyBeforeFinalPayment: z.boolean().optional(),
       warnDuplicateOrders: z.boolean().optional(),
+      autoQualityCheck: z.boolean().optional(),
+      autoProduction: z.boolean().optional(),
     })
     .safeParse(req.body);
   if (!p.success) return res.status(400).json({ error: p.error.issues[0]?.message ?? 'Invalid input' });
@@ -285,8 +288,10 @@ dayCloseRouter.put('/settings', requireRole('Admin'), async (req, res) => {
   const numbers = p.data.numbers ?? cur.summaryNumbers;
   if (p.data.numbers !== undefined && numbers.trim() && parseNumbers(numbers).length === 0) return res.status(400).json({ error: 'Enter WhatsApp numbers like 0797 785 033, separated by commas' });
   if ((p.data.enabled ?? cur.summaryEnabled) && parseNumbers(numbers).length === 0) return res.status(400).json({ error: 'Enter at least one WhatsApp number before switching the summary on' });
-  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate, readyBeforeFinalPayment: p.data.readyBeforeFinalPayment ?? cur.readyBeforeFinalPayment, warnDuplicateOrders: p.data.warnDuplicateOrders ?? cur.warnDuplicateOrders } });
-  res.json(await publicSettings());
+  await prisma.dayCloseSettings.update({ where: { id: 1 }, data: { summaryEnabled: p.data.enabled ?? cur.summaryEnabled, summaryTime: p.data.time ?? cur.summaryTime, summaryNumbers: numbers.trim(), summaryTemplate: p.data.template ?? cur.summaryTemplate, readyBeforeFinalPayment: p.data.readyBeforeFinalPayment ?? cur.readyBeforeFinalPayment, warnDuplicateOrders: p.data.warnDuplicateOrders ?? cur.warnDuplicateOrders, autoQualityCheck: p.data.autoQualityCheck ?? cur.autoQualityCheck, autoProduction: p.data.autoProduction ?? cur.autoProduction } });
+  // Switching a step to automatic also moves on whatever is already waiting at it.
+  const moved = await sweepAutomaticStages();
+  res.json({ ...(await publicSettings()), movedOn: moved.produced + moved.passed, producedAutomatically: moved.produced });
 });
 
 dayCloseRouter.get('/summary/preview', requireRole('Admin'), async (req, res) => {

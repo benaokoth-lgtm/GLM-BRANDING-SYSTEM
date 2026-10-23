@@ -1142,6 +1142,7 @@ model QualityCheck {
   unitsRejected  Float          @default(0)
   defects        String         @default("")
   note           String         @default("")
+  auto           Boolean        @default(false) // passed automatically, with no inspection (see DayCloseSettings.autoQualityCheck)
 
   @@index([orderId])
 
@@ -1880,6 +1881,10 @@ model DayCloseSettings {
   readyBeforeFinalPayment Boolean @default(true)
   // A possible duplicate at capture (same client, same total, last 24 hours) asks "capture it anyway?" before it goes through.
   warnDuplicateOrders Boolean @default(true)
+  // No one to inspect, for now: a finished job goes straight from Production to Ready for Pickup/Delivery (recorded as an automatic pass). Off = every order is inspected in Quality.
+  autoQualityCheck Boolean @default(true)
+  // No one to assign jobs, for now: a captured order skips Production and goes on to Quality Check by itself (and past it too if autoQualityCheck is on). Off = orders wait to be assigned.
+  autoProduction Boolean @default(false)
 }
 
 // The log of wrongly matched M-Pesa / NCBA receipts put right (Accounting → M-Pesa Matching → Matched payments): a receipt moved from one order to another, or taken off its order. Who, when and why.

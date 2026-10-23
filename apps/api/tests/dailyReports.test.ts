@@ -28,6 +28,8 @@ async function call(who: string, method: string, path: string, body?: unknown) {
 describe('DTF daily roll-ups and business head detail', () => {
   const orderNos: Record<string, string> = {};
   before(async () => {
+    // these tests walk an order through the manual Quality Check, so the automatic pass is off
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { autoQualityCheck: false }, create: { id: 1, autoQualityCheck: false } });
     await prisma.role.create({ data: { name: 'Printer (daily test)', canAccessDtf: true, canCaptureOrders: true } });
     await prisma.role.create({ data: { name: 'Lead (daily test)', canAccessDtf: true, canManageDtf: true, canAccessReports: true } });
     for (const [key, role] of [['printer', 'Printer (daily test)'], ['lead', 'Lead (daily test)']] as const) {

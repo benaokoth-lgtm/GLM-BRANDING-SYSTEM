@@ -567,6 +567,8 @@ interface TillsData {
 interface SummarySettings {
   readyBeforeFinalPayment: boolean;
   warnDuplicateOrders: boolean;
+  autoQualityCheck: boolean;
+  autoProduction: boolean;
   enabled: boolean;
   time: string;
   numbers: string;
@@ -585,6 +587,8 @@ function DayCloseSetup({ onChanged }: { onChanged: () => void }) {
   const [enabled, setEnabled] = useState(false);
   const [readyGate, setReadyGate] = useState(true);
   const [warnDup, setWarnDup] = useState(true);
+  const [autoQc, setAutoQc] = useState(true);
+  const [autoProd, setAutoProd] = useState(false);
   const [time, setTime] = useState('18:30');
   const [numbers, setNumbers] = useState('');
   const [template, setTemplate] = useState('');
@@ -599,6 +603,8 @@ function DayCloseSetup({ onChanged }: { onChanged: () => void }) {
     setEnabled(s.enabled);
     setReadyGate(s.readyBeforeFinalPayment);
     setWarnDup(s.warnDuplicateOrders);
+    setAutoQc(s.autoQualityCheck);
+    setAutoProd(s.autoProduction);
     setTime(s.time);
     setNumbers(s.numbers);
     setTemplate(s.template);
@@ -688,7 +694,15 @@ function DayCloseSetup({ onChanged }: { onChanged: () => void }) {
               <input type="checkbox" checked={warnDup} onChange={(e) => setWarnDup(e.target.checked)} style={{ marginTop: 4 }} />
               <span><b>Ask before a possible duplicate is captured</b> — the same client (phone or name) with the same total in the last 24 hours. The person can still capture it on purpose.</span>
             </label>
-            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(async () => { await api.put('/day-close/settings', { readyBeforeFinalPayment: readyGate, warnDuplicateOrders: warnDup }); settings.reload(); }, 'Saved.')}>Save</button>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
+              <input type="checkbox" checked={autoProd} onChange={(e) => setAutoProd(e.target.checked)} style={{ marginTop: 4 }} />
+              <span><b>Production is automatic, for now</b> — a captured order skips Production and goes on by itself to <i>Quality Check</i> (or straight to <i>Ready for Pickup/Delivery</i> when the quality check below is also automatic), with no one assigning or finishing a job. An artwork or embroidery job still waits for its price approval first. Switching this on also moves on the orders already waiting to be assigned. Turn it off when there are workers to assign jobs to again.</span>
+            </label>
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 'var(--space-2)' }}>
+              <input type="checkbox" checked={autoQc} onChange={(e) => setAutoQc(e.target.checked)} style={{ marginTop: 4 }} />
+              <span><b>Quality check is automatic, for now</b> — a job finished in Production goes straight to <i>Ready for Pickup/Delivery</i> without waiting for an inspector. Each one is recorded as passed automatically (not counted in pass rates). Switching this on also moves on anything already waiting in Quality Check. Turn it off when there is someone to inspect again.</span>
+            </label>
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => run(async () => { await api.put('/day-close/settings', { readyBeforeFinalPayment: readyGate, warnDuplicateOrders: warnDup, autoQualityCheck: autoQc, autoProduction: autoProd }); settings.reload(); }, 'Saved.')}>Save</button>
           </>
         )}
       </Card>

@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
-import { ACTIVE_TASK_STATUSES, STAGE_IN_PRODUCTION, STAGE_QUALITY, STAGE_WAITING, dailyOutput, orderUnits, staffProductivity, todayStr } from '@glm/shared';
+import { ACTIVE_TASK_STATUSES, STAGE_IN_PRODUCTION, STAGE_QUALITY, STAGE_READY, STAGE_WAITING, dailyOutput, orderUnits, staffProductivity, todayStr } from '@glm/shared';
 import { canWorkProduction, ensureProductionOnce, isProductionManager, orderForProductionInclude, productionSummary } from '../production';
 import { priceApprovalPending } from './orders';
+import { autoPassOrder, qualityIsAutomatic } from '../qualityAuto';
 
 // Production: once an order is captured it is managed here. A manager assigns each order to a staff member; the worker
 // starts it, then finishes it and records what they produced; finishing sends it to Quality Control. Nothing in Production can
@@ -175,14 +176,17 @@ productionRouter.post('/tasks/:id/finish', async (req, res) => {
   if (task.order.stage !== STAGE_IN_PRODUCTION) return res.status(400).json({ error: `This order is at “${task.order.stage}”, not in production` });
 
   const now = new Date();
-  await prisma.$transaction([
-    prisma.productionTask.update({
+  // With no one to inspect (Day close → Order release rules), the job passes straight on to the customer instead of waiting in Quality Check.
+  const auto = await qualityIsAutomatic();
+  await prisma.$transaction(async (tx) => {
+    await tx.productionTask.update({
       where: { id: task.id },
       data: { status: 'Finished', startedAt: task.startedAt ?? now, finishedAt: now, unitsCompleted: parsed.data.unitsCompleted, note: parsed.data.note ? parsed.data.note : task.note },
-    }),
-    prisma.order.update({ where: { id: task.orderId }, data: { stage: STAGE_QUALITY } }),
-  ]);
-  res.json({ ok: true, nextStage: STAGE_QUALITY });
+    });
+    if (auto) await autoPassOrder(tx, task.orderId, task.id, req.user!.id);
+    else await tx.order.update({ where: { id: task.orderId }, data: { stage: STAGE_QUALITY } });
+  });
+  res.json({ ok: true, nextStage: auto ? STAGE_READY : STAGE_QUALITY, automatic: auto });
 });
 
 // ── Staff productivity ────────────────────────────────────────────────────
@@ -193,7 +197,7 @@ productionRouter.get('/productivity', async (req, res) => {
 
   const [tasks, checks, users] = await Promise.all([
     prisma.productionTask.findMany({ where: manager ? {} : { assigneeId: req.user!.id }, include: { order: { select: { orderNo: true } } } }),
-    prisma.qualityCheck.findMany({ where: { taskId: { not: null } } }),
+    prisma.qualityCheck.findMany({ where: { taskId: { not: null }, auto: false } }),
     prisma.user.findMany(),
   ]);
   const names = new Map(users.map((u) => [u.id, u]));

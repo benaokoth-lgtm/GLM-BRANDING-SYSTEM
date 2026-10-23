@@ -4,6 +4,7 @@ import { prisma } from '../db';
 import { requireAuth, requirePermission } from '../middleware/auth';
 import { STAGE_IN_PRODUCTION, STAGE_QUALITY, STAGE_READY, todayStr } from '@glm/shared';
 import { ensureProductionOnce, orderForProductionInclude, orderHeadGroup, productionSummary } from '../production';
+import { sweepWaitingQuality } from '../qualityAuto';
 
 // Quality control: every finished order is inspected before it can go to the customer. A pass makes it "Ready for Pickup/
 // Delivery"; a fail sends it back to Production as rework. The person who made a job can't be the one who passes it. Like
@@ -17,6 +18,7 @@ qualityRouter.use(requireAuth, requirePermission('canAccessQuality'), async (_re
 const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 qualityRouter.get('/queue', async (req, res) => {
+  await sweepWaitingQuality(req.user!.id); // while inspection is switched off, anything still waiting here moves on
   const from = typeof req.query.from === 'string' && dateStr.safeParse(req.query.from).success ? (req.query.from as string) : `${todayStr().slice(0, 8)}01`;
   const to = typeof req.query.to === 'string' && dateStr.safeParse(req.query.to).success ? (req.query.to as string) : todayStr();
 
@@ -43,7 +45,7 @@ qualityRouter.get('/queue', async (req, res) => {
   const lo = new Date(`${from}T00:00:00.000Z`);
   const hi = new Date(`${to}T23:59:59.999Z`);
   const checks = await prisma.qualityCheck.findMany({
-    where: { checkedAt: { gte: lo, lte: hi } },
+    where: { checkedAt: { gte: lo, lte: hi }, auto: false }, // automatic passes were not inspections: left out of the history and the pass rate
     include: { order: { select: { orderNo: true, lineItems: { include: { service: { include: { businessHead: true } }, material: true } }, dtfFilmSale: { select: { id: true } }, dtfArtworkJob: { select: { approvalStatus: true } } } }, inspector: true, task: { include: { assignee: true } } },
     orderBy: { checkedAt: 'desc' },
     take: 200,

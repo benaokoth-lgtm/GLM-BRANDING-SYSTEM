@@ -40,6 +40,8 @@ async function newOrder(orderNo: string, status = 'Order') {
 
 describe('production → quality → handover', () => {
   before(async () => {
+    // these tests walk an order through the manual Quality Check, so the automatic pass is off
+    await prisma.dayCloseSettings.upsert({ where: { id: 1 }, update: { autoQualityCheck: false }, create: { id: 1, autoQualityCheck: false } });
     await prisma.service.create({ data: { name: 'Printing (prod test)', unit: 'piece', price: 100 } });
     // Three roles: a worker, a QC inspector, and a supervisor who manages production and also inspects.
     await prisma.role.create({ data: { name: 'Worker', canAccessProduction: true } });

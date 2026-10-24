@@ -167,4 +167,41 @@ export function Loading({ loading, error }: { loading: boolean; error: string })
   );
 }
 
+/** The paging a list asks the server for, and the server's answer about where it is. */
+export interface PageInfo {
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+}
+export const PAGE_SIZES = [10, 25, 50, 100];
+
+/** "Showing 1–25 of 140", first / previous / next / last, and rows per page — for a list the server pages. */
+export function Pager({ info, onPage, onPageSize }: { info: PageInfo; onPage: (page: number) => void; onPageSize: (size: number) => void }) {
+  if (info.total === 0) return null;
+  const { page, pageSize, pageCount, total } = info;
+  return (
+    <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap', marginTop: 'var(--space-2)' }}>
+      <span className="text-muted" style={{ fontSize: 12 }}>
+        Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total}
+      </span>
+      {pageCount > 1 && (
+        <>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onPage(1)} disabled={page === 1} aria-label="First page">«</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onPage(page - 1)} disabled={page === 1}>Previous</button>
+          <span style={{ fontSize: 12 }}>Page {page} of {pageCount}</span>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onPage(page + 1)} disabled={page === pageCount}>Next</button>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => onPage(pageCount)} disabled={page === pageCount} aria-label="Last page">»</button>
+        </>
+      )}
+      <label style={{ fontSize: 12, marginLeft: 'auto' }}>
+        Rows per page{' '}
+        <select className="input" style={{ width: 70 }} value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}>
+          {PAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 export const printPage = () => window.print();

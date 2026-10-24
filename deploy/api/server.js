@@ -79478,6 +79478,17 @@ mpesaRouter.post("/c2b/:secret/confirmation", async (req, res) => {
 // apps/api/src/routes/ncba.ts
 var import_express10 = __toESM(require_express2());
 var import_crypto11 = require("crypto");
+
+// apps/api/src/paging.ts
+var PAGE_SIZES = [10, 25, 50, 100];
+function pagingOf(query, total) {
+  const pageSize = PAGE_SIZES.includes(Number(query.pageSize)) ? Number(query.pageSize) : 25;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(Number(query.page)) || 1), pageCount);
+  return { page, pageSize, pageCount, total, skip: (page - 1) * pageSize };
+}
+
+// apps/api/src/routes/ncba.ts
 var ncbaRouter = (0, import_express10.Router)();
 var LABEL = "M-Pesa (NCBA Paybill)";
 function publicSettings2(c) {
@@ -79587,9 +79598,13 @@ ncbaRouter.post("/credentials/generate-stk", requireAuth, requireRole("Admin"), 
   resetNcbaToken();
   res.json({ ...creds, settings: await full() });
 });
-ncbaRouter.get("/notifications", requireAuth, requirePermission("canAccessAccounting", "canManagePayments"), async (_req, res) => {
-  const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: "desc" }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });
-  res.json(rows);
+ncbaRouter.get("/notifications", requireAuth, requirePermission("canAccessAccounting", "canManagePayments"), async (req, res) => {
+  const { page, pageSize, pageCount, total, skip } = pagingOf(req.query, await prisma.ncbaNotification.count());
+  const [rows, held] = await Promise.all([
+    prisma.ncbaNotification.findMany({ orderBy: { id: "desc" }, skip, take: pageSize, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } }),
+    prisma.ncbaNotification.count({ where: { outcome: "Held" } })
+  ]);
+  res.json({ rows, total, page, pageSize, pageCount, held });
 });
 ncbaRouter.post("/notifications/:id/accept", requireAuth, requireRole("Admin"), async (req, res) => {
   const row = await prisma.ncbaNotification.findUnique({ where: { id: Number(req.params.id) } });
@@ -82013,14 +82028,18 @@ accountingRouter.post("/notes/supplier", ...accountingOnly, async (req, res) => 
 });
 accountingRouter.get("/mpesa", ...mpesaAccess, async (req, res) => {
   const status = typeof req.query.status === "string" && req.query.status !== "all" ? req.query.status : void 0;
-  const [txs, targets] = await Promise.all([
+  const where = { kind: { in: ["C2B", "Import"] }, ...status ? { status } : {} };
+  const paging = pagingOf(req.query, await prisma.mpesaTransaction.count({ where }));
+  const [txs, targets, waiting] = await Promise.all([
     prisma.mpesaTransaction.findMany({
-      where: { kind: { in: ["C2B", "Import"] }, ...status ? { status } : {} },
+      where,
       include: { order: true, payments: { include: { order: { select: { orderNo: true } } } } },
       orderBy: [{ receivedOn: "desc" }, { id: "desc" }],
-      take: 500
+      skip: paging.skip,
+      take: paging.pageSize
     }),
-    openTargets()
+    openTargets(),
+    prisma.mpesaTransaction.findMany({ where: { kind: { in: ["C2B", "Import"] }, status: "Unmatched" }, select: { amount: true, payments: { select: { amount: true } } } })
   ]);
   const rows = txs.map((t) => {
     const allocated = round2(t.payments.reduce((a2, p) => a2 + p.amount, 0));
@@ -82047,11 +82066,14 @@ accountingRouter.get("/mpesa", ...mpesaAccess, async (req, res) => {
       note: m && !m.matched ? m.reason : null
     };
   });
-  const unmatched = rows.filter((r) => r.status === "Unmatched");
   const unverified = await prisma.payment.findMany({ where: { method: "M-Pesa", reference: null }, include: { order: true }, orderBy: { id: "desc" }, take: 200 });
   res.json({
     rows,
-    summary: { unmatchedCount: unmatched.length, unmatchedTotal: round2(unmatched.reduce((a2, r) => a2 + r.left, 0)) },
+    page: paging.page,
+    pageSize: paging.pageSize,
+    pageCount: paging.pageCount,
+    total: paging.total,
+    summary: { unmatchedCount: waiting.length, unmatchedTotal: round2(waiting.reduce((a2, t) => a2 + Math.max(0, t.amount - t.payments.reduce((x, p) => x + p.amount, 0)), 0)) },
     openOrders: targets.map((t) => ({ orderId: t.orderId, ref: t.ref, party: t.party, balance: t.balance })),
     unverifiedPayments: unverified.map((p) => ({ id: p.id, orderNo: p.order.orderNo, date: p.date, amount: p.amount }))
   });
@@ -82079,17 +82101,24 @@ accountingRouter.post("/mpesa/:id/apply", ...mpesaAccess, async (req, res) => {
 });
 accountingRouter.get("/mpesa/matched", ...mpesaAccess, async (req, res) => {
   const q = String(req.query.q ?? "").trim();
+  const matchedWhere = {
+    payments: { some: {} },
+    ...q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payments: { some: { order: { orderNo: { contains: q } } } } }] } : {}
+  };
+  const paging = pagingOf(req.query, await prisma.mpesaTransaction.count({ where: matchedWhere }));
   const txs = await prisma.mpesaTransaction.findMany({
-    where: {
-      payments: { some: {} },
-      ...q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payments: { some: { order: { orderNo: { contains: q } } } } }] } : {}
-    },
+    where: matchedWhere,
     include: { payments: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } }, orderBy: { id: "asc" } } },
     orderBy: { id: "desc" },
-    take: 100
+    skip: paging.skip,
+    take: paging.pageSize
   });
   const changes = txs.length ? await prisma.matchChange.findMany({ where: { transactionId: { in: txs.map((t) => t.id) } }, orderBy: { id: "desc" } }) : [];
   res.json({
+    page: paging.page,
+    pageSize: paging.pageSize,
+    pageCount: paging.pageCount,
+    total: paging.total,
     rows: txs.flatMap((t) => {
       const applied = round2(t.payments.reduce((a2, p) => a2 + p.amount, 0));
       return t.payments.map((p) => ({

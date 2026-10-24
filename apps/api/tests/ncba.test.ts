@@ -251,8 +251,20 @@ describe('NCBA Paybill 880100', () => {
     assert.equal((await prisma.mpesaTransaction.findUniqueOrThrow({ where: { mpesaReceipt: 'RKH7FORGE1' } })).kind, 'C2B');
     assert.equal((await call('admin', 'POST', `/ncba/notifications/${held.id}/accept`)).status, 400); // already dealt with
     const list = await call('admin', 'GET', '/ncba/notifications');
-    assert.ok(list.body.length >= 5);
+    assert.ok(list.body.rows.length >= 5);
+    assert.equal(list.body.total >= 5, true);
     assert.ok(!JSON.stringify(list.body).includes(creds.pushPassword));
+    // a page at a time: newest first, no row on two pages, a page past the end shows the last one
+    const first = (await call('admin', 'GET', '/ncba/notifications?pageSize=10&page=1')).body;
+    const second = (await call('admin', 'GET', '/ncba/notifications?pageSize=10&page=2')).body;
+    assert.equal(first.rows.length, Math.min(10, first.total));
+    assert.equal(first.pageSize, 10);
+    assert.equal(first.pageCount, Math.ceil(first.total / 10));
+    if (first.pageCount > 1) assert.ok(first.rows[first.rows.length - 1].id > second.rows[0].id);
+    const beyond = (await call('admin', 'GET', '/ncba/notifications?pageSize=10&page=999')).body;
+    assert.equal(beyond.page, beyond.pageCount);
+    assert.equal((await call('admin', 'GET', '/ncba/notifications?pageSize=7')).body.pageSize, 25); // only the offered sizes
+    assert.equal(first.held, await prisma.ncbaNotification.count({ where: { outcome: 'Held' } }));
   });
 
   it('asks NCBA what became of a prompt whose notification never came, and only believes "failed" after two minutes', async () => {

@@ -7,6 +7,7 @@ import { seal } from '../crypto';
 import { todayStr } from '@glm/shared';
 import { autoMatch, normaliseDate, storeReceipt } from '../accounting/mpesaMatching';
 import { markSuccess } from './mpesa';
+import { pagingOf } from '../paging';
 import {
   NCBA_BASE_URL,
   NcbaError,
@@ -153,9 +154,14 @@ ncbaRouter.post('/credentials/generate-stk', requireAuth, requireRole('Admin'), 
 });
 
 // ── What NCBA has told us ───────────────────────────────────────────────────
-ncbaRouter.get('/notifications', requireAuth, requirePermission('canAccessAccounting', 'canManagePayments'), async (_req, res) => {
-  const rows = await prisma.ncbaNotification.findMany({ orderBy: { id: 'desc' }, take: 40, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } });
-  res.json(rows);
+// Newest first, a page at a time (?page=1&pageSize=25). `held` counts every held notification, not only those on this page.
+ncbaRouter.get('/notifications', requireAuth, requirePermission('canAccessAccounting', 'canManagePayments'), async (req, res) => {
+  const { page, pageSize, pageCount, total, skip } = pagingOf(req.query, await prisma.ncbaNotification.count());
+  const [rows, held] = await Promise.all([
+    prisma.ncbaNotification.findMany({ orderBy: { id: 'desc' }, skip, take: pageSize, select: { id: true, receivedAt: true, transId: true, amount: true, billRef: true, phone: true, payerName: true, outcome: true, note: true } }),
+    prisma.ncbaNotification.count({ where: { outcome: 'Held' } }),
+  ]);
+  res.json({ rows, total, page, pageSize, pageCount, held });
 });
 
 // Books a notification that was held (its signature did not check out) once an Admin has looked at it and is satisfied it is real.

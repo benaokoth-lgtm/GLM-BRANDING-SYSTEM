@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fmtKsh } from '@glm/shared';
 import { api } from '../api/client';
 import { useAuth } from '../state/AuthContext';
-import { Card, Loading, Notice, Tag, useLoad } from '../pages/accounting/shared';
+import { Card, Loading, Notice, Pager, Tag, useLoad } from '../pages/accounting/shared';
 
 // What NCBA has sent: the payments NCBA told us about on the Paybill, and what became of each. Shown in Master Data → NCBA and in Accounting beside M-Pesa Matching. A payment NCBA reports is booked
 // to the Bank account as it arrives (NCBA settles the Paybill into the bank account itself); one with no prompt is then matched to an order in M-Pesa Matching. A notification whose signature did not
@@ -23,10 +23,21 @@ interface Received {
 const OUTCOME_TONE: Record<string, 'good' | 'neutral' | 'bad'> = { Matched: 'good', Received: 'good', Duplicate: 'neutral', Held: 'bad', Rejected: 'bad' };
 const when = (iso: string) => new Date(iso).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
 
+interface Page {
+  rows: Received[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  held: number;
+}
+
 export default function NcbaActivity({ onChanged }: { onChanged?: () => void }) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const log = useLoad<Received[]>('/ncba/notifications');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const log = useLoad<Page>(`/ncba/notifications?page=${page}&pageSize=${pageSize}`);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -48,9 +59,10 @@ export default function NcbaActivity({ onChanged }: { onChanged?: () => void }) 
     }
   }
 
-  const held = (log.data ?? []).filter((n) => n.outcome === 'Held').length;
+  const held = log.data?.held ?? 0;
+  const shown = log.data;
   return (
-    <Card title="What NCBA has sent" hint="The last payments NCBA told us about, and what became of each.">
+    <Card title="What NCBA has sent" hint="The payments NCBA told us about, newest first, and what became of each.">
       <Notice error={err} message={msg} />
       <div style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'center', flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => log.reload()}>
@@ -60,7 +72,7 @@ export default function NcbaActivity({ onChanged }: { onChanged?: () => void }) 
       </div>
       {!log.data ? (
         <Loading loading={log.loading} error={log.error} />
-      ) : log.data.length === 0 ? (
+      ) : log.data.total === 0 ? (
         <p className="note">Nothing yet. Once NCBA is told the address and credentials, every payment shows up here.</p>
       ) : (
         <div style={{ overflowX: 'auto' }}>
@@ -76,7 +88,7 @@ export default function NcbaActivity({ onChanged }: { onChanged?: () => void }) 
               </tr>
             </thead>
             <tbody>
-              {log.data.map((n) => (
+              {log.data.rows.map((n) => (
                 <tr key={n.id}>
                   <td className="text-muted">{when(n.receivedAt)}</td>
                   <td>{n.transId || '—'}</td>
@@ -101,6 +113,7 @@ export default function NcbaActivity({ onChanged }: { onChanged?: () => void }) 
           </table>
         </div>
       )}
+      {shown && <Pager info={shown} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
       <p className="note">
         <b>Matched</b> is the answer to an STK push; <b>Received</b> is a payment made straight to the Paybill, to be matched to an order under M-Pesa Matching. <b>Held</b> means the signature on the notification did not check
         out, so nothing was booked: check the payment in your NCBA account and, if it is real, an Admin accepts it. <b>Rejected</b> means the username or password was not yours.

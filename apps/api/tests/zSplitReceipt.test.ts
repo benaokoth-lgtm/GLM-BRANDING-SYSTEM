@@ -94,7 +94,7 @@ describe('one M-Pesa payment applied to several orders', () => {
     const first = await call('front', 'POST', `/accounting/mpesa/${tx.id}/allocate`, { allocations: [{ orderId: a.id, amount: 4000 }] });
     assert.deepEqual([first.status, first.body.remaining], [200, 6000]);
     assert.equal((await prisma.mpesaTransaction.findUniqueOrThrow({ where: { id: tx.id } })).status, 'Unmatched'); // still waiting, with 6,000 left
-    const waiting = (await call('front', 'GET', '/accounting/mpesa?status=Unmatched')).body.rows.find((r: any) => r.id === tx.id);
+    const waiting = (await call('front', 'GET', '/accounting/mpesa?status=Unmatched&pageSize=100')).body.rows.find((r: any) => r.id === tx.id);
     assert.deepEqual([waiting.allocated, waiting.left, waiting.parts.length], [4000, 6000, 1]);
     // the Dismiss button is for a payment nobody has used: refused once part is on an order
     assert.match((await call('front', 'POST', `/accounting/mpesa/${tx.id}/dismiss`, { note: 'x' })).body.error, /already on an order/);
@@ -140,7 +140,7 @@ describe('one M-Pesa payment applied to several orders', () => {
     const after = await prisma.mpesaTransaction.findUniqueOrThrow({ where: { id: tx.id } });
     assert.equal(after.status, 'Unmatched');
     assert.equal(await owed(a.id), 3000);
-    const waiting = (await call('front', 'GET', '/accounting/mpesa?status=Unmatched')).body.rows.find((r: any) => r.id === tx.id);
+    const waiting = (await call('front', 'GET', '/accounting/mpesa?status=Unmatched&pageSize=100')).body.rows.find((r: any) => r.id === tx.id);
     assert.deepEqual([waiting.allocated, waiting.left], [3000, 3000]);
   });
 

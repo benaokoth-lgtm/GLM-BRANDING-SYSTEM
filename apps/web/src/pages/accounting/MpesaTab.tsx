@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../../api/client';
-import { Card, Loading, Notice, Tag, money, numStyle, useLoad } from './shared';
+import { Card, Loading, Notice, Pager, Tag, money, numStyle, useLoad } from './shared';
 import { MatchedPayments } from './MatchedPayments';
 import { SplitReceipt } from './SplitReceipt';
 
@@ -34,6 +34,10 @@ interface Row {
 }
 interface Data {
   rows: Row[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pageCount: number;
   summary: { unmatchedCount: number; unmatchedTotal: number };
   openOrders: { orderId: number; ref: string; party: string; balance: number }[];
   unverifiedPayments: { id: number; orderNo: string; date: string; amount: number }[];
@@ -51,7 +55,9 @@ const FILTERS = [
 // matched automatically; the rest are matched by a person, with suggestions.
 export function MpesaTab() {
   const [filter, setFilter] = useState<string>('Unmatched');
-  const { data, error, loading, reload } = useLoad<Data>(`/accounting/mpesa?status=${filter}`);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const { data, error, loading, reload } = useLoad<Data>(`/accounting/mpesa?status=${filter}&page=${page}&pageSize=${pageSize}`);
   const [csv, setCsv] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
@@ -140,7 +146,7 @@ export function MpesaTab() {
       <Card title="M-Pesa payments received">
         <div className="no-print" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-3)', flexWrap: 'wrap' }}>
           {FILTERS.map(([id, label]) => (
-            <button key={id} type="button" className={'btn btn-sm ' + (filter === id ? 'btn-primary' : 'btn-secondary')} onClick={() => setFilter(id)}>
+            <button key={id} type="button" className={'btn btn-sm ' + (filter === id ? 'btn-primary' : 'btn-secondary')} onClick={() => { setFilter(id); setPage(1); }}>
               {label}
             </button>
           ))}
@@ -253,6 +259,7 @@ export function MpesaTab() {
             ))}
           </tbody>
         </table>
+        {data && <Pager info={data} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
       </Card>
 
       {data && data.unverifiedPayments.length > 0 && (

@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import { fmtDate, fmtKsh } from '@glm/shared';
 import { api } from '../../api/client';
-import { Card, Loading, Notice, Tag, numStyle, useLoad } from './shared';
+import { Card, Loading, Notice, Pager, Tag, numStyle, useLoad } from './shared';
 
 // Accounting → M-Pesa Matching → Matched payments: putting a wrong match right. A receipt that was matched to the wrong order can be MOVED to the right order (it must still owe that much) or taken OFF
 // its order so it goes back to "Waiting to be matched". Either needs a reason and is logged with who did it. Open to the front office as well as Accounting.
@@ -31,7 +31,9 @@ interface Row {
 export function MatchedPayments({ openOrders, onChanged }: { openOrders: { orderId: number; ref: string; party: string; balance: number }[]; onChanged: () => void }) {
   const [q, setQ] = useState('');
   const [term, setTerm] = useState('');
-  const { data, error, loading, reload } = useLoad<{ rows: Row[] }>(`/accounting/mpesa/matched${term ? `?q=${encodeURIComponent(term)}` : ''}`);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const { data, error, loading, reload } = useLoad<{ rows: Row[]; total: number; page: number; pageSize: number; pageCount: number }>(`/accounting/mpesa/matched?page=${page}&pageSize=${pageSize}${term ? `&q=${encodeURIComponent(term)}` : ''}`);
   const [open, setOpen] = useState<{ id: number; mode: 'move' | 'off' } | null>(null); // id = the payment (one part of a receipt)
   const [target, setTarget] = useState('');
   const [reason, setReason] = useState('');
@@ -76,6 +78,7 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
         onSubmit={(e) => {
           e.preventDefault();
           setTerm(q.trim());
+          setPage(1);
         }}
       >
         <div className="field" style={{ margin: 0 }}>
@@ -83,7 +86,7 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
           <input id="mp-q" className="input" style={{ width: 260 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="receipt code, phone, payer or order number" />
         </div>
         <button type="submit" className="btn btn-secondary btn-sm">Search</button>
-        {term && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setQ(''); setTerm(''); }}>Clear</button>}
+        {term && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setQ(''); setTerm(''); setPage(1); }}>Clear</button>}
       </form>
       <Loading loading={loading} error={error} />
       {data && data.rows.length === 0 && <p className="note">No matched payments{term ? ' found for that search' : ''}.</p>}
@@ -166,6 +169,7 @@ export function MatchedPayments({ openOrders, onChanged }: { openOrders: { order
           </table>
         </div>
       )}
+      {data && <Pager info={data} onPage={setPage} onPageSize={(n) => { setPageSize(n); setPage(1); }} />}
     </Card>
   );
 }

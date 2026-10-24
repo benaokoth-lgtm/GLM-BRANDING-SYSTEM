@@ -11,6 +11,7 @@ import { creditableLines, issueCreditNote, issueDebitNote, issueSupplierDebitNot
 import { depreciationSchedule, runDepreciationOnce } from '../accounting/depreciation';
 import { allocateReceipt, applyReceiptToOrder, autoMatch, importStatement, moveMatchedPayment, openTargets, splitSuggestion, unmatchPayment } from '../accounting/mpesaMatching';
 import { PaymentError } from './orders';
+import { pagingOf } from '../paging';
 
 export const accountingRouter = Router();
 accountingRouter.use(requireAuth);
@@ -327,14 +328,19 @@ accountingRouter.post('/notes/supplier', ...accountingOnly, async (req, res) => 
 // ── M-Pesa payment matching ───────────────────────────────────────────────
 accountingRouter.get('/mpesa', ...mpesaAccess, async (req, res) => {
   const status = typeof req.query.status === 'string' && req.query.status !== 'all' ? req.query.status : undefined;
-  const [txs, targets] = await Promise.all([
+  // a page at a time (?page=1&pageSize=25); the totals in the summary are for everything waiting, not just this page
+  const where = { kind: { in: ['C2B', 'Import'] }, ...(status ? { status } : {}) };
+  const paging = pagingOf(req.query, await prisma.mpesaTransaction.count({ where }));
+  const [txs, targets, waiting] = await Promise.all([
     prisma.mpesaTransaction.findMany({
-      where: { kind: { in: ['C2B', 'Import'] }, ...(status ? { status } : {}) },
+      where,
       include: { order: true, payments: { include: { order: { select: { orderNo: true } } } } },
       orderBy: [{ receivedOn: 'desc' }, { id: 'desc' }],
-      take: 500,
+      skip: paging.skip,
+      take: paging.pageSize,
     }),
     openTargets(),
+    prisma.mpesaTransaction.findMany({ where: { kind: { in: ['C2B', 'Import'] }, status: 'Unmatched' }, select: { amount: true, payments: { select: { amount: true } } } }),
   ]);
   const rows = txs.map((t) => {
     // a receipt can be shared by several orders: what is on orders and what is still free
@@ -350,12 +356,12 @@ accountingRouter.get('/mpesa', ...mpesaAccess, async (req, res) => {
       note: m && !m.matched ? m.reason : null,
     };
   });
-  const unmatched = rows.filter((r) => r.status === 'Unmatched');
   // Recorded M-Pesa payments with no receipt code can't be checked against the statement.
   const unverified = await prisma.payment.findMany({ where: { method: 'M-Pesa', reference: null }, include: { order: true }, orderBy: { id: 'desc' }, take: 200 });
   res.json({
     rows,
-    summary: { unmatchedCount: unmatched.length, unmatchedTotal: round2(unmatched.reduce((a, r) => a + r.left, 0)) },
+    page: paging.page, pageSize: paging.pageSize, pageCount: paging.pageCount, total: paging.total,
+    summary: { unmatchedCount: waiting.length, unmatchedTotal: round2(waiting.reduce((a, t) => a + Math.max(0, t.amount - t.payments.reduce((x, p) => x + p.amount, 0)), 0)) },
     openOrders: targets.map((t) => ({ orderId: t.orderId, ref: t.ref, party: t.party, balance: t.balance })),
     unverifiedPayments: unverified.map((p) => ({ id: p.id, orderNo: p.order.orderNo, date: p.date, amount: p.amount })),
   });
@@ -389,17 +395,22 @@ accountingRouter.post('/mpesa/:id/apply', ...mpesaAccess, async (req, res) => {
 // first; `q` finds a receipt code, a phone, a payer or an order number.
 accountingRouter.get('/mpesa/matched', ...mpesaAccess, async (req, res) => {
   const q = String(req.query.q ?? '').trim();
+  const matchedWhere = {
+    payments: { some: {} },
+    ...(q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payments: { some: { order: { orderNo: { contains: q } } } } }] } : {}),
+  };
+  // a page of receipts at a time (a receipt shared by several orders still shows a row for each of its parts)
+  const paging = pagingOf(req.query, await prisma.mpesaTransaction.count({ where: matchedWhere }));
   const txs = await prisma.mpesaTransaction.findMany({
-    where: {
-      payments: { some: {} },
-      ...(q ? { OR: [{ mpesaReceipt: { contains: q } }, { phone: { contains: q } }, { payerName: { contains: q } }, { payments: { some: { order: { orderNo: { contains: q } } } } }] } : {}),
-    },
+    where: matchedWhere,
     include: { payments: { include: { order: { select: { id: true, orderNo: true, customerName: true, corporateClient: { select: { name: true } } } } }, orderBy: { id: 'asc' } } },
     orderBy: { id: 'desc' },
-    take: 100,
+    skip: paging.skip,
+    take: paging.pageSize,
   });
   const changes = txs.length ? await prisma.matchChange.findMany({ where: { transactionId: { in: txs.map((t) => t.id) } }, orderBy: { id: 'desc' } }) : [];
   res.json({
+    page: paging.page, pageSize: paging.pageSize, pageCount: paging.pageCount, total: paging.total,
     rows: txs.flatMap((t) => {
       const applied = round2(t.payments.reduce((a, p) => a + p.amount, 0));
       return t.payments.map((p) => ({
